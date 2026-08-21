@@ -745,6 +745,34 @@ func (p *Process) Pause(ctx context.Context) error {
 // back after the guest's FREE_PAGE_HINT_STOP when start used acknowledge_on_stop.
 const freePageHintDone int64 = 1
 
+// BalloonFreePageReporting reports whether this VM's balloon device runs
+// continuous free-page reporting. Boot-time device truth straight from FC:
+// a resumed sandbox's Config does not carry it (the device travels with the
+// snapshot). False when no balloon is installed.
+func (p *Process) BalloonFreePageReporting(ctx context.Context) (bool, error) {
+	return p.client.balloonFreePageReporting(ctx)
+}
+
+// PauseFreePageReporting defers all balloon free-page-reporting discards
+// until ResumeFreePageReporting; see the client method for semantics.
+// Requires an FC build with the /balloon/reporting endpoints.
+func (p *Process) PauseFreePageReporting(ctx context.Context) error {
+	return p.client.pauseFreePageReporting(ctx)
+}
+
+// FreePageReportingPaused reports whether the balloon's free-page reporting
+// is currently paused (positive confirmation for the CoW window's
+// no-discard precondition).
+func (p *Process) FreePageReportingPaused(ctx context.Context) (bool, error) {
+	return p.client.freePageReportingPaused(ctx)
+}
+
+// ResumeFreePageReporting re-enables free-page-reporting discards and
+// processes anything deferred while paused. Idempotent.
+func (p *Process) ResumeFreePageReporting(ctx context.Context) error {
+	return p.client.resumeFreePageReporting(ctx)
+}
+
 // DrainBalloon triggers a free-page-hinting run and blocks until the cycle
 // completes or ctx fires. No-op on FC < v1.14 and when no balloon is configured.
 func (p *Process) DrainBalloon(ctx context.Context) error {

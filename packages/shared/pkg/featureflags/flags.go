@@ -172,6 +172,21 @@ var (
 	// sandboxes and when this flag is off.
 	InPlaceCheckpointFlag = NewBoolFlag("in-place-checkpoint", false)
 
+	// DeferMemoryExportFlag makes the in-place checkpoint export guest
+	// memory through the CoW window instead of the synchronous dirty-RAM
+	// copy: the dirty set is write-protect-armed while the VM is paused, the
+	// guest resumes immediately, and pages are captured in the background
+	// (first guest write to an uncaptured page copies the pre-image before
+	// the write proceeds). Only takes effect on the in-place path with a
+	// sync-WP UFFD backend. When the VM's balloon runs continuous free-page
+	// REPORTING, reporting is PAUSED for the window's lifetime (a REMOVE
+	// zapping an uncaptured page would export zeros where pause-time content
+	// is owed); requires an FC build with /balloon/reporting — pause failures
+	// fall back to the synchronous copy. (The synchronous pre-pause
+	// free-page-hinting drain settles before the dirty readout and needs no
+	// pause.) Default off = today's synchronous copy.
+	DeferMemoryExportFlag = NewBoolFlag("defer-memory-export", false)
+
 	// SyncWPTrackerDirtyFlag derives the pause-time dirty set from the
 	// orchestrator's page tracker (installs + synchronous WP-fault
 	// promotions) instead of Firecracker's GetDirtyMemory pagemap scan,

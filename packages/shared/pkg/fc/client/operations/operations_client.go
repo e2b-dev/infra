@@ -59,6 +59,8 @@ type ClientService interface {
 
 	DescribeBalloonHinting(params *DescribeBalloonHintingParams, opts ...ClientOption) (*DescribeBalloonHintingOK, error)
 
+	DescribeBalloonReporting(params *DescribeBalloonReportingParams, opts ...ClientOption) (*DescribeBalloonReportingOK, error)
+
 	DescribeBalloonStats(params *DescribeBalloonStatsParams, opts ...ClientOption) (*DescribeBalloonStatsOK, error)
 
 	DescribeInstance(params *DescribeInstanceParams, opts ...ClientOption) (*DescribeInstanceOK, error)
@@ -97,6 +99,8 @@ type ClientService interface {
 
 	PatchVM(params *PatchVMParams, opts ...ClientOption) (*PatchVMNoContent, error)
 
+	PauseBalloonReporting(params *PauseBalloonReportingParams, opts ...ClientOption) (*PauseBalloonReportingOK, error)
+
 	PutBalloon(params *PutBalloonParams, opts ...ClientOption) (*PutBalloonNoContent, error)
 
 	PutCPUConfiguration(params *PutCPUConfigurationParams, opts ...ClientOption) (*PutCPUConfigurationNoContent, error)
@@ -126,6 +130,8 @@ type ClientService interface {
 	PutMmdsConfig(params *PutMmdsConfigParams, opts ...ClientOption) (*PutMmdsConfigNoContent, error)
 
 	PutSerialDevice(params *PutSerialDeviceParams, opts ...ClientOption) (*PutSerialDeviceNoContent, error)
+
+	ResumeBalloonReporting(params *ResumeBalloonReportingParams, opts ...ClientOption) (*ResumeBalloonReportingOK, error)
 
 	StartBalloonHinting(params *StartBalloonHintingParams, opts ...ClientOption) (*StartBalloonHintingOK, error)
 
@@ -300,6 +306,48 @@ func (a *Client) DescribeBalloonHinting(params *DescribeBalloonHintingParams, op
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*DescribeBalloonHintingDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+DescribeBalloonReporting returns whether free page reporting is paused only if enabled pre boot
+*/
+func (a *Client) DescribeBalloonReporting(params *DescribeBalloonReportingParams, opts ...ClientOption) (*DescribeBalloonReportingOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewDescribeBalloonReportingParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "describeBalloonReporting",
+		Method:             "GET",
+		PathPattern:        "/balloon/reporting/status",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &DescribeBalloonReportingReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*DescribeBalloonReportingOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*DescribeBalloonReportingDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }
@@ -1129,6 +1177,50 @@ func (a *Client) PatchVM(params *PatchVMParams, opts ...ClientOption) (*PatchVMN
 }
 
 /*
+PauseBalloonReporting pauses free page reporting only if enabled pre boot
+
+Defers all free-page-reporting discards until resumed. Reported pages stay queued in the reporting virtqueue, unacknowledged; the guest driver holds them isolated until the acknowledgement, so no guest memory is discarded while paused. Idempotent.
+*/
+func (a *Client) PauseBalloonReporting(params *PauseBalloonReportingParams, opts ...ClientOption) (*PauseBalloonReportingOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewPauseBalloonReportingParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "pauseBalloonReporting",
+		Method:             "PATCH",
+		PathPattern:        "/balloon/reporting/pause",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &PauseBalloonReportingReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*PauseBalloonReportingOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*PauseBalloonReportingDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
 PutBalloon creates or updates a balloon device
 
 Creates a new balloon device if one does not already exist, otherwise updates it, before machine startup. This will fail after machine startup. Will fail if update is not possible.
@@ -1778,6 +1870,50 @@ func (a *Client) PutSerialDevice(params *PutSerialDeviceParams, opts ...ClientOp
 	//
 	// a default response is provided: fill this and return an error
 	unexpectedSuccess := result.(*PutSerialDeviceDefault)
+
+	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
+}
+
+/*
+ResumeBalloonReporting resumes free page reporting only if enabled pre boot
+
+Re-enables free-page-reporting discards and immediately processes any reports deferred while paused. Idempotent.
+*/
+func (a *Client) ResumeBalloonReporting(params *ResumeBalloonReportingParams, opts ...ClientOption) (*ResumeBalloonReportingOK, error) {
+	// NOTE: parameters are not validated before sending
+	if params == nil {
+		params = NewResumeBalloonReportingParams()
+	}
+	op := &runtime.ClientOperation{
+		ID:                 "resumeBalloonReporting",
+		Method:             "PATCH",
+		PathPattern:        "/balloon/reporting/resume",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http"},
+		Params:             params,
+		Reader:             &ResumeBalloonReportingReader{formats: a.formats},
+		Context:            params.Context,
+		Client:             params.HTTPClient,
+	}
+	for _, opt := range opts {
+		opt(op)
+	}
+	result, err := a.transport.Submit(op)
+	if err != nil {
+		return nil, err
+	}
+
+	// only one success response has to be checked
+	success, ok := result.(*ResumeBalloonReportingOK)
+	if ok {
+		return success, nil
+	}
+
+	// unexpected success response.
+	//
+	// a default response is provided: fill this and return an error
+	unexpectedSuccess := result.(*ResumeBalloonReportingDefault)
 
 	return nil, runtime.NewAPIError("unexpected success response: content available as default response in error", unexpectedSuccess, unexpectedSuccess.Code())
 }

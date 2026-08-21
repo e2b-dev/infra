@@ -978,7 +978,44 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 // it to Running, not kill it), resume-fresh passes Internal (its failure
 // closure tears the resumed sandbox down, so a kill describes reality).
 func (s *Server) runCheckpointUpload(ctx context.Context, sbx *sandbox.Sandbox, res *snapshotResult, in *orchestrator.SandboxCheckpointRequest, failureCode codes.Code, onUploadFailure func()) error {
-	if s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag) {
+	async := s.featureFlags.BoolFlag(ctx, featureflags.PeerToPeerAsyncCheckpointFlag)
+	if async && res.memoryExportDeferred {
+		// A deferred (CoW window) memory export can still FAIL after this
+		// function would have answered success: a cancelled window poisons
+		// the promise-backed memfile diff with a permanent
+		// ErrDeferredSealFailed, the upload retry classifies it
+		// non-retryable and gives up — leaving a build record the control
+		// plane believes in with no artifact behind it, by construction
+		// forever (there is no build-invalidation path). That hazard ends
+		// with the SWEEP, not the upload: once the seal settles successfully
+		// the artifact bytes are in the local cache and the deferred diff is
+		// exactly as durable as a synchronously copied one — the async
+		// path's normal risk profile, peer pull window included. So gate on
+		// the seal outcome instead of forcing the whole upload synchronous:
+		// wait it out (bounded like the sync path), surface a seal failure
+		// to the caller BEFORE any success is reported, and detach the
+		// upload once sealed.
+		waitCtx, cancelWait := context.WithTimeout(context.WithoutCancel(ctx), uploadTimeout)
+		sealErr := res.waitMemorySealed(waitCtx)
+		cancelWait()
+		if sealErr != nil {
+			// The same shape as the sync path failing fast (Run's first act
+			// is waiting this promise): finish the registered upload with
+			// the error — freeing the build's upload future — and surface
+			// it under the caller's failure code (FailedPrecondition for
+			// in-place: the sandbox is alive, the API restores it to
+			// Running).
+			telemetry.ReportCriticalError(ctx, "deferred memory seal failed before checkpoint upload", sealErr, telemetry.WithSandboxID(in.GetSandboxId()))
+			res.completeUpload(ctx, sealErr)
+			if onUploadFailure != nil {
+				onUploadFailure()
+			}
+
+			return status.Errorf(failureCode, "deferred memory export for checkpoint '%s' failed: %s", in.GetSandboxId(), sealErr)
+		}
+		sbxlogger.I(sbx).Info(ctx, "deferred memory export sealed; detaching checkpoint upload")
+	}
+	if async {
 		// Async: return immediately; peer nodes can pull chunks from us
 		// during the upload window.
 		s.uploadSnapshotAsync(ctx, sbx, res)
@@ -1286,6 +1323,12 @@ type snapshotResult struct {
 	// filesystemOnly records whether this was a filesystem-only (memoryless)
 	// pause, so the async upload can label its failure counter with fs_only.
 	filesystemOnly bool
+	// memoryExportDeferred records that the memfile diff is promise-backed
+	// (CoW window) and can still fail after Pause returned — see
+	// runCheckpointUpload, which must not answer async success before
+	// waitMemorySealed (Snapshot.WaitMemorySealed) settles.
+	memoryExportDeferred bool
+	waitMemorySealed     func(ctx context.Context) error
 }
 
 // snapshotAndCacheSandbox creates a snapshot of a sandbox and adds it to the
@@ -1391,13 +1434,15 @@ func (s *Server) snapshotAndCacheSandbox(
 	}
 
 	return &snapshotResult{
-		meta:               meta,
-		schedulingMetadata: snapshot.SchedulingMetadata,
-		upload:             upload,
-		completeUpload:     completeUpload,
-		objectMetadata:     objectMetadata,
-		filesystemOnly:     filesystemOnly,
-		rootfsDiff:         snapshot.RootfsDiff,
+		meta:                 meta,
+		schedulingMetadata:   snapshot.SchedulingMetadata,
+		upload:               upload,
+		completeUpload:       completeUpload,
+		objectMetadata:       objectMetadata,
+		filesystemOnly:       filesystemOnly,
+		rootfsDiff:           snapshot.RootfsDiff,
+		memoryExportDeferred: snapshot.MemoryExportDeferred,
+		waitMemorySealed:     snapshot.WaitMemorySealed,
 	}, nil
 }
 

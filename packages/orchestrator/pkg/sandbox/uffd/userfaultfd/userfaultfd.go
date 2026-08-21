@@ -32,8 +32,11 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/san
 
 const maxRequestsInProgress = 4096
 
-// maxWPResolvesInProgress bounds the dedicated WP-resolve pool. Resolves are
-// single ioctls; the bound only guards against pathological fault storms.
+// maxWPResolvesInProgress bounds the dedicated WP-resolve pool. A plain
+// resolve is a single ioctl; a resolve that captures into a CoW window also
+// copies one page (read + unlocked sink write), so during a window the bound
+// additionally caps concurrent page copies. It still mainly guards against
+// pathological fault storms.
 const maxWPResolvesInProgress = 256
 
 // wpResolveRetryDelay paces the redispatch of a WP resolve that hit
@@ -169,6 +172,12 @@ type Userfaultfd struct {
 	wpResolveErrMu      sync.Mutex
 	wpResolveErrPages   map[uintptr]int32
 	wpResolveErrPending atomic.Int32
+
+	// cowWindow, when set, owns pre-image capture for an in-flight deferred
+	// memory export: WP resolves for its pages copy the pause-time content to
+	// the export sink BEFORE unprotecting (see resolveWriteProtect). Installed
+	// by BeginCoWExport while the guest is paused; cleared by EndCoWExport.
+	cowWindow atomic.Pointer[CoWWindow]
 
 	logger logger.Logger
 }
@@ -467,6 +476,22 @@ func (u *Userfaultfd) Serve(
 					startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
 					endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
 					u.pageTracker.SetRange(startIdx, endIdx, block.Removed)
+
+					// Corruption tripwire: a REMOVE zapping a window page
+					// whose pre-image is not captured yet destroys content
+					// the export still owes. This must not happen — free-page
+					// reporting is paused for the window's lifetime — so any
+					// hit means the pause has a hole: fail the export cleanly
+					// (the checkpoint errors; the sandbox keeps running)
+					// instead of shipping a silently corrupt snapshot.
+					if w := u.cowWindow.Load(); w != nil && w.Overlaps(startIdx, endIdx) {
+						u.logger.Error(ctx, "uffd REMOVE overlaps CoW-window pages; canceling export",
+							zap.Uint32("start_idx", startIdx), zap.Uint32("end_idx", endIdx))
+						// The reason label is what separates a hole in the
+						// FPR pause (systemic) from ordinary I/O failures.
+						recordCoWCancel(ctx, "remove_tripwire")
+						w.Cancel(fmt.Errorf("REMOVE zapped window pages [%d, %d)", startIdx, endIdx))
+					}
 				}
 				u.settleRequests.Unlock()
 			}
@@ -744,7 +769,11 @@ func (u *Userfaultfd) resolveWriteProtect(ctx context.Context, addr uintptr, off
 	// is what's stale; fall through to unprotect and promote through
 	// MarkWrittenPresent). Transitions INTO Removed take the settleRequests
 	// write lock, so the probe verdict cannot go stale for the rest of the
-	// resolve.
+	// resolve. Probed BEFORE the CoW window: the truly-absent verdict
+	// carries no pre-image obligation (the stalled write never landed, and
+	// a REMOVE overlapping an uncaptured window page has already tripped
+	// the serve loop's cancel); the present verdict falls through to the
+	// window capture below like any other resolve.
 	presenceVerified := false
 	var err error
 	if u.pageTracker.Get(idx) == block.Removed {
@@ -777,7 +806,29 @@ func (u *Userfaultfd) resolveWriteProtect(ctx context.Context, addr uintptr, off
 		}
 	}
 
+	// CoW window: capture the page's pre-image into the export sink BEFORE
+	// clearing the protection — the faulting writer is still blocked, so the
+	// bytes copied are the pause-time content by construction. Outside the
+	// window (or after its cancel) this is a no-op and the resolve is
+	// tracking-only. Blocking here (a claim wait is bounded by one page copy)
+	// happens under settleRequests.RLock; that is acceptable because a live
+	// window excludes free-page reporting, so no REMOVE batch is waiting.
+	cow := false
 	if err == nil {
+		if w := u.cowWindow.Load(); w != nil {
+			handled, copyErr := w.EnsureCopied(ctx, idx)
+			if copyErr != nil {
+				// Only a dead ctx interrupts a claim wait: the serve loop is
+				// tearing down and the pre-image is not guaranteed captured,
+				// so do not unprotect. The window is canceled with the
+				// teardown.
+				outcome = wpResolveError
+
+				return fmt.Errorf("uffd WP resolve at %#x: CoW pre-image wait: %w", addr, copyErr)
+			}
+			cow = handled
+		}
+
 		// mode 0 = clear write-protection + wake the faulting thread (no
 		// DONTWAKE).
 		err = u.fd.writeProtectRange(alignedAddr, u.pageSize, u.pageSize, 0)
@@ -785,7 +836,9 @@ func (u *Userfaultfd) resolveWriteProtect(ctx context.Context, addr uintptr, off
 	if errors.Is(err, syscall.EAGAIN) {
 		// Deferred: record the attempt under its own outcome so a fault
 		// bouncing off mmap_changing repeatedly stays diagnosable; the
-		// eventual re-serve records the resolution separately.
+		// eventual re-serve records the resolution separately. A captured
+		// pre-image stays captured; the re-served resolve's EnsureCopied
+		// takes the lock-free fast path.
 		outcome = wpResolveDeferred
 
 		return errWPResolveAgain
@@ -820,9 +873,13 @@ func (u *Userfaultfd) resolveWriteProtect(ctx context.Context, addr uintptr, off
 
 	// The protection is cleared and the writer is waking: promote the page to
 	// Dirty. Still under settleRequests.RLock, so a REMOVE batch cannot slip
-	// between the clear and the promotion. When the presence probe proved a
-	// Removed reading stale, promote THROUGH it — MarkWritten's Removed-skip
-	// is for genuinely absent pages, which the probe has just excluded.
+	// between the clear and the promotion. Ordering vs the window's
+	// Dirty→Clean rebaseline: EnsureCopied returned before this point, and
+	// the rebaseline happens inside the copy, so this promotion always lands
+	// after it — the write is dirty for the NEXT interval. When the presence
+	// probe proved a Removed reading stale, promote THROUGH it —
+	// MarkWritten's Removed-skip is for genuinely absent pages, which the
+	// probe has just excluded.
 	var prev block.State
 	if presenceVerified {
 		prev = u.pageTracker.MarkWrittenPresent(idx)
@@ -831,6 +888,9 @@ func (u *Userfaultfd) resolveWriteProtect(ctx context.Context, addr uintptr, off
 	}
 	wpPromoteCount.Add(ctx, 1, wpPromoteAttrs[u.genBucket][prev])
 
+	if cow {
+		outcome = wpResolveOKCoW
+	}
 	u.wpFaultsResolved.Add(1)
 
 	return nil

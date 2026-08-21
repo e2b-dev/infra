@@ -154,6 +154,29 @@ func TestTracker(t *testing.T) {
 		assert.Equal(t, Dirty, s.Get(0), "late install marking must not downgrade the promotion")
 	})
 
+	t.Run("MarkExported demotes only Dirty", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+
+		s.SetRange(0, 1, Dirty)
+		s.SetRange(1, 2, Zero)
+		s.SetRange(2, 3, Removed)
+		s.SetRange(3, 4, Clean)
+
+		for i := range uint32(5) {
+			s.MarkExported(i)
+		}
+
+		assert.Equal(t, Clean, s.Get(0), "exported dirty page rebaselines to clean")
+		assert.Equal(t, Zero, s.Get(1), "zero page untouched")
+		assert.Equal(t, Removed, s.Get(2), "removed page must not be resurrected")
+		assert.Equal(t, Clean, s.Get(3), "clean page stays clean")
+		assert.Equal(t, NotPresent, s.Get(4), "untracked page untouched")
+
+		s.MarkWritten(0)
+		assert.Equal(t, Dirty, s.Get(0), "a write after export re-dirties for the next interval")
+	})
+
 	t.Run("ExportStates returns the per-state split", func(t *testing.T) {
 		t.Parallel()
 		s := NewTracker()

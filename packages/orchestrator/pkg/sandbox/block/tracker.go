@@ -194,6 +194,24 @@ func (t *Tracker) MarkWrittenPresent(idx uint32) (prev State) {
 	return prev
 }
 
+// MarkExported demotes the page at idx from Dirty to Clean after its content
+// has been captured into an export: the page is still installed and
+// write-protect-armed, and its content now matches the layer just exported,
+// so only a subsequent write (which promotes via MarkWritten) should put it
+// back in the next interval's dirty set. Any state other than Dirty is left
+// untouched — in particular a concurrent REMOVE's Removed entry must not be
+// resurrected to an installed state.
+func (t *Tracker) MarkExported(idx uint32) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if !t.dirty.Contains(idx) {
+		return
+	}
+	t.dirty.Remove(idx)
+	t.clean.Add(idx)
+}
+
 // bitmapFor returns the bitmap backing the given state, or nil for NotPresent
 // (and any unknown value, which then behaves like clearing the range).
 func (t *Tracker) bitmapFor(state State) *roaring.Bitmap {

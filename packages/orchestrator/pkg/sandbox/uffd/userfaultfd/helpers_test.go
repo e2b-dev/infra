@@ -68,6 +68,11 @@ type testConfig struct {
 	alwaysWP bool
 	// removeEnabled toggles UFFD_FEATURE_EVENT_REMOVE in configureApi.
 	removeEnabled bool
+	// syncWP registers the uffd WITHOUT WP_ASYNC: writes to armed pages
+	// block on a synchronous WP event until the serve loop resolves them
+	// (production use-sync-wp). Under the default WP_ASYNC the kernel
+	// auto-resolves such writes and the serve loop never sees them.
+	syncWP bool
 	// gated is a doc-only marker for tests that drive Pause/Resume.
 	gated bool
 	// barriers enables the per-worker fault hook (race tests only).

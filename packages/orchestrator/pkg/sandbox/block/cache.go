@@ -541,7 +541,34 @@ func (c *Cache) punchHole(off, length int64) {
 	}
 }
 
-// When using WriteAtWithoutLock you must ensure thread safety, ideally by only writing to the same block once and the exposing the slice.
+// WriteAtShared is WriteAt under the read (shared) lock: callers that
+// already guarantee exactly one writer per block — the CoW window's claim
+// map — proceed in parallel with each other, while Close, which takes the
+// write lock before unmapping, is structurally excluded. The exclusion is
+// load-bearing: Close unmaps without nil'ing c.mmap, so WriteAtWithoutLock's
+// guards cannot detect a closed cache, and a write racing the unmap is a
+// SIGBUS that kills the whole process, not a failed write.
+func (c *Cache) WriteAtShared(b []byte, off int64) (int, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.mmap == nil {
+		return 0, nil
+	}
+
+	if c.isClosed() {
+		return 0, NewErrCacheClosed(c.filePath)
+	}
+
+	return c.WriteAtWithoutLock(b, off)
+}
+
+// When using WriteAtWithoutLock you must ensure thread safety, ideally by only
+// writing to the same block once and then exposing the slice. The caller must
+// also exclude a concurrent Close for the write's whole duration (hold c.mu in
+// some mode, as WriteAt/WriteAtShared do): Close unmaps without nil'ing
+// c.mmap, so the guards below cannot detect it, and a write landing after the
+// unmap is a process-fatal SIGBUS.
 func (c *Cache) WriteAtWithoutLock(b []byte, off int64) (int, error) {
 	if c.isClosed() {
 		return 0, NewErrCacheClosed(c.filePath)

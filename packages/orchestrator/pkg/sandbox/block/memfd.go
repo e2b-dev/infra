@@ -57,6 +57,16 @@ func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
 	return m.mmap[offset : offset+size], nil
 }
 
+// ReadAt implements io.ReaderAt over the mmap view (copying, unlike Slice).
+func (m *Memfd) ReadAt(p []byte, off int64) (int, error) {
+	b, err := m.Slice(off, int64(len(p)))
+	if err != nil {
+		return 0, err
+	}
+
+	return copy(p, b), nil
+}
+
 // Close releases the mmap and the fd. Single-use: every Memfd has exactly
 // one owner (NewCacheFromMemfd consumes it during construction; the UFFD
 // handshake transfers ownership via atomic Swap), so we don't guard against

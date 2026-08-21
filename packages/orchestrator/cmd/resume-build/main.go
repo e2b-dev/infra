@@ -62,6 +62,8 @@ func main() {
 	syncWP := flag.Bool("sync-wp", false, "resume with synchronous userfault write-protect delivery (use_sync_wp; requires an FC build that accepts the field)")
 	trackerDirty := flag.Bool("tracker-dirty", false, "serve the pause dirty set from the page tracker instead of the pagemap RPC (implies -sync-wp)")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
+	inPlace := flag.Bool("in-place", false, "checkpoint in place (pause, snapshot, resume the same FC process; implies -sync-wp)")
+	deferMemoryExport := flag.Bool("defer-memory-export", false, "capture the in-place memory export through the async CoW window (implies -in-place; requires an FC build with /balloon/reporting)")
 	verbose := flag.Bool("v", false, "verbose logging")
 	console := flag.Bool("console", false, "forward Firecracker's output and the guest kernel serial console (tty) to stdout (fresh boot / -reboot only)")
 	firecracker := flag.String("firecracker", "", "override the build's Firecracker version (e.g. when the baked version isn't on this node); safe for a cold boot/-reboot, risky for a memory resume")
@@ -116,8 +118,16 @@ func main() {
 		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, false)
 	}
 
-	if *syncWP || *trackerDirty {
+	if *syncWP || *trackerDirty || *inPlace || *deferMemoryExport {
 		featureflags.OverrideBoolFlag(featureflags.UseSyncWPFlag, true)
+	}
+
+	if *inPlace || *deferMemoryExport {
+		featureflags.OverrideBoolFlag(featureflags.InPlaceCheckpointFlag, true)
+	}
+
+	if *deferMemoryExport {
+		featureflags.OverrideBoolFlag(featureflags.DeferMemoryExportFlag, true)
 	}
 
 	if *trackerDirty {
@@ -234,6 +244,7 @@ func main() {
 		iterations:      *iterations,
 		optimize:        *optimize,
 		fsOnly:          *fsOnly,
+		inPlace:         *inPlace || *deferMemoryExport,
 	}
 
 	runOpts := runOptions{
@@ -281,6 +292,13 @@ type pauseOptions struct {
 	iterations      int // for benchmarking pause (only with immediate)
 	optimize        bool
 	fsOnly          bool
+	// inPlace checkpoints in place (WithMaintainSandbox): the same FC
+	// process pauses, snapshots and resumes, exercising the in-place seal —
+	// and, with -defer-memory-export, the CoW window. The single-run path's
+	// upload blocks on the deferred diffs, so the window completes before
+	// the tool tears the sandbox down; the benchmark path measures timings
+	// only and lets teardown cancel the window.
+	inPlace bool
 }
 
 func (p pauseOptions) enabled() bool {
@@ -766,6 +784,9 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	var pauseSnapshotOpts []sandbox.PauseOption
 	if opts.fsOnly {
 		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithFilesystemSnapshot())
+	}
+	if opts.inPlace {
+		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithMaintainSandbox())
 	}
 	pauseStart := time.Now()
 	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause, pauseSnapshotOpts...)

@@ -6,6 +6,7 @@ package userfaultfd
 // in _test.go because they need *Userfaultfd internals.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -32,6 +33,35 @@ type harnessState struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	closed bool
+
+	// data is the bootstrap source content: the CoW window reads pre-images
+	// from it (pages installed from source and not yet written hold exactly
+	// this content, which is the only view of "guest memory" the serving
+	// child has — the parent's mmap is not mapped here).
+	data *MemorySlicer
+	// window/sink hold the active CoW export driven over RPC.
+	window *CoWWindow
+	sink   *cowHarnessSink
+}
+
+// cowHarnessSink is a lockable identity-offset WriterAt over a byte slice.
+type cowHarnessSink struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+func (s *cowHarnessSink) WriteAt(p []byte, off int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return copy(s.buf[off:], p), nil
+}
+
+func (s *cowHarnessSink) snapshot() []byte {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return append([]byte(nil), s.buf...)
 }
 
 func newHarnessState(uffdFd uintptr) *harnessState {
@@ -135,6 +165,7 @@ func (l *Lifecycle) Bootstrap(args *testharness.BootstrapArgs, _ *testharness.Bo
 	defer l.state.mu.Unlock()
 	l.state.uffd = uffd
 	l.state.br = br
+	l.state.data = data
 
 	return l.state.startServeLocked()
 }
@@ -258,4 +289,94 @@ func (b *Barriers) registry() (*testharness.Registry, error) {
 	}
 
 	return br, nil
+}
+
+// CoW drives a real CoW export window through the live serve loop: Begin
+// arms + installs via BeginCoWExport, State snapshots progress/cancellation
+// and the sink, Sweep drains and uninstalls via EndCoWExport — exercising the
+// real readSerial/settleRequests interplay the isolated CoWWindow tests
+// cannot.
+type CoW struct {
+	state *harnessState
+}
+
+func (c *CoW) Begin(args *testharness.CoWBeginArgs, _ *testharness.Empty) error {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	uffd := c.state.uffd
+	if uffd == nil {
+		return errors.New("CoW.Begin called before Lifecycle.Bootstrap")
+	}
+	if c.state.window != nil {
+		return errors.New("CoW.Begin: a window is already installed")
+	}
+
+	pages := roaring.New()
+	for _, p := range args.Pages {
+		pages.Add(uint32(p))
+	}
+
+	size, err := c.state.data.Size()
+	if err != nil {
+		return err
+	}
+	sink := &cowHarnessSink{buf: make([]byte, size)}
+
+	// Pre-images come from the bootstrap source: correct for pages installed
+	// from source and not yet written, which is what the parent tests use.
+	src := bytes.NewReader(c.state.data.Content())
+	w, err := uffd.BeginCoWExport(pages, src, sink)
+	if err != nil {
+		return err
+	}
+	c.state.window = w
+	c.state.sink = sink
+
+	return nil
+}
+
+func (c *CoW) State(_ *testharness.Empty, reply *testharness.CoWStateReply) error {
+	c.state.mu.Lock()
+	w, sink := c.state.window, c.state.sink
+	c.state.mu.Unlock()
+	if w == nil {
+		return errors.New("CoW.State: no window installed")
+	}
+
+	reply.Copied = w.Copied()
+	if cause := w.CancelCause(); cause != nil {
+		reply.Canceled = true
+		reply.CancelCause = cause.Error()
+	}
+	reply.Sink = sink.snapshot()
+
+	return nil
+}
+
+func (c *CoW) Sweep(_ *testharness.Empty, reply *testharness.CoWSweepReply) error {
+	c.state.mu.Lock()
+	w := c.state.window
+	uffd := c.state.uffd
+	c.state.mu.Unlock()
+	if w == nil {
+		return errors.New("CoW.Sweep: no window installed")
+	}
+
+	err := w.Sweep(context.Background())
+	uffd.EndCoWExport(w)
+	if err == nil {
+		err = w.CancelCause()
+	}
+	if err != nil {
+		reply.SweepError = err.Error()
+	}
+	if cause := w.CancelCause(); cause != nil {
+		reply.CancelCause = cause.Error()
+	}
+
+	c.state.mu.Lock()
+	c.state.window, c.state.sink = nil, nil
+	c.state.mu.Unlock()
+
+	return nil
 }

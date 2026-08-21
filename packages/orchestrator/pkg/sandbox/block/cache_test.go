@@ -19,6 +19,7 @@ import (
 	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sync/errgroup"
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/testutils"
@@ -1261,4 +1262,46 @@ func TestCacheExportToDiffWithMetadata_ProceedsUnderReadLock(t *testing.T) {
 	_, err = outFile.ReadAt(got, (numBlocks/2)*blockSize)
 	require.NoError(t, err)
 	require.Equal(t, want, got)
+}
+
+// TestCacheWriteAtShared pins the shared-lock write contract the CoW window's
+// sink relies on: content lands like WriteAt, concurrent single-writer-per-
+// block writers proceed in parallel, and a write after Close fails with
+// ErrCacheClosed — never a write into unmapped memory (Close holds the write
+// lock across the unmap, so the shared lock excludes it structurally).
+func TestCacheWriteAtShared(t *testing.T) {
+	t.Parallel()
+
+	const blockSize = int64(header.PageSize)
+	const nBlocks = int64(8)
+	cache, err := NewCache(blockSize*nBlocks, blockSize, t.TempDir()+"/cache", false)
+	require.NoError(t, err)
+
+	content := make([]byte, blockSize*nBlocks)
+	_, err = rand.Read(content)
+	require.NoError(t, err)
+	// One all-zero block so the detect-zeroes punch path runs under the
+	// shared lock too.
+	clear(content[2*blockSize : 3*blockSize])
+
+	var eg errgroup.Group
+	for i := range nBlocks {
+		eg.Go(func() error {
+			off := i * blockSize
+			_, writeErr := cache.WriteAtShared(content[off:off+blockSize], off)
+
+			return writeErr
+		})
+	}
+	require.NoError(t, eg.Wait())
+
+	got := make([]byte, blockSize*nBlocks)
+	_, err = cache.ReadAt(got, 0)
+	require.NoError(t, err)
+	require.True(t, bytes.Equal(content, got), "shared-lock writes must land like WriteAt")
+
+	require.NoError(t, cache.Close())
+	_, err = cache.WriteAtShared(content[:blockSize], 0)
+	var closedErr *CacheClosedError
+	require.ErrorAs(t, err, &closedErr, "a straggler write after Close must fail closed")
 }

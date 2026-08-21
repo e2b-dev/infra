@@ -4,6 +4,10 @@ package uffd
 
 import (
 	"context"
+	"errors"
+	"io"
+
+	"github.com/RoaringBitmap/roaring/v2"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
@@ -11,6 +15,31 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
+
+// ErrCoWExportUnsupported reports that the memory backend cannot run a
+// deferred (CoW) memory export; the caller falls back to the synchronous
+// copy.
+var ErrCoWExportUnsupported = errors.New("memory backend does not support CoW export")
+
+// CoWExporter is the optional capability of a MemoryBackend to run a
+// deferred (CoW) memory export. Callers type-assert:
+//
+//	if ce, ok := backend.(CoWExporter); ok { ... } else { sync copy }
+//
+// Only the UFFD backend implements it — the capture relies on the sync-WP
+// serve loop intercepting guest writes.
+type CoWExporter interface {
+	// BeginCoWExport arms the dirty set for write-protection and installs a
+	// CoW window capturing those pages' pause-time content into sink. MUST be
+	// called while the VM is paused (the arm cannot race guest writes). The
+	// caller drives the returned window: Sweep after the guest resumes,
+	// Cancel on abort, and EndCoWExport when done. A backend without a live
+	// UFFD handler + memfd returns ErrCoWExportUnsupported and the caller
+	// falls back to the synchronous copy.
+	BeginCoWExport(ctx context.Context, dirty *roaring.Bitmap, sink io.WriterAt) (*userfaultfd.CoWWindow, error)
+	// EndCoWExport uninstalls the window if it is still the active one.
+	EndCoWExport(w *userfaultfd.CoWWindow)
+}
 
 type MemoryBackend interface {
 	// DiffMetadata returns the pause-time dirty/empty page sets. With

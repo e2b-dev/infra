@@ -489,6 +489,88 @@ func (c *apiClient) startBalloonHinting(ctx context.Context, acknowledgeOnStop b
 	return nil
 }
 
+// pauseFreePageReporting defers all balloon free-page-reporting discards
+// until resumeFreePageReporting: reports stay queued in the device,
+// unacknowledged, and the guest keeps the reported pages isolated. Used to
+// guarantee no REMOVE-style discard fires while a CoW window captures guest
+// memory. Idempotent.
+func (c *apiClient) pauseFreePageReporting(ctx context.Context) error {
+	params := operations.PauseBalloonReportingParams{Context: ctx}
+	if _, err := c.client.Operations.PauseBalloonReporting(&params); err != nil {
+		// FC returns 204 (no content) on success, but the spec declares 200 —
+		// go-swagger routes the 204 into the default-response error (or a
+		// *runtime.APIError when no default is declared). Honour any 2xx.
+		var defErr *operations.PauseBalloonReportingDefault
+		var apiErr *openapiruntime.APIError
+		if (errors.As(err, &defErr) && defErr.IsSuccess()) ||
+			(errors.As(err, &apiErr) && apiErr.IsSuccess()) {
+			return nil
+		}
+
+		return fmt.Errorf("error pausing balloon free-page reporting: %w", err)
+	}
+
+	return nil
+}
+
+// resumeFreePageReporting re-enables free-page-reporting discards and
+// processes anything deferred while paused. Idempotent.
+func (c *apiClient) resumeFreePageReporting(ctx context.Context) error {
+	params := operations.ResumeBalloonReportingParams{Context: ctx}
+	if _, err := c.client.Operations.ResumeBalloonReporting(&params); err != nil {
+		// Same 204-on-success handling as pauseFreePageReporting above.
+		var defErr *operations.ResumeBalloonReportingDefault
+		var apiErr *openapiruntime.APIError
+		if (errors.As(err, &defErr) && defErr.IsSuccess()) ||
+			(errors.As(err, &apiErr) && apiErr.IsSuccess()) {
+			return nil
+		}
+
+		return fmt.Errorf("error resuming balloon free-page reporting: %w", err)
+	}
+
+	return nil
+}
+
+// freePageReportingPaused reports whether balloon free-page reporting is
+// currently paused — the positive confirmation the deferred memory export
+// requires before trusting its no-discard window, and the version gate for
+// free: an FC build without /balloon/reporting errors here, and no
+// confirmation means no deferral.
+func (c *apiClient) freePageReportingPaused(ctx context.Context) (bool, error) {
+	params := operations.DescribeBalloonReportingParams{Context: ctx}
+	res, err := c.client.Operations.DescribeBalloonReporting(&params)
+	if err != nil {
+		return false, fmt.Errorf("error describing balloon free-page reporting: %w", err)
+	}
+	if res.Payload == nil || res.Payload.Paused == nil {
+		return false, fmt.Errorf("balloon free-page reporting status carried no paused field")
+	}
+
+	return *res.Payload.Paused, nil
+}
+
+// balloonFreePageReporting reports whether THIS VM's balloon device runs
+// continuous free-page reporting — the boot-time device truth, which a
+// resumed sandbox cannot know from its config (the device travels with the
+// snapshot). A VM without a balloon reports false.
+func (c *apiClient) balloonFreePageReporting(ctx context.Context) (bool, error) {
+	params := operations.DescribeBalloonConfigParams{Context: ctx}
+	res, err := c.client.Operations.DescribeBalloonConfig(&params)
+	if err != nil {
+		// FC answers 400 when no balloon device is installed: no balloon, no
+		// free-page reporting.
+		var badReq *operations.DescribeBalloonConfigBadRequest
+		if errors.As(err, &badReq) {
+			return false, nil
+		}
+
+		return false, fmt.Errorf("error describing balloon config: %w", err)
+	}
+
+	return res.Payload.FreePageReporting, nil
+}
+
 func (c *apiClient) describeBalloonHinting(ctx context.Context) (hostCmd int64, err error) {
 	params := operations.DescribeBalloonHintingParams{Context: ctx}
 	res, err := c.client.Operations.DescribeBalloonHinting(&params)

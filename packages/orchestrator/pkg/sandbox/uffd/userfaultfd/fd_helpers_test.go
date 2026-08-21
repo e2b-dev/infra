@@ -22,7 +22,7 @@ func newFd(flags uintptr) (Fd, error) {
 
 // configureApi is used for testing. The caller (FC in production) sets
 // UFFD_FEATURE_MISSING_HUGETLBFS only when hugepages are in use.
-func configureApi(f Fd, pagesize uint64, removeEnabled bool) error {
+func configureApi(f Fd, pagesize uint64, removeEnabled, syncWP bool) error {
 	var features CULong
 
 	// Only set the hugepage feature if we're using hugepages.
@@ -30,7 +30,13 @@ func configureApi(f Fd, pagesize uint64, removeEnabled bool) error {
 		features |= UFFD_FEATURE_MISSING_HUGETLBFS
 	}
 
-	features |= UFFD_FEATURE_WP_ASYNC
+	// syncWP omits WP_ASYNC, so writes to write-protected pages deliver
+	// synchronous WP events to the serve loop (the use-sync-wp production
+	// configuration) instead of the kernel auto-resolving them. The CoW
+	// window's fault-path capture only exists under this mode.
+	if !syncWP {
+		features |= UFFD_FEATURE_WP_ASYNC
+	}
 	if removeEnabled {
 		features |= UFFD_FEATURE_EVENT_REMOVE
 	}

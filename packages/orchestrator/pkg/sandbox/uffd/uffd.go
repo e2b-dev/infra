@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -54,7 +56,10 @@ type Uffd struct {
 	syncWP atomic.Bool
 }
 
-var _ MemoryBackend = (*Uffd)(nil)
+var (
+	_ MemoryBackend = (*Uffd)(nil)
+	_ CoWExporter   = (*Uffd)(nil)
+)
 
 func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 	return &Uffd{
@@ -204,6 +209,10 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 	}
 
 	defer func() {
+		// A live CoW window reads pre-images from the memfd mmap below: cancel
+		// and drain it first so no copy is in flight when the view is unmapped.
+		uffd.CancelActiveCoWWindow(errors.New("uffd teardown"))
+
 		closeErr := uffd.Close()
 		if closeErr != nil {
 			logger.L().Error(ctx, "failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
@@ -378,6 +387,32 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 // the caller. The uffd teardown defer will no longer close it.
 func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
 	return u.memfd.Swap(nil)
+}
+
+// BeginCoWExport arms the dirty set for write-protection on the live UFFD
+// handler and installs a CoW window capturing those pages' pause-time content
+// into sink, reading pre-images from the borrowed memfd (PeekMemfd
+// semantics: the running VM keeps ownership; the caller must finish or
+// cancel the window before teardown closes the fd). MUST be called while the
+// VM is paused.
+func (u *Uffd) BeginCoWExport(_ context.Context, dirty *roaring.Bitmap, sink io.WriterAt) (*userfaultfd.CoWWindow, error) {
+	handler, err := u.handler.Result()
+	if err != nil {
+		return nil, fmt.Errorf("%w: uffd handler not live: %w", ErrCoWExportUnsupported, err)
+	}
+	memfd := u.memfd.Load()
+	if memfd == nil {
+		return nil, fmt.Errorf("%w: no memfd from Firecracker", ErrCoWExportUnsupported)
+	}
+
+	return handler.BeginCoWExport(dirty, memfd, sink)
+}
+
+// EndCoWExport uninstalls the window if it is still the active one.
+func (u *Uffd) EndCoWExport(w *userfaultfd.CoWWindow) {
+	if handler, err := u.handler.Result(); err == nil {
+		handler.EndCoWExport(w)
+	}
 }
 
 // PeekMemfd returns the memfd without taking ownership (unlike Memfd, which

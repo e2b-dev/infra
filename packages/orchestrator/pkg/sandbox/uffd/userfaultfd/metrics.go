@@ -3,6 +3,8 @@
 package userfaultfd
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
@@ -195,6 +197,9 @@ type wpResolveOutcome uint8
 
 const (
 	wpResolveOK wpResolveOutcome = iota
+	// wpResolveOKCoW: resolved after a CoW-window pre-image capture (copied
+	// by this resolve or waited on / fast-pathed a concurrent capture).
+	wpResolveOKCoW
 	// wpResolveDeferred: the unprotect hit EAGAIN (mmap_changing) and the
 	// fault was re-queued; the re-serve records the resolution separately.
 	wpResolveDeferred
@@ -217,6 +222,7 @@ var wpResolveAttrs = buildWPResolveAttrs()
 func buildWPResolveAttrs() [numGenerationBucket][numWPResolveOutcome]metric.MeasurementOption {
 	outcomeNames := [numWPResolveOutcome]string{
 		wpResolveOK:       "resolved",
+		wpResolveOKCoW:    "resolved_cow",
 		wpResolveDeferred: "deferred",
 		wpResolveClosed:   "closed",
 		wpResolveError:    "error",
@@ -234,6 +240,38 @@ func buildWPResolveAttrs() [numGenerationBucket][numWPResolveOutcome]metric.Meas
 	}
 
 	return t
+}
+
+// cowCaptureMetricName counts pages captured into a CoW window, split by
+// which path did the copy: the background sweep or a guest write's WP-fault
+// resolve (the racing captures that are the window's whole reason to exist).
+const cowCaptureMetricName = "orchestrator.sandbox.uffd.cow_capture"
+
+var cowCaptureCount = utils.Must(meter.Int64Counter(cowCaptureMetricName,
+	metric.WithDescription("Pages captured into a CoW memory-export window, by capture path"),
+	metric.WithUnit("{page}"),
+))
+
+var (
+	cowCaptureSweepAttrs = telemetry.PrecomputeAttrs(attribute.String("source", "sweep"))
+	cowCaptureFaultAttrs = telemetry.PrecomputeAttrs(attribute.String("source", "fault"))
+)
+
+// cowCancelMetricName counts CoW-window cancellations by reason. The reason
+// label is what separates the systemic case the REMOVE tripwire exists to
+// catch (a hole in the FPR pause) from ordinary I/O failures — without it a
+// cancelled window collapses into memory_seal.duration's success=false and
+// the two are indistinguishable short of reading logs.
+const cowCancelMetricName = "orchestrator.sandbox.uffd.cow_window_cancel"
+
+var cowCancelCount = utils.Must(meter.Int64Counter(cowCancelMetricName,
+	metric.WithDescription("CoW memory-export windows canceled, by reason"),
+))
+
+// recordCoWCancel records a window cancellation under the given reason
+// (remove_tripwire, sweep_error, sink_error, abort, teardown).
+func recordCoWCancel(ctx context.Context, reason string) {
+	cowCancelCount.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reason)))
 }
 
 // wpPromoteMetricName counts tracker dirty-promotions performed by WP fault

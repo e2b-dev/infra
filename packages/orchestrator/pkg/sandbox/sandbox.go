@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -33,6 +34,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/prefetch"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -63,7 +65,9 @@ var (
 	processMemoryDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessMemoryDurationName))
 	processRootfsDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotProcessRootfsDurationName))
 	guestFreezeDurationHistogram   = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotGuestFreezeDurationName))
+	fprResumeCounter               = utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorFPRResumeCounterName))
 	rootfsSealDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotRootfsSealDurationName))
+	memorySealDurationHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.SnapshotMemorySealDurationName))
 
 	uffdStartupPagesHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupPagesHistogramName))
 	uffdStartupSourcePagesHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.UffdStartupSourcePagesHistogramName))
@@ -374,6 +378,28 @@ type Sandbox struct {
 	exit *utils.ErrorOnce
 
 	stop utils.Lazy[error]
+
+	// inPlaceExportedDirty accumulates every page exported by this FC
+	// lifetime's in-place memory checkpoints. In-place diffs always parent on
+	// the ORIGINAL template header (the sandbox's Template does not advance
+	// across in-place checkpoints), so each export must be cumulative — a
+	// page captured by a previous checkpoint stays write-protect-armed under
+	// the deferred (CoW) export and reads as pagemap-clean at the next
+	// pause, yet the base template does not hold its content. Guarded by
+	// memSealMu.
+	inPlaceExportedDirty *roaring.Bitmap
+
+	// fprPauseGen counts free-page-reporting pauses on this sandbox. A
+	// detached FPR-resume retry loop captures the generation it belongs to
+	// and stops the moment a newer window pauses reporting again, so a stray
+	// late resume cannot undo the newer window's pause.
+	fprPauseGen atomic.Uint64
+
+	// memSealMu guards memSealDone and inPlaceExportedDirty.
+	memSealMu sync.Mutex
+	// memSealDone is resolved when the most recent in-place background CoW
+	// memory capture of this sandbox has completed (see waitForMemorySeal).
+	memSealDone *utils.SetOnce[struct{}]
 
 	// rootfsSealMu guards rootfsSealDone.
 	rootfsSealMu sync.Mutex
@@ -1681,6 +1707,21 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("previous rootfs seal did not complete: %w", err)
 	}
 
+	// Serialize against a still-running CoW memory capture from a PRIOR
+	// in-place snapshot, for the same two reasons and at the same spot as the
+	// rootfs wait above: waiting HERE keeps an overrunning sweep out of the
+	// guest-frozen window (the sandbox is still running and serving while it
+	// waits), and a release failure aborts while the sandbox is fully intact.
+	// UNCONDITIONAL, not just for maintainSandbox: the window state lives on
+	// the long-lived Sandbox, so a normal pause (e.g. autopause) can also
+	// race a window left running by a prior in-place checkpoint — its dirty
+	// readout would race the tracker rebaseline the capture owns. Nothing
+	// between here and the dirty readout can install a new window (windows
+	// are only installed further down this same function).
+	if err := s.waitForMemorySeal(ctx); err != nil {
+		return nil, fmt.Errorf("previous memory capture did not complete: %w", err)
+	}
+
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 
@@ -1761,6 +1802,12 @@ func (s *Sandbox) Pause(
 	// resumeOnError is cleared just before the real ResumeInPlace on the
 	// success path.
 	pauseLanded := false
+	// memExportDeferred records whether the memory export took the deferred
+	// (CoW window) path — the treated arm of the ramp. Set after
+	// processMemorySnapshot; read by the guest_freeze records below (the
+	// cleanup closure captures the variable, and it runs strictly after the
+	// assignment).
+	memExportDeferred := false
 	var freezeStart time.Time
 	resumeOnError := pauseOpts.maintainSandbox
 	if pauseOpts.maintainSandbox {
@@ -1799,7 +1846,10 @@ func (s *Sandbox) Pause(
 				// The freeze window ended on the failure path; success=false
 				// keeps these samples separable from clean checkpoints.
 				guestFreezeDurationHistogram.Record(ctx, time.Since(freezeStart).Milliseconds(),
-					metric.WithAttributes(attribute.Bool("success", false)))
+					metric.WithAttributes(
+						attribute.Bool("deferred", memExportDeferred),
+						attribute.Bool("success", false),
+					))
 
 				// The failed checkpoint restores a live sandbox, so it needs
 				// the same clock re-sync as the success path — the guest was
@@ -1879,16 +1929,16 @@ func (s *Sandbox) Pause(
 		Diff:       build.Diff(&build.NoDiff{}),
 		DiffHeader: NewResolvedDiffHeader(nil),
 	}
+	// startMemSeal, when non-nil, starts the background CoW memory capture;
+	// invoked after the guest has resumed in place (next to startSeal).
+	var startMemSeal func(context.Context)
 	if !pauseOpts.filesystemSnapshot {
-		mem, err = s.processMemorySnapshot(ctx, buildID, pauseOpts.maintainSandbox)
+		mem, startMemSeal, err = s.processMemorySnapshot(ctx, buildID, pauseOpts.maintainSandbox, cleanup)
 		if err != nil {
 			return nil, err
 		}
+		memExportDeferred = startMemSeal != nil
 	}
-	// NoDiff.Close is a no-op, so registering it for the filesystem-only case is
-	// harmless and keeps the cleanup ordering identical to the memory path.
-	cleanup.AddNoContext(ctx, mem.Diff.Close)
-
 	var (
 		rootfsDiff   build.Diff
 		rootfsHeader *header.Header
@@ -1968,7 +2018,12 @@ func (s *Sandbox) Pause(
 		// process_memory/process_rootfs cover their exports but also run against
 		// a paused VM only partially, so no other series isolates the freeze.
 		guestFreezeDurationHistogram.Record(ctx, time.Since(freezeStart).Milliseconds(),
-			metric.WithAttributes(attribute.Bool("success", true)))
+			metric.WithAttributes(
+				// deferred marks the treated arm of the memory-export ramp on
+				// the series the feature exists to move.
+				attribute.Bool("deferred", memExportDeferred),
+				attribute.Bool("success", true),
+			))
 
 		// The live VM keeps running, so undo anything the pause froze. Unlike the
 		// destroy path (VM discarded with its frozen state), an in-place resume
@@ -1998,16 +2053,23 @@ func (s *Sandbox) Pause(
 	if startSeal != nil {
 		startSeal(context.WithoutCancel(ctx))
 	}
+	// Start the CoW memory capture now that the guest is running again: from
+	// here on its writes to armed pages are pre-image-copied by the fault
+	// path while the sweep drains the rest.
+	if startMemSeal != nil {
+		startMemSeal(context.WithoutCancel(ctx))
+	}
 
 	return &Snapshot{
-		Snapfile:           snapfile,
-		Metafile:           metadataFileLink,
-		MemorySnapshot:     mem,
-		RootfsDiff:         rootfsDiff,
-		RootfsDiffHeader:   rootfsDiffHeader,
-		SchedulingMetadata: schedulingMetadata,
-		FilesystemSnapshot: pauseOpts.filesystemSnapshot,
-		RootfsBlockSize:    originalRootfs.Header().Metadata.BlockSize,
+		MemoryExportDeferred: memExportDeferred,
+		Snapfile:             snapfile,
+		Metafile:             metadataFileLink,
+		MemorySnapshot:       mem,
+		RootfsDiff:           rootfsDiff,
+		RootfsDiffHeader:     rootfsDiffHeader,
+		SchedulingMetadata:   schedulingMetadata,
+		FilesystemSnapshot:   pauseOpts.filesystemSnapshot,
+		RootfsBlockSize:      originalRootfs.Header().Metadata.BlockSize,
 
 		BuildID: buildID,
 
@@ -2043,6 +2105,12 @@ type MemorySnapshot struct {
 	// scheduling inputs consumed only at Pause time, so they stay unexported.
 	header   *header.Header
 	newBytes uint64
+
+	// waitSealed, when non-nil (deferred CoW export), blocks until the
+	// background seal settles and returns its outcome — the earliest point
+	// the artifact bytes are known to exist in the local cache. Consumed via
+	// Snapshot.WaitMemorySealed.
+	waitSealed func(ctx context.Context) error
 }
 
 // processMemorySnapshot copies the dirty guest memory pages into a local diff
@@ -2053,10 +2121,16 @@ type MemorySnapshot struct {
 // keepMemfdOpen is set (an in-place snapshot that resumes the same VM) it borrows
 // the memfd without consuming it and skips dedup/provisional serving, since the
 // running guest still faults on that fd.
-func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, keepMemfdOpen bool) (MemorySnapshot, error) {
+//
+// On the in-place path with defer-memory-export enabled, the copy is deferred
+// through a CoW window instead: the returned startMemSeal (nil otherwise) is
+// invoked by the caller after ResumeInPlace and drives the background
+// capture; the memory diff is a DeferredDiff resolving when the capture
+// completes.
+func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, keepMemfdOpen bool, cleanup *Cleanup) (MemorySnapshot, func(context.Context), error) {
 	originalMemfile, err := s.Template.Memfile(ctx)
 	if err != nil {
-		return MemorySnapshot{}, fmt.Errorf("failed to get original memfile: %w", err)
+		return MemorySnapshot{}, nil, fmt.Errorf("failed to get original memfile: %w", err)
 	}
 	// Parent off the durable (deduped) header, never a provisional (local-only)
 	// one: a provisional header maps dirty pages to a synthetic build id with no
@@ -2070,7 +2144,7 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, 
 	}); ok {
 		memfileHeader, err = dh.DurableHeader(ctx)
 		if err != nil {
-			return MemorySnapshot{}, fmt.Errorf("failed to resolve durable memfile header: %w", err)
+			return MemorySnapshot{}, nil, fmt.Errorf("failed to resolve durable memfile header: %w", err)
 		}
 	}
 
@@ -2081,11 +2155,130 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, 
 	useTrackerDirty := s.useSyncWP &&
 		s.featureFlags.BoolFlag(ctx, featureflags.SyncWPTrackerDirtyFlag, sandboxLDContext(s.Runtime, s.Config))
 
+	// Deferred (CoW) memory export preflight — BEFORE the dirty readout.
+	// When the VM's balloon runs continuous free-page REPORTING, reporting is
+	// PAUSED for the window's lifetime: a REMOVE zapping an uncaptured page
+	// would export zeros where pause-time content is owed, and the UFFD
+	// handler cannot intercept it (reading the REMOVE event is what releases
+	// the madvising thread). The pause must land before the readout because
+	// pausing the VM stops vCPUs, not FC's balloon worker — a report already
+	// in flight could otherwise zap a page the readout just listed as dirty,
+	// leaving the arm covering a hole. The pause is then POSITIVELY
+	// CONFIRMED via GET /balloon/reporting/status rather than inferred from
+	// the config field: that also gates on FC capability for free — an FC
+	// build without /balloon/reporting fails the query/pause/confirm and the
+	// export falls back to the synchronous copy. (The pre-pause
+	// free-page-hinting drain is synchronous and its REMOVEs settle before
+	// this point, so hinting needs no pause. The guest is unaffected beyond
+	// a deferred RSS reduction: its driver holds reported pages isolated
+	// until the ACK.)
+	deferOK := keepMemfdOpen &&
+		s.featureFlags.BoolFlag(ctx, featureflags.DeferMemoryExportFlag, sandboxLDContext(s.Runtime, s.Config))
+	fprPaused := false
+	if deferOK {
+		reporting, fprErr := s.process.BalloonFreePageReporting(ctx)
+		switch {
+		case fprErr != nil:
+			sbxlogger.I(s).Warn(ctx, "defer-memory-export: balloon query failed; using sync copy", zap.Error(fprErr))
+			deferOK = false
+		case reporting:
+			if pauseErr := s.process.PauseFreePageReporting(ctx); pauseErr != nil {
+				sbxlogger.I(s).Warn(ctx, "defer-memory-export: pausing free-page reporting failed; using sync copy",
+					zap.Error(pauseErr))
+				deferOK = false
+			} else if paused, stErr := s.process.FreePageReportingPaused(ctx); stErr != nil || !paused {
+				sbxlogger.I(s).Warn(ctx, "defer-memory-export: free-page reporting pause not confirmed; using sync copy",
+					zap.Bool("paused", paused), zap.Error(stErr))
+				s.resumeFreePageReportingBestEffort(ctx)
+				deferOK = false
+			} else {
+				fprPaused = true
+				// Fence out any detached resume-retry loop a PREVIOUS
+				// window's exit left running: from this generation on, the
+				// resume belongs to this window's exit paths.
+				s.fprPauseGen.Add(1)
+			}
+		}
+	}
+
+	// Pause ownership: once window setup succeeds, the window's exit paths
+	// own the resume. On EVERY other exit of this function — sync fallback,
+	// any error — the pause is ours to undo, and it must happen AFTER the
+	// synchronous copy, not before it: the resume immediately drains the
+	// reports held while paused, so resuming first would let the balloon
+	// worker zap pages the readout below just listed as dirty, and the sync
+	// path has no tripwire — the checkpoint would succeed with zeros stored
+	// as pause-time RAM. A function-exit defer is exactly that placement.
+	windowOwnsPause := false
+	defer func() {
+		if fprPaused && !windowOwnsPause {
+			s.resumeFreePageReportingBestEffort(ctx)
+		}
+	}()
+
 	memfileDiffMetadata, err := s.Resources.memory.DiffMetadata(ctx, s.process, useTrackerDirty)
 	if err != nil {
-		return MemorySnapshot{}, fmt.Errorf("failed to get memfile metadata: %w", err)
+		return MemorySnapshot{}, nil, fmt.Errorf("failed to get memfile metadata: %w", err)
 	}
+
+	// In-place checkpoints parent every diff on the ORIGINAL template header,
+	// so the export must be cumulative across this FC lifetime: pages a
+	// previous in-place checkpoint exported may read as clean now (the CoW
+	// sweep leaves them armed; the tracker rebaselines them), but the base
+	// template does not hold their content. Their live content is identical
+	// to the previous capture unless rewritten — and then they are dirty
+	// anyway — so re-exporting from the running memfd is always correct.
+	// Chaining diffs on the previous checkpoint's header (which would make
+	// minimal diffs sound) is the follow-up; see the CoW window notes.
+	// The union applies to EVERY memory export of this sandbox, not only the
+	// in-place ones: a final destroy-path pause (e.g. autopause) after prior
+	// in-place checkpoints also parents the original template, so without the
+	// union it would silently drop every page those checkpoints rebaselined
+	// (tracker Clean / pagemap not-dirty, content living only in checkpoint
+	// artifacts the new snapshot does not parent). Only the in-place path
+	// advances the baseline — a destroyed sandbox has no next interval.
+	s.applyInPlaceExportUnion(memfileDiffMetadata, keepMemfdOpen)
 	recordSnapshotDiff(ctx, "memfile", memfileDiffMetadata, memfileHeader)
+
+	// Deferred (CoW) memory export: install the window over the dirty set
+	// read above. EVERY setup failure falls back to the synchronous copy —
+	// not just an unsupported backend: nothing has been consumed at this
+	// point (the memfd is only borrowed, and a partially armed set degrades
+	// harmlessly to tracking-only resolves), so a transient arm or
+	// cache-creation error must not turn a checkpoint the sync path would
+	// complete into a customer-visible failure.
+	if deferOK {
+		if ce, ok := s.Resources.memory.(uffd.CoWExporter); ok {
+			setupStart := time.Now()
+			mem, startMemSeal, err := s.setupDeferredMemoryExport(ctx, buildID, memfileHeader, memfileDiffMetadata, ce, fprPaused, cleanup)
+			if err == nil {
+				windowOwnsPause = true
+				// The deferred path bypasses pauseProcessMemory, so emit its
+				// (setup-only) process_memory.duration sample here — without
+				// it the treated arm goes silent in the ramp's headline panel
+				// and reads as "no change" instead of "no data". deferred
+				// follows the seal: an empty dirty set installs no window
+				// (nil startMemSeal) and defers nothing.
+				processMemoryDurationHistogram.Record(ctx, time.Since(setupStart).Milliseconds(),
+					metric.WithAttributes(
+						attribute.Bool("in_place", true),
+						attribute.Bool("deferred", startMemSeal != nil),
+						attribute.Bool("success", true),
+					))
+
+				return mem, startMemSeal, nil
+			}
+			if errors.Is(err, uffd.ErrCoWExportUnsupported) {
+				sbxlogger.I(s).Warn(ctx, "defer-memory-export unsupported by backend; using sync copy", zap.Error(err))
+			} else {
+				sbxlogger.I(s).Error(ctx, "defer-memory-export setup failed; using sync copy", zap.Error(err))
+			}
+		}
+		// Falling back to the sync copy: the window never took ownership of
+		// the pause. The resume happens in the function-exit defer above —
+		// AFTER the synchronous copy, which must run under the same
+		// no-discard window as the readout.
+	}
 
 	var dedupBase block.ReadonlyDevice
 	var dedupBestEffort, dedupDirectIO bool
@@ -2136,8 +2329,13 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, 
 		keepMemfdOpen,
 	)
 	if err != nil {
-		return MemorySnapshot{}, fmt.Errorf("error while post processing: %w", err)
+		return MemorySnapshot{}, nil, fmt.Errorf("error while post processing: %w", err)
 	}
+
+	// Each path owns its diff's cleanup registration (the deferred path MUST
+	// interleave Close with its promise resolver — see setupDeferredMemoryExport);
+	// this is the synchronous path's.
+	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
 	return MemorySnapshot{
 		Diff:                  memfileDiff,
@@ -2148,7 +2346,408 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, 
 		BlockSize:             memfileHeader.Metadata.BlockSize,
 		header:                memfileHeader,
 		newBytes:              memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize),
-	}, nil
+	}, nil, nil
+}
+
+// applyInPlaceExportUnion folds the cumulative in-place export baseline into a
+// pause-time dirty readout (see the comment at the call site for why the union
+// exists), and advances the baseline when this export starts a new interval.
+// Pages the baseline holds but the CURRENT readout reports empty are excluded:
+// a previously-exported page the guest has since freed (FPR/balloon REMOVE →
+// tracker Removed / pagemap non-present) owes ZEROS, which Empty already
+// encodes with no storage — unioning it into Dirty would arm and copy a hole
+// (UFFDIO_WRITEPROTECT over an unmapped range can fail the whole checkpoint,
+// and a successful copy would store zero pages the mapping expresses for
+// free). Dropping such a page from the advanced baseline is safe in every
+// later cell: still absent → Empty again; re-touched → the serve loop
+// installs zeros for a Removed page (tracker Zero → empty) or the write makes
+// it tracker-dirty.
+func (s *Sandbox) applyInPlaceExportUnion(meta *header.DiffMetadata, advanceBaseline bool) {
+	s.memSealMu.Lock()
+	defer s.memSealMu.Unlock()
+
+	if s.inPlaceExportedDirty != nil {
+		reexport := s.inPlaceExportedDirty.Clone()
+		reexport.AndNot(meta.Empty)
+		meta.Dirty.Or(reexport)
+		// Disjoint by construction now; enforced anyway because downstream
+		// MergeMappings lets EMPTY win on overlap.
+		meta.Empty.AndNot(meta.Dirty)
+	}
+	if advanceBaseline {
+		s.inPlaceExportedDirty = meta.Dirty.Clone()
+	}
+}
+
+// sharedCacheWriter routes writes through Cache.WriteAtShared. Safe only for
+// writers that guarantee a single write per block — the CoW window's claim
+// map does — where the exclusive lock would serialize faulting vCPUs against
+// the sweep and each other. The shared lock still excludes Cache.Close, so a
+// straggler write fails with ErrCacheClosed instead of hitting unmapped
+// memory (a process-fatal SIGBUS).
+type sharedCacheWriter struct{ c *block.Cache }
+
+func (w sharedCacheWriter) WriteAt(p []byte, off int64) (int, error) {
+	return w.c.WriteAtShared(p, off)
+}
+
+// setupDeferredMemoryExport prepares the CoW-window memory export for an
+// in-place checkpoint, all while the VM is paused: the diff header is built
+// synchronously (the dirty set is fixed at pause, exactly like rootfs), an
+// empty export cache is created, and the dirty set is write-protect-armed
+// with the window installed. It returns a startMemSeal closure the caller
+// invokes AFTER the guest has resumed in place, which drives the background
+// sweep. Mirrors setupDeferredRootfsExport, including the started-guard
+// cleanup choreography for a pause that aborts before startMemSeal runs.
+func (s *Sandbox) setupDeferredMemoryExport(
+	ctx context.Context,
+	buildID uuid.UUID,
+	memfileHeader *header.Header,
+	diffMetadata *header.DiffMetadata,
+	ce uffd.CoWExporter,
+	fprPaused bool,
+	cleanup *Cleanup,
+) (MemorySnapshot, func(context.Context), error) {
+	memfileDiffHeader, err := diffMetadata.ToDiffHeader(ctx, memfileHeader, buildID)
+	if err != nil {
+		return MemorySnapshot{}, nil, fmt.Errorf("building memfile diff header: %w", err)
+	}
+
+	mem := MemorySnapshot{
+		DiffHeader: NewResolvedDiffHeader(memfileDiffHeader),
+		BlockSize:  memfileHeader.Metadata.BlockSize,
+		header:     memfileHeader,
+		newBytes:   diffMetadata.Dirty.GetCardinality() * uint64(diffMetadata.BlockSize),
+	}
+
+	// No dirty pages: nothing to capture — same NoDiff shape as the sync
+	// path, and no window to arm (so nothing will resume FPR later; undo the
+	// pause here). startMemSeal is NIL, not a noop: nothing about this
+	// export is deferred, so it must not flip Snapshot.MemoryExportDeferred
+	// (which would mislabel the guest_freeze/process_memory cohorts and send
+	// a plain NoDiff through the upload's seal gate).
+	if diffMetadata.Dirty.IsEmpty() {
+		if fprPaused {
+			s.resumeFreePageReportingBestEffort(ctx)
+		}
+		mem.Diff = &build.NoDiff{}
+		cleanup.AddNoContext(ctx, mem.Diff.Close)
+
+		return mem, nil, nil
+	}
+
+	// The diff artifact stores the dirty pages CONCATENATED in ascending
+	// page order (the packed layout header.CreateMapping addresses); the
+	// window writes identity offsets, so its sink is the packing adapter.
+	// The cache is sized to the packed artifact, not the memfile.
+	packedBytes := int64(diffMetadata.Dirty.GetCardinality()) * diffMetadata.BlockSize
+	cachePath := build.GenerateDiffCachePath(s.config.DefaultCacheDir, buildID.String(), build.Memfile)
+	cache, err := block.NewCache(packedBytes, diffMetadata.BlockSize, cachePath, false)
+	if err != nil {
+		return MemorySnapshot{}, nil, fmt.Errorf("creating memory export cache: %w", err)
+	}
+	// sharedCacheWriter: the window's claim map guarantees exactly one
+	// writer per page — the single-writer-per-block precondition — and the
+	// exclusive Cache lock would otherwise serialize every faulting vCPU
+	// against the background sweep and against each other, on the per-fault
+	// path. The shared mode keeps Close excluded.
+	sink := userfaultfd.NewPackedPageSink(diffMetadata.Dirty, diffMetadata.BlockSize, sharedCacheWriter{cache})
+
+	// Arm + install. A partial arm on failure is harmless: armed pages
+	// without a window take the plain tracking-only resolve.
+	window, err := ce.BeginCoWExport(ctx, diffMetadata.Dirty, sink)
+	if err != nil {
+		return MemorySnapshot{}, nil, errors.Join(err, cache.Close())
+	}
+
+	diffPromise := utils.NewSetOnce[build.Diff]()
+	mem.Diff = build.NewDeferredDiff(build.GetDiffStoreKey(buildID.String(), build.Memfile), diffMetadata.BlockSize, diffPromise)
+	mem.waitSealed = func(ctx context.Context) error {
+		_, waitErr := diffPromise.WaitWithContext(ctx)
+
+		return waitErr
+	}
+
+	// If Pause aborts before startMemSeal runs (e.g. m.ToFile or
+	// ResumeInPlace fails), the capture goroutine never starts: cancel the
+	// window (the fault path degrades to tracking-only), close the cache and
+	// poison the promise so nothing blocks on a capture that will never run.
+	// Guarded by `started` so the running capture, once it owns them, is
+	// never double-closed or raced. The deferred diff's Close is registered
+	// HERE, between the window cleanup and the promise resolver — exactly
+	// like setupDeferredRootfsExport — so the LIFO cleanup run poisons the
+	// promise BEFORE Close waits on it; Close registered by a caller (i.e.
+	// after the resolver) would run first and deadlock the whole cleanup
+	// stack on the never-resolved promise.
+	var started atomic.Bool
+	cleanup.Add(ctx, func(cleanupCtx context.Context) error {
+		if started.Load() {
+			return nil
+		}
+		window.RecordCancelReason(cleanupCtx, "pause_abort")
+		window.CancelAndDrain(errors.New("pause aborted before deferred memory export ran"))
+		ce.EndCoWExport(window)
+		if fprPaused {
+			s.resumeFreePageReportingBestEffort(cleanupCtx)
+		}
+
+		return cache.Close()
+	})
+	cleanup.AddNoContext(ctx, mem.Diff.Close)
+	cleanup.Add(ctx, func(context.Context) error {
+		if started.Load() {
+			return nil
+		}
+		_ = diffPromise.SetError(errors.New("pause aborted before deferred memory export ran"))
+
+		return nil
+	})
+
+	startMemSeal := func(sealCtx context.Context) {
+		started.Store(true)
+
+		sealDone := utils.NewSetOnce[struct{}]()
+		s.memSealMu.Lock()
+		s.memSealDone = sealDone
+		s.memSealMu.Unlock()
+
+		go s.runDeferredMemoryExport(sealCtx, window, ce, cache, buildID, diffPromise, sealDone, fprPaused)
+	}
+
+	return mem, startMemSeal, nil
+}
+
+// runDeferredMemoryExport drives the CoW window to completion in the
+// background: the sweep captures every remaining page (guest writes race it
+// through the fault path), then the cache is wrapped into the promised diff.
+// The upload waits on the deferred diff, gating shutdown via the server's
+// upload WaitGroup — exactly like the deferred rootfs seal.
+func (s *Sandbox) runDeferredMemoryExport(
+	ctx context.Context,
+	window *userfaultfd.CoWWindow,
+	ce uffd.CoWExporter,
+	cache *block.Cache,
+	buildID uuid.UUID,
+	diffPromise *utils.SetOnce[build.Diff],
+	sealDone *utils.SetOnce[struct{}],
+	fprPaused bool,
+) {
+	ctx, span := tracer.Start(ctx, "deferred-memory-export")
+	defer span.End()
+
+	start := time.Now()
+	err := window.Sweep(ctx)
+	ce.EndCoWExport(window)
+	// EndCoWExport serializes behind the serve loop's whole read→parse→cancel
+	// section (readSerial), so after it returns, every REMOVE whose read could
+	// have released a zap has also finished its tripwire pass. Re-check before
+	// trusting a successful sweep: a tripwire cancel that raced the final
+	// copy's completion is authoritative — that copy may have captured
+	// post-punch zeros.
+	if err == nil {
+		err = window.CancelCause()
+	}
+	// Record BEFORE the FPR resume: this series is "time for the background
+	// CoW-window memory capture", and the resume's inline attempt can burn a
+	// full 2s on a stuck FC API — folding that in would make a resume
+	// failure read as a slow sweep. The resume has its own outcome counter.
+	memorySealDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
+		metric.WithAttributes(attribute.Bool("success", err == nil)))
+	// The window no longer owns any page: free-page reporting may discard
+	// again. Resume on success AND failure — a leaked pause would block the
+	// guest's reporting worker for the sandbox's lifetime.
+	if fprPaused {
+		s.resumeFreePageReportingBestEffort(ctx)
+	}
+
+	fail := func(err error) {
+		// ErrDeferredSealFailed tells the upload retry loop this is permanent:
+		// the capture never re-runs, so the diff can never materialize.
+		sealErr := fmt.Errorf("%w: %w", build.ErrDeferredSealFailed, err)
+		_ = diffPromise.SetError(sealErr)
+		// sbxlogger, not logger.L(): this is the primary on-call diagnostic
+		// when a window fails or the tripwire fires, and trace ids are
+		// sampled — the sandbox/build identity must be on the line itself.
+		sbxlogger.I(s).Error(ctx, "deferred memory export failed",
+			zap.String("build_id", buildID.String()), zap.Error(err))
+		// Drain in-flight fault-path copies before closing the cache: Sweep
+		// returns on cancel WITHOUT waiting them out. sharedCacheWriter's
+		// lock makes a straggler fail cleanly (ErrCacheClosed) rather than
+		// SIGBUS, but the drain keeps the ordering deterministic — no copy
+		// racing the artifact file's removal. Idempotent: the window is
+		// already canceled on every path into fail.
+		window.CancelAndDrain(err)
+		if closeErr := cache.Close(); closeErr != nil {
+			sbxlogger.I(s).Warn(ctx, "closing memory export cache",
+				zap.String("build_id", buildID.String()), zap.Error(closeErr))
+		}
+		// The SANDBOX is unharmed: a failed or cancelled capture loses only
+		// THIS checkpoint's artifact. Unlike the rootfs seal (whose failure
+		// can leave the writable cache missing blocks), memory has nothing to
+		// fold back — the source of truth is live guest RAM, every export
+		// parents the ORIGINAL template header, and inPlaceExportedDirty was
+		// advanced at pause time (before this capture ran), so the next pause
+		// or checkpoint re-exports every page this one rebaselined. The seal
+		// signal therefore resolves SUCCESS: what waitForMemorySeal guards is
+		// window OCCUPANCY (one window at a time; the memfd and WP armings
+		// must be released before the next pause touches memory), and by this
+		// point EndCoWExport has run and reporting is resumed on every path
+		// through this function. Latching an error here would let the next
+		// autopause kill a fully exportable sandbox.
+		_ = sealDone.SetValue(struct{}{})
+	}
+
+	if err != nil {
+		fail(err)
+
+		return
+	}
+
+	diff, err := build.NewLocalDiffFromCache(build.GetDiffStoreKey(buildID.String(), build.Memfile), cache)
+	if err != nil {
+		fail(fmt.Errorf("materialize memory diff: %w", err))
+
+		return
+	}
+
+	if err := diffPromise.SetValue(diff); err != nil {
+		// The promise was already settled (pause aborted); drop the diff so
+		// its cache file doesn't leak. The window is fully released, so the
+		// occupancy signal resolves success (see fail above).
+		_ = diff.Close()
+		_ = sealDone.SetValue(struct{}{})
+
+		return
+	}
+	_ = sealDone.SetValue(struct{}{})
+	telemetry.ReportEvent(ctx, "memfile diff captured (deferred CoW)")
+}
+
+// resumeFreePageReportingBestEffort re-enables balloon free-page reporting
+// after a CoW window paused it. A resume that never lands is a permanent
+// degradation — the guest's reporting worker stays blocked on its one
+// in-flight request and reported pages stay isolated from host reclamation
+// for the sandbox's remaining lifetime. But most call sites run while the VM
+// is PAUSED (and the pause-abort cleanup runs ahead of the ResumeInPlace
+// cleanup), so blocking retries here would hand their full budget to the
+// guest-frozen window. Split accordingly: ONE bounded inline attempt — the
+// common transient failure costs nothing more — and on failure a detached
+// retry loop that is fenced by the FPR pause generation, so a stray late
+// resume cannot undo a NEWER window's pause. (If a fenced-out retry's final
+// PATCH still crosses a new pause on the wire, the REMOVE tripwire cancels
+// that checkpoint cleanly — belt and braces.) Failures are never propagated:
+// the caller has resolved or is resolving the window either way. Every
+// terminal outcome lands on the fpr_resume counter — outcome="abandoned" is
+// the alertable signal for a leaked pause, which would otherwise only show
+// as free_page_report_freed going quiet (indistinguishable from a guest that
+// stopped freeing memory).
+func (s *Sandbox) resumeFreePageReportingBestEffort(ctx context.Context) {
+	runFPRResume(context.WithoutCancel(ctx), fprResumeDeps{
+		resume:         s.process.ResumeFreePageReporting,
+		fcExited:       s.process.Exit.Done(),
+		pauseGen:       s.fprPauseGen.Load,
+		attemptTimeout: 2 * time.Second,
+		retryDelay:     500 * time.Millisecond,
+		record: func(outcome string) {
+			fprResumeCounter.Add(context.WithoutCancel(ctx), 1,
+				metric.WithAttributes(attribute.String("outcome", outcome)))
+		},
+		logInfo: func(msg string, fields ...zap.Field) {
+			sbxlogger.I(s).Info(ctx, msg, fields...)
+		},
+		logError: func(msg string, fields ...zap.Field) {
+			sbxlogger.I(s).Error(ctx, msg, fields...)
+		},
+	})
+}
+
+// fprResumeDeps injects the seams runFPRResume needs so the retry/fence
+// choreography is unit-testable without a live FC process (the pollFphDone
+// pattern).
+type fprResumeDeps struct {
+	resume         func(ctx context.Context) error
+	fcExited       <-chan struct{}
+	pauseGen       func() uint64
+	attemptTimeout time.Duration
+	retryDelay     time.Duration
+	record         func(outcome string)
+	logInfo        func(msg string, fields ...zap.Field)
+	logError       func(msg string, fields ...zap.Field)
+}
+
+// runFPRResume performs one bounded inline resume attempt and, on failure,
+// hands the remaining retries to a detached goroutine fenced by the FPR
+// pause generation. ctx must already be detached from request cancellation.
+func runFPRResume(ctx context.Context, deps fprResumeDeps) {
+	attemptCtx, cancel := context.WithTimeout(ctx, deps.attemptTimeout)
+	err := deps.resume(attemptCtx)
+	cancel()
+	if err == nil {
+		deps.record("inline")
+
+		return
+	}
+
+	gen := deps.pauseGen()
+	go func() {
+		const attempts = 4
+
+		retryErr := err
+		for i := range attempts {
+			select {
+			case <-deps.fcExited:
+				// FC is gone; the pause died with it.
+				deps.record("fc_exited")
+
+				return
+			case <-time.After(deps.retryDelay):
+			}
+			if deps.pauseGen() != gen {
+				// A newer window paused reporting again; its own exit paths
+				// now own the resume.
+				deps.record("fenced")
+
+				return
+			}
+
+			attemptCtx, cancel := context.WithTimeout(ctx, deps.attemptTimeout)
+			retryErr = deps.resume(attemptCtx)
+			cancel()
+			if retryErr == nil {
+				deps.record("retry")
+				deps.logInfo("free-page reporting resumed after retry", zap.Int("attempt", i+2))
+
+				return
+			}
+		}
+
+		deps.record("abandoned")
+		deps.logError("resuming free-page reporting failed; reporting stays paused for this sandbox's lifetime",
+			zap.Int("attempts", attempts+1), zap.Error(retryErr))
+	}()
+}
+
+// waitForMemorySeal blocks until the most recent in-place background CoW
+// memory capture of this sandbox has finished RELEASING the window — success
+// or failure. Returns immediately if none has run. This wait is about window
+// occupancy, not artifact outcome: a failed capture loses only its own
+// checkpoint's diff (memory exports parent the original template and union
+// inPlaceExportedDirty, so later exports stay complete), and the runner
+// resolves the signal SUCCESS on every path that released the window. An
+// error here therefore means the window's release itself went wrong — the
+// one state where snapshotting on top would race a half-owned window.
+func (s *Sandbox) waitForMemorySeal(ctx context.Context) error {
+	s.memSealMu.Lock()
+	done := s.memSealDone
+	s.memSealMu.Unlock()
+
+	if done == nil {
+		return nil
+	}
+
+	_, err := done.WaitWithContext(ctx)
+
+	return err
 }
 
 // FlushAndReadBalloonMetrics triggers an FC metrics flush and returns the
@@ -2194,7 +2793,12 @@ func pauseProcessMemory(
 			metric.WithAttributes(
 				// in_place splits the cohorts: an in-place checkpoint (VM
 				// resumes after) vs a destroy-path pause / resume-fresh flow.
+				// deferred=false: this is the synchronous copy — the deferred
+				// path records its own (setup-only) sample at its return, so
+				// the two are separable after the fact. It reflects the path
+				// actually taken, not the flag.
 				attribute.Bool("in_place", keepMemfdOpen),
+				attribute.Bool("deferred", false),
 				attribute.Bool("success", e == nil),
 			))
 	}()
@@ -2701,13 +3305,30 @@ func (s *Sandbox) EnsurePausable() error {
 	done := s.rootfsSealDone
 	s.rootfsSealMu.Unlock()
 
-	if done == nil {
-		return nil
+	if done != nil {
+		// Result is non-blocking: NotSetError means the seal is still healthy
+		// and in flight, which is Pause's job to wait out, not a reason to
+		// refuse.
+		if _, err := done.Result(); err != nil && !errors.Is(err, utils.NotSetError{}) {
+			return fmt.Errorf("sandbox cannot be paused: %w", err)
+		}
 	}
-	// Result is non-blocking: NotSetError means the seal is still healthy and
-	// in flight, which is Pause's job to wait out, not a reason to refuse.
-	if _, err := done.Result(); err != nil && !errors.Is(err, utils.NotSetError{}) {
-		return fmt.Errorf("sandbox cannot be paused: %w", err)
+
+	// Same check for the deferred MEMORY seal — defensively: no current path
+	// latches an error here (a failed or cancelled CoW window resolves the
+	// signal SUCCESS once the window is released, because the artifact loss
+	// is confined to that checkpoint — see runDeferredMemoryExport). A
+	// latched error would mean the window RELEASE itself failed, i.e. the
+	// memfd/WP armings may still be half-owned, which is the one memory
+	// state a pause must not export on top of.
+	s.memSealMu.Lock()
+	memDone := s.memSealDone
+	s.memSealMu.Unlock()
+
+	if memDone != nil {
+		if _, err := memDone.Result(); err != nil && !errors.Is(err, utils.NotSetError{}) {
+			return fmt.Errorf("sandbox cannot be paused: %w", err)
+		}
 	}
 
 	return nil

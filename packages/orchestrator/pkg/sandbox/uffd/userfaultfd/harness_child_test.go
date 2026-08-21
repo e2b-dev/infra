@@ -53,6 +53,9 @@ func crossProcessServe() error {
 	if err := server.Register(&Paging{state: state}); err != nil {
 		return fmt.Errorf("rpc Register Paging: %w", err)
 	}
+	if err := server.Register(&CoW{state: state}); err != nil {
+		return fmt.Errorf("rpc register CoW: %w", err)
+	}
 	if err := server.Register(&Barriers{state: state}); err != nil {
 		return fmt.Errorf("rpc Register Barriers: %w", err)
 	}
