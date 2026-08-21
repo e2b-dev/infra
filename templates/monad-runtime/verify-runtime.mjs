@@ -1256,7 +1256,7 @@ try {
     ),
   );
   if (
-    evidence.versions.opencode !== '1.14.28' ||
+    evidence.versions.opencode !== '1.18.19' ||
     evidence.versions.agent_browser !== 'agent-browser 0.27.0' ||
     evidence.versions.playwright !== 'Version 1.60.0' ||
     evidence.versions.pnpm !== '8.11.0'

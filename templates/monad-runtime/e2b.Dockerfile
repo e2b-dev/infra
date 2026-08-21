@@ -19,7 +19,7 @@ RUN apt-get update \
     && rm -rf /config/.npm /tmp/npm-cache /var/lib/apt/lists/* /var/lib/docker
 
 RUN npm install -g --no-audit --no-fund \
-        opencode-ai@1.14.28 \
+        opencode-ai@1.18.19 \
         agent-browser@0.27.0 \
         playwright@1.60.0 \
     && opencode --version \

@@ -81,13 +81,13 @@ test('runtime source pins immutable TAMS and tool inputs', async () => {
   const source = await loadRuntimeSource();
   assert.equal(
     source.tams_revision,
-    'e6481c37f0ab7bb3840c74df4ec93da9af7bd515',
+    '9d6e0d74a6ca869ca3ef9b99367628a717bb52b4',
   );
   assert.equal(
     source.tams_apps_sandbox_tree_oid,
-    'fac99a6070c16ebe8f6df1f840ac302890c36a3d',
+    '9ef2e1ab4eb6adefd6632f6ffe23fa4f9cfe89e1',
   );
-  assert.equal(source.tool_versions.opencode, '1.14.28');
+  assert.equal(source.tool_versions.opencode, '1.18.19');
   assert.equal(source.tool_versions.agent_browser, '0.27.0');
   assert.equal(source.tool_versions.playwright, '1.60.0');
   assert.equal(
@@ -165,7 +165,7 @@ test('Dockerfile preserves and gates every tenant-facing Webtop longrun', async 
     'the ordinary CLI must remain on the shared command path',
   );
   assert.doesNotMatch(dockerfile, /\/usr\/local\/bin\/monad-(?:agent|entrypoint)/);
-  assert.match(dockerfile, /opencode-ai@1\.14\.28/);
+  assert.match(dockerfile, /opencode-ai@1\.18\.19/);
   assert.match(dockerfile, /agent-browser@0\.27\.0/);
   assert.match(dockerfile, /playwright@1\.60\.0/);
   assert.match(dockerfile, /COPY \.build-assets\/monad-agent/);
