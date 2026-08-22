@@ -81,7 +81,7 @@ test('runtime source pins immutable TAMS and tool inputs', async () => {
   const source = await loadRuntimeSource();
   assert.equal(
     source.tams_revision,
-    '471e16915c6b2084cd9802ca91bcd8a42842eb28',
+    'c5be74f92d97d746d7b46333944b862dd3aa0fdc',
   );
   assert.equal(
     source.tams_apps_sandbox_tree_oid,
