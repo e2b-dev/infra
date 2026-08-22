@@ -161,6 +161,7 @@ jobs:
               -print | LC_ALL=C sort
           )"
           expected="$(printf '%s\n' \
+            .github/workflows/monad-drift-detection.yml \
             .github/workflows/monad-go-checks.yml \
             .github/workflows/monad-terraform-validation.yml)"
           if [[ "$active_workflows" != "$expected" ]]; then

@@ -1,0 +1,283 @@
+# Scheduled, read-only Terraform drift detection for the dev GCP workload —
+# tams roadmap item deploy-drift-detection-contract-registry
+# (docs/superpowers/research/2026-08-20-deployment-architecture-review.md#4
+# in rehoboam-lab/tams): "a scheduled terraform plan with a read-only SA,
+# posting drift as an issue" — because today a manual `make ... apply` is
+# the only moment anyone learns the live config and the checked-in
+# Terraform have diverged.
+#
+# This workflow deliberately does NOT touch the manual-lease-apply system
+# (workload-*-plan/apply, mutation leases, CONFIRM phrases) that guards
+# every real change to this infrastructure. It never acquires a lease,
+# never writes state, never runs `apply`. It plans (read-only, `-lock=false`)
+# every module EXCEPT `module.nomad` (the workload the lease system already
+# guards its own drift for via workload-*-plan-check's manifest/fingerprint
+# checks) — the same module exclusion `make plan-without-jobs` already uses
+# (see iac/provider-gcp/Makefile).
+#
+# PROVISIONING (not done by this PR — a deliberate follow-up operator
+# action, matching the philosophy that new automation here is a designed
+# review point, not silent): this job is INERT until an operator sets:
+#   - repo variable  GCP_DRIFT_WORKLOAD_IDENTITY_PROVIDER  (WIF provider
+#     resource name for a NEW, read-only-scoped service account -- do not
+#     reuse an apply-capable identity)
+#   - repo variable  GCP_DRIFT_SERVICE_ACCOUNT_EMAIL        (that service
+#     account's email)
+#   - repo secret    TERRAFORM_DEV_ENV_FILE                 (the contents of
+#     a dev `.env.dev`, the same shape as .env.gcp.template -- see the root
+#     Makefile's `set-env` / iac/provider-gcp/Makefile's `-include
+#     ../../.env.${ENV}`. Store it as a secret, not a var: it carries the
+#     live GCP_PROJECT_ID/DOMAIN_NAME/etc, not just resource *names*.)
+# Until all three exist, every run logs a notice and exits green without
+# calling GCP or upserting anything -- exactly how AUTO_DEPLOY_DEV and
+# E2B_REAPER_SCHEDULED in rehoboam-lab/tams stay inert until an operator
+# flips them.
+#
+# On drift (terraform plan -detailed-exitcode == 2) or on the watch itself
+# failing (auth/init/plan error), this upserts ONE tracking issue titled
+# "infra drift: dev" -- updated in place on repeat alarms, never duplicated,
+# same pattern as rehoboam-lab/tams's e2b-occupancy-watch.yml. The issue
+# body is a REDACTED plan summary: resource addresses + change actions only,
+# extracted from `terraform show -json`, never attribute values (which is
+# where credentials/connection strings could otherwise leak). It auto-closes
+# once a scheduled run comes back clean.
+
+name: Monad Drift Detection
+
+on:
+  schedule:
+    # 09:00 UTC daily -- 01:00/02:00 Pacific depending on DST, off-peak for
+    # the (US-based) operators who'd act on a drift alarm.
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+concurrency:
+  group: monad-drift-detection
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+  id-token: write
+
+jobs:
+  drift-check:
+    name: Keyless GCP configuration
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    # Scheduled workflows fire on every fork with the file on its default
+    # branch; refuse to run anywhere but the real repo so a fork's cron
+    # never tries to assume a (nonexistent) WIF identity.
+    if: github.repository == 'rehoboam-lab/monad-e2b-infra'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Check drift-detection provisioning
+        id: guard
+        shell: bash
+        env:
+          WIP: ${{ vars.GCP_DRIFT_WORKLOAD_IDENTITY_PROVIDER }}
+          SA: ${{ vars.GCP_DRIFT_SERVICE_ACCOUNT_EMAIL }}
+          ENV_FILE_SET: ${{ secrets.TERRAFORM_DEV_ENV_FILE != '' }}
+        run: |
+          set -euo pipefail
+          if [ -z "$WIP" ] || [ -z "$SA" ] || [ "$ENV_FILE_SET" != "true" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Drift detection is not provisioned yet -- missing one or more of repo vars GCP_DRIFT_WORKLOAD_IDENTITY_PROVIDER/GCP_DRIFT_SERVICE_ACCOUNT_EMAIL or repo secret TERRAFORM_DEV_ENV_FILE. See this workflow's header. Exiting green, no-op."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to GCP (keyless / Workload Identity Federation)
+        id: auth
+        if: steps.guard.outputs.ready == 'true'
+        continue-on-error: true
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2.1.13
+        with:
+          workload_identity_provider: ${{ vars.GCP_DRIFT_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DRIFT_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Read pinned Terraform version
+        id: terraform-version
+        if: steps.guard.outputs.ready == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "terraform" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        id: setup-terraform
+        if: steps.guard.outputs.ready == 'true'
+        continue-on-error: true
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+          terraform_wrapper: false
+
+      - name: Plan every non-workload module (read-only, no lock, no lease)
+        id: run
+        if: steps.guard.outputs.ready == 'true'
+        continue-on-error: true
+        shell: bash
+        env:
+          ENV_FILE_CONTENT: ${{ secrets.TERRAFORM_DEV_ENV_FILE }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$ENV_FILE_CONTENT" > .env.dev
+
+          set -a
+          # shellcheck disable=SC1091
+          . ./.env.dev
+          set +a
+          test -n "${GCP_PROJECT_ID:-}"
+          test -n "${GCP_REGION:-}"
+
+          bucket="${TERRAFORM_STATE_BUCKET:-${GCP_PROJECT_ID}-terraform-state}"
+          prefix="terraform/orchestration/dev/state"
+
+          # Re-export every KEY=... in .env.dev as TF_VAR_<lowercase key>,
+          # sourced from the shell (so quoting/JSON values are already
+          # parsed) -- the same value transform as iac/provider-gcp/
+          # Makefile's `tfvar` macro, minus its mutation-lease machinery.
+          while IFS= read -r name; do
+            lower="$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')"
+            val="${!name:-}"
+            export "TF_VAR_${lower}=${val}"
+          done < <(awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/{print $1}' .env.dev | sort -u)
+
+          cd iac/provider-gcp
+          terraform init -input=false -reconfigure \
+            -backend-config="bucket=${bucket}" \
+            -backend-config="prefix=${prefix}"
+
+          # Same module exclusion as `make plan-without-jobs`: every
+          # top-level module except nomad (the mutation-lease-guarded
+          # workload, which already has its own plan-check/manifest drift
+          # story -- see workload-*-plan-check in this Makefile).
+          # shellcheck disable=SC2046
+          targets="$(cat main.tf | grep '^module' | awk '{print $2}' | tr ' ' '\n' | grep -v -e 'nomad' | awk '{print "-target=module." $0 ""}' | xargs)"
+
+          set +e
+          # shellcheck disable=SC2086 # $targets is deliberately unquoted: a
+          # sequence of separate -target=... arguments, not one string.
+          terraform plan -input=false -lock=false -compact-warnings \
+            -detailed-exitcode -out="$RUNNER_TEMP/drift-dev.tfplan" $targets
+          code=$?
+          set -e
+
+          case "$code" in
+            0)
+              echo "plan_exitcode=0" >> "$GITHUB_OUTPUT"
+              ;;
+            2)
+              echo "plan_exitcode=2" >> "$GITHUB_OUTPUT"
+              # Redacted summary: resource addresses + change actions only,
+              # never attribute values (that's where a secret-shaped value
+              # could otherwise leak into an issue body).
+              terraform show -json "$RUNNER_TEMP/drift-dev.tfplan" \
+                > "$RUNNER_TEMP/drift-dev.json"
+              jq -r '
+                (.resource_changes // [])
+                | map(select((.change.actions | index("no-op")) | not))
+                | sort_by(.address)
+                | .[]
+                | "\(.change.actions | join(",")): \(.address)"
+              ' "$RUNNER_TEMP/drift-dev.json" > "$RUNNER_TEMP/drift-dev-summary.txt"
+              count="$(wc -l < "$RUNNER_TEMP/drift-dev-summary.txt" | tr -d ' ')"
+              printf 'Plan: %s resource(s) with a proposed change.\n\n' "$count" \
+                > "$RUNNER_TEMP/drift-dev-body.txt"
+              cat "$RUNNER_TEMP/drift-dev-summary.txt" >> "$RUNNER_TEMP/drift-dev-body.txt"
+              ;;
+            *)
+              echo "plan_exitcode=$code" >> "$GITHUB_OUTPUT"
+              echo "::error::terraform plan exited $code (neither clean nor a detected-change exit code) -- treating as a watch failure."
+              exit 1
+              ;;
+          esac
+
+      - name: Determine watch outcome
+        id: outcome
+        if: steps.guard.outputs.ready == 'true'
+        shell: bash
+        run: |
+          if [ "${{ steps.auth.outcome }}" = "failure" ] || \
+             [ "${{ steps.setup-terraform.outcome }}" = "failure" ] || \
+             [ "${{ steps.run.outcome }}" = "failure" ]; then
+            echo "state=failed" >> "$GITHUB_OUTPUT"
+          elif [ "${{ steps.run.outputs.plan_exitcode }}" = "2" ]; then
+            echo "state=drift" >> "$GITHUB_OUTPUT"
+          else
+            echo "state=clean" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 'Upsert "infra drift: dev" tracking issue'
+        if: steps.guard.outputs.ready == 'true' && steps.outcome.outputs.state != 'clean'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATE: ${{ steps.outcome.outputs.state }}
+        run: |
+          set -euo pipefail
+          title="infra drift: dev"
+          if [ "$STATE" = "drift" ] && [ -s "$RUNNER_TEMP/drift-dev-body.txt" ]; then
+            body="$(cat <<EOF
+          Scheduled \`terraform plan -detailed-exitcode\` found drift between
+          the checked-in dev config and live GCP state: $RUN_URL
+
+          Redacted plan summary (resource addresses + change action only,
+          no attribute values):
+
+          \`\`\`
+          $(cat "$RUNNER_TEMP/drift-dev-body.txt")
+          \`\`\`
+
+          Reference: docs/superpowers/research/2026-08-20-deployment-architecture-review.md#4
+          (rehoboam-lab/tams). This scopes every module except \`module.nomad\`
+          (the workload the mutation-lease system already tracks drift for).
+
+          This issue is upserted by \`.github/workflows/monad-drift-detection.yml\`
+          on every scheduled run while drift is present -- it will not duplicate.
+          It auto-closes once a run comes back clean.
+          EOF
+          )"
+          else
+            body="The scheduled drift watch itself failed (auth/init/plan error), not a confirmed drift finding: $RUN_URL
+
+          Open the run log above for the exact failure. This issue is upserted by
+          \`.github/workflows/monad-drift-detection.yml\` -- it will not duplicate,
+          and auto-closes once a run comes back clean."
+          fi
+          existing=$(gh issue list --state open --json number,title --limit 100 \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+          else
+            gh issue create --title "$title" --body "$body"
+          fi
+
+      - name: Close the tracking issue once a run comes back clean
+        if: steps.guard.outputs.ready == 'true' && steps.outcome.outputs.state == 'clean'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          title="infra drift: dev"
+          existing=$(gh issue list --state open --json number,title --limit 100 \
+            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Drift watch is clean again as of $RUN_URL -- closing."
+            gh issue close "$existing"
+          fi
+
+      - name: Fail the job when the watch alarmed or errored
+        if: steps.guard.outputs.ready == 'true' && steps.outcome.outputs.state != 'clean'
+        run: |
+          echo "::error::Drift watch found drift or failed closed -- see the step logs above and the upserted tracking issue."
+          exit 1
