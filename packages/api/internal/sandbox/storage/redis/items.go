@@ -38,6 +38,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 	// Group by team for per-team MGET (Redis Cluster slot compatibility).
 	type memberRef struct {
 		member      string
+		teamID      string
 		sandboxID   string
 		executionID string
 	}
@@ -67,7 +68,7 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 			teamSandboxes[teamID] = entry
 		}
 
-		entry.refs = append(entry.refs, memberRef{member: member, sandboxID: sandboxID, executionID: executionID})
+		entry.refs = append(entry.refs, memberRef{member: member, teamID: teamID, sandboxID: sandboxID, executionID: executionID})
 	}
 
 	pipe := s.redisClient.Pipeline()
@@ -101,12 +102,19 @@ func (s *Storage) ExpiredItems(ctx context.Context) ([]sandboxtypes.Sandbox, err
 		for i, raw := range batch.cmd.Val() {
 			ref := batch.refs[i]
 
-			// Sandbox key gone but ZSET entry remains — orphaned. Members are
-			// execution-scoped, so this removal can never unindex a fresh
-			// execution concurrently re-added under the same sandbox ID.
+			// Sandbox key gone but ZSET entry remains — orphaned.
+			// MGET confirmed the key is absent; SREM the stale team index entry
+			// so it does not accumulate indefinitely. Sandbox IDs are randomly
+			// generated and never reused, so a concurrent Add cannot write the
+			// same sandboxID back after this SREM.
 			if raw == nil {
 				staleMembers = append(staleMembers, ref.member)
 				orphanCount++
+
+				teamIndexKey := GetSandboxStorageTeamIndexKey(ref.teamID)
+				if sremErr := s.redisClient.SRem(ctx, teamIndexKey, ref.sandboxID).Err(); sremErr != nil {
+					logger.L().Warn(ctx, "Failed to remove orphan from team index", zap.Error(sremErr), logger.WithSandboxID(ref.sandboxID))
+				}
 
 				continue
 			}
