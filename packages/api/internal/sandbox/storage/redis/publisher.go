@@ -283,3 +283,15 @@ func (p *publisher) close(ctx context.Context) {
 	})
 	<-p.done
 }
+
+// publishSandboxEvent marshals evt to JSON and enqueues it on the shared
+// pub/sub channel, alongside the existing plain routing-key messages.
+// Never blocks; drops silently under backpressure (same policy as Publish).
+func (p *publisher) publishSandboxEvent(ctx context.Context, evt sandboxEvent) {
+	data, err := marshalSandboxEvent(evt)
+	if err != nil {
+		return
+	}
+
+	p.Publish(ctx, data)
+}
