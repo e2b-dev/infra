@@ -7,11 +7,15 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// subscriptionManager maintains a Redis PubSub connection and
-// fans out storage notifications to registered in-process waiters.
+// subscriptionManager maintains a Redis PubSub connection and fans out storage
+// notifications to registered in-process waiters. It also maintains a
+// sandboxCache that is updated when sandbox state-change events arrive on the
+// channel alongside the existing routing-key messages.
 type subscriptionManager struct {
 	mu      sync.RWMutex
 	waiters map[string]map[chan struct{}]struct{} // routingKey → registered waiters
+
+	cache *sandboxCache
 
 	redisClient redis.UniversalClient
 	channel     string
@@ -22,6 +26,7 @@ type subscriptionManager struct {
 func newSubscriptionManager(redisClient redis.UniversalClient, channel string) *subscriptionManager {
 	return &subscriptionManager{
 		waiters:     make(map[string]map[chan struct{}]struct{}),
+		cache:       newSandboxCache(),
 		redisClient: redisClient,
 		channel:     channel,
 		stop:        make(chan struct{}),
@@ -88,12 +93,21 @@ func (m *subscriptionManager) subscribe(routingKey string) (<-chan struct{}, fun
 	return channel, cleanup
 }
 
-// dispatch signals all waiters registered for the given routing key.
-func (m *subscriptionManager) dispatch(routingKey string) {
+// dispatch processes an incoming pub/sub payload. Payloads that parse as
+// sandboxEvents are applied to the local cache; all other payloads are treated
+// as plain routing keys and fan out to registered waiters.
+func (m *subscriptionManager) dispatch(payload string) {
+	if isSandboxEvent(payload) {
+		if evt, ok := parseSandboxEvent(payload); ok {
+			m.cache.apply(evt)
+			return
+		}
+	}
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	for waiter := range m.waiters[routingKey] {
+	for waiter := range m.waiters[payload] {
 		select {
 		case waiter <- struct{}{}:
 		default:

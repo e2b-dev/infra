@@ -39,6 +39,7 @@ type Storage struct {
 	subManager   *subscriptionManager
 	publisher    *publisher
 	featureFlags *featureflags.Client
+	cacheForced  bool // set only in tests via forceCacheEnabled
 
 	metrics expirationIndexMetrics
 }
