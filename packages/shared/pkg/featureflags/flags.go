@@ -351,6 +351,13 @@ var (
 	// On by default; acts as a kill switch if a heal pass misbehaves.
 	ExpirationIndexHealerFlag = NewBoolFlag("expiration-index-healer", true)
 
+	// SandboxTeamItemsCacheFlag enables the per-allocation in-process sandbox cache
+	// for TeamItems. When enabled, TeamItems is served from memory after the first
+	// cold-fetch; subsequent mutations broadcast events over the existing pub/sub
+	// channel so every allocation’s cache stays consistent with Redis.
+	// Defaults to false for safe rollout; flip to true once observed in staging.
+	SandboxTeamItemsCacheFlag = NewBoolFlag("sandbox-team-items-cache", false)
+
 	// DisableE2BAccessTokenProvisioningFlag stops POST /access-tokens from issuing
 	// new E2B access tokens (sk_e2b_) once enabled. E2B_ACCESS_TOKEN is deprecated
 	// in favor of E2B_API_KEY; the CLI now authenticates via Hydra JWTs. Off by

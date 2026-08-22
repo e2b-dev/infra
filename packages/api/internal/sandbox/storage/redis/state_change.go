@@ -170,6 +170,11 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 
 	logger.L().Debug(ctx, "Started state transition", logger.WithSandboxID(sandboxID), zap.String("state", string(newState)), zap.String("transitionID", transitionID))
 
+	// Broadcast the state change so all allocations caches reflect the new
+	// intermediate state immediately. Without this, caches show State=Running
+	// until the sandbox is eventually deleted and a remove event arrives.
+	s.publisher.publishSandboxEvent(ctx, sandboxEvent{Op: sandboxEventOpUpdate, Sandbox: &updated})
+
 	return updated, false, s.createCallback(teamID, sandboxID, transitionKey, resultKey, transitionID, opts.Action), nil
 }
 

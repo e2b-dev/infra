@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
@@ -51,6 +52,9 @@ func (s *Storage) Add(ctx context.Context, sbx sandboxtypes.Sandbox) error {
 	}).Err(); err != nil {
 		logger.L().Warn(ctx, "failed to add team to global teams index", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
 	}
+
+	// Broadcast to all allocations so their caches stay consistent with Redis.
+	s.publisher.publishSandboxEvent(ctx, sandboxEvent{Op: sandboxEventOpAdd, Sandbox: &sbx})
 
 	return nil
 }
@@ -117,12 +121,77 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 		}
 	}
 
+	// Evict from all allocations' caches.
+	s.publisher.publishSandboxEvent(ctx, sandboxEvent{
+		Op:        sandboxEventOpRemove,
+		SandboxID: sandboxID,
+		TeamID:    teamID.String(),
+	})
+
 	return nil
 }
 
-// TeamItems retrieves sandboxes for a specific team, filtered by states and options
+// TeamItems retrieves sandboxes for a specific team, filtered by states.
+//
+// When the sandbox-team-items-cache feature flag is enabled the result is
+// served from the per-allocation in-process cache after the first call for a
+// team (cold-fetch path). Subsequent calls are zero-Redis-read.
+//
+// The cache is kept consistent by sandbox state-change events published on the
+// shared pub/sub channel by Add, Update, and Remove. Dropped events cause
+// temporary staleness; the cold-fetch on startup recovers full consistency.
 func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandboxtypes.State) ([]sandboxtypes.Sandbox, error) {
-	// Get sandbox IDs from team index
+	if s.cacheEnabled(ctx) {
+		if sandboxes, ok := s.subManager.cache.getTeam(teamID, states); ok {
+			return sandboxes, nil
+		}
+
+		// Cache cold for this team: fall through to Redis, then warm the cache.
+		return s.teamItemsFromRedisAndWarm(ctx, teamID, states)
+	}
+
+	return s.teamItemsFromRedis(ctx, teamID, states)
+}
+
+// teamItemsFromRedisAndWarm fetches from Redis, warms the cache for teamID,
+// then returns the state-filtered slice.
+func (s *Storage) teamItemsFromRedisAndWarm(ctx context.Context, teamID uuid.UUID, states []sandboxtypes.State) ([]sandboxtypes.Sandbox, error) {
+	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
+	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sandbox IDs from team index: %w", err)
+	}
+
+	if len(sandboxIDs) == 0 {
+		s.subManager.cache.warmTeam(teamID.String(), nil)
+
+		return []sandboxtypes.Sandbox{}, nil
+	}
+
+	fetched, err := s.fetchSandboxBatch(ctx, teamID.String(), sandboxIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	// Warm the cache with all sandboxes (unfiltered) so subsequent calls for
+	// different state filters can still be served from memory.
+	s.subManager.cache.warmTeam(teamID.String(), fetched)
+
+	var sandboxes []sandboxtypes.Sandbox
+	for _, sbx := range fetched {
+		if len(states) > 0 && !slices.Contains(states, sbx.State) {
+			continue
+		}
+
+		sandboxes = append(sandboxes, sbx)
+	}
+
+	return sandboxes, nil
+}
+
+// teamItemsFromRedis is the original Redis-only path, used when the cache
+// feature flag is disabled.
+func (s *Storage) teamItemsFromRedis(ctx context.Context, teamID uuid.UUID, states []sandboxtypes.State) ([]sandboxtypes.Sandbox, error) {
 	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
 	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
 	if err != nil {
@@ -142,7 +211,6 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 		return nil, err
 	}
 
-	// Filter by state if states are specified
 	var sandboxes []sandboxtypes.Sandbox
 	for _, sbx := range fetched {
 		if len(states) > 0 && !slices.Contains(states, sbx.State) {
@@ -215,6 +283,9 @@ func (s *Storage) Update(ctx context.Context, teamID uuid.UUID, sandboxID string
 		}
 	}
 
+	// Broadcast the updated state to all allocations.
+	s.publisher.publishSandboxEvent(ctx, sandboxEvent{Op: sandboxEventOpUpdate, Sandbox: &updatedSbx})
+
 	return updatedSbx, nil
 }
 
@@ -280,4 +351,18 @@ func (s *Storage) TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int6
 	}
 
 	return teams, nil
+}
+
+// cacheEnabled reports whether the per-allocation sandbox cache is active.
+// Falls back to the flag's default when the feature-flag client is unavailable.
+func (s *Storage) cacheEnabled(ctx context.Context) bool {
+	if s.cacheForced {
+		return true
+	}
+
+	if s.featureFlags == nil {
+		return featureflags.SandboxTeamItemsCacheFlag.Fallback()
+	}
+
+	return s.featureFlags.BoolFlag(ctx, featureflags.SandboxTeamItemsCacheFlag)
 }

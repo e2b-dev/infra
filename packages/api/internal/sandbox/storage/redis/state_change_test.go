@@ -1269,3 +1269,88 @@ func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {
 
 	callback2(ctx, nil)
 }
+
+// TestStartRemoving_CacheBroadcastsTransitionState verifies that StartRemoving
+// publishes a sandboxEvent so the per-allocation cache reflects the new
+// intermediate state (e.g. Killing) without waiting for the final Remove.
+func TestStartRemoving_CacheBroadcastsTransitionState(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	enableCache(t, storage)
+	ctx := t.Context()
+
+	sbx := createTestSandbox("sbx-cache-transition")
+	sbx.State = sandboxtypes.StateRunning
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	// Warm the cache so TeamItems is served from memory.
+	_, err := storage.TeamItems(ctx, sbx.TeamID, nil)
+	require.NoError(t, err)
+
+	// Sanity: cache shows Running before the transition.
+	items, err := storage.TeamItems(ctx, sbx.TeamID, []sandboxtypes.State{sandboxtypes.StateRunning})
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+
+	// Start a Kill transition: Lua writes State=Killing to Redis and
+	// publishSandboxEvent must broadcast the update to the cache.
+	_, alreadyDone, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{
+		Action: sandboxtypes.StateActionKill,
+	})
+	require.NoError(t, err)
+	require.False(t, alreadyDone)
+	require.NotNil(t, callback)
+	defer callback(ctx, nil)
+
+	// The event is delivered asynchronously via pub/sub; poll with a short deadline.
+	require.Eventually(t, func() bool {
+		killing, err := storage.TeamItems(ctx, sbx.TeamID, []sandboxtypes.State{sandboxtypes.StateKilling})
+		return err == nil && len(killing) == 1
+	}, 2*time.Second, 50*time.Millisecond,
+		"cache should reflect Killing state after StartRemoving without waiting for Remove")
+
+	// TeamItems filtered to Running must now return nothing.
+	running, err := storage.TeamItems(ctx, sbx.TeamID, []sandboxtypes.State{sandboxtypes.StateRunning})
+	require.NoError(t, err)
+	require.Empty(t, running, "cache must not show Running once transition is in flight")
+}
+
+// TestStartRemoving_CacheBroadcastsTransientTransition verifies that a
+// transient (snapshot) transition is visible in the cache as Snapshotting, and
+// that the subsequent restore-to-Running is equally reflected.
+func TestStartRemoving_CacheBroadcastsTransientTransition(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	enableCache(t, storage)
+	ctx := t.Context()
+
+	sbx := createTestSandbox("sbx-cache-transient")
+	sbx.State = sandboxtypes.StateRunning
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	_, err := storage.TeamItems(ctx, sbx.TeamID, nil)
+	require.NoError(t, err)
+
+	// Start a Snapshot transition (TransitionTransient: restores to Running on success).
+	_, _, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{
+		Action: sandboxtypes.StateActionSnapshot,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, callback)
+
+	// Cache should show Snapshotting.
+	require.Eventually(t, func() bool {
+		snapshotting, err := storage.TeamItems(ctx, sbx.TeamID, []sandboxtypes.State{sandboxtypes.StateSnapshotting})
+		return err == nil && len(snapshotting) == 1
+	}, 2*time.Second, 50*time.Millisecond, "cache should reflect Snapshotting state")
+
+	// Signal success: restoreToRunning calls Update which re-broadcasts Running.
+	callback(ctx, nil)
+
+	require.Eventually(t, func() bool {
+		running, err := storage.TeamItems(ctx, sbx.TeamID, []sandboxtypes.State{sandboxtypes.StateRunning})
+		return err == nil && len(running) == 1
+	}, 2*time.Second, 50*time.Millisecond, "cache should reflect Running after transient transition completes")
+}
