@@ -38,6 +38,7 @@ func (s *APIStore) PostAdminClusters(c *gin.Context) {
 	}
 
 	clusterID, err := s.db.Dashboard.CreateCluster(ctx, dashboardqueries.CreateClusterParams{
+		ClusterID:          body.ClusterId,
 		Name:               body.Name,
 		Endpoint:           body.Endpoint,
 		EndpointTls:        body.EndpointTls,
@@ -46,7 +47,7 @@ func (s *APIStore) PostAdminClusters(c *gin.Context) {
 		AuthOrgID:          body.AuthOrgId,
 	})
 	if err != nil {
-		if dberrors.IsUniqueConstraintViolation(err) {
+		if dberrors.IsUniqueConstraintViolation(err) || dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusConflict, "Cluster ID or auth organization is already registered")
 		} else {
 			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to create cluster")
@@ -111,10 +112,16 @@ func (s *APIStore) PutAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID)
 		return
 	}
 
-	updated, err := s.db.Dashboard.AssignTeamCluster(ctx, dashboardqueries.AssignTeamClusterParams{
-		ClusterID: body.ClusterId,
-		TeamID:    teamID,
+	result, err := s.db.Dashboard.AssignTeamCluster(ctx, dashboardqueries.AssignTeamClusterParams{
+		ClusterID:        body.ClusterId,
+		TeamID:           teamID,
+		PreserveExisting: body.PreserveExisting != nil && *body.PreserveExisting,
 	})
+	if dberrors.IsNotFoundError(err) {
+		s.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
+
+		return
+	}
 	if err != nil {
 		if dberrors.IsForeignKeyViolation(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, "Cluster not found")
@@ -124,8 +131,8 @@ func (s *APIStore) PutAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID)
 
 		return
 	}
-	if updated == 0 {
-		s.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
+	if !result.Assigned {
+		s.sendAPIStoreError(c, http.StatusConflict, "Team is already assigned to a different cluster")
 
 		return
 	}

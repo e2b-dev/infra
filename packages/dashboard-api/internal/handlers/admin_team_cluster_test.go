@@ -74,6 +74,42 @@ func TestPostAdminClustersCreatesImmutableCluster(t *testing.T) {
 	require.Equal(t, 1, count)
 }
 
+func TestPostAdminClustersReusesStableIDOnlyForIdenticalConfiguration(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	clusterID := uuid.New()
+	request := api.AdminClusterCreateRequest{
+		ClusterId:   &clusterID,
+		Name:        "Managed cluster",
+		Endpoint:    "api.example.test:5008",
+		EndpointTls: true,
+		Token:       "cluster-token",
+	}
+	store := &APIStore{db: db.SqlcClient}
+
+	created := callCreateCluster(t, store, request)
+	replayed := callCreateCluster(t, store, request)
+	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
+	require.Equal(t, http.StatusCreated, replayed.Code, replayed.Body.String())
+
+	request.Token = "different-token"
+	conflict := callCreateCluster(t, store, request)
+	require.Equal(t, http.StatusConflict, conflict.Code, conflict.Body.String())
+
+	var storedToken string
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		`SELECT token FROM public.clusters WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&storedToken)
+		},
+		clusterID,
+	))
+	require.Equal(t, "cluster-token", storedToken)
+}
+
 func TestDeleteAdminClustersClusterIDDeletesIdempotently(t *testing.T) {
 	t.Parallel()
 
@@ -123,12 +159,12 @@ func TestDeleteAdminClustersClusterIDWaitsForConcurrentTeamReference(t *testing.
 		_ = referenceTx.Rollback(t.Context())
 	}()
 
-	updated, err := referenceClient.Dashboard.AssignTeamCluster(ctx, dashboardqueries.AssignTeamClusterParams{
+	result, err := referenceClient.Dashboard.AssignTeamCluster(ctx, dashboardqueries.AssignTeamClusterParams{
 		TeamID:    teamID,
 		ClusterID: clusterID,
 	})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, updated)
+	require.True(t, result.Assigned)
 
 	store := &APIStore{db: db.SqlcClient}
 	responseCh := make(chan *httptest.ResponseRecorder, 1)
@@ -247,6 +283,140 @@ func TestPutAdminTeamsTeamIDClusterAssignsExistingCluster(t *testing.T) {
 		teamID,
 	))
 	require.Equal(t, clusterID, assignedClusterID)
+}
+
+func TestPutAdminTeamsTeamIDClusterPreservesExistingAssignment(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	managedClusterID := uuid.New()
+	replacementClusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'managed.example.test:5008', true, 'token'), ($2, 'replacement', 'replacement.example.test:5008', true, 'token')`,
+		managedClusterID,
+		replacementClusterID,
+	))
+	preserveExisting := true
+	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
+	request := api.AdminTeamClusterAssignmentRequest{
+		ClusterId:        managedClusterID,
+		PreserveExisting: &preserveExisting,
+	}
+	require.Equal(t, http.StatusNoContent, callAssignCluster(t, store, teamID, request).Code)
+	require.Equal(t, http.StatusNoContent, callAssignCluster(t, store, teamID, request).Code)
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`UPDATE public.teams SET cluster_id = $1 WHERE id = $2`,
+		replacementClusterID,
+		teamID,
+	))
+
+	response := callAssignCluster(t, store, teamID, request)
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+
+	var assignedClusterID uuid.UUID
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT cluster_id FROM public.teams WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&assignedClusterID)
+		},
+		teamID,
+	))
+	require.Equal(t, replacementClusterID, assignedClusterID)
+}
+
+func TestPutAdminTeamsTeamIDClusterPreservesConcurrentReplacement(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	managedClusterID := uuid.New()
+	replacementClusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'managed.example.test:5008', true, 'token'), ($2, 'replacement', 'replacement.example.test:5008', true, 'token')`,
+		managedClusterID,
+		replacementClusterID,
+	))
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`UPDATE public.teams SET cluster_id = $1 WHERE id = $2`,
+		managedClusterID,
+		teamID,
+	))
+
+	replacementClient, replacementTx, err := db.SqlcClient.WithTx(ctx)
+	require.NoError(t, err)
+	defer func() {
+		_ = replacementTx.Rollback(t.Context())
+	}()
+	result, err := replacementClient.Dashboard.AssignTeamCluster(ctx, dashboardqueries.AssignTeamClusterParams{
+		TeamID:    teamID,
+		ClusterID: replacementClusterID,
+	})
+	require.NoError(t, err)
+	require.True(t, result.Assigned)
+
+	preserveExisting := true
+	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
+	body, err := json.Marshal(api.AdminTeamClusterAssignmentRequest{
+		ClusterId:        managedClusterID,
+		PreserveExisting: &preserveExisting,
+	})
+	require.NoError(t, err)
+	httpRequest := httptest.NewRequestWithContext(ctx, http.MethodPut, "/admin/teams/"+teamID.String()+"/cluster", bytes.NewReader(body))
+	httpRequest.Header.Set("Content-Type", "application/json")
+	responseCh := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		responseCh <- callAssignClusterRequest(store, teamID, httpRequest)
+	}()
+
+	require.Eventually(t, func() bool {
+		var blocked bool
+		err := db.SqlcClient.TestsRawSQLQuery(ctx, `
+			SELECT EXISTS (
+				SELECT 1
+				FROM pg_stat_activity
+				WHERE datname = current_database()
+				  AND state = 'active'
+				  AND wait_event_type = 'Lock'
+				  AND query LIKE '%WITH locked_team AS MATERIALIZED%'
+			)`, func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&blocked)
+		})
+
+		return err == nil && blocked
+	}, 5*time.Second, 10*time.Millisecond)
+
+	select {
+	case response := <-responseCh:
+		require.FailNow(t, "assignment returned before the replacement committed", response.Body.String())
+	default:
+	}
+
+	require.NoError(t, replacementTx.Commit(ctx))
+	select {
+	case response := <-responseCh:
+		require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "assignment did not finish after the replacement committed")
+	}
+
+	var assignedClusterID uuid.UUID
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT cluster_id FROM public.teams WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&assignedClusterID)
+		},
+		teamID,
+	))
+	require.Equal(t, replacementClusterID, assignedClusterID)
 }
 
 func TestDeleteAdminTeamsTeamIDClusterClusterIDDetachesIdempotently(t *testing.T) {
@@ -396,12 +566,12 @@ func TestDeleteAdminTeamsTeamIDClusterClusterIDWaitsForReplacement(t *testing.T)
 		_ = replacementTx.Rollback(t.Context())
 	}()
 
-	updated, err := replacementClient.Dashboard.AssignTeamCluster(ctx, dashboardqueries.AssignTeamClusterParams{
+	result, err := replacementClient.Dashboard.AssignTeamCluster(ctx, dashboardqueries.AssignTeamClusterParams{
 		TeamID:    teamID,
 		ClusterID: replacementClusterID,
 	})
 	require.NoError(t, err)
-	require.EqualValues(t, 1, updated)
+	require.True(t, result.Assigned)
 
 	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
 	responseCh := make(chan *httptest.ResponseRecorder, 1)
@@ -547,10 +717,20 @@ func callAssignCluster(
 	body, err := json.Marshal(request)
 	require.NoError(t, err)
 
+	httpRequest := httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/admin/teams/"+teamID.String()+"/cluster", bytes.NewReader(body))
+	httpRequest.Header.Set("Content-Type", "application/json")
+
+	return callAssignClusterRequest(store, teamID, httpRequest)
+}
+
+func callAssignClusterRequest(
+	store *APIStore,
+	teamID uuid.UUID,
+	httpRequest *http.Request,
+) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPut, "/admin/teams/"+teamID.String()+"/cluster", bytes.NewReader(body))
-	ginCtx.Request.Header.Set("Content-Type", "application/json")
+	ginCtx.Request = httpRequest
 	store.PutAdminTeamsTeamIDCluster(ginCtx, teamID)
 	ginCtx.Writer.WriteHeaderNow()
 

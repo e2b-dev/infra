@@ -432,6 +432,10 @@ components:
         - endpoint_tls
         - token
       properties:
+        cluster_id:
+          type: string
+          format: uuid
+          description: Optional stable identifier for idempotent creation. Reuse succeeds only when the immutable configuration is identical.
         name:
           type: string
           minLength: 1
@@ -467,6 +471,10 @@ components:
         cluster_id:
           type: string
           format: uuid
+        preserve_existing:
+          type: boolean
+          default: false
+          description: Assign only when the team is unassigned or already assigned to cluster_id.
 
     AdminTeamClusterAssignmentResponse:
       type: object
@@ -1728,6 +1736,8 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 
