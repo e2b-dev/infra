@@ -27,14 +27,14 @@ func TestBuildKernelArgs_DefaultIsUnchanged(t *testing.T) {
 			name:    "production defaults",
 			options: ProcessOptions{InitScriptPath: "/sbin/init"},
 			want: "i8042.noaux i8042.nokbd init=/sbin/init ip=" + testIPv4 +
-				" ipv6.autoconf=1 ipv6.disable=0 loglevel=1 panic=1 pci=off quiet" +
+				" ipv6.disable=1 loglevel=1 panic=1 pci=off quiet" +
 				" random.trust_cpu=on reboot=k rootflags=discard",
 		},
 		{
 			name:    "kvm clock",
 			options: ProcessOptions{InitScriptPath: "/sbin/init", KvmClock: true},
 			want: "clocksource=kvm-clock i8042.noaux i8042.nokbd init=/sbin/init ip=" + testIPv4 +
-				" ipv6.autoconf=1 ipv6.disable=0 loglevel=1 panic=1 pci=off quiet" +
+				" ipv6.disable=1 loglevel=1 panic=1 pci=off quiet" +
 				" random.trust_cpu=on reboot=k rootflags=discard",
 		},
 		{
@@ -43,16 +43,26 @@ func TestBuildKernelArgs_DefaultIsUnchanged(t *testing.T) {
 			name:    "kernel logs",
 			options: ProcessOptions{InitScriptPath: "/sbin/init", KernelLogs: true},
 			want: "console=ttyS0 i8042.noaux i8042.nokbd init=/sbin/init ip=" + testIPv4 +
-				" ipv6.autoconf=1 ipv6.disable=0 loglevel=5 panic=1 pci=off" +
+				" ipv6.disable=1 loglevel=5 panic=1 pci=off" +
 				" random.trust_cpu=on reboot=k rootflags=discard",
 		},
 		{
 			name:    "systemd to kernel logs",
 			options: ProcessOptions{InitScriptPath: "/sbin/init", SystemdToKernelLogs: true},
 			want: "console=ttyS0 i8042.noaux i8042.nokbd init=/sbin/init ip=" + testIPv4 +
-				" ipv6.autoconf=1 ipv6.disable=0 loglevel=5 panic=1 pci=off" +
+				" ipv6.disable=1 loglevel=5 panic=1 pci=off" +
 				" random.trust_cpu=on reboot=k rootflags=discard" +
 				" systemd.journald.forward_to_console",
+		},
+		{
+			// When the host tap has a full IPv6 router configured, IPv6 must be
+			// enabled in the guest (ipv6.disable=0) so SLAAC can obtain a routable
+			// address and dual-stack connections work without Happy Eyeballs penalty.
+			name:    "ipv6 router configured",
+			options: ProcessOptions{InitScriptPath: "/sbin/init", IPv6RouterConfigured: true},
+			want: "i8042.noaux i8042.nokbd init=/sbin/init ip=" + testIPv4 +
+				" ipv6.disable=0 loglevel=1 panic=1 pci=off quiet" +
+				" random.trust_cpu=on reboot=k rootflags=discard",
 		},
 	}
 

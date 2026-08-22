@@ -171,6 +171,15 @@ Key mechanisms (all under `pkg/sandbox/`):
   (with SNI/Host-inspecting TCP firewall for domain allow/deny lists). Slots are pooled and
   reused; slot indexes are allocated locally against the node's netns state (leftover
   namespaces from a previous run are torn down by startup reclaim).
+  **Guest IP stack**: guest networking is **IPv4-only by default**. The host tap interface
+  currently has no IPv6 router configured (no router advertisements, no routable prefix), so
+  guests boot with `ipv6.disable=1` — the entire AF_INET6 stack is off. This eliminates the
+  ~250 ms Happy Eyeballs penalty (RFC 8305) that occurs when a dual-stack kernel prefers AAAA
+  records and then times out on the unroutable `fe80::` link-local address produced by SLAAC.
+  The switch is `Slot.HasIPv6Router()` → `ProcessOptions.IPv6RouterConfigured` → the
+  `ipv6.disable` kernel cmdline arg; when the host networking layer gains a full IPv6 stack
+  (router + prefix per slot), flipping `HasIPv6Router()` to `true` enables dual-stack guests
+  without further code changes.
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
