@@ -39,12 +39,26 @@ metrics:
   receivers:
     hostmetrics:
       type: hostmetrics
-      collection_interval: 30s
+      collection_interval: 60s
   processors:
+    # Cloud Monitoring bills per ingested MiB (~$0.258/MiB). Sandbox hosts
+    # expose 4096 pre-created /dev/nbdN block devices plus one veth-N per
+    # network slot, and the hostmetrics receiver emits one time series per
+    # device/interface per metric. Measured 2026-08-23 on the dev fleet:
+    # ~22k active series (disk/* 2,540 per metric, interface/* 1,268,
+    # cpu/usage_time 1,072) = ~400 MiB/day = ~$100/day. `exclude_metrics`
+    # cannot filter by device label, so the per-device families are dropped
+    # wholesale; instance-level disk/network throughput is still available
+    # from the built-in compute.googleapis.com/instance/* metrics, and the
+    # otel-collector hostmetrics pipeline already aggregates disks before
+    # exporting. Kept: cpu/utilization, memory/*, swap/*, network/tcp_connections.
     metrics_filter:
       type: exclude_metrics
       metrics_pattern:
         - agent.googleapis.com/processes/*
+        - agent.googleapis.com/disk/*
+        - agent.googleapis.com/interface/*
+        - agent.googleapis.com/cpu/usage_time
   service:
     pipelines:
       default_pipeline:
