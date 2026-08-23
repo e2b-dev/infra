@@ -57,24 +57,3 @@ func RequiredEnv(key string, envUsageMsg string) string {
 
 	return value
 }
-
-// OptionalEnv returns the value of the environment variable for key if it is set, non-empty and not only whitespace.
-//
-// Pass the envUsageMsg to describe what the environment variable is used for.
-// This will be used in the message that is printed if the environment variable is not returned.
-func OptionalEnv(key string, envUsageMsg string) (string, bool) {
-	value, ok := os.LookupEnv(key)
-	if !ok {
-		fmt.Fprintf(os.Stderr, "Optional environment variable \"%s\" (%s) is not set.\n", key, envUsageMsg)
-
-		return "", false
-	}
-
-	if strings.TrimSpace(value) == "" {
-		fmt.Fprintf(os.Stderr, "Optional environment variable \"%s\" (%s) is set but it contains only whitespace.\n", key, envUsageMsg)
-
-		return "", false
-	}
-
-	return value, true
-}

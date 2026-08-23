@@ -100,11 +100,22 @@ func TestRemove(t *testing.T) {
 			removedOffsets := getOperationsOffsets(tt.operations, operationModeRemove)
 			assert.ElementsMatch(t, removedOffsets, states.removed)
 
-			faultedOffsets := getOperationsOffsets(tt.operations, operationModeRead|operationModeWrite)
+			writeOffsets := getOperationsOffsets(tt.operations, operationModeWrite)
 			for _, r := range removedOffsets {
-				faultedOffsets = removeOffset(faultedOffsets, r)
+				writeOffsets = removeOffset(writeOffsets, r)
 			}
-			assert.ElementsMatch(t, faultedOffsets, states.faulted)
+			assert.ElementsMatch(t, writeOffsets, states.faulted,
+				"write installs materialize pages as Dirty")
+
+			readOffsets := getOperationsOffsets(tt.operations, operationModeRead)
+			for _, r := range removedOffsets {
+				readOffsets = removeOffset(readOffsets, r)
+			}
+			for _, w := range writeOffsets {
+				readOffsets = removeOffset(readOffsets, w)
+			}
+			assert.ElementsMatch(t, readOffsets, states.clean,
+				"source read-installs are Clean (WP-armed, content == source)")
 
 			h.checkDirtiness(t, tt.operations)
 		})
@@ -167,12 +178,13 @@ func TestRemoveMultiPage(t *testing.T) {
 			assert.ElementsMatch(t, expectedRemoved, states.removed,
 				"all four pages in MADV_DONTNEED range should be removed (faulted page 2 and unfaulted pages 1,3,4)")
 
-			assert.ElementsMatch(t, []uint{0}, states.faulted,
-				"page 0 (outside remove range) should keep faulted state")
+			assert.ElementsMatch(t, []uint{0}, states.clean,
+				"page 0 (outside remove range) should keep its read-install (Clean) state")
+			assert.Empty(t, states.faulted, "nothing was written, so no page is Dirty")
 
 			outsideRange := uint(tt.pagesize) * 5
-			assert.NotContains(t, states.faulted, outsideRange,
-				"page 5 was never touched and must not appear as faulted")
+			assert.NotContains(t, states.clean, outsideRange,
+				"page 5 was never touched and must not appear as clean")
 			assert.NotContains(t, states.removed, outsideRange,
 				"page 5 was never touched and must not appear as removed")
 

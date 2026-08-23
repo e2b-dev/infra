@@ -150,10 +150,6 @@ func ConnectedDevices() ([]DeviceSlot, error) {
 	return devices, nil
 }
 
-func IsDeviceConnected(slot DeviceSlot) (bool, error) {
-	return isDeviceConnectedIn(sysBlockDir, slot)
-}
-
 func isDeviceConnectedIn(blockDir string, slot DeviceSlot) (bool, error) {
 	pidFile := fmt.Sprintf("%s/nbd%d/pid", blockDir, slot)
 	_, err := os.Stat(pidFile)

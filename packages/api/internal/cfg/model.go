@@ -97,6 +97,8 @@ type Config struct {
 	RedisURL         string `env:"REDIS_URL"`
 	RedisClusterURL  string `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64 string `env:"REDIS_TLS_CA_BASE64"`
+	RedisTLSEnabled  bool   `env:"REDIS_TLS_ENABLED"`
+	RedisPassword    string `env:"REDIS_PASSWORD"`
 	RedisPoolSize    int    `env:"REDIS_POOL_SIZE"     envDefault:"160"`
 
 	APIInternalGrpcPort uint16 `env:"API_INTERNAL_GRPC_PORT" envDefault:"5009"`
@@ -106,11 +108,25 @@ type Config struct {
 
 	SandboxAccessTokenHashSeed string `env:"SANDBOX_ACCESS_TOKEN_HASH_SEED"`
 
+	// SecretsStoreBackendGrpcAddress is the "host:port" address of the secrets
+	// store management backend. Optional: when empty the API keeps serving
+	// every other route and answers the secret management routes with the same
+	// forbidden response the feature gate produces.
+	SecretsStoreBackendGrpcAddress string `env:"SECRETS_STORE_BACKEND_GRPC_ADDRESS"`
+
 	VolumesToken VolumesTokenConfig
 
 	AuthProvider sharedauth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
 
-	DefaultPersistentVolumeType string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
+	DefaultPersistentVolumeType     string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
+	PlaceholderPersistentVolumeType string `env:"PLACEHOLDER_PERSISTENT_VOLUME_TYPE" envDefault:"__DEFAULT_VOLUME_TYPE__"`
+
+	// DefaultPersistentVolumeTypeByRegion is the per-region default volume type,
+	// e.g. "us-west3:zonalfilestore-us-west3". A team's region is resolved from
+	// the region= node labels of the nodes its scheduling labels select; Terraform
+	// derives this map from the volume types themselves and fails the plan when a
+	// region with several types lacks an explicit default.
+	DefaultPersistentVolumeTypeByRegion map[string]string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE_BY_REGION"`
 
 	DomainName string `env:"DOMAIN_NAME" envDefault:""`
 

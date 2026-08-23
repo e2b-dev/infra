@@ -49,3 +49,10 @@ func (m *Map[K, V]) Range(f func(key K, value V) bool) {
 func (m *Map[K, V]) Store(key K, value V) {
 	m.m.Store(key, value)
 }
+
+// CompareAndDelete deletes the entry for key only if its value is still old,
+// returning whether it deleted. Lets a caller evict its own entry without
+// clobbering a newer value stored under the same key (e.g. a reused PID).
+func (m *Map[K, V]) CompareAndDelete(key K, old V) (deleted bool) {
+	return m.m.CompareAndDelete(key, old)
+}

@@ -60,7 +60,9 @@ func (u *User) Execute(
 			lvl,
 			prefix,
 			sandboxID,
-			fmt.Sprintf("adduser --disabled-password --gecos \"\" %s", userArg),
+			// useradd is in shadow(-utils) on every supported distro family; the
+			// created user has no password (locked).
+			fmt.Sprintf("useradd --create-home --shell /bin/bash %s", userArg),
 			metadata.Context{
 				User:    "root",
 				EnvVars: cmdMetadata.EnvVars,
@@ -99,7 +101,27 @@ func addToSudoers(
 		lvl,
 		prefix,
 		sandboxID,
-		fmt.Sprintf("usermod -aG sudo %s", userArg),
+		// The admin group comes from the distro profile, persisted by
+		// provisioning; the NOPASSWD sudoers entry below is what actually
+		// grants privileges. Templates built before distro.env existed
+		// (FROM-template parents keep their rootfs) fall back to probing.
+		fmt.Sprintf(`if [ -f /usr/local/share/e2b/distro.env ]; then
+    . /usr/local/share/e2b/distro.env
+fi
+if [ -n "${E2B_ADMIN_GROUP:-}" ]; then
+    if ! getent group "$E2B_ADMIN_GROUP" >/dev/null; then
+        echo "the '$E2B_ADMIN_GROUP' group from the distro profile does not exist on this image" >&2
+        exit 1
+    fi
+    usermod -aG "$E2B_ADMIN_GROUP" %[1]s
+elif getent group sudo >/dev/null; then
+    usermod -aG sudo %[1]s
+elif getent group wheel >/dev/null; then
+    usermod -aG wheel %[1]s
+else
+    echo "neither the sudo nor the wheel group exists on this image" >&2
+    exit 1
+fi`, userArg),
 		metadata.Context{
 			User:    "root",
 			EnvVars: cmdMetadata.EnvVars,

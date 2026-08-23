@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -14,9 +15,13 @@ import (
 type Cgroup2Manager struct {
 	cgroupFDs   map[ProcessType]int
 	cgroupPaths map[ProcessType]string
+	rootPath    string
 }
 
-var _ Manager = (*Cgroup2Manager)(nil)
+var (
+	_ Manager     = (*Cgroup2Manager)(nil)
+	_ PathManager = (*Cgroup2Manager)(nil)
+)
 
 type cgroup2Config struct {
 	rootPath     string
@@ -71,7 +76,7 @@ func NewCgroup2Manager(opts ...Cgroup2ManagerOption) (*Cgroup2Manager, error) {
 		return nil, fmt.Errorf("failed to create cgroups: %w", err)
 	}
 
-	return &Cgroup2Manager{cgroupFDs: cgroupFDs, cgroupPaths: cgroupPaths}, nil
+	return &Cgroup2Manager{cgroupFDs: cgroupFDs, cgroupPaths: cgroupPaths, rootPath: config.rootPath}, nil
 }
 
 func createCgroups(configs cgroup2Config) (map[ProcessType]int, map[ProcessType]string, error) {
@@ -150,12 +155,110 @@ func (c Cgroup2Manager) GetFileDescriptor(procType ProcessType) (int, bool) {
 	return fd, ok
 }
 
+// Root is the cgroup2 mount point, cleaned. Every caller that classifies a walked path does so
+// by relative position under this root -- the audit's allowlist, the thaw's guest-frozen record,
+// the sweep's own bookkeeping -- and filepath.Rel is textual: a configured root with a trailing
+// slash or a "." segment yields a relative path that matches nothing, so the classification
+// silently reports everything as unknown. Cleaning here keeps that from depending on how the
+// caller happened to spell the mount point.
+func (c Cgroup2Manager) Root() string { return filepath.Clean(c.rootPath) }
+
+// PathOf reports where a ProcessType's cgroup lives, cleaned so it compares equal to the paths
+// a walk builds with filepath.Join.
+func (c Cgroup2Manager) PathOf(procType ProcessType) (string, bool) {
+	path, ok := c.cgroupPaths[procType]
+	if !ok {
+		return "", false
+	}
+
+	return filepath.Clean(path), true
+}
+
+// ChildrenOf lists immediate child cgroups. A cgroup with no children is not an error:
+// the walk visits leaves routinely.
+func (c Cgroup2Manager) ChildrenOf(path string) ([]string, error) {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return nil, err
+	}
+
+	children := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() {
+			children = append(children, filepath.Join(path, e.Name()))
+		}
+	}
+
+	return children, nil
+}
+
+func (c Cgroup2Manager) FreezeAt(path string) error {
+	return writeCgroupProp(filepath.Join(path, "cgroup.freeze"), "1")
+}
+
+func (c Cgroup2Manager) UnfreezeAt(path string) error {
+	return writeCgroupProp(filepath.Join(path, "cgroup.freeze"), "0")
+}
+
+// FrozenAt reads the settled state from cgroup.events, like Frozen does for a
+// ProcessType: 1 only once the tasks have stopped.
+func (c Cgroup2Manager) FrozenAt(path string) (bool, error) {
+	b, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
+	if err != nil {
+		return false, err
+	}
+
+	return frozenFromEvents(b), nil
+}
+
+// FreezeRequestedAt reads cgroup.freeze -- this cgroup's own requested state -- rather
+// than cgroup.events, which also reports frozen=1 when only an ancestor was frozen.
+func (c Cgroup2Manager) FreezeRequestedAt(path string) (bool, error) {
+	b, err := os.ReadFile(filepath.Join(path, "cgroup.freeze"))
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(string(b)) == "1", nil
+}
+
 func (c Cgroup2Manager) Freeze(procType ProcessType) error {
 	return c.setFreezeState(procType, "1")
 }
 
 func (c Cgroup2Manager) Unfreeze(procType ProcessType) error {
 	return c.setFreezeState(procType, "0")
+}
+
+// Frozen reads the "frozen" field of the cgroup's cgroup.events. The file lists one
+// "key value" pair per line; absence of the key is reported as not frozen, which is
+// what a cgroup that has never been frozen looks like.
+func (c Cgroup2Manager) Frozen(procType ProcessType) (bool, error) {
+	path, ok := c.cgroupPaths[procType]
+	if !ok {
+		return false, fmt.Errorf("unknown process type: %s", procType)
+	}
+
+	b, err := os.ReadFile(filepath.Join(path, "cgroup.events"))
+	if err != nil {
+		return false, err
+	}
+
+	return frozenFromEvents(b), nil
+}
+
+// frozenFromEvents pulls the "frozen" field out of a cgroup.events body. The file lists
+// one "key value" pair per line; absence of the key is reported as not frozen, which is
+// what a cgroup that has never been frozen looks like.
+func frozenFromEvents(b []byte) bool {
+	for line := range strings.SplitSeq(string(b), "\n") {
+		key, value, found := strings.Cut(strings.TrimSpace(line), " ")
+		if found && key == "frozen" {
+			return value == "1"
+		}
+	}
+
+	return false
 }
 
 func (c Cgroup2Manager) setFreezeState(procType ProcessType, value string) error {

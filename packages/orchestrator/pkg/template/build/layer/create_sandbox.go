@@ -151,6 +151,13 @@ func (cs *CreateSandbox) Sandbox(
 			SystemdToKernelLogs: false,
 			KvmClock:            kvmClock,
 			IoEngine:            cs.ioEngine,
+			// Every layer boot in a build gets the same arguments: base, each RUN
+			// step, and the finalize boot whose memory becomes the template all go
+			// through here. That is deliberate — a step that observes the kernel must
+			// see the one the template ships with, which is also why the arguments
+			// are part of the layer cache key. Only the BusyBox provisioning boot is
+			// left on the default, because its VM is discarded.
+			CmdlineArgs: layerExecutor.Config.CmdlineArgs,
 		},
 		nil,
 		cs.preBootFn,

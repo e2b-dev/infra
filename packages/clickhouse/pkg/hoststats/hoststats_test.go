@@ -65,7 +65,7 @@ func TestMultiDelivery_CloseAllTargets(t *testing.T) {
 	b := &fakeDelivery{}
 	md := NewMultiDelivery(a, b)
 
-	err := md.Close(context.Background())
+	err := md.Close(t.Context())
 
 	require.Error(t, err)
 	require.ErrorContains(t, err, "a closed badly")
@@ -101,7 +101,7 @@ func TestMultiDelivery_CloseJoinsAllErrors(t *testing.T) {
 	b := &fakeDelivery{closeErr: errB}
 	md := NewMultiDelivery(a, b)
 
-	err := md.Close(context.Background())
+	err := md.Close(t.Context())
 
 	require.Error(t, err)
 	require.ErrorIs(t, err, errA)
@@ -115,7 +115,7 @@ func TestMultiDelivery_EmptyTargets(t *testing.T) {
 
 	md := NewMultiDelivery()
 	assert.NoError(t, md.Push(SandboxHostStat{}))
-	assert.NoError(t, md.Close(context.Background()))
+	assert.NoError(t, md.Close(t.Context()))
 }
 
 func TestMultiDelivery_SingleTargetBypassesWrapper(t *testing.T) {
@@ -131,6 +131,6 @@ func TestMultiDelivery_SingleTargetBypassesWrapper(t *testing.T) {
 	require.NoError(t, md.Push(stat))
 	assert.Equal(t, []SandboxHostStat{stat}, single.pushed)
 
-	require.NoError(t, md.Close(context.Background()))
+	require.NoError(t, md.Close(t.Context()))
 	assert.True(t, single.closed)
 }

@@ -68,6 +68,7 @@ locals {
     REDIS_URL                    = local.redis_url
     REDIS_CLUSTER_URL            = local.redis_cluster_url
     REDIS_TLS_CA_BASE64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_TLS_ENABLED            = local.redis_tls_enabled
     BILLING_SERVER_URL           = local.dashboard_api_billing_server_url
     BILLING_SERVER_API_TOKEN     = local.dashboard_api_billing_server_api_token
     OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:${local.otel_collector_grpc_port}"

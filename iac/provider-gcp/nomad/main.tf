@@ -110,10 +110,12 @@ module "redis" {
 }
 
 resource "nomad_job" "docker_reverse_proxy" {
+  count = var.docker_reverse_proxy_enabled ? 1 : 0
+
   jobspec = templatefile("${path.module}/jobs/docker-reverse-proxy.hcl",
     {
       node_pool         = var.api_node_pool
-      image_name        = data.google_artifact_registry_docker_image.docker_reverse_proxy_image.self_link
+      image_name        = data.google_artifact_registry_docker_image.docker_reverse_proxy_image[0].self_link
       port_number       = var.docker_reverse_proxy_port.port
       port_name         = var.docker_reverse_proxy_port.name
       health_check_path = var.docker_reverse_proxy_port.health_path

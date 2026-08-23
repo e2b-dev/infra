@@ -12,19 +12,25 @@ import (
 )
 
 const createVolume = `-- name: CreateVolume :one
-INSERT INTO volumes (team_id, volume_type, name)
-VALUES ($1, $2, $3)
+INSERT INTO volumes (id, team_id, volume_type, name)
+VALUES ($1, $2, $3, $4)
 RETURNING id, team_id, name, volume_type, created_at
 `
 
 type CreateVolumeParams struct {
+	ID         uuid.UUID
 	TeamID     uuid.UUID
 	VolumeType string
 	Name       string
 }
 
 func (q *Queries) CreateVolume(ctx context.Context, arg CreateVolumeParams) (Volume, error) {
-	row := q.db.QueryRow(ctx, createVolume, arg.TeamID, arg.VolumeType, arg.Name)
+	row := q.db.QueryRow(ctx, createVolume,
+		arg.ID,
+		arg.TeamID,
+		arg.VolumeType,
+		arg.Name,
+	)
 	var i Volume
 	err := row.Scan(
 		&i.ID,

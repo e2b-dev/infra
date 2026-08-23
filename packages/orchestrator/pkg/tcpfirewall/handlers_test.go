@@ -3,7 +3,9 @@
 package tcpfirewall
 
 import (
+	"fmt"
 	"net"
+	"syscall"
 	"testing"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
@@ -458,6 +460,63 @@ func TestAlwaysDeniedCIDRs(t *testing.T) {
 			got := isIPInAlwaysDeniedCIDRs(ip)
 			if got != tt.want {
 				t.Errorf("isIPInDeniedCIDRs(%s) = %v, want %v", tt.ip, got, tt.want)
+			}
+		})
+	}
+}
+
+// Reads IP_TOS back off a real socket, so the shift is checked against the kernel.
+func TestMarkDSCP_SetsSocketTOS(t *testing.T) {
+	t.Parallel()
+
+	ln, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+
+	for _, tos := range []int{0, 8 << 2, 16 << 2, 63 << 2} {
+		t.Run(fmt.Sprintf("tos_%#x", tos), func(t *testing.T) {
+			t.Parallel()
+
+			dialer := &net.Dialer{
+				Control: func(_, _ string, c syscall.RawConn) error { return markDSCP(c, tos) },
+			}
+
+			conn, err := dialer.DialContext(t.Context(), "tcp4", ln.Addr().String())
+			if err != nil {
+				t.Fatalf("dial: %v", err)
+			}
+			t.Cleanup(func() { _ = conn.Close() })
+
+			raw, err := conn.(*net.TCPConn).SyscallConn()
+			if err != nil {
+				t.Fatalf("syscall conn: %v", err)
+			}
+
+			var got int
+			var sockErr error
+			if err := raw.Control(func(fd uintptr) {
+				got, sockErr = syscall.GetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS)
+			}); err != nil {
+				t.Fatalf("control: %v", err)
+			}
+			if sockErr != nil {
+				t.Fatalf("getsockopt IP_TOS: %v", sockErr)
+			}
+
+			if got != tos {
+				t.Errorf("IP_TOS = %#x, want %#x", got, tos)
 			}
 		})
 	}

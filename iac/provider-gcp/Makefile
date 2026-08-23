@@ -55,6 +55,7 @@ tf_vars := \
 	$(call tfvar, PREFIX) \
 	$(call tfvar, CORE_IMAGE_REVISION) \
 	$(call tfvar, ORCHESTRATOR_ENABLED) \
+	$(call tfvar, DOCKER_REVERSE_PROXY_ENABLED) \
 	$(call tfvar, API_INTERNAL_GRPC_PORT) \
 	$(call tfvar, ALLOW_SANDBOX_INTERNAL_CIDRS) \
 	$(call tfvar, API_SERVER_COUNT) \

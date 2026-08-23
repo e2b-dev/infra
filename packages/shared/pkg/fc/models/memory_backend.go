@@ -28,6 +28,9 @@ type MemoryBackend struct {
 
 	// When true, guest memory is backed by a memfd and its file descriptor is sent to the UFFD handler over the UFFD socket alongside the UFFD itself. Only valid when 'backend_type' is 'Uffd'.
 	UseMemfd *bool `json:"use_memfd,omitempty"`
+
+	// When true, guest memory delivers synchronous userfault write-protect events to the UFFD handler instead of the kernel resolving them in place (UFFD_FEATURE_WP_ASYNC is not requested). The handler must resolve WP events. Only valid when 'backend_type' is 'Uffd'.
+	UseSyncWp *bool `json:"use_sync_wp,omitempty"`
 }
 
 // Validate validates this memory backend

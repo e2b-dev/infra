@@ -61,6 +61,36 @@ func TestFirecrackerPath_NeitherExists(t *testing.T) {
 	assert.Equal(t, filepath.Join(dir, "v1.12.0", "firecracker"), result)
 }
 
+func TestFirecrackerPath_E2BVersionFormat(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	arch := utils.TargetArch()
+
+	// The version is an opaque path segment: vX.Y-a.b.c resolves exactly like {tag}_{sha}.
+	archDir := filepath.Join(dir, "v1.14-0.1.0", arch)
+	require.NoError(t, os.MkdirAll(archDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(archDir, "firecracker"), []byte("binary"), 0o755))
+
+	config := cfg.BuilderConfig{FirecrackerVersionsDir: dir}
+	fc := Config{FirecrackerVersion: "v1.14-0.1.0"}
+
+	result := fc.FirecrackerPath(config)
+
+	assert.Equal(t, filepath.Join(dir, "v1.14-0.1.0", arch, "firecracker"), result)
+}
+
+func TestFirecrackerPath_E2BVersionFormatMissingBinary(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+
+	config := cfg.BuilderConfig{FirecrackerVersionsDir: dir}
+	fc := Config{FirecrackerVersion: "v1.14-0.1.0"}
+
+	result := fc.FirecrackerPath(config)
+
+	assert.Equal(t, filepath.Join(dir, "v1.14-0.1.0", "firecracker"), result)
+}
+
 func TestHostKernelPath_ArchPrefixed(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()

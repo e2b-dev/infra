@@ -1,3 +1,9 @@
+# Runs the integration test suite.
+#
+# The suite flow lives in the composite action
+# .github/actions/integration-tests; only the matrix/sharding strategy and
+# the result uploads live here.
+
 name: Integration Tests
 
 on:
@@ -10,6 +16,11 @@ on:
       run-tests:
         type: boolean
         description: "Whether to run integration tests"
+        required: false
+        default: true
+      full-matrix:
+        type: boolean
+        description: "When true (main), run all three compression configs unsharded. When false (PRs), split the full-suite uncompressed config into package shards on parallel runners to cut wall time; the compressed configs run their allow-list unsharded either way."
         required: false
         default: true
     secrets:
@@ -25,52 +36,59 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - name: uncompressed
-            compress_enabled: "false"
-            compress_type: ""
-            compress_level: ""
-            compress_workers: ""
-            dedup_mode: "default"
-            disable_memfd: "true"
-          - name: zstd1
-            compress_enabled: "true"
-            compress_type: "zstd"
-            compress_level: "1"
-            compress_workers: "8"
-            dedup_mode: "best_effort"
-            disable_memfd: "false"
-          - name: lz4
-            compress_enabled: "true"
-            compress_type: "lz4"
-            compress_level: "0"
-            compress_workers: "8"
-            dedup_mode: "direct_io"
-            disable_memfd: "false"
+        # Coverage is split along two independent axes:
+        #
+        #   - Which tests run per config: the uncompressed config runs the
+        #     whole suite; the compressed configs (zstd1/lz4) only re-run the
+        #     allow-listed tests whose subject is writing or reading back a
+        #     snapshot, which is all the compression knobs can affect (see
+        #     scripts/compression-tests.tsv).
+        #   - Sharding for wall time (PRs only): each host saturates at
+        #     go test -parallel=4 (Firecracker boots + compression), so the
+        #     only way to cut wall time is more hosts. The full-suite
+        #     uncompressed config is split into package shards - the
+        #     TestTemplateBuild* tests (real FC builds) in two halves by name
+        #     prefix, api/sandboxes plus the light packages on their own
+        #     runner, everything else on the last one. The compressed
+        #     allow-list runs are split at the package level: the templates
+        #     package (real-build snapshot tests) vs everything else. Shards
+        #     are resolved by TEST_SHARD in tests/integration/Makefile.
+        #
+        # On push to main (full-matrix), all three configs run unsharded, one
+        # job per config, as before.
+        include: >-
+          ${{ fromJSON(inputs.full-matrix
+            && '[
+                  {"name": "uncompressed", "shard": "all", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "zstd1", "shard": "all", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "lz4", "shard": "all", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
+                ]'
+            || '[
+                  {"name": "uncompressed-templates-1", "shard": "templates-builds-1", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "uncompressed-templates-2", "shard": "templates-builds-2", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "uncompressed-sandboxes", "shard": "sandboxes", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "uncompressed-rest", "shard": "rest", "compress_enabled": "false", "compress_type": "", "compress_level": "", "compress_workers": "", "dedup_mode": "default", "disable_memfd": "true"},
+                  {"name": "zstd1-templates", "shard": "templates", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "zstd1-other", "shard": "no-templates", "compress_enabled": "true", "compress_type": "zstd", "compress_level": "1", "compress_workers": "8", "dedup_mode": "best_effort", "disable_memfd": "false"},
+                  {"name": "lz4-templates", "shard": "templates", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"},
+                  {"name": "lz4-other", "shard": "no-templates", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
+                ]') }}
     env:
       # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+      # Build race-instrumented but optimized binaries: nobody attaches a
+      # debugger in CI, and -N -l slows both compilation and every test at
+      # runtime. Set at the job level so the build-packages step and the
+      # rebuilds inside the run/run-debug targets use identical flags (the
+      # second build is then a Go build cache no-op).
+      DEBUG_GCFLAGS: ""
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Build Packages
-        uses: ./.github/actions/build-packages
-
-      - name: Initialize Host
-        uses: ./.github/actions/host-init
-
-      - name: Build Template
-        uses: ./.github/actions/build-sandbox-template
-        with:
-          compress_enabled: ${{ matrix.compress_enabled }}
-          compress_type: ${{ matrix.compress_type }}
-          compress_level: ${{ matrix.compress_level }}
-          compress_workers: ${{ matrix.compress_workers }}
-
-      - name: Start Services
-        uses: ./.github/actions/start-services
+      - name: Run integration tests
+        uses: ./.github/actions/integration-tests
         with:
           compress_enabled: ${{ matrix.compress_enabled }}
           compress_type: ${{ matrix.compress_type }}
@@ -78,50 +96,16 @@ jobs:
           compress_workers: ${{ matrix.compress_workers }}
           dedup_mode: ${{ matrix.dedup_mode }}
           disable_memfd: ${{ matrix.disable_memfd }}
-
-      - name: Run Integration Tests
-        env:
-          TESTS_API_SERVER_URL: "http://localhost:3000"
-          TESTS_API_INTERNAL_GRPC_ADDRESS: "localhost:5009"
-          TESTS_ORCHESTRATOR_HOST: "localhost:5008"
-          TESTS_ENVD_PROXY: "http://localhost:3002"
-          TESTS_CLIENT_PROXY: "http://localhost:3002"
-        run: |
-          # Run the integration tests
-          make test-integration
-
-      - name: Check for Data Races in Service Logs
-        if: always()
-        run: |
-          echo "Checking service logs for data races..."
-          RACE_FOUND=0
-
-          for log_file in ~/logs/*.log; do
-            if [ -f "$log_file" ]; then
-              if grep -q "WARNING: DATA RACE" "$log_file"; then
-                echo "::error::Data race detected in $(basename "$log_file")"
-                echo "=========================================="
-                echo "DATA RACES IN: $log_file"
-                echo "=========================================="
-                # Extract and print all data race blocks
-                grep -A 30 "WARNING: DATA RACE" "$log_file" | head -200
-                echo ""
-                RACE_FOUND=1
-              fi
-            fi
-          done
-
-          if [ "$RACE_FOUND" -eq 1 ]; then
-            echo "::error::Data races were detected in service logs. See above for details."
-            exit 1
-          else
-            echo "No data races detected in service logs."
-          fi
-        shell: bash
+          test-shard: ${{ matrix.shard }}
+          # The uncompressed config runs the whole suite. The compressed
+          # configs only re-run the tests whose subject is writing or reading
+          # back a snapshot, which is all the compression knobs can affect —
+          # the allow-list documents the criteria and the code paths involved.
+          tests-only: ${{ matrix.compress_enabled == 'true' && 'scripts/compression-tests.tsv' || '' }}
 
       - name: Upload Test Results
         if: ${{ always() && inputs.publish == true }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Integration Tests Results (${{ matrix.name }})
           path: ./tests/integration/test-results.xml
@@ -138,7 +122,7 @@ jobs:
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: Service Logs (${{ matrix.name }})
           path: ~/logs/*.log

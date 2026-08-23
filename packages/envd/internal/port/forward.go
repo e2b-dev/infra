@@ -11,11 +11,13 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"sync"
 	"syscall"
 
 	"github.com/rs/zerolog"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
+	"github.com/e2b-dev/infra/packages/envd/internal/services/spec/upgrade"
 )
 
 type PortState string
@@ -29,6 +31,10 @@ var defaultGatewayIP = net.IPv4(169, 254, 0, 21)
 
 type PortToForward struct {
 	socat *exec.Cmd
+	// socatPid is the pid of a socat re-adopted across a live-upgrade, for which
+	// there is no *exec.Cmd (the old envd's runtime — and its Wait goroutine —
+	// were replaced by execve). 0 for socats this envd spawned itself.
+	socatPid int
 	// Process ID of the process that's listening on port.
 	pid int32
 	// family version of the ip.
@@ -37,9 +43,24 @@ type PortToForward struct {
 	port   uint32
 }
 
+// socatPID returns the pid of the forwarding socat regardless of whether it was
+// spawned by this envd (*exec.Cmd) or re-adopted across a live-upgrade (pid
+// only). Returns 0 when there is no socat.
+func (p *PortToForward) socatPID() int {
+	if p.socat != nil && p.socat.Process != nil {
+		return p.socat.Process.Pid
+	}
+
+	return p.socatPid
+}
+
 type Forwarder struct {
 	logger        *zerolog.Logger
 	cgroupManager cgroups.Manager
+	// mu guards the ports map. The scan loop is single-goroutine, but the
+	// live-upgrade export (ExportForwards) reads the map from the upgrade
+	// goroutine concurrently, so map access is serialized.
+	mu sync.Mutex
 	// Map of ports that are being currently forwarded.
 	ports             map[string]*PortToForward
 	scannerSubscriber *ScannerSubscriber
@@ -85,6 +106,11 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 			if !ok {
 				return
 			}
+
+			// Serialize the whole refresh against a concurrent ExportForwards
+			// (live-upgrade). stop/startPortForwarding below are called with the
+			// lock held and must not take it themselves.
+			f.mu.Lock()
 
 			// Now we are going to refresh all ports that are being forwarded in the `ports` map. Maybe add new ones
 			// and maybe remove some.
@@ -133,6 +159,8 @@ func (f *Forwarder) StartForwarding(ctx context.Context) {
 					f.stopPortForwarding(v)
 				}
 			}
+
+			f.mu.Unlock()
 		}
 	}
 }
@@ -186,14 +214,15 @@ func (f *Forwarder) startPortForwarding(ctx context.Context, p *PortToForward) {
 }
 
 func (f *Forwarder) stopPortForwarding(p *PortToForward) {
-	if p.socat == nil {
+	pid := p.socatPID()
+	if pid <= 0 {
 		return
 	}
 
-	defer func() { p.socat = nil }()
+	defer func() { p.socat = nil; p.socatPid = 0 }()
 
 	logger := f.logger.With().
-		Str("socatCmd", p.socat.String()).
+		Int("socatPid", pid).
 		Int32("pid", p.pid).
 		Uint32("family", p.family).
 		IPAddr("sourceIP", f.sourceIP.To4()).
@@ -202,13 +231,98 @@ func (f *Forwarder) stopPortForwarding(p *PortToForward) {
 
 	logger.Debug().Msg("Stopping port forwarding")
 
-	if err := syscall.Kill(-p.socat.Process.Pid, syscall.SIGKILL); err != nil {
+	// Kill the socat's process group. A re-adopted socat has no *exec.Cmd Wait
+	// goroutine to reap it, so ImportForwards started a wait4 reaper for it; a
+	// self-spawned socat is reaped by its startPortForwarding Wait goroutine.
+	if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
 		logger.Error().Err(err).Msg("Failed to kill process group")
 
 		return
 	}
 
 	logger.Debug().Msg("Stopped port forwarding")
+}
+
+// ExportForwards snapshots the active port-forwards as typed ForwardedPort
+// messages, carried across an envd live-upgrade. The socat children survive the
+// same-PID execve; carrying their pids lets the new forwarder re-adopt them
+// (ImportForwards) instead of spawning duplicate socats that would contend on
+// the same bind address and leak the originals as un-reaped zombies.
+func (f *Forwarder) ExportForwards() []*upgrade.ForwardedPort {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.exportLocked()
+}
+
+// ExportForwardsHold is ExportForwards but keeps the forwarder mutex held,
+// returning a release func the caller invokes to resume scanning. The
+// live-upgrade path holds it from the snapshot through the execve so the scan
+// loop cannot spawn a new socat in that window — a socat started after the
+// snapshot would be orphaned by the swap (never carried, never re-adopted) or
+// duplicate a port the new envd re-adopts, contending on the same bind address.
+// A successful execve replaces this process and the held lock vanishes with it;
+// on failure the caller's release restores scanning under the old envd.
+func (f *Forwarder) ExportForwardsHold() ([]*upgrade.ForwardedPort, func()) {
+	f.mu.Lock()
+
+	return f.exportLocked(), f.mu.Unlock
+}
+
+// exportLocked snapshots the active port-forwards. The caller must hold f.mu.
+func (f *Forwarder) exportLocked() []*upgrade.ForwardedPort {
+	out := make([]*upgrade.ForwardedPort, 0, len(f.ports))
+	for key, p := range f.ports {
+		pid := p.socatPID()
+		if pid <= 0 {
+			continue
+		}
+		out = append(out, &upgrade.ForwardedPort{
+			Key:         key,
+			Port:        p.port,
+			ListenerPid: p.pid,
+			Family:      p.family,
+			SocatPid:    int32(pid),
+		})
+	}
+
+	return out
+}
+
+// ImportForwards re-adopts the socats carried across a live-upgrade: it seeds the
+// ports map so the next scan recognizes each already-forwarded port (and does
+// not spawn a duplicate socat), and starts a reaper for each re-adopted socat
+// (there is no surviving *exec.Cmd Wait goroutine for it). It MUST run before
+// StartForwarding so the seeding is race-free. A socat that did not survive the
+// handover is skipped, so the next scan respawns a fresh one for the still-open
+// port.
+func (f *Forwarder) ImportForwards(forwards []*upgrade.ForwardedPort) (readopted int) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	for _, fp := range forwards {
+		pid := int(fp.GetSocatPid())
+		if pid <= 0 {
+			continue
+		}
+		// Only re-adopt a socat that is still alive (kill -0). One that exited
+		// during the handover window is left out so the next scan respawns rather
+		// than recording a dead socat as "forwarded".
+		if syscall.Kill(pid, 0) != nil {
+			continue
+		}
+		f.ports[fp.GetKey()] = &PortToForward{
+			pid:      fp.GetListenerPid(),
+			port:     fp.GetPort(),
+			family:   fp.GetFamily(),
+			socatPid: pid,
+			state:    PortStateForward,
+		}
+		go reapAdoptedSocat(pid)
+		readopted++
+	}
+
+	return readopted
 }
 
 func familyToIPVersion(family uint32) uint32 {

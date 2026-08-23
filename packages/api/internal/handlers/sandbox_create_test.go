@@ -517,6 +517,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 			for _, v := range tc.database {
 				_, err := db.SqlcClient.CreateVolume(t.Context(),
 					queries.CreateVolumeParams{
+						ID:         uuid.New(),
 						Name:       v.Name,
 						TeamID:     teamID,
 						VolumeType: v.VolumeType,
@@ -548,6 +549,7 @@ func TestOrchestrator_convertVolumeMounts(t *testing.T) {
 
 		dbVolume, err := db.SqlcClient.CreateVolume(t.Context(),
 			queries.CreateVolumeParams{
+				ID:         uuid.New(),
 				Name:       "vol1",
 				TeamID:     teamID,
 				VolumeType: "local",
@@ -625,7 +627,6 @@ func TestPostSandboxes_MissingBareAliasUsesPromotedFallbackKey(t *testing.T) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -686,7 +687,6 @@ func TestPostSandboxes_PrivateTemplateHidesAccessDenied(t *testing.T) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -741,7 +741,6 @@ func assertMissingTagDisclosure(t *testing.T, public bool, alias string) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -803,7 +802,6 @@ func assertMissingDefaultTagDisclosure(t *testing.T) {
 		Limits: &authtypes.TeamLimits{MaxLengthHours: 24},
 	})
 
-	//nolint:contextcheck // PostSandboxes reads ctx from ginCtx.Request.Context().
 	store.PostSandboxes(ginCtx)
 
 	require.Equal(t, http.StatusNotFound, recorder.Code)
@@ -874,6 +872,16 @@ func simpleRule(headers map[string]string) api.SandboxNetworkRule {
 	}
 }
 
+// markerRun concatenates count unique secret markers starting at index from.
+func markerRun(from, count int) string {
+	var builder strings.Builder
+	for i := from; i < from+count; i++ {
+		fmt.Fprintf(&builder, "${e2b.secrets.name-%d}", i)
+	}
+
+	return builder.String()
+}
+
 func TestValidateNetworkRules(t *testing.T) {
 	t.Parallel()
 
@@ -886,6 +894,7 @@ func TestValidateNetworkRules(t *testing.T) {
 		setupFF     func(t *testing.T) *handlersmocks.MockFeatureFlagsClient
 		wantCode    int
 		wantMsg     string // substring of ClientMsg; empty means expect no error
+		notWant     []string
 	}{
 		// ── nil / empty ──────────────────────────────────────────────────────────
 		{
@@ -1027,6 +1036,35 @@ func TestValidateNetworkRules(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 			wantMsg:  fmt.Sprintf("at most %d transform rule", maxNetworkRuleTransformsPerDomain),
 		},
+		// ── secret marker count ────────────────────────────────────────────────────
+		{
+			name:        "thirty-two unique secret markers in one domain is valid",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{"X-Secrets": markerRun(0, 32)})},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "thirty-three unique secret markers returns 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{"X-Secrets": markerRun(0, 33)})},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "references more than 32 secrets",
+		},
+		{
+			name:        "case-variant marker spellings count once",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					"X-Secrets": markerRun(0, 32) + "${e2b.secrets.NAME-0}",
+				})},
+			}),
+			setupFF: ffEnabled,
+		},
 		// ── nil transform (no headers to check) ───────────────────────────────────
 		{
 			name:        "nil transform in rule is valid",
@@ -1092,6 +1130,19 @@ func TestValidateNetworkRules(t *testing.T) {
 			wantCode: http.StatusBadRequest,
 			wantMsg:  "maximum length",
 		},
+		{
+			name:        "malformed known placeholder returns generic 400",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.openai.com": {simpleRule(map[string]string{
+					"Authorization": "Bearer ${e2b.secrets.private-canary",
+				})},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "Network transform header contains a malformed E2B placeholder.",
+			notWant:  []string{"${e2b.secrets.", "private-canary"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1110,6 +1161,10 @@ func TestValidateNetworkRules(t *testing.T) {
 			if assert.NotNil(t, apiErr) {
 				assert.Equal(t, tt.wantCode, apiErr.Code)
 				assert.Contains(t, apiErr.ClientMsg, tt.wantMsg)
+				for _, forbidden := range tt.notWant {
+					assert.NotContains(t, apiErr.ClientMsg, forbidden)
+					assert.NotContains(t, apiErr.Err.Error(), forbidden)
+				}
 			}
 		})
 	}

@@ -50,6 +50,8 @@ data "google_secret_manager_secret_version" "routing_domains" {
 }
 
 locals {
+  # CA implies TLS: the factory refuses a CA without the flag.
+  redis_tls_enabled  = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data) != "" ? "true" : "false"
   additional_domains = nonsensitive(jsondecode(data.google_secret_manager_secret_version.routing_domains.secret_data))
 
   clickhouse_username          = "e2b"
@@ -106,6 +108,7 @@ locals {
     REDIS_POOL_SIZE     = "160"
     REDIS_CLUSTER_URL   = local.redis_cluster_url
     REDIS_TLS_CA_BASE64 = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_TLS_ENABLED   = local.redis_tls_enabled
     REDIS_URL           = local.redis_url
 
     LAUNCH_DARKLY_API_KEY = trimspace(data.google_secret_manager_secret_version.launch_darkly_api_key.secret_data)
@@ -137,6 +140,7 @@ locals {
     REDIS_POOL_SIZE              = "40"
     REDIS_CLUSTER_URL            = local.redis_cluster_url
     REDIS_TLS_CA_BASE64          = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_TLS_ENABLED            = local.redis_tls_enabled
     REDIS_URL                    = local.redis_url
     # Used by in-cluster client-proxy to call API ResumeSandbox over gRPC.
     API_INTERNAL_GRPC_ADDRESS = "api-internal-grpc.service.consul:${var.api_internal_grpc_port}"
@@ -153,6 +157,7 @@ locals {
     REDIS_POOL_SIZE               = "10"
     REDIS_CLUSTER_URL             = local.redis_cluster_url
     REDIS_TLS_CA_BASE64           = trimspace(data.google_secret_manager_secret_version.redis_tls_ca_base64.secret_data)
+    REDIS_TLS_ENABLED             = local.redis_tls_enabled
     REDIS_URL                     = local.redis_url
     GIN_MODE                      = "release"
     CONSUL_TOKEN                  = module.init.consul_acl_token_secret
@@ -497,6 +502,7 @@ module "nomad" {
   dashboard_api_env_vars = local.dashboard_api_env_vars
 
   # Docker reverse proxy
+  docker_reverse_proxy_enabled  = var.docker_reverse_proxy_enabled
   docker_reverse_proxy_port     = var.docker_reverse_proxy_port
   docker_reverse_proxy_env_vars = local.docker_reverse_proxy_env_vars
 

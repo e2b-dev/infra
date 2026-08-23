@@ -1,0 +1,188 @@
+name: Bump the NixOS base image nixpkgs pin
+
+# Opens a PR moving the base image's nixpkgs pin to the current release of the
+# series it is already on. It never builds and never publishes: the point is to
+# turn "the pinned userland is getting stale" into a reviewable diff that CI can
+# run the distro boot test against, not to ship an unattended image.
+#
+# Publishing stays manual (nixos-base-image.yml) and follows the merge, because
+# the publish job's own gate only inspects the rootfs tar. A tar can pass every
+# assertion and still not boot — observed when NixOS 25.05 turned
+# $toplevel/init into the systemd binary.
+
+on:
+  schedule:
+    # 06:00 UTC on the 1st. Monthly: nixpkgs release branches move constantly
+    # (100+ commits/month on nixos-26.05), but the channel — the revision that
+    # has been through upstream's own tests, and the only thing worth pinning —
+    # is re-cut far less often, so a tighter cadence mostly opens empty PRs.
+    - cron: "0 6 1 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+env:
+  BUILD_SH: packages/orchestrator/pkg/template/build/phases/base/distro/nixos-base-image/build.sh
+
+jobs:
+  bump:
+    name: Propose a nixpkgs pin bump
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      # An App token, not GITHUB_TOKEN: PRs opened with GITHUB_TOKEN do not
+      # trigger workflows, and a bump PR nobody can see CI for is worthless.
+      - name: Generate GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ vars.VERSION_BUMPER_APPID }}
+          private-key: ${{ secrets.VERSION_BUMPER_SECRET }}
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Resolve the current channel release
+        id: resolve
+        run: |
+          set -euo pipefail
+          read_default() {
+            # NIXOS_SERIES=${NIXOS_SERIES:-26.05} -> 26.05
+            sed -n "s/^$1=\${$1:-\(.*\)}$/\1/p" "${BUILD_SH}"
+          }
+          series=$(read_default NIXOS_SERIES)
+          current=$(read_default NIXPKGS_RELEASE)
+          if [[ -z "${series}" || -z "${current}" ]]; then
+            echo "::error::Could not read NIXOS_SERIES/NIXPKGS_RELEASE from ${BUILD_SH}." \
+                 "The pin format changed — this job needs updating alongside it."
+            exit 1
+          fi
+
+          # channels.nixos.org redirects to the release directory, whose name is
+          # the release id we pin.
+          location=$(curl -sI --max-time 30 "https://channels.nixos.org/nixos-${series}" |
+                     tr -d '\r' | sed -n 's/^[Ll]ocation: //p')
+          latest=$(basename "${location:-}")
+          if [[ -z "${latest}" ]]; then
+            echo "::error::No redirect from channels.nixos.org for nixos-${series};" \
+                 "cannot tell what the current release is. Failing rather than guessing."
+            exit 1
+          fi
+
+          # Never let the bot cross a series. A series bump is a different kind
+          # of change: 24.05 -> 26.05 replaced the stage-2 init outright and
+          # broke the boot until an activation shim was added. That needs a
+          # human, a `stateVersion` decision and a real boot verification.
+          if [[ "${latest}" != nixos-${series}.* ]]; then
+            echo "::error::Channel nixos-${series} now resolves to '${latest}', which is not" \
+                 "in series ${series}. A series bump must be done by hand — see the" \
+                 "nixpkgs pin section of the base image README."
+            exit 1
+          fi
+
+          if [[ "${latest}" == "${current}" ]]; then
+            echo "Pin is already current (${current}); nothing to do."
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # A release directory can exist before its nixexprs tarball is served.
+          # Proposing a pin the build cannot fetch would just burn a CI run.
+          url="https://releases.nixos.org/nixos/${series}/${latest}/nixexprs.tar.xz"
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 -I "${url}")
+          if [[ "${code}" != "200" ]]; then
+            echo "::error::${url} returned HTTP ${code}; the release is not fully published yet."
+            exit 1
+          fi
+
+          {
+            echo "changed=true"
+            echo "series=${series}"
+            echo "current=${current}"
+            echo "latest=${latest}"
+            echo "branch=chore/nixos-pin-${latest}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Pin bump available: ${current} -> ${latest}"
+
+      - name: Open the bump PR
+        if: ${{ steps.resolve.outputs.changed == 'true' }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.resolve.outputs.branch }}
+          CURRENT: ${{ steps.resolve.outputs.current }}
+          LATEST: ${{ steps.resolve.outputs.latest }}
+          SERIES: ${{ steps.resolve.outputs.series }}
+        run: |
+          set -euo pipefail
+          # Any state, not just open: a closed PR for this exact release means a
+          # human rejected it, and re-proposing it every month would be nagging.
+          # The branch name carries the release id, so once upstream cuts a newer
+          # one this stops mattering by itself.
+          if [[ "$(gh pr list --head "${BRANCH}" --state all --json number --jq 'length')" != "0" ]]; then
+            echo "A PR for ${BRANCH} already exists; not re-proposing."
+            exit 0
+          fi
+
+          # No PR ever existed, but the branch might still be there from a run
+          # that pushed and then failed. Left in place it makes the push below
+          # non-fast-forward and the bump would never reopen.
+          if git ls-remote --exit-code --heads origin "${BRANCH}" >/dev/null 2>&1; then
+            echo "Deleting orphaned remote branch ${BRANCH} (no PR references it)."
+            git push origin --delete "${BRANCH}"
+          fi
+
+          # The release id appears in build.sh (the functional pin) and in the
+          # README's pin table. Replace it in both, or the docs silently drift —
+          # the table is the only place a reader looks up what is pinned.
+          before=$(sha256sum "${BUILD_SH}")
+          sed -i "s|^NIXPKGS_RELEASE=\${NIXPKGS_RELEASE:-${CURRENT}}$|NIXPKGS_RELEASE=\${NIXPKGS_RELEASE:-${LATEST}}|" "${BUILD_SH}"
+          if [[ "$(sha256sum "${BUILD_SH}")" == "${before}" ]]; then
+            echo "::error::Pin line did not change; the assignment format in ${BUILD_SH} moved."
+            exit 1
+          fi
+          readme="$(dirname "${BUILD_SH}")/README.md"
+          sed -i "s|${CURRENT}|${LATEST}|g" "${readme}"
+          if grep -q "${CURRENT}" "${BUILD_SH}" "${readme}"; then
+            echo "::error::'${CURRENT}' still appears after the bump:"
+            grep -n "${CURRENT}" "${BUILD_SH}" "${readme}"
+            exit 1
+          fi
+
+          git config user.name "e2b-bot"
+          git config user.email "bot@e2b.dev"
+          git checkout -b "${BRANCH}"
+
+          cat > /tmp/commit-msg.txt <<MSG
+          chore(orch): bump the NixOS base image nixpkgs pin to ${LATEST}
+
+          Moves the premade NixOS base image from ${CURRENT} to ${LATEST}, the
+          current release of the nixos-${SERIES} channel. Same series, so this
+          is a userland and security refresh rather than a NixOS upgrade.
+
+          Opened automatically. Merging does not publish anything: run the
+          Publish NixOS base image workflow with a new immutable tag afterwards.
+          MSG
+          sed -i 's/^          //' /tmp/commit-msg.txt
+          git commit -a -F /tmp/commit-msg.txt
+          git push origin "${BRANCH}"
+
+          cat > /tmp/pr-body.md <<BODY
+          Moves the premade NixOS base image pin from \`${CURRENT}\` to \`${LATEST}\`, the current release of the \`nixos-${SERIES}\` channel. Same series, so this is a userland and security refresh, not a NixOS upgrade — the bot refuses to cross a series on its own.
+
+          **Merging publishes nothing.** After this lands, run **Publish NixOS base image** with a new immutable tag; the base-layer cache key is the literal image reference, so every publish needs a tag that was never used.
+
+          Before marking ready, confirm the distro build test covers NixOS on this pin. The publish job only inspects the rootfs tar, and a tar can pass every assertion while the image still fails to boot.
+          BODY
+          sed -i 's/^          //' /tmp/pr-body.md
+
+          gh pr create --draft \
+            --base "${GITHUB_REF_NAME}" --head "${BRANCH}" \
+            --title "chore(orch): bump the NixOS base image nixpkgs pin to ${LATEST}" \
+            --body-file /tmp/pr-body.md

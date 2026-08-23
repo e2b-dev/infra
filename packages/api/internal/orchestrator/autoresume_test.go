@@ -116,7 +116,7 @@ func TestHandleExistingSandboxAutoResume(t *testing.T) {
 
 		go func() {
 			time.Sleep(10 * time.Millisecond)
-			finish(context.Background(), nil)
+			finish(t.Context(), nil)
 		}()
 
 		nodeIP, handled, err := o.HandleExistingSandboxAutoResume(t.Context(), sbx.TeamID, sbx.SandboxID, snapshottingSandbox, time.Minute)

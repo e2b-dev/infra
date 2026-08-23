@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/coreos/go-iptables/iptables"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -64,13 +63,12 @@ func TestClassifyEnvdInitExit(t *testing.T) {
 
 // mockEgressProxy is a test EgressProxy that returns a fixed CA bundle string.
 type mockEgressProxy struct {
+	network.NoopEgressProxy
+
 	bundle string
 }
 
-func (m *mockEgressProxy) OnSlotCreate(_ *network.Slot, _ *iptables.IPTables) error { return nil }
-func (m *mockEgressProxy) OnSlotDelete(_ *network.Slot, _ *iptables.IPTables) error { return nil }
-func (m *mockEgressProxy) CABundle() string                                         { return m.bundle }
-func (m *mockEgressProxy) SupportsBYOP() bool                                       { return false }
+func (m *mockEgressProxy) CABundle() string { return m.bundle }
 
 // newTestSandboxWithBundle builds a minimal Sandbox with CABundle set —
 // mirroring what Factory.CreateSandbox does with f.egressProxy.CABundle().

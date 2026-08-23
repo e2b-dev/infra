@@ -20,7 +20,7 @@ func TestOfflineDatastore(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		err = client.Close(t.Context())
+		err = client.Close(context.WithoutCancel(t.Context()))
 		assert.NoError(t, err)
 	})
 
@@ -31,6 +31,12 @@ func TestOfflineDatastore(t *testing.T) {
 	launchDarklyOfflineStore.Update(
 		launchDarklyOfflineStore.Flag(flagName).VariationForAll(true),
 	)
+	// Restore so the package survives -count=N reruns in one process.
+	t.Cleanup(func() {
+		launchDarklyOfflineStore.Update(
+			launchDarklyOfflineStore.Flag(flagName).VariationForAll(false),
+		)
+	})
 
 	// value is set manually in datastore and should be taken from there
 	flagValue, _ = client.ld.BoolVariation(flagName, clientCtx, false)

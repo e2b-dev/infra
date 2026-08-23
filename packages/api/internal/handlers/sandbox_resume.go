@@ -17,6 +17,9 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -43,7 +46,8 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 
 	span.SetAttributes(telemetry.WithSandboxID(sandboxID))
 
-	body, err := ginutils.ParseBody[api.PostSandboxesSandboxIDResumeJSONRequestBody](ctx, c)
+	// The body is optional: every field defaults, so tolerate an absent one.
+	body, err := ginutils.ParseOptionalBody[api.PostSandboxesSandboxIDResumeJSONRequestBody](ctx, c)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
 
@@ -141,6 +145,15 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		return
 	}
 
+	// Pre-flight of the fetcher's authoritative gate so a disabled flag answers
+	// 400 even when the start would otherwise join an in-flight one (409).
+	if _, apiErr := resolveFilesystemBoot(ctx, a.featureFlags, body.Memory, lastSnapshot.Snapshot); apiErr != nil {
+		setMemoryOverrideOutcome(c, body.Memory, apiErr)
+		apierrors.SendAPIError(c, apiErr)
+
+		return
+	}
+
 	sbxlogger.E(&sbxlogger.SandboxMetadata{
 		SandboxID:  sandboxID,
 		TemplateID: lastSnapshot.Snapshot.EnvID,
@@ -152,13 +165,15 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 		sandboxID,
 		timeout,
 		teamInfo,
-		a.buildResumeSandboxData(sandboxID, body.AutoPause),
+		a.buildResumeSandboxData(sandboxID, body.AutoPause, body.Memory),
 		&c.Request.Header,
 		true,
+		demandsFilesystemBoot(body.Memory, lastSnapshot.Snapshot),
 		nil, // mcp
 	)
+	setMemoryOverrideOutcome(c, body.Memory, createErr)
 	if createErr != nil {
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+		apierrors.SendAPIError(c, createErr)
 
 		return
 	}
@@ -182,9 +197,75 @@ func convertDatabaseMountsToOrchestratorMounts(volumes []*types.SandboxVolumeMou
 }
 
 // buildResumeSandboxData returns a SandboxDataFetcher for resuming a sandbox
-// from its own snapshot.
-func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
-	return a.buildResumeSandboxDataFromSnapshot(sandboxID, sandboxID, autoPauseOverride)
+// from its own snapshot. memory is the request's optional memory field; nil
+// (the implicit paths: auto-resume, fork) means a plain resume.
+func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride, memory *bool) orchestrator.SandboxDataFetcher {
+	return a.buildResumeSandboxDataFromSnapshot(sandboxID, sandboxID, autoPauseOverride, memory)
+}
+
+const errCodeMemoryOverrideDisabled = "sandbox_memory_override_disabled"
+
+// setMemoryOverrideOutcome labels the request metric with the fate of an
+// explicit memory:false so the ramp is measurable on http.server.duration:
+// served, or rejected (flag off, join refused, unconfirmed echo, other).
+func setMemoryOverrideOutcome(c *gin.Context, memory *bool, createErr *api.APIError) {
+	if memory == nil || *memory {
+		return
+	}
+
+	outcome := "served"
+	switch {
+	case createErr == nil:
+	case createErr.ErrorCode == errCodeMemoryOverrideDisabled:
+		outcome = "rejected_flag_off"
+	case createErr.ErrorCode == orchestrator.ErrCodeStartInFlight:
+		outcome = "rejected_in_flight_start"
+	case createErr.ErrorCode == orchestrator.ErrCodeFilesystemBootUnconfirmed:
+		outcome = "rejected_unconfirmed"
+	default:
+		outcome = "error"
+	}
+	c.Set(metricMemoryOverride, outcome)
+}
+
+// demandsFilesystemBoot reports whether the request explicitly demands a cold
+// boot that an in-flight start might not honor: memory:false on a snapshot not
+// already filesystem-only (an fs-only snapshot cold-boots on any start, so a
+// join is safe for it).
+func demandsFilesystemBoot(memory *bool, snap queries.Snapshot) bool {
+	if memory == nil || *memory {
+		return false
+	}
+
+	return snap.Config == nil || !snap.Config.FilesystemOnly
+}
+
+// resolveFilesystemBoot maps the request's optional memory field (default
+// true) to the create RPC's filesystem-boot demand. Flag off rejects rather
+// than silently memory-restoring; a filesystem-only snapshot already
+// cold-boots from its own metadata, so the RPC stays unchanged for it.
+func resolveFilesystemBoot(ctx context.Context, flags featureFlagsClient, memory *bool, snap queries.Snapshot) (bool, *api.APIError) {
+	if memory == nil || *memory {
+		return false, nil
+	}
+
+	if snap.Config != nil && snap.Config.FilesystemOnly {
+		return false, nil
+	}
+
+	if !flags.BoolFlag(ctx, featureflags.FsOnlyResumeAPIFlag,
+		featureflags.TeamContext(snap.TeamID.String()),
+		featureflags.SandboxContext(snap.SandboxID),
+	) {
+		return false, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ErrorCode: errCodeMemoryOverrideDisabled,
+			ClientMsg: "Resuming without memory (memory: false) is not enabled for this team; a plain resume still restores memory",
+			Err:       fmt.Errorf("fs-only resume of memory snapshot '%s' rejected: feature disabled", snap.SandboxID),
+		}
+	}
+
+	return true, nil
 }
 
 // buildResumeSandboxDataFromSnapshot returns a SandboxDataFetcher that fetches
@@ -192,7 +273,7 @@ func (a *APIStore) buildResumeSandboxData(sandboxID string, autoPauseOverride *b
 // for resume operations. sandboxID is the ID the sandbox will run under — it
 // differs from snapshotSandboxID when forking — and scopes the envd access token.
 // The returned callback is called inside the sandbox lock to prevent race conditions.
-func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandboxID string, autoPauseOverride *bool) orchestrator.SandboxDataFetcher {
+func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandboxID string, autoPauseOverride, memory *bool) orchestrator.SandboxDataFetcher {
 	return func(ctx context.Context) (orchestrator.SandboxMetadata, *api.APIError) {
 		lastSnapshot, err := a.snapshotCache.Get(ctx, snapshotSandboxID)
 		if err != nil {
@@ -205,6 +286,13 @@ func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandbox
 
 		snap := lastSnapshot.Snapshot
 		build := lastSnapshot.EnvBuild
+
+		// Resolved here rather than in the handler so the decision reads the
+		// same locked snapshot fetch the create request is built from.
+		filesystemBoot, apiErr := resolveFilesystemBoot(ctx, a.featureFlags, memory, snap)
+		if apiErr != nil {
+			return orchestrator.SandboxMetadata{}, apiErr
+		}
 
 		nodeID := snap.OriginNodeID
 
@@ -264,6 +352,7 @@ func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandbox
 			Iam:                     iam,
 			NodeID:                  &nodeID,
 			SnapshotSandboxID:       snapshotSandboxID,
+			FilesystemBoot:          filesystemBoot,
 		}, nil
 	}
 }

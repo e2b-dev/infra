@@ -105,6 +105,36 @@ func TestSandboxRecordDoesNotExposeApiKeyAuth(t *testing.T) {
 	require.False(t, securityIncludesScheme(operation.Security, "ApiKeyAuth"), "sandbox recording must stay out of API-key auth")
 }
 
+func TestTeamStatusRouteUsesBearerOrAdminAuth(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSwagger()
+	require.NoError(t, err)
+
+	operation := operationForRoute(t, swagger, http.MethodGet, "/teams/{teamID}/status")
+	require.NotNil(t, operation.Security)
+	require.Len(t, *operation.Security, 2)
+	assert.True(t, securityIncludesScheme(operation.Security, "AuthProviderBearerAuth"))
+	assert.True(t, securityIncludesScheme(operation.Security, "AdminApiKeyAuth"))
+	assert.False(t, securityIncludesScheme(operation.Security, "AuthProviderTeamAuth"))
+
+	for _, requirement := range *operation.Security {
+		assert.Len(t, requirement, 1)
+	}
+}
+
+func TestProjectMemberApplyRequestIsBounded(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSwagger()
+	require.NoError(t, err)
+
+	request := swagger.Components.Schemas["ManagementProjectMemberApplyRequest"].Value
+	identities := request.Properties["identities"].Value
+	require.NotNil(t, identities.MaxItems)
+	require.EqualValues(t, 16, *identities.MaxItems)
+}
+
 func operationForRoute(t *testing.T, swagger *openapi3.T, method string, path string) *openapi3.Operation {
 	t.Helper()
 

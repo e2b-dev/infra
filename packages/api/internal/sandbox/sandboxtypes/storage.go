@@ -23,7 +23,7 @@ type Storage interface {
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
 	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
-	Reconcile(ctx context.Context, sandboxes []Sandbox, nodeID string) []Sandbox
+	Reconcile(ctx context.Context, sandboxes []NodeSandbox, nodeID string) []NodeSandbox
 }
 
 // ReservationStorage tracks per-team sandbox-start reservations to enforce

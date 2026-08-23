@@ -1,151 +1,179 @@
 package utils
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/getkin/kin-openapi/openapi3filter"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 )
 
-func TestProcessCustomErrors_TeamForbiddenAfterNoAuthHeader(t *testing.T) {
+func TestMultiErrorHandlerSecuritySelection(t *testing.T) {
 	t.Parallel()
 
-	e := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{
-			sharedauth.ErrNoAuthHeader,
-			&sharedauth.TeamForbiddenError{Message: "team is banned"},
+	missingHeader := fmt.Errorf("Invalid API key. %w", sharedauth.ErrNoAuthHeader)
+	forbidden := &sharedauth.TeamForbiddenError{Message: "team is banned"}
+
+	testCases := map[string]struct {
+		errs []error
+		want string
+	}{
+		"forbidden after missing header": {
+			errs: []error{missingHeader, forbidden},
+			want: sharedauth.ForbiddenErrPrefix + "team is banned",
+		},
+		"forbidden behind an attempted invalid credential": {
+			errs: []error{errors.New("invalid key format"), forbidden},
+			want: sharedauth.ForbiddenErrPrefix + "team is banned",
+		},
+		"all missing headers falls back to the first": {
+			errs: []error{missingHeader, missingHeader},
+			want: sharedauth.SecurityErrPrefix + missingHeader.Error(),
 		},
 	}
 
-	got := processCustomErrors(e)
-	want := forbiddenErrPrefix + "team is banned"
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	if got.Error() != want {
-		t.Errorf("got %q, want %q", got.Error(), want)
+			got := MultiErrorHandler(openapi3.MultiError{
+				&openapi3filter.SecurityRequirementsError{Errors: tc.errs},
+			})
+			assert.Equal(t, tc.want, got.Error())
+		})
 	}
 }
 
-func TestProcessCustomErrors_TeamBlockedAfterNoAuthHeader(t *testing.T) {
+// runErrorHandler feeds a MultiErrorHandler result through ErrorHandler the
+// way the request-validator middleware does.
+func runErrorHandler(t *testing.T, message string, statusCode int) (int, string) {
+	t.Helper()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/sandboxes", nil)
+
+	ErrorHandler(c, message, statusCode)
+
+	var body struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+
+	return w.Code, body.Message
+}
+
+func TestErrorHandlerSecurityStatusMapping(t *testing.T) {
 	t.Parallel()
 
-	e := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{
-			sharedauth.ErrNoAuthHeader,
-			&sharedauth.TeamBlockedError{Message: "team is blocked"},
+	forbidden := &sharedauth.TeamForbiddenError{Message: "team is banned"}
+
+	testCases := map[string]struct {
+		errs        []error
+		wantCode    int
+		wantMessage string
+	}{
+		"forbidden team maps to 403": {
+			errs:        []error{fmt.Errorf("Invalid API key. %w", sharedauth.ErrNoAuthHeader), forbidden},
+			wantCode:    http.StatusForbidden,
+			wantMessage: "team is banned",
+		},
+		"forbidden behind an attempted invalid credential maps to 403": {
+			errs:        []error{errors.New("invalid key format"), forbidden},
+			wantCode:    http.StatusForbidden,
+			wantMessage: "team is banned",
+		},
+		"attempted scheme keeps the middleware status": {
+			errs:        []error{errors.New("invalid key format")},
+			wantCode:    http.StatusUnauthorized,
+			wantMessage: "invalid key format",
 		},
 	}
 
-	got := processCustomErrors(e)
-	want := blockedErrPrefix + "team is blocked"
+	for name, tc := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	if got.Error() != want {
-		t.Errorf("got %q, want %q", got.Error(), want)
+			selected := MultiErrorHandler(openapi3.MultiError{
+				&openapi3filter.SecurityRequirementsError{Errors: tc.errs},
+			})
+
+			code, message := runErrorHandler(t, selected.Error(), http.StatusUnauthorized)
+			assert.Equal(t, tc.wantCode, code)
+			assert.Equal(t, tc.wantMessage, message)
+		})
 	}
 }
 
-func TestProcessCustomErrors_TeamForbiddenOnly(t *testing.T) {
+// TestErrorHandlerOnSecretsRouteIsFixedAndBodyBlind proves the handler answers a
+// secrets route with fixed text, records a fixed error, and never reads the
+// request body to build one.
+func TestErrorHandlerOnSecretsRouteIsFixedAndBodyBlind(t *testing.T) {
 	t.Parallel()
 
-	e := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{
-			&sharedauth.TeamForbiddenError{Message: "team is banned"},
-		},
+	const sentinel = "sentinel-value-DO-NOT-LOG-0000"
+
+	tests := []struct {
+		name        string
+		statusCode  int
+		wantMessage string
+	}{
+		{name: "validation", statusCode: http.StatusBadRequest, wantMessage: "Invalid secrets request"},
+		{name: "authentication", statusCode: http.StatusUnauthorized, wantMessage: "You are not authenticated"},
+		{name: "forbidden", statusCode: http.StatusForbidden, wantMessage: "Secrets are not available for this team"},
+		{name: "unmatched path", statusCode: http.StatusNotFound, wantMessage: "Not found"},
 	}
 
-	got := processCustomErrors(e)
-	want := forbiddenErrPrefix + "team is banned"
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
 
-	if got.Error() != want {
-		t.Errorf("got %q, want %q", got.Error(), want)
-	}
-}
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/secrets/"+sentinel+"?metadata="+sentinel,
+				strings.NewReader(`{"value":"`+sentinel+`"}`))
 
-func TestProcessCustomErrors_TeamBlockedOnly(t *testing.T) {
-	t.Parallel()
+			ErrorHandler(c, "request body has an error: "+sentinel, test.statusCode)
 
-	e := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{
-			&sharedauth.TeamBlockedError{Message: "team is blocked"},
-		},
-	}
+			if recorder.Code != test.statusCode {
+				t.Fatalf("got status %d, want %d", recorder.Code, test.statusCode)
+			}
 
-	got := processCustomErrors(e)
-	want := blockedErrPrefix + "team is blocked"
+			if strings.Contains(recorder.Body.String(), sentinel) {
+				t.Fatal("the response echoed confidential request material")
+			}
 
-	if got.Error() != want {
-		t.Errorf("got %q, want %q", got.Error(), want)
-	}
-}
+			if !strings.Contains(recorder.Body.String(), test.wantMessage) {
+				t.Fatalf("the response does not carry the fixed message %q", test.wantMessage)
+			}
 
-func TestProcessCustomErrors_GenericErrorAfterNoAuthHeader(t *testing.T) {
-	t.Parallel()
+			for _, ginErr := range c.Errors {
+				if strings.Contains(ginErr.Error(), sentinel) {
+					t.Fatal("a gin error carried confidential request material")
+				}
+			}
 
-	genericErr := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{
-			sharedauth.ErrNoAuthHeader,
-			&openapi3filter.SecurityRequirementsError{SecurityRequirements: nil},
-		},
-	}
+			// The body was never consumed, so a handler could still read it.
+			body, err := io.ReadAll(c.Request.Body)
+			if err != nil {
+				t.Fatalf("reading the request body: %v", err)
+			}
 
-	got := processCustomErrors(genericErr)
-
-	if got == nil {
-		t.Fatal("expected non-nil error")
-	}
-}
-
-func TestProcessCustomErrors_AllNoAuthHeader(t *testing.T) {
-	t.Parallel()
-
-	e := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{
-			sharedauth.ErrNoAuthHeader,
-			sharedauth.ErrNoAuthHeader,
-		},
-	}
-
-	got := processCustomErrors(e)
-	want := securityErrPrefix + sharedauth.ErrNoAuthHeader.Error()
-
-	if got.Error() != want {
-		t.Errorf("got %q, want %q", got.Error(), want)
-	}
-}
-
-func TestProcessCustomErrors_WrappedTeamForbidden(t *testing.T) {
-	t.Parallel()
-
-	inner := &sharedauth.TeamForbiddenError{Message: "team is banned"}
-	wrapped := fmt.Errorf("failed getting team: %w", inner)
-
-	e := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{wrapped},
-	}
-
-	got := processCustomErrors(e)
-	want := forbiddenErrPrefix + "team is banned"
-
-	if got.Error() != want {
-		t.Errorf("got %q, want %q", got.Error(), want)
-	}
-}
-
-func TestProcessCustomErrors_WrappedTeamBlocked(t *testing.T) {
-	t.Parallel()
-
-	inner := &sharedauth.TeamBlockedError{Message: "team is blocked: payment overdue"}
-	wrapped := fmt.Errorf("failed getting team: %w", inner)
-
-	e := &openapi3filter.SecurityRequirementsError{
-		Errors: []error{wrapped},
-	}
-
-	got := processCustomErrors(e)
-	want := blockedErrPrefix + "team is blocked: payment overdue"
-
-	if got.Error() != want {
-		t.Errorf("got %q, want %q", got.Error(), want)
+			if len(body) == 0 {
+				t.Fatal("the error handler consumed the request body")
+			}
+		})
 	}
 }

@@ -28,6 +28,7 @@ import (
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
@@ -35,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
+	"github.com/e2b-dev/infra/packages/shared/pkg/networktransform"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedUtils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -43,6 +45,7 @@ import (
 const (
 	InstanceIDPrefix            = "i"
 	metricTemplateAlias         = metrics.MetricPrefix + "template.alias"
+	metricMemoryOverride        = metrics.MetricPrefix + "memory_override"
 	minEnvdVersionForSecureFlag = "0.2.0" // Minimum version of envd that supports secure flag
 
 	// Network validation error messages
@@ -325,10 +328,11 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 		getSandboxData,
 		&c.Request.Header,
 		false,
+		false,
 		mcp,
 	)
 	if createErr != nil {
-		a.sendAPIStoreError(c, createErr.Code, createErr.ClientMsg)
+		apierrors.SendAPIError(c, createErr)
 
 		return
 	}
@@ -837,6 +841,7 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 			}
 		}
 
+		markerSeen := make(map[string]struct{})
 		for _, rule := range domainRules {
 			if rule.Transform == nil {
 				continue
@@ -889,6 +894,28 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 						Code:      http.StatusBadRequest,
 						Err:       fmt.Errorf("value for header %q in rule for domain %q exceeds max length %d", name, domain, maxNetworkRuleHeaderValueLen),
 						ClientMsg: fmt.Sprintf("Value for header %q in rule for domain %q exceeds maximum length of %d characters.", name, domain, maxNetworkRuleHeaderValueLen),
+					}
+				}
+
+				placeholders, err := networktransform.ParsePlaceholders(value)
+				if err != nil {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("malformed E2B placeholder in network transform header: %w", err),
+						ClientMsg: "Network transform header contains a malformed E2B placeholder.",
+					}
+				}
+
+				for _, placeholder := range placeholders {
+					if placeholder.Kind == networktransform.PlaceholderCustomerSecret {
+						markerSeen[placeholder.Name] = struct{}{}
+					}
+				}
+				if len(markerSeen) > networktransform.MaxMarkerNames {
+					return &api.APIError{
+						Code:      http.StatusBadRequest,
+						Err:       fmt.Errorf("domain %q references %d secrets (max %d)", domain, len(markerSeen), networktransform.MaxMarkerNames),
+						ClientMsg: fmt.Sprintf("Rule domain %q references more than %d secrets.", domain, networktransform.MaxMarkerNames),
 					}
 				}
 			}

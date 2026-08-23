@@ -153,13 +153,13 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 		}
 
 		dataDir := storagePath
-		dirs := []string{"kernels", "templates", "build-cache", "sandbox", "orchestrator", "snapshot-cache", "fc-versions"}
+		dirs := []string{"kernels", "templates", "build-cache", "sandbox", "orchestrator", "fc-versions"}
 		for _, d := range dirs {
 			if err := os.MkdirAll(filepath.Join(dataDir, d), 0o755); err != nil {
 				return fmt.Errorf("mkdir %s: %w", d, err)
 			}
 		}
-		for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
+		for _, d := range []string{"build", "build-templates", "sandbox", "template"} {
 			if err := os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755); err != nil {
 				return fmt.Errorf("mkdir orchestrator/%s: %w", d, err)
 			}
@@ -170,8 +170,6 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 			"FIRECRACKER_VERSIONS_DIR":    abs(filepath.Join(dataDir, "fc-versions")),
 			"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
 			"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
-			"SNAPSHOT_CACHE_DIR":          abs(filepath.Join(dataDir, "snapshot-cache")),
-			"USE_LOCAL_NAMESPACE_STORAGE": "true",
 		}
 		for k, v := range env {
 			if os.Getenv(k) == "" {

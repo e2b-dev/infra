@@ -27,20 +27,6 @@ type PaginatedSandbox struct {
 	PaginationTimestamp time.Time `json:"-"`
 }
 
-func ParseNextToken(token *string) (time.Time, string, error) {
-	if token != nil && *token != "" {
-		cursorTime, cursorID, err := ParseCursor(*token)
-		if err != nil {
-			return time.Time{}, "", err
-		}
-
-		return cursorTime, cursorID, nil
-	}
-
-	// default to all sandboxes (older than now) and always lexically after any sandbox ID (the sort is descending)
-	return time.Now(), MaxSandboxID, nil
-}
-
 func ParseMetadata(ctx context.Context, metadata *string) (*map[string]string, error) {
 	// Parse metadata filter (query) if provided
 	var metadataFilter *map[string]string
@@ -58,33 +44,56 @@ func ParseMetadata(ctx context.Context, metadata *string) (*map[string]string, e
 	return metadataFilter, nil
 }
 
-func ParseCursor(cursor string) (time.Time, string, error) {
+// ParseCursor decodes a cursor token into its timestamp, ID and sort direction.
+// A two-part token is a descending cursor (the original format, still emitted for
+// the default order); a three-part token carries CursorDirectionAsc.
+func ParseCursor(cursor string) (time.Time, string, SortDirection, error) {
 	decoded, err := base64.URLEncoding.DecodeString(cursor)
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("error decoding cursor: %w", err)
+		return time.Time{}, "", SortDesc, fmt.Errorf("error decoding cursor: %w", err)
 	}
 
 	parts := strings.Split(string(decoded), "__")
-	if len(parts) != 2 {
-		return time.Time{}, "", errors.New("invalid cursor format")
+	if len(parts) < 2 || len(parts) > 3 {
+		return time.Time{}, "", SortDesc, errors.New("invalid cursor format")
+	}
+
+	order := SortDesc
+	if len(parts) == 3 {
+		if parts[2] != CursorDirectionAsc {
+			return time.Time{}, "", SortDesc, errors.New("invalid sort direction in cursor")
+		}
+
+		order = SortAsc
 	}
 
 	cursorTime, err := time.Parse(time.RFC3339Nano, parts[0])
 	if err != nil {
-		return time.Time{}, "", fmt.Errorf("invalid timestamp format in cursor: %w", err)
+		return time.Time{}, "", SortDesc, fmt.Errorf("invalid timestamp format in cursor: %w", err)
 	}
 
-	return cursorTime, parts[1], nil
+	return cursorTime, parts[1], order, nil
 }
 
-func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cursorID string) []PaginatedSandbox {
-	// Apply cursor-based filtering if cursor is provided
+// FilterBasedOnCursor keeps only the sandboxes that fall after the cursor in the
+// requested order. It compares on PaginationTimestamp (the microsecond-aligned keyset
+// value), not the public StartedAt, so running and paused sandboxes share the same
+// precision as the SQL predicate. Descending order pages through
+// (timestamp DESC, sandbox_id ASC); ascending order is the exact reverse
+// (timestamp ASC, sandbox_id DESC).
+func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cursorID string, order SortDirection) []PaginatedSandbox {
 	var filteredSandboxes []PaginatedSandbox
 	for _, sandbox := range sandboxes {
-		// Take sandboxes with start time before cursor time OR
-		// same start time but sandboxID greater than cursor ID (for stability)
-		if sandbox.StartedAt.Before(cursorTime) ||
-			(sandbox.StartedAt.Equal(cursorTime) && sandbox.SandboxID > cursorID) {
+		var include bool
+		if order == SortAsc {
+			include = sandbox.PaginationTimestamp.After(cursorTime) ||
+				(sandbox.PaginationTimestamp.Equal(cursorTime) && sandbox.SandboxID < cursorID)
+		} else {
+			include = sandbox.PaginationTimestamp.Before(cursorTime) ||
+				(sandbox.PaginationTimestamp.Equal(cursorTime) && sandbox.SandboxID > cursorID)
+		}
+
+		if include {
 			filteredSandboxes = append(filteredSandboxes, sandbox)
 		}
 	}
@@ -92,16 +101,68 @@ func FilterBasedOnCursor(sandboxes []PaginatedSandbox, cursorTime time.Time, cur
 	return filteredSandboxes
 }
 
-// SortPaginatedSandboxesDesc sorts the sandboxes by StartedAt (descending),
-// then by SandboxID (ascending) for stability
-func SortPaginatedSandboxesDesc(sandboxes []PaginatedSandbox) {
+// SortPaginatedSandboxes sorts the sandboxes by PaginationTimestamp then SandboxID for
+// stable pagination. It uses PaginationTimestamp (the microsecond-aligned keyset value),
+// not the public StartedAt, so the order matches the cursor filter and SQL predicate.
+// Descending order is timestamp DESC, SandboxID ASC; ascending order is the exact
+// reverse (timestamp ASC, SandboxID DESC) so it maps onto a backward scan of the
+// (team_id, sandbox_started_at DESC, sandbox_id) index.
+func SortPaginatedSandboxes(sandboxes []PaginatedSandbox, order SortDirection) {
 	slices.SortFunc(sandboxes, func(a, b PaginatedSandbox) int {
-		if !a.StartedAt.Equal(b.StartedAt) {
-			return b.StartedAt.Compare(a.StartedAt)
+		if !a.PaginationTimestamp.Equal(b.PaginationTimestamp) {
+			if order == SortAsc {
+				return a.PaginationTimestamp.Compare(b.PaginationTimestamp)
+			}
+
+			return b.PaginationTimestamp.Compare(a.PaginationTimestamp)
+		}
+
+		if order == SortAsc {
+			return strings.Compare(b.SandboxID, a.SandboxID)
 		}
 
 		return strings.Compare(a.SandboxID, b.SandboxID)
 	})
+}
+
+// SortPaginatedSandboxesDesc preserves the descending-only entry point used by the
+// legacy (v1) list endpoint.
+func SortPaginatedSandboxesDesc(sandboxes []PaginatedSandbox) {
+	SortPaginatedSandboxes(sandboxes, SortDesc)
+}
+
+// FilterSandboxesOnStartedAtAndTemplate applies the startedAfter lower bound
+// (inclusive) and the exact-template filter.
+//
+// The bound is compared against PaginationTimestamp, the microsecond-aligned keyset
+// value, not the public StartedAt, so a kept row can never sort before the bound it
+// satisfies. Callers pass a bound already truncated onto that same microsecond grid
+// (see parseSandboxListStartedAfter), which is what keeps the boundary inclusive here
+// and in the SQL predicate alike -- a sandbox does not enter or leave a filtered list
+// purely because it paused.
+//
+// The input is left intact: filtering in place would rewrite the caller's slice, and
+// this one already returns it unmodified when no filter is active, so a destructive
+// contract would only hold for some arguments.
+func FilterSandboxesOnStartedAtAndTemplate(sandboxes []PaginatedSandbox, startedAfter time.Time, templateID *string) []PaginatedSandbox {
+	if startedAfter.IsZero() && templateID == nil {
+		return sandboxes
+	}
+
+	filtered := make([]PaginatedSandbox, 0, len(sandboxes))
+	for _, sbx := range sandboxes {
+		if !startedAfter.IsZero() && sbx.PaginationTimestamp.Before(startedAfter) {
+			continue
+		}
+
+		if templateID != nil && sbx.TemplateID != *templateID {
+			continue
+		}
+
+		filtered = append(filtered, sbx)
+	}
+
+	return filtered
 }
 
 func FilterSandboxesOnMetadata(sandboxes []PaginatedSandbox, metadata *map[string]string) []PaginatedSandbox {

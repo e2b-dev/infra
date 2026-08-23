@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -222,8 +223,7 @@ func ensureDirs(fs *chrooted.Chrooted, dirPath string, uid, gid uint32) error {
 
 	// Only chmod the directories that were created by this call (precomputed above).
 	// Iterate from highest parent to deepest child for determinism.
-	for i := len(needsUpdates) - 1; i >= 0; i-- {
-		p := needsUpdates[i]
+	for _, p := range slices.Backward(needsUpdates) {
 		if err := fs.Chmod(p, defaultDirMode); err != nil {
 			return fmt.Errorf("failed chmod for created parent directory %q: %w", p, err)
 		}

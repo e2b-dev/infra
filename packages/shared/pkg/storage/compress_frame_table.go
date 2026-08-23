@@ -43,10 +43,6 @@ type FrameSize struct {
 	C int32
 }
 
-func (s FrameSize) String() string {
-	return fmt.Sprintf("U:%d/C:%d", s.U, s.C)
-}
-
 type Range struct {
 	Offset int64
 	Length int

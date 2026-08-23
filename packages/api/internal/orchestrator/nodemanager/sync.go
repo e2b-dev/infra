@@ -18,10 +18,11 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 	syncRetrySuccess := false
 
 	// Tracked separately from success because the two answer different
-	// questions. A sync can fail on a response the node did deliver — a nil
-	// sandbox config or an unparseable ID makes GetSandboxes reject the payload
-	// after the RPC succeeded — and a node that answered is not unreachable
-	// however little sense its answer made.
+	// questions. A sync can fail on a node this replica did reach — ServiceInfo
+	// answers and the sandbox list call then fails outright, or succeeds with a
+	// payload GetSandboxes cannot decode (a nil sandbox config or an
+	// unparseable ID) — and a node that answered is not unreachable however
+	// little sense the rest of the cycle made.
 	answered := false
 
 	for range syncMaxRetries {
@@ -60,14 +61,14 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 		// Update host metrics from service info
 		n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
 
-		activeInstances, instancesErr := n.GetSandboxes(ctx)
+		orphanCandidates, instancesErr := n.GetOrphanCandidates(ctx)
 		if instancesErr != nil {
 			logger.L().Error(ctx, "Error getting instances", zap.Error(instancesErr), logger.WithNodeID(n.ID))
 
 			continue
 		}
 
-		store.Reconcile(ctx, activeInstances, n.ID)
+		store.Reconcile(ctx, orphanCandidates, n.ID)
 
 		syncRetrySuccess = true
 

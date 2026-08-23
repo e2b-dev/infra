@@ -43,6 +43,33 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, content, result.VolumesToken.SigningKey)
 	})
 
+	t.Run("default persistent volume type by region is parsed as a map", func(t *testing.T) {
+		t.Setenv("DEFAULT_PERSISTENT_VOLUME_TYPE_BY_REGION", "us-west3:zonalfilestore-us-west3,other:other-type")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, map[string]string{
+			"us-west3": "zonalfilestore-us-west3",
+			"other":    "other-type",
+		}, result.DefaultPersistentVolumeTypeByRegion)
+	})
+
+	t.Run("secrets store backend address is optional and has no default", func(t *testing.T) { //nolint:paralleltest // cannot call t.Setenv and t.Parallel
+		removeEnv(t, "SECRETS_STORE_BACKEND_GRPC_ADDRESS")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Empty(t, result.SecretsStoreBackendGrpcAddress)
+	})
+
+	t.Run("secrets store backend address is read when set", func(t *testing.T) {
+		t.Setenv("SECRETS_STORE_BACKEND_GRPC_ADDRESS", "secrets-backend:5000")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, "secrets-backend:5000", result.SecretsStoreBackendGrpcAddress)
+	})
+
 	t.Run("invalid service discovery provider exposes failure condition", func(t *testing.T) {
 		t.Setenv("SERVICE_DISCOVERY_PROVIDER", "invalid")
 

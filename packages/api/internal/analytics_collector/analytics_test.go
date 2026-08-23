@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/posthog/posthog-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestIntegrationFromUserAgent(t *testing.T) {
@@ -111,4 +113,56 @@ func TestGetPackageToPosthogPropertiesUserAgent(t *testing.T) {
 		assert.NotContains(t, properties, "integration")
 		assert.NotContains(t, properties, "integration_version")
 	})
+}
+
+// embeds posthog.Client so unimplemented methods are never reached
+type captureRecorder struct {
+	posthog.Client
+
+	messages []posthog.Message
+}
+
+func (c *captureRecorder) Enqueue(msg posthog.Message) error {
+	c.messages = append(c.messages, msg)
+
+	return nil
+}
+
+func (c *captureRecorder) capture(t *testing.T) posthog.Capture {
+	t.Helper()
+
+	require.Len(t, c.messages, 1)
+	capture, ok := c.messages[0].(posthog.Capture)
+	require.True(t, ok)
+
+	return capture
+}
+
+func TestTeamEventCarriesTeamID(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureRecorder{}
+	p := &PosthogClient{client: recorder}
+
+	p.CreateAnalyticsTeamEvent(t.Context(), "team-uuid", "created_instance", posthog.NewProperties().Set("environment", "tpl"))
+
+	capture := recorder.capture(t)
+	assert.Equal(t, "team-uuid", capture.Properties[teamIDKey])
+	assert.Equal(t, "team-uuid", capture.Groups[teamGroup])
+	assert.Equal(t, "tpl", capture.Properties["environment"])
+	assert.Equal(t, infraVersion, capture.Properties[infraVersionKey])
+}
+
+func TestUserEventCarriesTeamID(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureRecorder{}
+	p := &PosthogClient{client: recorder}
+
+	p.CreateAnalyticsUserEvent(t.Context(), "user-id", "team-uuid", "built environment", posthog.NewProperties())
+
+	capture := recorder.capture(t)
+	assert.Equal(t, "user-id", capture.DistinctId)
+	assert.Equal(t, "team-uuid", capture.Properties[teamIDKey])
+	assert.Equal(t, "team-uuid", capture.Groups[teamGroup])
 }

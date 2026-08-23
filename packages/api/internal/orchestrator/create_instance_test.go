@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
+	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -43,7 +45,7 @@ func testBuild() queries.EnvBuild {
 
 // newCreateSandboxTestOrchestrator constructs the minimal Orchestrator needed for
 // CreateSandbox, with a single ready node already registered.
-func newCreateSandboxTestOrchestrator(t *testing.T) *Orchestrator {
+func newCreateSandboxTestOrchestrator(t *testing.T, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
@@ -69,7 +71,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) *Orchestrator {
 
 	algo := placement.NewBestOfK(placement.DefaultBestOfKConfig()).(*placement.BestOfK)
 
-	node := nodemanager.NewTestNode("node-1", api.NodeStatusReady, 0, 8)
+	node := nodemanager.NewTestNode("node-1", api.NodeStatusReady, 0, 8, nodeOpts...)
 	node.ClusterID = uuid.Nil // match consts.LocalClusterID (fallback when team.ClusterID is nil)
 
 	o := &Orchestrator{
@@ -78,6 +80,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T) *Orchestrator {
 		placementAlgorithm:      algo,
 		featureFlagsClient:      ffClient,
 		createdSandboxesCounter: counter,
+		routingCatalog:          e2bcatalog.NewRedisSandboxCatalog(client),
 	}
 
 	o.registerNode(node)
@@ -151,6 +154,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			now.Add(time.Hour),
 			time.Hour,
 			true,
+			false,
 			sandbox.CreationMetadata{IsResume: true},
 		)
 		require.Nil(t, apiErr)
@@ -175,6 +179,7 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			now.Add(time.Hour),
 			time.Hour,
 			true,
+			false,
 			sandbox.CreationMetadata{IsResume: true},
 		)
 		require.Nil(t, apiErr)
@@ -186,5 +191,100 @@ func TestCreateSandbox_StaleDataAfterConcurrentPause(t *testing.T) {
 			"CreateSandbox must preserve the base template ID")
 		assert.Equal(t, "v2", sbx2.Metadata["snapshot"],
 			"CreateSandbox must use the latest metadata, not stale pre-lock values")
+	})
+}
+
+// A joined start rides whatever is already in flight, which may be a memory
+// restore — an explicit filesystem-boot demand must be refused, not silently
+// answered with the other start's result.
+func TestCreateSandbox_FilesystemBootDemandRefusesJoin(t *testing.T) {
+	t.Parallel()
+
+	o := newCreateSandboxTestOrchestrator(t)
+	team := testTeam()
+	sandboxID := "sbx-join-" + uuid.New().String()[:8]
+	build := testBuild()
+	now := time.Now()
+
+	winnerEntered := make(chan struct{})
+	winnerRelease := make(chan struct{})
+	var winnerFetcher SandboxDataFetcher = func(_ context.Context) (SandboxMetadata, *api.APIError) {
+		close(winnerEntered)
+		<-winnerRelease
+
+		return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "base-tpl", Build: build}, nil
+	}
+
+	winnerDone := make(chan struct{})
+	go func() {
+		defer close(winnerDone)
+		o.CreateSandbox(t.Context(), sandboxID, uuid.New().String(), team, winnerFetcher,
+			now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+	}()
+
+	// The winner holds the reservation while blocked in its fetcher.
+	<-winnerEntered
+
+	joinerDone := make(chan *api.APIError, 1)
+	go func() {
+		_, joinErr := o.CreateSandbox(t.Context(), sandboxID, uuid.New().String(), team,
+			func(_ context.Context) (SandboxMetadata, *api.APIError) {
+				t.Error("joiner must not fetch data")
+
+				return SandboxMetadata{}, nil
+			},
+			now, now.Add(time.Hour), time.Hour, true, true, sandbox.CreationMetadata{IsResume: true})
+		joinerDone <- joinErr
+	}()
+
+	select {
+	case apiErr := <-joinerDone:
+		require.NotNil(t, apiErr)
+		assert.Equal(t, http.StatusConflict, apiErr.Code)
+	case <-time.After(20 * time.Second):
+		t.Fatal("joiner did not return: it joined the in-flight start instead of being refused")
+	}
+
+	close(winnerRelease)
+	<-winnerDone
+}
+
+// The demand is only proven honored by the response echo: a node that predates
+// the field succeeds without echoing, and the resume must fail loudly instead
+// of handing back a silent memory restore.
+func TestCreateSandbox_UnconfirmedFilesystemBootFailsLoud(t *testing.T) {
+	t.Parallel()
+
+	fetcher := func(build queries.EnvBuild) SandboxDataFetcher {
+		return func(_ context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "base-tpl", Build: build, FilesystemBoot: true}, nil
+		}
+	}
+
+	t.Run("legacy node without echo: 503, nothing handed back", func(t *testing.T) {
+		t.Parallel()
+
+		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithLegacySandboxClient())
+		team := testTeam()
+		now := time.Now()
+
+		_, apiErr := o.CreateSandbox(t.Context(), "sbx-echo-"+uuid.New().String()[:8], uuid.New().String(), team,
+			fetcher(testBuild()), now, now.Add(time.Hour), time.Hour, true, true, sandbox.CreationMetadata{IsResume: true})
+
+		require.NotNil(t, apiErr)
+		assert.Equal(t, http.StatusServiceUnavailable, apiErr.Code)
+	})
+
+	t.Run("echoing node: demand served", func(t *testing.T) {
+		t.Parallel()
+
+		o := newCreateSandboxTestOrchestrator(t)
+		team := testTeam()
+		now := time.Now()
+
+		_, apiErr := o.CreateSandbox(t.Context(), "sbx-echo-"+uuid.New().String()[:8], uuid.New().String(), team,
+			fetcher(testBuild()), now, now.Add(time.Hour), time.Hour, true, true, sandbox.CreationMetadata{IsResume: true})
+
+		assert.Nil(t, apiErr)
 	})
 }

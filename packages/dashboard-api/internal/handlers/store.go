@@ -13,6 +13,7 @@ import (
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/identity"
+	"github.com/e2b-dev/infra/packages/dashboard-api/internal/management"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/provisioning"
 	internalteamprovision "github.com/e2b-dev/infra/packages/dashboard-api/internal/teamprovision"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
@@ -30,6 +31,7 @@ type APIStore struct {
 	authService         sharedauth.Service
 	identityService     identity.Service
 	provisioningService *provisioning.Service
+	managementService   *management.Service
 }
 
 func NewAPIStore(
@@ -49,6 +51,7 @@ func NewAPIStore(
 		authService:         authService,
 		identityService:     identityService,
 		provisioningService: provisioning.New(authDB, identityService, teamProvisionSink),
+		managementService:   management.NewService(authDB, db, authService),
 	}
 }
 

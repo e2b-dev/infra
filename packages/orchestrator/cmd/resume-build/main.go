@@ -59,7 +59,11 @@ func main() {
 	noPrefetch := flag.Bool("no-prefetch", false, "disable memory prefetching")
 	noEgress := flag.Bool("no-egress", false, "block all guest internet egress")
 	disableMemfd := flag.Bool("disable-memfd", false, "disable memfd-backed guest memory")
+	syncWP := flag.Bool("sync-wp", false, "resume with synchronous userfault write-protect delivery (use_sync_wp; requires an FC build that accepts the field)")
+	trackerDirty := flag.Bool("tracker-dirty", false, "serve the pause dirty set from the page tracker instead of the pagemap RPC (implies -sync-wp)")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
+	inPlace := flag.Bool("in-place", false, "checkpoint in place (pause, snapshot, resume the same FC process; implies -sync-wp)")
+	deferMemoryExport := flag.Bool("defer-memory-export", false, "capture the in-place memory export through the async CoW window (implies -in-place; requires an FC build with /balloon/reporting)")
 	verbose := flag.Bool("v", false, "verbose logging")
 	console := flag.Bool("console", false, "forward Firecracker's output and the guest kernel serial console (tty) to stdout (fresh boot / -reboot only)")
 	firecracker := flag.String("firecracker", "", "override the build's Firecracker version (e.g. when the baked version isn't on this node); safe for a cold boot/-reboot, risky for a memory resume")
@@ -86,8 +90,8 @@ func main() {
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
 
 	gdbDebug := flag.Bool("gdb", false, "resume under gdb: hold the guest at the kernel entry breakpoint with a gdb-enabled FC and hand over a ready gdb session for source-level guest-kernel debugging")
-	gdbFC := flag.String("gdb-fc", "", "path to a firecracker built --features gdb (default: fetch firecracker-debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
-	gdbSymbols := flag.String("gdb-symbols", "", "path to the guest kernel's DWARF symbols, vmlinux.debug (default: fetch vmlinux.debug by version; set E2B_GDB_ARTIFACTS_URL to override the source)")
+	gdbFC := flag.String("gdb-fc", "", "path to a firecracker built --features gdb (default: firecracker-debug resolved next to the snapshot's firecracker)")
+	gdbSymbols := flag.String("gdb-symbols", "", "path to the guest kernel's DWARF symbols, vmlinux.debug (default: resolved next to the snapshot's vmlinux.bin)")
 	gdbSocket := flag.String("gdb-socket", "", "gdb unix socket path (default: a temp path)")
 	gdbExec := flag.String("gdb-exec", "", "scripted mode: run these gdb commands in batch (newline/';'-separated) instead of an interactive prompt")
 	gdbScript := flag.String("gdb-script", "", "scripted mode: run this gdb command file in batch")
@@ -112,6 +116,22 @@ func main() {
 
 	if *disableMemfd {
 		featureflags.OverrideBoolFlag(featureflags.UseMemFdFlag, false)
+	}
+
+	if *syncWP || *trackerDirty || *inPlace || *deferMemoryExport {
+		featureflags.OverrideBoolFlag(featureflags.UseSyncWPFlag, true)
+	}
+
+	if *inPlace || *deferMemoryExport {
+		featureflags.OverrideBoolFlag(featureflags.InPlaceCheckpointFlag, true)
+	}
+
+	if *deferMemoryExport {
+		featureflags.OverrideBoolFlag(featureflags.DeferMemoryExportFlag, true)
+	}
+
+	if *trackerDirty {
+		featureflags.OverrideBoolFlag(featureflags.SyncWPTrackerDirtyFlag, true)
 	}
 
 	if *collapseEnvdHeap {
@@ -224,6 +244,7 @@ func main() {
 		iterations:      *iterations,
 		optimize:        *optimize,
 		fsOnly:          *fsOnly,
+		inPlace:         *inPlace || *deferMemoryExport,
 	}
 
 	runOpts := runOptions{
@@ -271,6 +292,13 @@ type pauseOptions struct {
 	iterations      int // for benchmarking pause (only with immediate)
 	optimize        bool
 	fsOnly          bool
+	// inPlace checkpoints in place (WithMaintainSandbox): the same FC
+	// process pauses, snapshots and resumes, exercising the in-place seal —
+	// and, with -defer-memory-export, the CoW window. The single-run path's
+	// upload blocks on the deferred diffs, so the window completes before
+	// the tool tears the sandbox down; the benchmark path measures timings
+	// only and lets teardown cancel the window.
+	inPlace bool
 }
 
 func (p pauseOptions) enabled() bool {
@@ -319,13 +347,13 @@ func setupEnv(from string, sandboxDir string, storageExplicit bool) error {
 		dataDir = from
 	}
 
-	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "envd"} {
+	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "fc-versions", "envd"} {
 		if err := os.MkdirAll(filepath.Join(dataDir, d), 0o755); err != nil {
 			return fmt.Errorf("mkdir %s: %w", d, err)
 		}
 	}
 
-	for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
+	for _, d := range []string{"build", "build-templates", "sandbox", "template"} {
 		if err := os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755); err != nil {
 			return fmt.Errorf("mkdir orchestrator/%s: %w", d, err)
 		}
@@ -337,8 +365,6 @@ func setupEnv(from string, sandboxDir string, storageExplicit bool) error {
 		"HOST_ENVD_PATH":              abs(filepath.Join(dataDir, "envd", "envd")),
 		"HOST_KERNELS_DIR":            abs(filepath.Join(dataDir, "kernels")),
 		"ORCHESTRATOR_BASE_PATH":      abs(filepath.Join(dataDir, "orchestrator")),
-		"SNAPSHOT_CACHE_DIR":          abs(filepath.Join(dataDir, "snapshot-cache")),
-		"USE_LOCAL_NAMESPACE_STORAGE": "true",
 	}
 
 	for k, v := range env {
@@ -375,17 +401,18 @@ type runner struct {
 	console     bool
 	config      cfg.BuilderConfig
 	storage     storage.StorageProvider
+	// gdbOrigVersionsDir preserves the original FirecrackerVersionsDir in gdb mode, where
+	// config.FirecrackerVersionsDir is redirected to a writable staging dir; the published
+	// firecracker-debug is resolved from this original (read-only) dir.
+	gdbOrigVersionsDir string
 }
 
-// wrapTemplate applies the CLI's template masks: -no-prefetch drops the
-// prefetch mapping and -force-reboot masks the metadata as filesystem-only so
-// RebootSandbox's safety gate accepts a memory-snapshot build.
-func wrapTemplate(tmpl template.Template, noPrefetch, forceFsOnly bool) template.Template {
+// wrapTemplate applies the CLI's template masks (-no-prefetch drops the
+// prefetch mapping). -force-reboot needs no mask: it is passed to RebootSandbox
+// as the request-side demand, the same predicate a memory:false resume takes.
+func wrapTemplate(tmpl template.Template, noPrefetch bool) template.Template {
 	if noPrefetch {
 		tmpl = &noPrefetchTemplate{tmpl}
-	}
-	if forceFsOnly {
-		tmpl = &forceFsOnlyTemplate{tmpl}
 	}
 
 	return tmpl
@@ -406,7 +433,7 @@ func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetada
 			})
 		}
 
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, procOpts...)
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, false, r.forceReboot, procOpts...)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)
@@ -551,7 +578,7 @@ func (r *runner) cmdBenchmark(ctx context.Context, opts runOptions) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch)
 		}
 
 		fmt.Printf("\r[%d/%d] Running...    ", i+1, opts.iterations)
@@ -758,6 +785,9 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 	if opts.fsOnly {
 		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithFilesystemSnapshot())
 	}
+	if opts.inPlace {
+		pauseSnapshotOpts = append(pauseSnapshotOpts, sandbox.WithMaintainSandbox())
+	}
 	pauseStart := time.Now()
 	snapshot, err := sbx.Pause(ctx, newMeta, sandbox.SnapshotUseCasePause, pauseSnapshotOpts...)
 	pauseDur := time.Since(pauseStart)
@@ -836,7 +866,7 @@ func (r *runner) pauseBenchmark(ctx context.Context, opts pauseOptions) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch)
 		}
 
 		// Generate unique build ID for each iteration (not saved)
@@ -1081,7 +1111,7 @@ func (r *runner) benchmark(ctx context.Context, n int) error {
 			if err != nil {
 				return fmt.Errorf("reload template: %w", err)
 			}
-			r.tmpl = wrapTemplate(tmpl, r.noPrefetch, r.forceReboot)
+			r.tmpl = wrapTemplate(tmpl, r.noPrefetch)
 		}
 
 		fmt.Printf("\r[%d/%d] Running...    ", i+1, n)
@@ -1235,6 +1265,27 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	cache.Start(ctx)
 	defer cache.Stop()
 
+	// In gdb mode the launch must run the gdb-enabled Firecracker, but the factory
+	// resolves the FC binary from FirecrackerVersionsDir, which on cluster nodes is a
+	// read-only gcsfuse mount. Redirect it to a writable temp dir (populated by gdbMode)
+	// before the factory captures the config; the original dir is preserved for resolving
+	// the published firecracker-debug. Only the FC dir is affected — the kernel dir stays.
+	//
+	// INVARIANT: this must run before anything resolves the FC binary from
+	// FirecrackerVersionsDir. Today only the factory (created just below) does; the
+	// template cache above does not. gdbMode also verifies the binary it is about to
+	// launch is gdb-enabled, as a backstop against this assumption drifting.
+	gdbOrigVersionsDir := ""
+	if gdbOpts.enabled {
+		gdbOrigVersionsDir = config.BuilderConfig.FirecrackerVersionsDir
+		stageDir, mkErr := os.MkdirTemp("", "fc-gdb-versions-")
+		if mkErr != nil {
+			return fmt.Errorf("gdb fc staging dir: %w", mkErr)
+		}
+		defer os.RemoveAll(stageDir)
+		config.BuilderConfig.FirecrackerVersionsDir = stageDir
+	}
+
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
@@ -1259,7 +1310,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if forceReboot && !meta.IsFilesystemOnly() {
 		fmt.Println("⚠️  Forcing reboot of a memory-snapshot build: the disk is only crash-consistent — writes that lived in the guest page cache at pause time may be missing.")
 	}
-	tmpl = wrapTemplate(tmpl, noPrefetch, forceReboot)
+	tmpl = wrapTemplate(tmpl, noPrefetch)
 
 	fcVersion := meta.Template.FirecrackerVersion
 	if runOpts.firecrackerVersion != "" {
@@ -1294,6 +1345,8 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		config:      config.BuilderConfig,
 		storage:     persistence,
 		sbxConfig:   sbxCfg,
+
+		gdbOrigVersionsDir: gdbOrigVersionsDir,
 	}
 
 	if gdbOpts.enabled {
@@ -1640,23 +1693,6 @@ func (t *noPrefetchTemplate) Metadata() (metadata.Template, error) {
 	meta.Prefetch = nil
 
 	return meta, nil
-}
-
-// forceFsOnlyTemplate wraps a template to mask its metadata as filesystem-only
-// so RebootSandbox's safety gate accepts a memory-snapshot build (-force-reboot).
-// The mask never touches the stored metadata; a memory snapshot's disk is only
-// crash-consistent, so writes cached in guest RAM at pause time may be missing.
-type forceFsOnlyTemplate struct {
-	template.Template
-}
-
-func (t *forceFsOnlyTemplate) Metadata() (metadata.Template, error) {
-	meta, err := t.Template.Metadata()
-	if err != nil {
-		return meta, err
-	}
-
-	return meta.MarkFilesystemOnly(true), nil
 }
 
 // noEgressProxy is an EgressProxy that removes the default route from the

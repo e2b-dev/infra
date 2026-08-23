@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"syscall"
 	"testing"
@@ -268,4 +269,68 @@ func waitForProcess(t *testing.T, cmd *exec.Cmd, timeout time.Duration) error {
 	case err := <-done:
 		return err
 	}
+}
+
+// TestCgroup2Manager_Frozen covers the one real Frozen implementation: the cgroup.events
+// parser. The noop manager, the non-Linux stub and the test fakes all return canned values,
+// so nothing else exercises this text handling — replacing the body with `return false, nil`
+// passes the rest of the suite while making every pre-pause freeze report notFrozen and burn
+// its whole wait budget in production.
+//
+// No root needed: cgroupPaths is just a map, so a temp dir with a synthetic cgroup.events is
+// enough.
+func TestCgroup2Manager_Frozen(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		events  string
+		want    bool
+		wantErr bool
+	}{
+		{name: "frozen", events: "populated 1\nfrozen 1\n", want: true},
+		{name: "not frozen", events: "populated 1\nfrozen 0\n", want: false},
+		{name: "frozen key first", events: "frozen 1\npopulated 0\n", want: true},
+		// A cgroup that has never been frozen may omit the key entirely; that is not an
+		// error, it is simply not frozen.
+		{name: "key absent", events: "populated 1\n", want: false},
+		{name: "empty file", events: "", want: false},
+		// The kernel writes "key value\n", but a parser that depends on the trailing
+		// newline or on exact spacing would be brittle for no reason.
+		{name: "no trailing newline", events: "populated 1\nfrozen 1", want: true},
+		{name: "surrounding whitespace", events: "  frozen 1  \n", want: true},
+		// Only an exact key match counts: a longer key that merely starts with "frozen"
+		// must not be read as the freeze state.
+		{name: "similar key is not a match", events: "frozen_time_usec 12345\n", want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			require.NoError(t, os.WriteFile(filepath.Join(dir, "cgroup.events"), []byte(tc.events), 0o644))
+			mgr := Cgroup2Manager{cgroupPaths: map[ProcessType]string{ProcessTypeUser: dir}}
+
+			got, err := mgr.Frozen(ProcessTypeUser)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+
+	t.Run("unknown process type errors", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := Cgroup2Manager{cgroupPaths: map[ProcessType]string{}}
+		_, err := mgr.Frozen(ProcessTypeUser)
+		require.Error(t, err)
+	})
+
+	t.Run("missing cgroup.events errors", func(t *testing.T) {
+		t.Parallel()
+
+		mgr := Cgroup2Manager{cgroupPaths: map[ProcessType]string{ProcessTypeUser: t.TempDir()}}
+		_, err := mgr.Frozen(ProcessTypeUser)
+		require.Error(t, err, "a cgroup that vanished mid-sweep must surface as an error, not as not-frozen")
+	})
 }

@@ -33,11 +33,6 @@ packages:
           dir: packages/shared/pkg/grpc/orchestrator/mocks
           filename: mockchunkservicegetbuildblobclient.go
           pkgname: orchestratormocks
-      ChunkService_GetBuildBlobServer:
-        config:
-          dir: packages/shared/pkg/grpc/orchestrator/mocks
-          filename: mockchunkservicegetbuildblobserver.go
-          pkgname: orchestratormocks
 
   github.com/e2b-dev/infra/packages/shared/pkg/storage:
     interfaces:

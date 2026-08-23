@@ -136,11 +136,6 @@ echo "${config.nfs_location} ${config.local_mount_path} nfs ${config.nfs_mount_o
 mount "${config.local_mount_path}"
 %{ endfor }
 
-# Add tmpfs for snapshotting
-# TODO: Parametrize this
-mkdir -p /mnt/snapshot-cache
-mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
-
 ulimit -n 1048576
 export GOMAXPROCS='nproc'
 

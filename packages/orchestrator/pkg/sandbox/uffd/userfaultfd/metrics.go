@@ -3,10 +3,13 @@
 package userfaultfd
 
 import (
+	"context"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -43,8 +46,8 @@ type pageClass uint8
 
 const (
 	pageClassNew      pageClass = iota // block.NotPresent: pulled from the source chunker
-	pageClassZero                      // block.Zero: zero-filled
-	pageClassResident                  // block.Dirty: already present, short-circuited
+	pageClassZero                      // block.Zero / block.Removed: zero-filled
+	pageClassResident                  // block.Dirty / block.Clean: already present, short-circuited
 	pageClassUnknown                   // classification failed (unexpected tracker state)
 	numPageClass
 )
@@ -58,7 +61,7 @@ const (
 	faultResultDeferred                     // EAGAIN: must be retried later
 	faultResultDiscarded                    // ESRCH: faulting thread gone, retry pointless
 	faultResultError                        // serving failed
-	faultResultSkipped                      // prefault only: tracker already Dirty/Zero — prefetch arrived too late
+	faultResultSkipped                      // prefault only: tracker not NotPresent — prefetch arrived too late (or page was removed)
 	numFaultResult
 )
 
@@ -163,6 +166,147 @@ var prefaultTimer = utils.Must(telemetry.NewTimerFactory(
 	"UFFD prefault attempts",
 ))
 
+// wpResolveMetricName is the metric under which synchronous write-protect
+// fault resolution latency (us histogram) and count (counter) are reported.
+// Only sync-WP guests (use_sync_wp on snapshot load) emit it: under WP_ASYNC
+// no WP events are ever delivered.
+const wpResolveMetricName = "orchestrator.sandbox.uffd.wp_resolve"
+
+// wpResolveDuration is the guest-observed write stall: measured from the
+// serve loop reading the WP event to unprotect+wake completing, so it
+// INCLUDES the worker-pool dispatch wait (a WP resolve can queue behind
+// ms-scale MISSING serves — exactly the tail this metric exists to expose).
+// Microseconds, not ms: the whole distribution sits at tens of us.
+//
+// Known undercount: kernel-queue time before the serve loop reads the event
+// is not observable (uffd events carry no timestamps); the largest such
+// window is ExportPageStates holding readSerial during pause.
+var wpResolveDuration = utils.Must(meter.Int64Histogram(wpResolveMetricName,
+	metric.WithDescription("Time to resolve a synchronous userfault write-protect fault, from serve-loop event read to unprotect+wake"),
+	metric.WithUnit("us"),
+))
+
+// wpResolveCount counts WP fault resolutions under wpResolveMetricName,
+// tagged like wpResolveDuration.
+var wpResolveCount = utils.Must(meter.Int64Counter(wpResolveMetricName,
+	metric.WithDescription("Synchronous userfault write-protect faults resolved"),
+))
+
+// wpResolveOutcome is the terminal classification of a resolveWriteProtect call.
+type wpResolveOutcome uint8
+
+const (
+	wpResolveOK wpResolveOutcome = iota
+	// wpResolveOKCoW: resolved after a CoW-window pre-image capture (copied
+	// by this resolve or waited on / fast-pathed a concurrent capture).
+	wpResolveOKCoW
+	// wpResolveDeferred: the unprotect hit EAGAIN (mmap_changing) and the
+	// fault was re-queued; the re-serve records the resolution separately.
+	wpResolveDeferred
+	// wpResolveClosed: the handler was already closed; nothing was resolved.
+	wpResolveClosed
+	// wpResolveError: the unprotect ioctl failed.
+	wpResolveError
+	// wpResolveStale: a REMOVE raced ahead of the resolve and the presence
+	// probe confirmed the page absent; it was zero-installed armed and the
+	// writer woken — the retried write WP-faults and promotes normally.
+	wpResolveStale
+	numWPResolveOutcome
+)
+
+// wpResolveAttrs holds a precomputed metric.MeasurementOption per
+// (generationBucket, wpResolveOutcome) so the per-fault hot path allocates no
+// attributes.
+var wpResolveAttrs = buildWPResolveAttrs()
+
+func buildWPResolveAttrs() [numGenerationBucket][numWPResolveOutcome]metric.MeasurementOption {
+	outcomeNames := [numWPResolveOutcome]string{
+		wpResolveOK:       "resolved",
+		wpResolveOKCoW:    "resolved_cow",
+		wpResolveDeferred: "deferred",
+		wpResolveClosed:   "closed",
+		wpResolveError:    "error",
+		wpResolveStale:    "stale_removed",
+	}
+
+	var t [numGenerationBucket][numWPResolveOutcome]metric.MeasurementOption
+	for g := range generationBucketNames {
+		for o := range outcomeNames {
+			t[g][o] = telemetry.PrecomputeAttrs(
+				attribute.String("generation_bucket", generationBucketNames[g]),
+				attribute.String("result", outcomeNames[o]),
+			)
+		}
+	}
+
+	return t
+}
+
+// cowCaptureMetricName counts pages captured into a CoW window, split by
+// which path did the copy: the background sweep or a guest write's WP-fault
+// resolve (the racing captures that are the window's whole reason to exist).
+const cowCaptureMetricName = "orchestrator.sandbox.uffd.cow_capture"
+
+var cowCaptureCount = utils.Must(meter.Int64Counter(cowCaptureMetricName,
+	metric.WithDescription("Pages captured into a CoW memory-export window, by capture path"),
+	metric.WithUnit("{page}"),
+))
+
+var (
+	cowCaptureSweepAttrs = telemetry.PrecomputeAttrs(attribute.String("source", "sweep"))
+	cowCaptureFaultAttrs = telemetry.PrecomputeAttrs(attribute.String("source", "fault"))
+)
+
+// cowCancelMetricName counts CoW-window cancellations by reason. The reason
+// label is what separates the systemic case the REMOVE tripwire exists to
+// catch (a hole in the FPR pause) from ordinary I/O failures — without it a
+// cancelled window collapses into memory_seal.duration's success=false and
+// the two are indistinguishable short of reading logs.
+const cowCancelMetricName = "orchestrator.sandbox.uffd.cow_window_cancel"
+
+var cowCancelCount = utils.Must(meter.Int64Counter(cowCancelMetricName,
+	metric.WithDescription("CoW memory-export windows canceled, by reason"),
+))
+
+// recordCoWCancel records a window cancellation under the given reason
+// (remove_tripwire, sweep_error, sink_error, abort, teardown).
+func recordCoWCancel(ctx context.Context, reason string) {
+	cowCancelCount.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reason)))
+}
+
+// wpPromoteMetricName counts tracker dirty-promotions performed by WP fault
+// resolutions, tagged by the state the page was promoted from. This is the
+// write signal the tracker-based dirty source relies on. The "removed"
+// bucket stays at zero by construction: a stale WP fault that raced a
+// REMOVE returns from the resolve (wp_resolve result="stale_removed")
+// before the promotion, under the same lock that excludes the REMOVE
+// batch — a non-zero reading here means that guard was bypassed.
+const wpPromoteMetricName = "orchestrator.sandbox.uffd.wp_promote"
+
+var wpPromoteCount = utils.Must(meter.Int64Counter(wpPromoteMetricName,
+	metric.WithDescription("Tracker dirty-promotions from synchronous write-protect faults, by prior page state"),
+))
+
+// wpPromoteAttrs holds a precomputed metric.MeasurementOption per
+// (generationBucket, prior block.State). Sized by block.NumStates and named
+// by State.String(), both owned by the block package next to the enum, so a
+// new state cannot leave this table short or unnamed.
+var wpPromoteAttrs = buildWPPromoteAttrs()
+
+func buildWPPromoteAttrs() [numGenerationBucket][block.NumStates]metric.MeasurementOption {
+	var t [numGenerationBucket][block.NumStates]metric.MeasurementOption
+	for g := range generationBucketNames {
+		for s := range block.NumStates {
+			t[g][s] = telemetry.PrecomputeAttrs(
+				attribute.String("generation_bucket", generationBucketNames[g]),
+				attribute.String("from_state", block.State(s).String()),
+			)
+		}
+	}
+
+	return t
+}
+
 // ServeSnapshot is a cumulative count of demand faults a handler has served,
 // read at a point in time via Userfaultfd.ServeStats. Prefaults bypass the
 // serve loop and are not counted. Sampling it at the envd-init boundary yields
@@ -180,6 +324,10 @@ type ServeSnapshot struct {
 	// times the page size, but it is tracked directly so it stays correct
 	// across mixed page sizes.
 	Bytes int64
+	// WPFaults is the number of synchronous write-protect faults resolved
+	// (guest writes to protected pages). Zero under WP_ASYNC guests. Sampled
+	// per interval it approximates the dirty-set growth at 2 MiB granularity.
+	WPFaults int64
 }
 
 // ServeStats returns a cumulative snapshot of the demand faults served so far.
@@ -188,6 +336,7 @@ func (u *Userfaultfd) ServeStats() ServeSnapshot {
 		Pages:       u.servedPages.Load(),
 		SourcePages: u.servedSourcePages.Load(),
 		Bytes:       u.servedBytes.Load(),
+		WPFaults:    u.wpFaultsResolved.Load(),
 	}
 }
 

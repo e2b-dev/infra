@@ -1,6 +1,7 @@
 package lock
 
 import (
+	"context"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -81,7 +82,7 @@ func TestOpenFile(t *testing.T) {
 		f1, err := OpenFile(t.Context(), filename)
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			err := f1.Close(t.Context())
+			err := f1.Close(context.WithoutCancel(t.Context()))
 			assert.NoError(t, err)
 		})
 

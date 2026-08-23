@@ -17,7 +17,7 @@ import (
 
 func TestRun(t *testing.T) {
 	postgresContainer, err := postgres.Run(t.Context(),
-		"postgres:16-alpine",
+		"postgres:18-alpine",
 		postgres.WithDatabase("test"),
 		postgres.WithUsername("postgres"),
 		postgres.WithPassword("password"),
@@ -25,7 +25,7 @@ func TestRun(t *testing.T) {
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		err := postgresContainer.Terminate(context.Background())
+		err := postgresContainer.Terminate(context.WithoutCancel(t.Context()))
 		assert.NoError(t, err)
 	})
 

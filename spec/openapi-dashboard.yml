@@ -103,6 +103,30 @@ components:
       schema:
         type: string
         format: uuid
+    clusterID:
+      name: clusterID
+      in: path
+      required: true
+      description: Identifier of the cluster.
+      schema:
+        type: string
+        format: uuid
+    projectID:
+      name: projectID
+      in: path
+      required: true
+      description: Identifier of the project.
+      schema:
+        type: string
+        format: uuid
+    userID:
+      name: userID
+      in: path
+      required: true
+      description: Identifier of the user.
+      schema:
+        type: string
+        format: uuid
     userId:
       name: userId
       in: path
@@ -399,6 +423,67 @@ components:
           type: string
           format: email
           description: Billing/contact email for the team.
+
+    AdminClusterCreateRequest:
+      type: object
+      required:
+        - name
+        - endpoint
+        - endpoint_tls
+        - token
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+          description: Optional stable identifier for idempotent creation. Reuse succeeds only when the immutable configuration is identical.
+        name:
+          type: string
+          minLength: 1
+        endpoint:
+          type: string
+          minLength: 1
+        endpoint_tls:
+          type: boolean
+        token:
+          type: string
+          minLength: 1
+        sandbox_proxy_domain:
+          type: string
+          nullable: true
+        auth_org_id:
+          type: string
+          nullable: true
+
+    AdminClusterCreateResponse:
+      type: object
+      required:
+        - cluster_id
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+
+    AdminTeamClusterAssignmentRequest:
+      type: object
+      required:
+        - cluster_id
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
+        preserve_existing:
+          type: boolean
+          default: false
+          description: Assign only when the team is unassigned or already assigned to cluster_id.
+
+    AdminTeamClusterAssignmentResponse:
+      type: object
+      required:
+        - cluster_id
+      properties:
+        cluster_id:
+          type: string
+          format: uuid
 
     BuildStatus:
       type: string
@@ -707,6 +792,21 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/UserTeam"
+
+    TeamStatusResponse:
+      type: object
+      required:
+        - isBlocked
+        - isBanned
+        - blockedReason
+      properties:
+        isBlocked:
+          type: boolean
+        isBanned:
+          type: boolean
+        blockedReason:
+          type: string
+          nullable: true
 
     TeamMember:
       type: object
@@ -1162,13 +1262,19 @@ components:
         slug:
           type: string
 
-    AdminControlPlaneProjectType:
-      type: string
-      enum: [development, staging, production]
-
-    AdminControlPlaneProjectUpsertRequest:
+    ManagementProjectUpsertRequest:
       type: object
-      required: [name, slug, project_type]
+      description: >-
+        The properties of a project this side stores. Every one is synchronized
+        by the caller and sent on every push, so a reconcile is a complete
+        statement of the project rather than a patch.
+
+
+        A project's tier is not among them. It is assigned once, at creation,
+        from this side's own default, and no push moves it — limits arrive
+        separately and in full through upsertProjectLimits, which takes
+        precedence over the tier anyway.
+      required: [name, slug, email]
       properties:
         name:
           type: string
@@ -1178,12 +1284,21 @@ components:
           type: string
           minLength: 1
           maxLength: 63
-        project_type:
-          $ref: "#/components/schemas/AdminControlPlaneProjectType"
+          description: >-
+            Changing it renames the project, and nothing follows it. Template
+            names embed the slug they were built under, so a renamed project
+            keeps its existing template names and only new ones carry the new
+            slug. A slug already held on this control plane is a 409, on a
+            rename as much as on a create.
+        email:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Contact address recorded on the project.
 
-    AdminControlPlaneProject:
+    ManagementProject:
       allOf:
-        - $ref: "#/components/schemas/AdminControlPlaneProjectUpsertRequest"
+        - $ref: "#/components/schemas/ManagementProjectUpsertRequest"
         - type: object
           required: [id]
           properties:
@@ -1191,16 +1306,50 @@ components:
               type: string
               format: uuid
 
-    AdminControlPlaneMemberUpsertRequest:
+    ManagementProjectMemberIdentity:
       type: object
+      required: [issuer, subject]
       properties:
-        added_by:
+        issuer:
           type: string
-          format: uuid
+          minLength: 1
+          maxLength: 2048
+        subject:
+          type: string
+          minLength: 1
+          maxLength: 2048
 
-    AdminControlPlaneProjectLimits:
+    ManagementProjectMemberApplyRequest:
       type: object
+      required: [revision, present]
+      properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+        present:
+          type: boolean
+        identities:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/ManagementProjectMemberIdentity"
+
+    ManagementProjectLimits:
+      type: object
+      description: >-
+        A project's effective limits, already resolved by the caller. Every
+        field is absolute: this side stores what it is given and performs no
+        arithmetic of its own.
+
+
+        The minimums below track the CHECK constraints on tiers, which is the
+        contract for what a limit may be. project_limits stores the same values
+        under looser constraints on purpose — it is a push target, and a floor
+        that only rejects the impossible keeps a future decision about what is
+        allowed a change to this schema rather than a migration.
       required:
+        - revision
         - concurrent_sandboxes
         - max_sandbox_length_hours
         - max_vcpu
@@ -1208,7 +1357,23 @@ components:
         - disk_mb
         - concurrent_template_builds
         - events_ttl_days
+        - default_free_disk_size_mb
+        - max_disk_size_mb
       properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            The caller's version of this answer, raised whenever the limits it
+            resolved for the project change. Delivery is over a network, so two
+            pushes can be in flight at once and arrive in either order: this
+            side stores the revision it accepted and drops a delivery at or
+            below it, which is what keeps a delayed retry from putting the
+            project back on limits it has already left.
+
+
+            Comparable only against earlier revisions for the same project.
         concurrent_sandboxes:
           type: integer
           format: int32
@@ -1237,14 +1402,25 @@ components:
           type: integer
           format: int32
           minimum: 1
+        default_free_disk_size_mb:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Free rootfs allowance. Must not exceed max_disk_size_mb; the two
+            are stored together and rejected as a pair if they disagree.
+        max_disk_size_mb:
+          type: integer
+          format: int64
+          minimum: 1
 
 tags:
   - name: builds
+  - name: control-plane-management
+    description: Workspace control-plane operations authenticated with service JWTs.
   - name: sandboxes
   - name: teams
   - name: templates
-  - name: workspace-admin
-    description: Workspace control-plane admin operations authenticated with service JWTs.
 
 paths:
   /health:
@@ -1463,6 +1639,132 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /admin/clusters:
+    post:
+      summary: Create a cluster
+      description: Creates a cluster whose configuration cannot be modified.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminClusterCreateRequest"
+      responses:
+        "201":
+          description: Cluster created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminClusterCreateResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/clusters/{clusterID}:
+    delete:
+      summary: Delete an unreferenced cluster
+      description: Deletes a cluster only after all team assignments are detached and no environment history references it. Repeating a completed deletion succeeds.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/clusterID"
+      responses:
+        "204":
+          description: Cluster deleted or already absent.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/cluster:
+    get:
+      summary: Get a team's assigned cluster
+      description: Returns the current cluster assignment without exposing cluster credentials.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Cluster assignment returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamClusterAssignmentResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+    put:
+      summary: Assign a cluster to a team
+      description: Updates the team's cluster reference to an existing cluster.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamClusterAssignmentRequest"
+      responses:
+        "204":
+          description: Cluster assigned.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/cluster/{clusterID}:
+    delete:
+      summary: Detach a cluster from a team
+      description: Clears the assignment only when the team is unassigned or assigned to the specified cluster.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+        - $ref: "#/components/parameters/clusterID"
+      responses:
+        "204":
+          description: Cluster detached or the team was already unassigned.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
   /admin/user-profiles/resolve:
     post:
       summary: Resolve user profiles
@@ -1613,6 +1915,30 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}/status:
+    get:
+      summary: Get team access status
+      description: Returns whether the team is blocked or banned and its recorded blocked reason. Bearer-authenticated users may read only teams they belong to.
+      tags: [teams]
+      security:
+        - AuthProviderBearerAuth: []
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned team access status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamStatusResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1889,13 +2215,13 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/management/projects/{teamID}:
+  /v1/management/projects/{projectID}:
     parameters:
-      - $ref: "#/components/parameters/teamID"
+      - $ref: "#/components/parameters/projectID"
     put:
-      operationId: upsertProject
+      operationId: managementUpsertProject
       summary: Create or reconcile a project (v1).
-      tags: [workspace-admin]
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -1903,20 +2229,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminControlPlaneProjectUpsertRequest"
+              $ref: "#/components/schemas/ManagementProjectUpsertRequest"
       responses:
         "200":
           description: Existing project reconciled.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminControlPlaneProject"
+                $ref: "#/components/schemas/ManagementProject"
         "201":
           description: Project created.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/AdminControlPlaneProject"
+                $ref: "#/components/schemas/ManagementProject"
         "400":
           $ref: "#/components/responses/400"
         "401":
@@ -1928,9 +2254,15 @@ paths:
         "501":
           $ref: "#/components/responses/501"
     delete:
-      operationId: deleteProject
+      operationId: managementDeleteProject
       summary: Delete a project and its control-plane state (v1).
-      tags: [workspace-admin]
+      description: >-
+        Declared, and answered with 501 by every control plane. Deleting a
+        project means reclaiming templates, snapshots, volumes, running
+        sandboxes and their stored artifacts, and no single service can reach
+        all of them today. Callers should not depend on this operation until
+        that changes.
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       responses:
@@ -1945,62 +2277,17 @@ paths:
         "501":
           $ref: "#/components/responses/501"
 
-  /v1/management/projects/{teamID}/members/{userId}:
+  /v1/management/projects/{projectID}/members/{userID}:
     parameters:
-      - $ref: "#/components/parameters/teamID"
-      - $ref: "#/components/parameters/userId"
+      - $ref: "#/components/parameters/projectID"
+      - $ref: "#/components/parameters/userID"
     put:
-      operationId: upsertProjectMember
-      summary: Reconcile an opaque user UUID as a project member (v1).
-      tags: [workspace-admin]
-      security:
-        - AdminJWTAuth: []
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminControlPlaneMemberUpsertRequest"
-      responses:
-        "204":
-          description: Membership is present.
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
-    delete:
-      operationId: deleteProjectMember
-      summary: Remove a project member (v1).
-      tags: [workspace-admin]
-      security:
-        - AdminJWTAuth: []
-      responses:
-        "204":
-          description: Membership is absent.
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
-
-  /v1/management/projects/{teamID}/limits:
-    parameters:
-      - $ref: "#/components/parameters/teamID"
-    put:
-      operationId: upsertProjectLimits
-      summary: Reconcile effective limits for a project (v1).
-      tags: [workspace-admin]
+      operationId: managementApplyProjectMember
+      summary: Apply one versioned project member projection (v1).
+      description: >-
+        Applies the newest desired presence for one project member. An older
+        or duplicate revision is accepted without changing target state.
+      tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       requestBody:
@@ -2008,7 +2295,56 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdminControlPlaneProjectLimits"
+              $ref: "#/components/schemas/ManagementProjectMemberApplyRequest"
+      responses:
+        "204":
+          description: Membership projection is applied or already superseded.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/management/users/{userID}/access-tokens:
+    parameters:
+      - $ref: "#/components/parameters/userID"
+    delete:
+      operationId: managementPurgeUserAccessTokens
+      summary: Revoke a deleted User's access tokens (v1).
+      description: >-
+        Removes every access token for a deleted User while retaining their
+        projected User and identity records.
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: User access tokens are absent.
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/management/projects/{projectID}/limits:
+    parameters:
+      - $ref: "#/components/parameters/projectID"
+    put:
+      operationId: managementUpsertProjectLimits
+      summary: Reconcile effective limits for a project (v1).
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManagementProjectLimits"
       responses:
         "204":
           description: Effective limits are synchronized.
@@ -2018,27 +2354,6 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
-
-  /v1/management/users/{userId}:
-    parameters:
-      - $ref: "#/components/parameters/userId"
-    delete:
-      operationId: purgeUser
-      summary: Purge shard-local membership and access-token state for an opaque user UUID (v1).
-      tags: [workspace-admin]
-      security:
-        - AdminJWTAuth: []
-      responses:
-        "204":
-          description: User-owned shard state is absent.
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
         "501":

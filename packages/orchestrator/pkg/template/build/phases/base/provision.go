@@ -53,6 +53,9 @@ type ProvisionScriptParams struct {
 	BusyBox    string
 	ResultPath string
 	Provider   string
+	// DistroSelector is the generated POSIX-sh block that selects the base
+	// image's distro profile by its /etc/os-release ID.
+	DistroSelector string
 }
 
 func getProvisionScript(
@@ -96,6 +99,18 @@ func (bb *BaseBuilder) provisionSandbox(
 			done.SetError(e)
 		}()
 
+		// Rolling tail of the guest's own provisioning output (the
+		// prefix-marked lines only — kernel logs are unmarked). The full
+		// stream is logged at debug, invisible in customer build logs; on
+		// failure the tail is attached to the error, which IS user-visible,
+		// so rejections name their real reason ("unsupported base image
+		// distribution: …") instead of a bare exit status.
+		// 30 lines, because package managers emit per-package error spam that
+		// rotated the ROOT error ("No space left on device") out of an
+		// 8-line window (observed with yum on Amazon Linux 2).
+		const failureTailLines = 30
+		var tail []string
+
 		scanner := bufio.NewScanner(exitCodeReader)
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -106,7 +121,19 @@ func (bb *BaseBuilder) provisionSandbox(
 					return nil
 				}
 
+				if len(tail) > 0 {
+					return fmt.Errorf("exit status: %s; provisioning output tail:\n%s", exitStatus, strings.Join(tail, "\n"))
+				}
+
 				return fmt.Errorf("exit status: %s", exitStatus)
+			}
+			if after, ok := strings.CutPrefix(line, logExternalPrefix); ok {
+				if trimmed := strings.TrimSpace(after); trimmed != "" {
+					tail = append(tail, trimmed)
+					if len(tail) > failureTailLines {
+						tail = tail[1:]
+					}
+				}
 			}
 		}
 

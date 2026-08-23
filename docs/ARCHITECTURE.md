@@ -34,16 +34,16 @@ flowchart TB
     subgraph clients["Clients"]
         SDK["SDK / CLI"]
         Browser["Browser / HTTP clients"]
-        Docker["docker push"]
     end
 
-    LB["Load balancer<br/>api.* | *.domain wildcard | docker.*"]
+    LB["Load balancer<br/>api.* | *.domain wildcard"]
+
+    VC["volume-content API (belt)<br/>api.&lt;domain&gt;"]
 
     subgraph controlplane["Control plane (API node pool)"]
         API["API<br/>REST :80, gRPC :5009/:5109"]
         DashAPI["dashboard-api :3010"]
         CP["client-proxy<br/>:3002"]
-        DRP["docker-reverse-proxy :5000"]
     end
 
     subgraph datastores["State"]
@@ -67,7 +67,8 @@ flowchart TB
 
     SDK -->|REST| LB --> API
     Browser -->|"port-sandboxid.domain"| LB --> CP
-    Docker --> LB --> DRP
+    API -.->|"mint content token + domain"| SDK
+    SDK -->|"volume content (token-authed)<br/>api.&lt;BYOC or default domain&gt;"| VC
     API -->|"gRPC Create/Delete/Pause"| ORCH
     API -->|"gRPC TemplateCreate"| TM
     CP -->|"lookup sandbox → node"| RD
@@ -91,7 +92,6 @@ flowchart TB
 | Client proxy | `packages/client-proxy` | API nodes | Edge router: sandbox URL → correct node |
 | Envd | `packages/envd` | inside every VM | In-VM agent: process/filesystem API for SDKs |
 | Dashboard API | `packages/dashboard-api` | API nodes | Backend for the web dashboard (teams, builds, admin) |
-| Docker reverse proxy | `packages/docker-reverse-proxy` | API nodes | Registry auth gateway for pushing template images |
 
 Supporting packages: `packages/shared` (protos, telemetry, storage clients, feature flags),
 `packages/auth` (authentication library), `packages/db` (Postgres migrations + sqlc queries),
@@ -105,7 +105,7 @@ Supporting packages: `packages/shared` (protos, telemetry, storage clients, feat
 The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, port 80).
 
 - **Resources**: sandboxes (create/list/kill/pause/resume/connect/timeout/metrics/logs),
-  templates and builds, teams, volumes, API keys/access tokens, admin operations.
+  templates and builds, teams, volumes, API keys/access tokens, secrets, admin operations.
 - **Auth** (via `packages/auth`): team API keys (`X-API-Key`, `e2b_` prefix), auth-provider JWTs
   (OIDC), admin token. Backed by an auth DB (Postgres) with a Redis team cache.
 - **Workload identity**: sandbox create accepts an optional `iam.tokens` map of caller-named
@@ -138,6 +138,17 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   snapshot identity so the SDK and attestation cannot disagree. Partial
   placement configuration fails API startup; absent configuration disables
   the endpoint.
+- **Secrets**: `/secrets` is the only public surface for secret management (create, list, get,
+  update, delete). The API authenticates the caller with the customer alternatives above, converts
+  the authenticated team UUID to the project UUID the backend knows, checks the `customer-secrets`
+  feature flag, and forwards a metadata-only request over a unary gRPC contract
+  (`e2b.secretsstore.management.v1`) to the secrets store backend named by
+  `SECRETS_STORE_BACKEND_GRPC_ADDRESS`. No caller credential, header or client-supplied tenant
+  crosses that hop, and no response - here or in a log, a span or an error - carries a secret
+  value. What a caller stores is a runtime marker, not a resolved secret; orchestrator-ee resolves
+  a marker to a value at sandbox egress, never here. Without a configured address, or with the flag
+  off, the routes stay registered and answer 403. Responses are `Cache-Control: no-store`, request bodies are capped at 512 KiB, and values
+  at 64 KiB.
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to
@@ -175,7 +186,8 @@ Key mechanisms (all under `pkg/sandbox/`):
 - **Networking** (`network/`): each sandbox gets a slot — a network namespace with a veth pair
   and a tap device, unique host-side IP (from a /16), NAT, and per-slot nftables egress firewall
   (with SNI/Host-inspecting TCP firewall for domain allow/deny lists). Slots are pooled and
-  reused; slot allocation is coordinated through Consul KV.
+  reused; slot indexes are allocated locally against the node's netns state (leftover
+  namespaces from a previous run are torn down by startup reclaim).
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
@@ -190,18 +202,27 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
 - **Process service** (`spec/process/process.proto`): start/list/connect to processes, stream
   stdout/stderr, stdin, signals, PTYs — this is what SDKs use to "run code".
 - **Filesystem service** (`spec/filesystem/filesystem.proto`): stat/list/make/move/remove/watch.
-- **REST**: `/health`, `/metrics`, `/files` upload/download, `/init` (orchestrator pushes env
-  vars, access token, metadata after boot/resume), freeze/thaw hooks used during pause.
-- **Public vs. control-plane routes**: the control routes (`/init` and the freeze/thaw hooks) are
-  marked `x-internal: true` in `spec/envd.yaml`. The orchestrator reaches them over the host
-  network at the sandbox slot IP; the sandbox proxy refuses them with a 404, for every method, so
-  they are not reachable through a sandbox URL. Adding a control route therefore means marking it
-  in the spec (`go generate` carries the marker into the proxy's rejection list) — otherwise it
-  ships reachable from the internet. (The rejection list also carries upstream's `/upgrade` route,
-  which this fork's envd does not serve.)
+- **REST**: `/health`, `/metrics`, `/envs`, `/files` upload/download, `/init` (orchestrator pushes
+  env vars, access token, metadata after boot/resume), `/upgrade` (live self-upgrade, below),
+  freeze/thaw hooks used during pause.
+- **Public vs. control-plane routes**: the control routes (`/init`, `/upgrade`, and the freeze/thaw
+  hooks) are marked `x-internal: true` in `spec/envd.yaml`, and `/upgrade` — which the spec does not
+  describe — is listed alongside them in the orchestrator's `pkg/sandbox/envd`. The orchestrator
+  reaches them over the host network at the sandbox slot IP; the sandbox proxy refuses them with a
+  404, for every method, so they are not reachable through a sandbox URL. Adding a control route
+  therefore means marking it in the spec (`go generate` carries the marker into the proxy's
+  rejection list) — otherwise it ships reachable from the internet.
 - **Auth**: `X-Access-Token` header checked against a token delivered via Firecracker MMDS;
   signed URLs for file endpoints. `/init` is exempt (it is what *delivers* the token), which is the
   main reason the proxy refuses it outright.
+- **Live upgrade** (`internal/services/process/upgrade.go`): an authenticated `POST /upgrade` lets
+  the orchestrator swap envd inside a *running* sandbox at resume. It streams the new binary in the
+  request body and envd `syscall.Exec`s into it **with the same PID**, carrying the workload's
+  stdio/PTY fds, process table, recently-retained exit codes and filesystem watchers forward via a
+  tmpfs handover blob. The workload cgroups stay frozen until the post-upgrade `/init` restores the
+  access token (so no re-adopted process runs unauthenticated), and the handover outcome
+  (procs/watchers re-adopted, plus any failures) rides back on that `/init`'s `X-Envd-Handover`
+  header for fleet visibility.
 - Scans guest ports and forwards them so any port a user process opens becomes reachable through
   sandbox URLs. **`pkg/version.go` must be bumped on every behavioral change** — the API and the
   orchestrator gate features on the envd version recorded in each template build.
@@ -227,21 +248,44 @@ OpenAPI security scheme accepts only short-lived service JWTs verified against t
 the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
 orchestrators.
 
-### Docker reverse proxy (`packages/docker-reverse-proxy`)
+The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
+project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
+assigned once at creation from a local default and no push moves it; a changed slug renames the project, and nothing else follows it), per-member projection,
+and limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`). All are
+idempotent, because the caller is level-triggered and retries. `PUT
+/v1/management/projects/{projectID}/members/{userID}` applies the desired presence for one user,
+gated by a monotonic per-project/user revision stored in `projection.project_members`; duplicate or
+older revisions succeed without changing target state. `PUT
+/v1/management/projects/{projectID}/limits` is gated the same way, by a monotonic per-project
+revision in `projection.project_limits`: the caller raises it whenever the limits it resolved for a
+project change, and a delivery at or below the recorded revision is dropped and still answers 204.
+The ledger and the values in `public.project_limits` advance in one transaction, so a revision is
+never recorded without the values it admitted. Both fences are the target's, and both exist for the
+same reason — the caller can only fence what it sends, so two deliveries in flight arrive in
+whichever order the network gives them and the older one has to be refused where it lands. A present projection includes that User's
+OIDC issuer/subject identities. Every projected user has at least one identity, and an identity
+already owned by a different user returns 409. A revocation removes only that User's
+`users_teams` row; projected Users and identities are retained. Membership writes live in
+`internal/management` with their post-commit cache eviction rather than in the handlers: auth
+caches member authorization, so each accepted command invalidates that User's authorization for
+the Project after commit. `DELETE /v1/management/users/{userID}/access-tokens` separately
+removes every access token for a deleted User while retaining their projected User and identity
+records.
 
-A Docker Registry v2 auth gateway (port 5000). Users `docker push` template base images with E2B
-credentials; the proxy validates them, swaps in real registry credentials, and rewrites paths
-into the cloud artifact registry (`/v2/e2b/custom-envs/<templateID>` → project registry).
+`DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
+`volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
+project that ever built one pins its team row — and releasing it needs the API service's
+orchestrator connections, which this service does not have. Projects are not deleted from control
+planes today.
 
 ## Data stores
 
 | Store | Owner packages | What lives there |
 |---|---|---|
-| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quotas), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
+| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
 | **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |
-| **Consul KV** | orchestrator | Network slot allocation across restarts |
 
 A template and a paused-sandbox snapshot have the **same artifact shape** — a snapshot is just a
 new build whose memfile/rootfs are stored as diffs against the template it came from (diff chains
@@ -277,7 +321,8 @@ sequenceDiagram
 
 The API blocks on the gRPC `Create`, which itself blocks on envd's `/init` — when the client
 gets a response, the sandbox is fully usable. Fresh creates are internally a *resume* of the
-template's base snapshot (cold boots only happen for filesystem-only templates and builds).
+template's base snapshot (cold boots happen for filesystem-only templates and builds, or when
+an explicit resume requests one — see pause and resume below; template creates never do).
 
 ### Sandbox traffic
 
@@ -306,12 +351,57 @@ sequenceDiagram
     E-->>U: response
 ```
 
+### Volume content
+
+Persistent volumes (`packages/orchestrator/pkg/volumes/`) are managed through the control-plane
+API (`POST/GET /volumes`), but their **content** — reading and writing files — is served by a
+separate volume-content API (belt, `e2b-dev/belt`) that the SDK talks to directly, not through the
+control-plane API. The API's role is to mint the credential and tell the SDK where to send content
+traffic.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as SDK
+    participant API as API
+    participant PG as PostgreSQL
+    participant VC as volume-content API (belt)
+
+    U->>API: POST /volumes (create) or GET /volumes/{id}
+    API->>PG: persist / load volume row
+    API->>API: mint JWT (aud = https://api.&lt;domain&gt;)<br/>resolve domain
+    API-->>U: { volumeID, name, token, domain? }
+    Note over U: domain is returned only for BYOC teams;<br/>SDK stores it and falls back to api.&lt;E2B_DOMAIN&gt; otherwise
+    U->>VC: /volumecontent/{id}/... at api.&lt;domain&gt;<br/>Authorization: Bearer token
+    VC->>VC: verify token (audience must match its own origin)
+    VC-->>U: file content
+```
+
+- **Domain selection.** The token's audience and the content host are the same origin,
+  `https://api.<domain>`. For teams on a **custom (BYOC) cluster** (`team.ClusterID` set), the API
+  returns that cluster's domain (`cluster.SandboxDomain`, resolved in
+  `handlers.volumeContentDomain`) so content traffic goes to the BYOC cluster's edge instead of the
+  control-plane host. For teams on the default cluster the response omits `domain` and the SDK uses
+  its configured default (`api.<E2B_DOMAIN>`); the audience then uses the deployment's `DOMAIN_NAME`.
+- **Token.** A short-lived JWT (`handlers.generateVolumeContentToken`, config in
+  `cfg.VolumesTokenConfig`) signed by the API, scoped to the team and volume, presented as a bearer
+  token on every content request. Its `aud` claim is `https://api.<domain>`, so a token minted for
+  one cluster's origin is not accepted by another.
+
 ### Pause and resume
 
 - **Pause**: API records a snapshot row in Postgres, then gRPC `Pause` to the node. The
   orchestrator pauses the VM, snapshots it, diffs memory (dirty-page tracking) and rootfs (COW
   cache) against the template, caches the snapshot locally, and uploads asynchronously to object
   storage (with a retry budget). The sandbox leaves the Redis catalog.
+  - **Deferred rootfs export** (gated by the `deferred-rootfs-export` flag in
+    `packages/shared/pkg/featureflags`): instead of diffing the rootfs on the pause critical
+    path, the orchestrator ejects the writable COW cache during pause and returns, then seals it
+    into the rootfs diff (reflink) in the background. This moves the rootfs-diff latency off the
+    pause, but the local snapshot's rootfs body isn't materialized until the seal finishes, so the
+    async upload — and any origin-node resume/prefetch that reads the rootfs diff — waits on the
+    seal. A seal failure is permanent (it never re-runs), so the upload fails fast rather than
+    retrying.
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. A filesystem-only snapshot
   cold-boots outer systemd and envd from its persisted rootfs, then replays the immutable template
@@ -321,6 +411,30 @@ sequenceDiagram
   `snapshot_templates` row plus build/tag assignment. Restores and their later pause/resume
   cycles keep the tagged snapshot reference as their externally reported identity; the current
   execution build may change, but the attested snapshot build/tag edge does not.
+- **Explicit filesystem-only resume**: `memory: false` on resume/connect demands a cold boot
+  (`RebootSandbox`) even when the snapshot includes memory, as a self-serve rescue when the
+  restored memory state is unusable. Gated per team by the `fs-only-resume-api` flag; when off
+  the request is rejected with an explicit error, never silently downgraded to a memory restore.
+  The disk has crash-recovery semantics (unflushed pre-pause writes are lost), nothing durable
+  is mutated (the memory snapshot survives untouched), and auto-resume never takes this path —
+  traffic always memory-resumes.
+- **Envd live-upgrade on resume**: the orchestrator can upgrade the sandbox's envd to a newer
+  node-local build during resume (gated by the `envd-upgrade-target` flag in
+  `packages/shared/pkg/featureflags`), via envd's `POST /upgrade` (see the envd section). It is
+  best-effort — a delivery failure before the `exec` leaves the old envd serving — except an
+  unrecoverable post-`exec` failure (the new envd never re-initializes), which fails the resume
+  rather than return a permanently unusable sandbox.
+- **Envd offline-upgrade on cold-boot resume**: reaches envd too old for the live `/upgrade`
+  handover (below `MinEnvdVersionForUpgrade`). When a *filesystem-only* snapshot cold-boots
+  (`RebootSandbox`), the orchestrator rewrites `/usr/bin/envd` in the rootfs **before** the VM
+  boots (`PreBootFn` → `pkg/sandbox/rootfs.SwapEnvdBinary`), entirely in userspace via a jailed
+  `debugfs` — never a host-kernel mount of the tenant image. The old envd never participates, so
+  the method is version-agnostic. Gated by the `envd-offline-upgrade-target` flag (a sibling of
+  `envd-upgrade-target` sharing the same version-remap resolver), and applied only when the
+  snapshot's rootfs was captured frozen (`fs_quiesced`, so it is crash-consistent); best-effort
+  (a swap failure boots the original envd). Because the swap keys on the snapshot's *built-with*
+  version, which it does not advance, it re-fires idempotently on each cold-boot resume until a
+  re-pause re-bakes the running version.
 - Auto-pause/auto-resume make sandboxes effectively serverless: idle sandboxes pause, traffic
   resumes them (see traffic flow above).
 
@@ -329,17 +443,12 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     autonumber
-    participant C as SDK / docker push
-    participant DRP as docker-reverse-proxy
+    participant C as SDK
     participant API as API
     participant TM as template-manager (build node)
     participant FC as Firecracker build VMs
     participant OS as Object storage
 
-    opt custom base image
-        C->>DRP: docker push (E2B token)
-        DRP->>DRP: swap credentials, rewrite path → artifact registry
-    end
     C->>API: POST /v3/templates (register build: cpu, ram) → Postgres env_builds
     C->>API: POST /v2/templates/{id}/builds/{buildID} (recipe: steps, start/ready cmd)
     API->>TM: gRPC TemplateCreate(TemplateConfig)
@@ -418,13 +527,13 @@ cluster. Nomad job specs live in `iac/modules/job-*/jobs/*.hcl`.
 
 ```mermaid
 flowchart TB
-    LB["Cloud load balancer + TLS<br/>api.* → API | *.domain → client-proxy | docker.* → registry proxy"]
+    LB["Cloud load balancer + TLS<br/>api.* → API | *.domain → client-proxy"]
 
     subgraph servers["server pool (3 nodes)"]
         NS["Nomad + Consul servers (control plane)"]
     end
     subgraph apipool["api pool (2 private nodes)"]
-        AJ["api, dashboard-api, client-proxy,<br/>ingress (Traefik), docker-reverse-proxy,<br/>redis, loki, otel-collector,<br/>optional worker autoscaler (shadow only)"]
+        AJ["api, dashboard-api, client-proxy,<br/>ingress (Traefik),<br/>redis, loki, otel-collector,<br/>optional worker autoscaler (shadow only)"]
     end
     subgraph clientpool["default pool (2 bootstrap, 2-15 managed)"]
         OJ["orchestrator (system job, raw_exec)<br/>+ Firecracker sandboxes"]
@@ -670,7 +779,6 @@ packages/
   client-proxy/         Edge router for sandbox traffic
   envd/                 In-VM agent (bump pkg/version.go on behavior change!)
   dashboard-api/        Web-dashboard backend
-  docker-reverse-proxy/ Registry auth gateway for template images
   shared/               Protos, telemetry, storage clients, proxy engine, feature flags
   auth/                 AuthN library (API keys, JWT/OIDC) used by api + dashboard-api
   db/                   Postgres migrations (goose) + queries (sqlc)

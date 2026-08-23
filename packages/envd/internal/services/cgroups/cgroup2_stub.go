@@ -51,6 +51,10 @@ func (c Cgroup2Manager) Unfreeze(ProcessType) error {
 	return nil
 }
 
+func (c Cgroup2Manager) Frozen(ProcessType) (bool, error) {
+	return false, ErrFrozenUnobservable
+}
+
 func (c Cgroup2Manager) Close() error {
 	return nil
 }

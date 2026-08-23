@@ -39,6 +39,15 @@ type Snapshot struct {
 	BuildID            uuid.UUID
 	SchedulingMetadata *orchestrator.SchedulingMetadata
 
+	// MemoryExportDeferred is true when the memory export took the deferred
+	// (CoW window) path: the memfile diff is promise-backed and can still
+	// FAIL after Pause returned. The server must not answer an async
+	// checkpoint with success while the seal is still unsettled — a
+	// cancelled window would otherwise leave a build record the control
+	// plane believes in with no artifact behind it. WaitMemorySealed is the
+	// gate: after it returns nil the hazard is over.
+	MemoryExportDeferred bool
+
 	// FilesystemSnapshot is true for filesystem-only snapshots: the memfile diff
 	// is empty (NoDiff) and the memfile, memfile header, and snapfile are not
 	// uploaded. It records the decision made at pause time, which can't be
@@ -52,6 +61,21 @@ type Snapshot struct {
 	RootfsBlockSize uint64
 
 	cleanup *Cleanup
+}
+
+// WaitMemorySealed blocks until a deferred (CoW window) memory export settles
+// and returns its outcome; immediate nil when the export was synchronous.
+// After a nil return the memfile diff's bytes exist in the local cache, so an
+// async upload of this snapshot carries exactly the durability of one whose
+// memory was copied synchronously — this is the gate that keeps async
+// checkpoint reporting safe over a window that can still fail: the
+// artifact-less-build-record hazard ends with the sweep, not the upload.
+func (s *Snapshot) WaitMemorySealed(ctx context.Context) error {
+	if !s.MemoryExportDeferred || s.MemorySnapshot.waitSealed == nil {
+		return nil
+	}
+
+	return s.MemorySnapshot.waitSealed(ctx)
 }
 
 // NewFilesystemOnlySnapshot wraps a host-generated rootfs layer for upload.

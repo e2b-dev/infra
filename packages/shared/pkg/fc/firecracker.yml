@@ -226,6 +226,64 @@ paths:
           schema:
             $ref: "#/definitions/Error"
 
+  /balloon/reporting/pause:
+    patch:
+      summary: Pauses free-page reporting, only if enabled pre-boot.
+      description:
+        Defers all free-page-reporting discards until resumed. Reported
+        pages stay queued in the reporting virtqueue, unacknowledged; the
+        guest driver holds them isolated until the acknowledgement, so no
+        guest memory is discarded while paused. Idempotent.
+      operationId: pauseBalloonReporting
+      responses:
+        200:
+          description: Free page reporting paused.
+        400:
+          description: Free page reporting was not enabled when the device was configured.
+          schema:
+            $ref: "#/definitions/Error"
+        default:
+          description: Internal Server Error
+          schema:
+            $ref: "#/definitions/Error"
+
+  /balloon/reporting/resume:
+    patch:
+      summary: Resumes free-page reporting, only if enabled pre-boot.
+      description:
+        Re-enables free-page-reporting discards and immediately processes
+        any reports deferred while paused. Idempotent.
+      operationId: resumeBalloonReporting
+      responses:
+        200:
+          description: Free page reporting resumed.
+        400:
+          description: Free page reporting was not enabled when the device was configured.
+          schema:
+            $ref: "#/definitions/Error"
+        default:
+          description: Internal Server Error
+          schema:
+            $ref: "#/definitions/Error"
+
+  /balloon/reporting/status:
+    get:
+      summary: Returns whether free-page reporting is paused, only if enabled pre-boot.
+      operationId: describeBalloonReporting
+      responses:
+        200:
+          description: The free page reporting pause status
+          schema:
+            $ref: "#/definitions/BalloonReportingStatus"
+        400:
+          description: Free page reporting was not enabled when the device was configured.
+          schema:
+            $ref: "#/definitions/Error"
+        default:
+          description: Internal Server Error
+          schema:
+            $ref: "#/definitions/Error"
+
   /boot-source:
     put:
       summary: Creates or updates the boot source. Pre-boot only.
@@ -1063,6 +1121,17 @@ definitions:
         description: The last command provided by the guest.
         type: integer
 
+  BalloonReportingStatus:
+    type: object
+    description:
+      Describes the free page reporting pause status.
+    required:
+      - paused
+    properties:
+      paused:
+        description: Whether free-page reporting is currently paused.
+        type: boolean
+
   BalloonStatsUpdate:
     type: object
     required:
@@ -1552,6 +1621,14 @@ definitions:
           When true, guest memory is backed by a memfd and its file descriptor is
           sent to the UFFD handler over the UFFD socket alongside the UFFD itself.
           Only valid when 'backend_type' is 'Uffd'.
+        default: false
+      use_sync_wp:
+        type: boolean
+        description:
+          When true, guest memory delivers synchronous userfault write-protect
+          events to the UFFD handler instead of the kernel resolving them in place
+          (UFFD_FEATURE_WP_ASYNC is not requested). The handler must resolve WP
+          events. Only valid when 'backend_type' is 'Uffd'.
         default: false
 
   Metrics:

@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Don't use go-setup-cache here: its key has no arch component, so this
       # job would share it with amd64 jobs and restore a multi-GB cache of
@@ -30,13 +30,13 @@ jobs:
       # which can fill the runner disk (and the arm64 objects never get
       # saved). Keep a dedicated arm64-keyed cache instead.
       - name: Setup Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
           cache: false
 
       - name: Restore ARM64 Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/go/pkg/mod
@@ -55,7 +55,7 @@ jobs:
 
       - name: Build and vet packages (pure Go)
         run: |
-          for pkg in api client-proxy envd shared db docker-reverse-proxy; do
+          for pkg in api client-proxy envd shared db; do
             echo "::group::packages/$pkg"
             pushd "packages/$pkg" > /dev/null
             GOARCH=arm64 go build ./...
@@ -103,11 +103,6 @@ jobs:
             test_path: ./...
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404-arm
-          - package: packages/docker-reverse-proxy
-            flag: arm64-docker-reverse-proxy
-            test_path: ./...
-            sudo: false
-            runner: blacksmith-4vcpu-ubuntu-2404-arm
           # envd mounts via bindfs (FUSE, no modprobe); this shard doubles as
           # the FUSE-on-Blacksmith canary — if it fails, pin it back to
           # infra-runner-arm.
@@ -129,7 +124,7 @@ jobs:
       fail-fast: false
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
@@ -197,7 +192,7 @@ jobs:
         if: matrix.sudo == true
 
       # sudo strips PATH; pass it through so gotestsum/go resolve to the runner's
-      # toolchain (1.26.5) instead of /usr/bin/go. Trap chowns reports back to
+      # toolchain (1.26.6) instead of /usr/bin/go. Trap chowns reports back to
       # the runner so uploads can read them even when tests fail.
       - name: Run tests that require sudo
         working-directory: ${{ matrix.package }}

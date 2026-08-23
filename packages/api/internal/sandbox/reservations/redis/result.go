@@ -20,6 +20,7 @@ type reservationError struct {
 	Message   string `json:"message"`
 	Code      int    `json:"code,omitempty"`
 	ClientMsg string `json:"client_msg,omitempty"`
+	ErrorCode string `json:"error_code,omitempty"`
 }
 
 func encodeResult(sbx sandboxtypes.Sandbox, err error) ([]byte, error) {
@@ -33,6 +34,7 @@ func encodeResult(sbx sandboxtypes.Sandbox, err error) ([]byte, error) {
 		if errors.As(err, &apiErr) {
 			re.Code = apiErr.Code
 			re.ClientMsg = apiErr.ClientMsg
+			re.ErrorCode = apiErr.ErrorCode
 		}
 		result.Error = re
 	}
@@ -61,6 +63,7 @@ func reconstructError(re *reservationError) error {
 		return &api.APIError{
 			Code:      re.Code,
 			ClientMsg: re.ClientMsg,
+			ErrorCode: re.ErrorCode,
 			Err:       fmt.Errorf("%s", re.Message),
 		}
 	}

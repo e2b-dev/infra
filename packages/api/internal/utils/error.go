@@ -11,20 +11,52 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
-const (
-	securityErrPrefix  = "error in openapi3filter.SecurityRequirementsError: security requirements failed: "
-	forbiddenErrPrefix = "team forbidden: "
-	blockedErrPrefix   = "team blocked: "
-)
+// errSecretsRejected is what a secrets request refused before its handler is
+// recorded as. The validator's own message can quote the request body, the
+// selector or the query, so it is dropped rather than reported.
+var errSecretsRejected = errors.New("secrets request rejected before the handler")
+
+// secretsErrorMessage is the fixed text such a request gets back.
+func secretsErrorMessage(statusCode int) string {
+	switch statusCode {
+	case http.StatusUnauthorized:
+		return middleware.SecretsUnauthorizedMessage
+	case http.StatusForbidden:
+		return middleware.SecretsUnavailableMessage
+	case http.StatusNotFound:
+		return "Not found"
+	default:
+		return middleware.SecretsInvalidRequestMessage
+	}
+}
 
 func ErrorHandler(c *gin.Context, message string, statusCode int) {
 	var errMsg error
 
 	ctx := c.Request.Context()
+
+	// Secret management routes answer with fixed text and report a fixed
+	// error: neither the raw body (which GetRawData would read below) nor the
+	// upstream message may reach the client, the access log or the span.
+	if middleware.IsSecretsRoute(c) {
+		telemetry.ReportError(ctx, "secrets request rejected before the handler", errSecretsRejected,
+			attribute.Int("http.status_code", statusCode),
+		)
+
+		c.Error(errSecretsRejected)
+
+		c.AbortWithStatusJSON(statusCode, gin.H{
+			"code":    statusCode,
+			"message": secretsErrorMessage(statusCode),
+		})
+
+		return
+	}
 
 	switch {
 	case strings.HasPrefix(c.Request.URL.Path, "/instances"),
@@ -47,36 +79,25 @@ func ErrorHandler(c *gin.Context, message string, statusCode int) {
 
 	c.Error(errMsg)
 
-	// Handle forbidden errors
-	if after, ok := strings.CutPrefix(message, forbiddenErrPrefix); ok {
-		c.AbortWithStatusJSON(
-			http.StatusForbidden,
-			gin.H{
-				"code":    http.StatusForbidden,
-				"message": after,
-			},
-		)
+	// Forbidden and blocked teams authenticated; they get a 403, not a 401.
+	for _, prefix := range []string{sharedauth.ForbiddenErrPrefix, sharedauth.BlockedErrPrefix} {
+		if after, ok := strings.CutPrefix(message, prefix); ok {
+			c.AbortWithStatusJSON(
+				http.StatusForbidden,
+				gin.H{
+					"code":    http.StatusForbidden,
+					"message": after,
+				},
+			)
 
-		return
-	}
-
-	// Handle blocked errors
-	if after, ok := strings.CutPrefix(message, blockedErrPrefix); ok {
-		c.AbortWithStatusJSON(
-			http.StatusForbidden,
-			gin.H{
-				"code":    http.StatusForbidden,
-				"message": after,
-			},
-		)
-
-		return
+			return
+		}
 	}
 
 	// Handle security requirements errors from the openapi3filter
-	if after, ok := strings.CutPrefix(message, securityErrPrefix); ok {
+	if after, ok := strings.CutPrefix(message, sharedauth.SecurityErrPrefix); ok {
 		// Keep the original status code as it can be also timeout (read body timeout) error code.
-		// The securityErrPrefix is added for all errors going through the processCustomErrors function.
+		// The SecurityErrPrefix is added for all errors going through ProcessSecurityErrors.
 		c.AbortWithStatusJSON(
 			statusCode,
 			gin.H{
@@ -109,39 +130,10 @@ func MultiErrorHandler(me openapi3.MultiError) error {
 
 		return fmt.Errorf("error in openapi3filter.RequestError: %s", errorLines[0])
 	case *openapi3filter.SecurityRequirementsError:
-		return processCustomErrors(e) // custom implementation
+		return sharedauth.ProcessSecurityErrors(e)
 	default:
 		// This should never happen today, but if our upstream code changes,
 		// we don't want to crash the server, so handle the unexpected error.
 		return fmt.Errorf("error validating request: %w", err)
 	}
-}
-
-func processCustomErrors(e *openapi3filter.SecurityRequirementsError) error {
-	// Return only one security requirement error (there may be multiple securitySchemes)
-	unwrapped := e.Errors
-	err := unwrapped[0]
-
-	var teamForbidden *sharedauth.TeamForbiddenError
-	var teamBlocked *sharedauth.TeamBlockedError
-	// Return only the first non-missing authorization header error (if possible)
-	for _, errW := range unwrapped {
-		if errors.Is(errW, sharedauth.ErrNoAuthHeader) {
-			continue
-		}
-
-		if errors.As(errW, &teamForbidden) {
-			return fmt.Errorf("%s%s", forbiddenErrPrefix, teamForbidden.Error())
-		}
-
-		if errors.As(errW, &teamBlocked) {
-			return fmt.Errorf("%s%s", blockedErrPrefix, teamBlocked.Error())
-		}
-
-		err = errW
-
-		break
-	}
-
-	return fmt.Errorf("%s%s", securityErrPrefix, err.Error())
 }

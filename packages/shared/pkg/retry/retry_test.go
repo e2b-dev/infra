@@ -33,7 +33,7 @@ func TestDo_RetriesThenSucceeds(t *testing.T) {
 		return nil
 	}
 
-	require.NoError(t, Do(context.Background(), fastPolicy(), nil, fn, nil))
+	require.NoError(t, Do(t.Context(), fastPolicy(), nil, fn, nil))
 	assert.EqualValues(t, 3, attempts.Load())
 }
 
@@ -47,7 +47,7 @@ func TestDo_BudgetExhausted(t *testing.T) {
 		return errors.New("persistent")
 	}
 
-	err := Do(context.Background(), fastPolicy(), nil, fn, nil)
+	err := Do(t.Context(), fastPolicy(), nil, fn, nil)
 	require.Error(t, err)
 	require.ErrorIs(t, err, ErrBudgetExhausted)
 	assert.Greater(t, attempts.Load(), int32(1))
@@ -67,7 +67,7 @@ func TestDo_PerAttemptTimeoutDoesNotAbortLoop(t *testing.T) {
 		return nil
 	}
 
-	require.NoError(t, Do(context.Background(), fastPolicy(), nil, fn, nil))
+	require.NoError(t, Do(t.Context(), fastPolicy(), nil, fn, nil))
 	assert.EqualValues(t, 2, attempts.Load())
 }
 
@@ -91,7 +91,7 @@ func TestDo_CapsAttemptToRemainingBudget(t *testing.T) {
 	}
 
 	start := time.Now()
-	err := Do(context.Background(), policy, nil, fn, nil)
+	err := Do(t.Context(), policy, nil, fn, nil)
 	elapsed := time.Since(start)
 
 	require.ErrorIs(t, err, ErrBudgetExhausted)
@@ -110,7 +110,7 @@ func TestDo_NonRetryableStops(t *testing.T) {
 	}
 	retryable := func(err error) bool { return !errors.Is(err, sentinel) }
 
-	err := Do(context.Background(), fastPolicy(), retryable, fn, nil)
+	err := Do(t.Context(), fastPolicy(), retryable, fn, nil)
 	require.ErrorIs(t, err, sentinel)
 	assert.EqualValues(t, 1, attempts.Load())
 }
@@ -118,7 +118,7 @@ func TestDo_NonRetryableStops(t *testing.T) {
 func TestDo_ParentCancelAborts(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	fn := func(context.Context) error {
 		cancel()
 
@@ -150,7 +150,7 @@ func TestDo_NoAttemptTimeoutUsesBudget(t *testing.T) {
 	}
 
 	start := time.Now()
-	err := Do(context.Background(), policy, nil, fn, nil)
+	err := Do(t.Context(), policy, nil, fn, nil)
 
 	require.ErrorIs(t, err, ErrBudgetExhausted)
 	assert.Less(t, time.Since(start), time.Second)
@@ -170,6 +170,6 @@ func TestDo_OnRetryInvoked(t *testing.T) {
 	}
 	onRetry := func(int, time.Duration, error) { retries.Add(1) }
 
-	require.NoError(t, Do(context.Background(), fastPolicy(), nil, fn, onRetry))
+	require.NoError(t, Do(t.Context(), fastPolicy(), nil, fn, onRetry))
 	assert.EqualValues(t, 2, retries.Load(), "onRetry fires once per retry (not the final success)")
 }

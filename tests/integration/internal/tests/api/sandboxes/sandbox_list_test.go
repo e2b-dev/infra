@@ -77,6 +77,64 @@ func TestSandboxListWithFilter(t *testing.T) {
 	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
 }
 
+func TestSandboxListWithTemplateAndStartedAfter(t *testing.T) {
+	t.Parallel()
+	c := setup.GetAPIClient()
+
+	metadataKey := "uniqueIdentifier"
+	metadataValue := id.Generate()
+	metadataString := fmt.Sprintf("%s=%s", metadataKey, metadataValue)
+	sbx := utils.SetupSandboxWithCleanup(t, c, utils.WithMetadata(api.SandboxMetadata{metadataKey: metadataValue}))
+	state := []api.SandboxState{api.Running}
+	detailResponse, err := c.GetSandboxesSandboxIDWithResponse(t.Context(), sbx.SandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, detailResponse.StatusCode())
+	require.NotNil(t, detailResponse.JSON200)
+
+	startedBeforeSandbox := detailResponse.JSON200.StartedAt.Add(-time.Second)
+	listResponse, err := c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		State:        &state,
+		Metadata:     &metadataString,
+		Template:     &sbx.TemplateID,
+		StartedAfter: &startedBeforeSandbox,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Len(t, *listResponse.JSON200, 1)
+	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
+
+	startedAfterSandbox := detailResponse.JSON200.StartedAt.Add(time.Second)
+	listResponse, err = c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		State:        &state,
+		Metadata:     &metadataString,
+		Template:     &sbx.TemplateID,
+		StartedAfter: &startedAfterSandbox,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	assert.Empty(t, *listResponse.JSON200)
+
+	// The bound is documented as inclusive, so a sandbox's own startedAt -- handed
+	// back verbatim at the full precision the API reports it in, which is the
+	// documented use of an at-or-after bound -- must still return it. The API
+	// truncates the bound onto the microsecond grid its keyset values sit on;
+	// without that, the sub-microsecond bits push the sandbox below its own start
+	// time and it drops out here while the paused page would still return it.
+	atSandboxStart := detailResponse.JSON200.StartedAt
+	listResponse, err = c.GetV2SandboxesWithResponse(t.Context(), &api.GetV2SandboxesParams{
+		State:        &state,
+		Metadata:     &metadataString,
+		Template:     &sbx.TemplateID,
+		StartedAfter: &atSandboxStart,
+	}, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, listResponse.StatusCode())
+	require.Len(t, *listResponse.JSON200, 1)
+	assert.Equal(t, sbx.SandboxID, (*listResponse.JSON200)[0].SandboxID)
+	assert.Equal(t, "1", listResponse.HTTPResponse.Header.Get("X-Total-Running"),
+		"the inclusive bound must not undercount the running total either")
+}
+
 func TestSandboxListRunning(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()

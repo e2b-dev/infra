@@ -51,7 +51,6 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		&c.StorageConfig.SandboxCacheDir,
 		&c.SandboxDir,
 		&c.SharedChunkCacheDir,
-		&c.StorageConfig.SnapshotCacheDir,
 		&c.StorageConfig.TemplateCacheDir,
 		&c.TemplatesDir,
 	} {
@@ -84,7 +83,6 @@ type Config struct {
 	DisableStartupReclaim       bool              `env:"DISABLE_STARTUP_RECLAIM"`
 	ForceStop                   bool              `env:"FORCE_STOP"`
 	GRPCPort                    uint16            `env:"GRPC_PORT"                     envDefault:"5008"`
-	LaunchDarklyAPIKey          string            `env:"LAUNCH_DARKLY_API_KEY"`
 	LocalUploadBaseURL          string            `env:"LOCAL_UPLOAD_BASE_URL"`
 	NodeIP                      string            `env:"NODE_IP"                       envDefault:"localhost"`
 	NodeLabels                  []string          `env:"NODE_LABELS"                   envSeparator:","`
@@ -98,6 +96,8 @@ type Config struct {
 	ProxyPort                   uint16            `env:"PROXY_PORT"                    envDefault:"5007"`
 	RedisClusterURL             string            `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64            string            `env:"REDIS_TLS_CA_BASE64"`
+	RedisTLSEnabled             bool              `env:"REDIS_TLS_ENABLED"`
+	RedisPassword               string            `env:"REDIS_PASSWORD"`
 	RedisURL                    string            `env:"REDIS_URL"`
 	RedisPoolSize               int               `env:"REDIS_POOL_SIZE"               envDefault:"5"`
 	RedisMinIdleConns           int               `env:"REDIS_MIN_IDLE_CONNS"          envDefault:"2"`

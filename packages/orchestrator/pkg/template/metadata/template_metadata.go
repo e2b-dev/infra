@@ -123,6 +123,25 @@ type Template struct {
 	FromTemplate *FromTemplate    `json:"from_template,omitempty"`
 	Prefetch     *Prefetch        `json:"prefetch,omitempty"`
 
+	// CmdlineArgs records the extra guest kernel command line parameters this template's
+	// kernel booted with, parsed and normalised. Nil is the default command line, which is
+	// what every pre-existing template has.
+	//
+	// It stores the PARAMETERS, not the flag value they came from, and that is the point:
+	// the flag is edited freely, so what it says can change after this template was built.
+	// A cold boot that re-read the flag would silently reproduce a different command line
+	// than the build used. Storing the parsed parameters makes a snapshot self-describing.
+	//
+	// It sits at the top level, alongside Context and Start, because it is inherited lineage
+	// state rather than per-build identity: chosen once, at build, with no source to
+	// re-derive it from. The nested TemplateMetadata is the wrong home for exactly that
+	// reason — SameVersionTemplate replaces that struct wholesale on every pause, so a field
+	// living there would be dropped by the most frequently executed path in the system.
+	//
+	// It exists so the cold boot of a filesystem-only snapshot can re-apply the same command
+	// line; a memory resume restores a running kernel and never re-reads it.
+	CmdlineArgs map[string]string `json:"cmdline_args,omitempty"`
+
 	// FilesystemOnly marks a snapshot that persists only the filesystem (no
 	// memory snapshot); resuming it must cold-boot (reboot) from the rootfs. The
 	// zero value (false) is a full memory snapshot, so pre-existing snapshots
@@ -131,6 +150,16 @@ type Template struct {
 	// reboot-vs-memory-resume. Deliberately NOT carried by the
 	// With*/SameVersionTemplate copy-constructors — Sandbox.Pause re-stamps it.
 	FilesystemOnly bool `json:"filesystem_only,omitempty"`
+
+	// FsQuiesced records that a filesystem-only snapshot's rootfs was captured
+	// while frozen (FIFREEZE — native for envd >= 0.6.6, or via the exec API for
+	// older envd) rather than merely sync'd, so it is crash-consistent. The zero
+	// value (false) means unknown / not-frozen — a legacy snapshot (no field) or a
+	// sync fallback. Only meaningful alongside FilesystemOnly. Stamped at pause and
+	// re-stamped every pause; deliberately NOT carried by the copy-constructors.
+	// This is a building block: it lets a later feature decide safely whether a
+	// snapshot is one it can cold-boot / rewrite without repairing the journal.
+	FsQuiesced bool `json:"fs_quiesced,omitempty"`
 }
 
 // IsFilesystemOnly reports whether this snapshot persists only the filesystem
@@ -157,12 +186,34 @@ func (t Template) MarkFilesystemOnly(filesystemOnly bool) Template {
 	return t
 }
 
+// IsFsQuiesced reports whether a filesystem-only snapshot's rootfs was frozen
+// (crash-consistent) at pause.
+func (t Template) IsFsQuiesced() bool {
+	return t.FsQuiesced
+}
+
+// MarkFsQuiesced records whether the rootfs was frozen at pause. It is only set
+// true together with FilesystemOnly, whose MarkFilesystemOnly already lifts the
+// metadata version to >= FilesystemOnlyVersion; deserialize() fully unmarshals
+// those versions, so the flag survives without a further version bump.
+func (t Template) MarkFsQuiesced(quiesced bool) Template {
+	t.FsQuiesced = quiesced
+
+	return t
+}
+
 func V1TemplateVersion() Template {
 	return Template{
 		Version: 1,
 	}
 }
 
+// BasedOn derives the metadata of a build that starts FROM another template.
+//
+// Deliberately does NOT carry CmdlineArgs. Unlike a pause, which continues one
+// lineage, this is a new build that resolves the guest kernel cmdline flag for its own
+// team — inheriting the parent's arguments would record arguments the child's kernel
+// never booted with, and a later filesystem-only cold boot would then apply them.
 func (t Template) BasedOn(
 	ft FromTemplate,
 ) Template {
@@ -184,6 +235,7 @@ func (t Template) NewVersionTemplate(metadata TemplateMetadata) Template {
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
 		FromImage:    t.FromImage,
+		CmdlineArgs:  t.CmdlineArgs,
 	}
 }
 
@@ -195,6 +247,7 @@ func (t Template) SameVersionTemplate(metadata TemplateMetadata) Template {
 		Start:        t.Start,
 		FromTemplate: t.FromTemplate,
 		FromImage:    t.FromImage,
+		CmdlineArgs:  t.CmdlineArgs,
 	}
 }
 
@@ -208,6 +261,7 @@ func (t Template) WithPrefetch(prefetch *Prefetch) Template {
 		FromTemplate: t.FromTemplate,
 		FromImage:    t.FromImage,
 		Prefetch:     prefetch,
+		CmdlineArgs:  t.CmdlineArgs,
 	}
 }
 

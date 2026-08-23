@@ -57,6 +57,16 @@ func (m *Memfd) Slice(offset, size int64) ([]byte, error) {
 	return m.mmap[offset : offset+size], nil
 }
 
+// ReadAt implements io.ReaderAt over the mmap view (copying, unlike Slice).
+func (m *Memfd) ReadAt(p []byte, off int64) (int, error) {
+	b, err := m.Slice(off, int64(len(p)))
+	if err != nil {
+		return 0, err
+	}
+
+	return copy(p, b), nil
+}
+
 // Close releases the mmap and the fd. Single-use: every Memfd has exactly
 // one owner (NewCacheFromMemfd consumes it during construction; the UFFD
 // handshake transfers ownership via atomic Swap), so we don't guard against
@@ -82,22 +92,58 @@ func NewCacheFromMemfd(
 	memfd *Memfd,
 	dirty *roaring.Bitmap,
 ) (*Cache, error) {
+	return newCacheFromMemfd(ctx, blockSize, filePath, memfd, dirty, true)
+}
+
+// NewCacheFromMemfdKeepOpen builds a Cache populated from a memfd WITHOUT closing
+// it, so a sandbox that resumes in place keeps its memory backing. The caller
+// (the running VM's memory handler) retains ownership of memfd.
+func NewCacheFromMemfdKeepOpen(
+	ctx context.Context,
+	blockSize int64,
+	filePath string,
+	memfd *Memfd,
+	dirty *roaring.Bitmap,
+) (*Cache, error) {
+	return newCacheFromMemfd(ctx, blockSize, filePath, memfd, dirty, false)
+}
+
+func newCacheFromMemfd(
+	ctx context.Context,
+	blockSize int64,
+	filePath string,
+	memfd *Memfd,
+	dirty *roaring.Bitmap,
+	closeMemfd bool,
+) (*Cache, error) {
 	ctx, span := tracer.Start(ctx, "export-memory-from-memfd",
 		trace.WithAttributes(
 			attribute.Bool("async", false),
+			attribute.Bool("keep_open", !closeMemfd),
 		),
 	)
 	defer span.End()
 
+	// On error paths the memfd is closed only when this call owns it.
+	closeOwned := func() error {
+		if closeMemfd {
+			return memfd.Close()
+		}
+
+		return nil
+	}
+
 	cache, err := NewCache(int64(dirty.GetCardinality())*blockSize, blockSize, filePath, false)
 	if err != nil {
-		return nil, errors.Join(err, memfd.Close())
+		return nil, errors.Join(err, closeOwned())
 	}
 	if err := copyFromMemfd(ctx, cache, memfd, dirty, blockSize); err != nil {
-		return nil, errors.Join(err, memfd.Close(), cache.Close())
+		return nil, errors.Join(err, closeOwned(), cache.Close())
 	}
-	if err := memfd.Close(); err != nil {
-		return nil, errors.Join(fmt.Errorf("close memfd: %w", err), cache.Close())
+	if closeMemfd {
+		if err := memfd.Close(); err != nil {
+			return nil, errors.Join(fmt.Errorf("close memfd: %w", err), cache.Close())
+		}
 	}
 
 	return cache, nil

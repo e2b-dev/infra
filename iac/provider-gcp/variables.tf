@@ -294,6 +294,12 @@ variable "dashboard_api_count" {
   type    = number
   default = 0
 }
+variable "docker_reverse_proxy_enabled" {
+  type        = bool
+  default     = true
+  description = "Whether the docker-reverse-proxy Nomad job should be deployed. Its image is no longer built, so clusters that never had it published must set this to false."
+}
+
 variable "docker_reverse_proxy_port" {
   type = object({
     name        = string
