@@ -48,13 +48,34 @@
 # `gh api repos/rehoboam-lab/monad-e2b-infra -q .id` before using it.
 #
 # On drift (terraform plan -detailed-exitcode == 2) or on the watch itself
-# failing (auth/init/plan error), this upserts ONE tracking issue titled
-# "infra drift: dev" -- updated in place on repeat alarms, never duplicated,
-# same pattern as rehoboam-lab/tams's e2b-occupancy-watch.yml. The issue
-# body is a REDACTED plan summary: resource addresses + change actions only,
-# extracted from `terraform show -json`, never attribute values (which is
-# where credentials/connection strings could otherwise leak). It auto-closes
-# once a scheduled run comes back clean.
+# failing (auth/init/plan error), the job FAILS RED and writes a REDACTED
+# plan summary to the run's job summary ($GITHUB_STEP_SUMMARY): resource
+# addresses + change actions only, extracted from `terraform show -json`,
+# never attribute values (which is where credentials/connection strings
+# could otherwise leak). A red scheduled run is the alarm: GitHub notifies
+# the workflow's author on scheduled-run failure, and the Actions history
+# for this workflow is the drift log (green again == drift resolved).
+#
+# Why not "upsert one tracking issue" like rehoboam-lab/tams's
+# e2b-occupancy-watch.yml (the original design, tams roadmap item
+# deploy-drift-detection-contract-registry)? Issues are DISABLED on this
+# (public) repo: `gh issue list/create` exits 1 with "repository has
+# disabled issues", so under `set -e` the alarm step would have died the
+# first time the provisioned watch ever alarmed. Do NOT re-add any
+# `gh issue ...` step unless Issues are first enabled in the repo settings.
+#
+# ACTIONS ALLOWLIST (the reason this workflow's first runs died with
+# `startup_failure` and zero jobs -- runs 32623980230 / 32624385383,
+# 2026-08-23): this repo's Actions policy is `allowed_actions: selected`
+# with `sha_pinning_required`, i.e. an explicit allowlist of
+# `<owner>/<action>@<sha>` patterns (Settings > Actions > General, or
+# `gh api repos/rehoboam-lab/monad-e2b-infra/actions/permissions/selected-actions`).
+# A workflow that references any action not on that list is rejected
+# before a single job is created. `google-github-actions/auth@<sha>` was
+# added to the list on 2026-08-23. Every time ANY `uses:` SHA in this
+# file (or any other workflow here) is bumped, the allowlist must be
+# updated to the new SHA in the same change, or the workflow silently
+# stops starting.
 
 name: Monad Drift Detection
 
@@ -69,9 +90,10 @@ concurrency:
   group: monad-drift-detection
   cancel-in-progress: false
 
+# NOTE: no `issues:` scope -- nothing here touches Issues any more (they
+# are disabled on this repo; see the header).
 permissions:
   contents: read
-  issues: write
   id-token: write
 
 jobs:
@@ -197,7 +219,7 @@ jobs:
               echo "plan_exitcode=2" >> "$GITHUB_OUTPUT"
               # Redacted summary: resource addresses + change actions only,
               # never attribute values (that's where a secret-shaped value
-              # could otherwise leak into an issue body).
+              # could otherwise leak into the job summary).
               terraform show -json "$RUNNER_TEMP/drift-dev.tfplan" \
                 > "$RUNNER_TEMP/drift-dev.json"
               jq -r '
@@ -234,68 +256,47 @@ jobs:
             echo "state=clean" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 'Upsert "infra drift: dev" tracking issue'
-        if: steps.guard.outputs.ready == 'true' && steps.outcome.outputs.state != 'clean'
+      - name: Write drift report to the job summary
+        if: steps.guard.outputs.ready == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           STATE: ${{ steps.outcome.outputs.state }}
+        shell: bash
         run: |
           set -euo pipefail
-          title="infra drift: dev"
-          if [ "$STATE" = "drift" ] && [ -s "$RUNNER_TEMP/drift-dev-body.txt" ]; then
-            body="$(cat <<EOF
-          Scheduled \`terraform plan -detailed-exitcode\` found drift between
-          the checked-in dev config and live GCP state: $RUN_URL
-
-          Redacted plan summary (resource addresses + change action only,
-          no attribute values):
-
-          \`\`\`
-          $(cat "$RUNNER_TEMP/drift-dev-body.txt")
-          \`\`\`
-
-          Reference: docs/superpowers/research/2026-08-20-deployment-architecture-review.md#4
-          (rehoboam-lab/tams). This scopes every module except \`module.nomad\`
-          (the workload the mutation-lease system already tracks drift for).
-
-          This issue is upserted by \`.github/workflows/monad-drift-detection.yml\`
-          on every scheduled run while drift is present -- it will not duplicate.
-          It auto-closes once a run comes back clean.
-          EOF
-          )"
-          else
-            body="The scheduled drift watch itself failed (auth/init/plan error), not a confirmed drift finding: $RUN_URL
-
-          Open the run log above for the exact failure. This issue is upserted by
-          \`.github/workflows/monad-drift-detection.yml\` -- it will not duplicate,
-          and auto-closes once a run comes back clean."
-          fi
-          existing=$(gh issue list --state open --json number,title --limit 100 \
-            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "$body"
-          else
-            gh issue create --title "$title" --body "$body"
-          fi
-
-      - name: Close the tracking issue once a run comes back clean
-        if: steps.guard.outputs.ready == 'true' && steps.outcome.outputs.state == 'clean'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          title="infra drift: dev"
-          existing=$(gh issue list --state open --json number,title --limit 100 \
-            --jq ".[] | select(.title == \"$title\") | .number" | head -n1)
-          if [ -n "$existing" ]; then
-            gh issue comment "$existing" --body "Drift watch is clean again as of $RUN_URL -- closing."
-            gh issue close "$existing"
-          fi
+          {
+            echo "## Infra drift watch: dev -- **${STATE}**"
+            echo
+            case "$STATE" in
+              clean)
+                echo "Scheduled \`terraform plan -detailed-exitcode\` found no drift between the checked-in dev config and live GCP state."
+                ;;
+              drift)
+                echo "Scheduled \`terraform plan -detailed-exitcode\` found drift between the checked-in dev config and live GCP state: $RUN_URL"
+                echo
+                echo "Redacted plan summary (resource addresses + change action only, no attribute values):"
+                echo
+                echo '```'
+                if [ -s "$RUNNER_TEMP/drift-dev-body.txt" ]; then
+                  cat "$RUNNER_TEMP/drift-dev-body.txt"
+                else
+                  echo "(plan summary missing -- see the plan step log)"
+                fi
+                echo '```'
+                ;;
+              *)
+                echo "The scheduled drift watch itself failed (auth/init/plan error), not a confirmed drift finding: $RUN_URL"
+                echo
+                echo "Open the step logs above for the exact failure."
+                ;;
+            esac
+            echo
+            echo "Reference: docs/superpowers/research/2026-08-20-deployment-architecture-review.md#4 (rehoboam-lab/tams)."
+            echo "This scopes every module except \`module.nomad\` (the workload the mutation-lease system already tracks drift for)."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Fail the job when the watch alarmed or errored
         if: steps.guard.outputs.ready == 'true' && steps.outcome.outputs.state != 'clean'
         run: |
-          echo "::error::Drift watch found drift or failed closed -- see the step logs above and the upserted tracking issue."
+          echo "::error::Drift watch found drift or failed closed -- see the step logs and the job summary above."
           exit 1
