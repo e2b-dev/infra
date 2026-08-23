@@ -15,7 +15,6 @@ packer_template="${script_dir}/../nomad-cluster-disk-image/main.pkr.hcl"
 orchestrator_release_job="${script_dir}/testdata/orchestrator-release-job.hcl"
 cloud_sql_config="${script_dir}/../cloud-sql.tf"
 nomad_config="${script_dir}/../nomad/main.tf"
-reverse_proxy_store="${script_dir}/../../../packages/docker-reverse-proxy/internal/handlers/store.go"
 dashboard_api_main="${script_dir}/../../../packages/dashboard-api/main.go"
 database_migrator="${script_dir}/../../../packages/db/scripts/migrator.go"
 test_dir="$(mktemp -d)"
@@ -123,7 +122,13 @@ test "$(
     '^[[:space:]]+(batch|service|sysbatch|system)_scheduler_enabled[[:space:]]*=[[:space:]]*false$' \
     "${nomad_config}"
 )" -eq 4
-test "$(grep -Fc 'pool.WithMaxConnections(3)' "${reverse_proxy_store}")" -eq 2
+# docker-reverse-proxy's Go source was removed from this repo (2026-08-23 upstream merge,
+# operator decision to stop forking the now-upstream-deleted service); the pool-size
+# drift check against packages/docker-reverse-proxy/internal/handlers/store.go can no
+# longer run. The Terraform-side quota constant (docker_reverse_proxy_max_open_connections
+# in topology/minimal-workload-policy.json) is left as-is pending a separate decision on
+# whether to retire the still-Terraform-deployed (var.docker_reverse_proxy_enabled-gated)
+# job entirely.
 test "$(grep -Fc 'pool.WithMaxConnections(8)' "${dashboard_api_main}")" -eq 2
 grep -F 'poolConfig.MaxConns = 4' "${database_migrator}" >/dev/null
 
