@@ -1,0 +1,214 @@
+# Reviewed workload release gate.
+#
+# BACKGROUND: this fork has a fully guarded `make workload-plan` /
+# `make workload-apply` pair (iac/provider-gcp/Makefile) -- a saved,
+# hash-verified plan, a shared rollout mutation lease, topology/quota
+# guards, and a typed `CONFIRM='APPLY ONE WORKCELL CANARY'` -- but no
+# GitHub-side release path around it: there was no workflow an operator
+# could dispatch, get a second pair of eyes on, and have an audit trail
+# for. This workflow is that release path.
+#
+# WHAT THIS WORKFLOW DOES NOT DO: apply Terraform, or call GCP at all.
+# Per #153 (iac/provider-gcp/init/agent-readonly-identity.tf), this repo
+# has NO GitHub Actions -> GCP Workload Identity Federation pool/provider
+# today -- not even the read-only `agent-readonly` service account can be
+# assumed from CI; it is impersonation-only for an already-authenticated
+# operator running commands locally. So CI cannot produce a live
+# `terraform plan` against real state, and it certainly cannot apply one.
+# Building a workflow that pretends otherwise (or that silently no-ops
+# while claiming to "release") would be worse than not having one.
+#
+# What this workflow *does* do:
+#   1. `preflight` -- every static, credential-free check this repo already
+#      has for the workload layer (terraform fmt/validate, the workload
+#      topology/quota/plan-assertion test suite, the packer reserve check)
+#      against the dispatched ref, and writes the result to the job
+#      summary. This is the "plan artifact" for the release: it is NOT a
+#      live `terraform plan` (CI cannot produce one -- see above), and the
+#      summary says so explicitly rather than implying more confidence
+#      than it earns.
+#   2. `operator-approval` -- gated behind a protected GitHub Environment
+#      named `workload-apply-<environment>`. An operator must configure
+#      that environment in Settings -> Environments with themselves (or
+#      whoever should sign off) as a required reviewer; until that's done
+#      the environment exists but is unprotected, same as any other GitHub
+#      Environment referenced for the first time. That approval *is* the
+#      audit trail -- who signed off on this specific release, when, for
+#      which ref/environment/reason. Its only action, once approved, is to
+#      print the exact operator runbook: the `make workload-plan` /
+#      `make workload-apply` invocation to run locally, because that's
+#      genuinely where the reviewed plan and the apply happen (with the
+#      operator's own gcloud auth -- there is no other write-capable
+#      identity to hand this to; see the header above).
+#
+# If/when a real apply-capable (or even read-only-plan-capable) GCP
+# identity is federated for this repo, this workflow is the place to wire
+# a real `terraform plan` into `preflight` -- but that is a deliberate,
+# separate operator decision (provisioning a WIF pool/provider is an IAM
+# change), not something this file should assume or silently grow into.
+
+name: Workload Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment (matches ENV=<environment> / .env.<environment>)"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      reason:
+        description: "Why this release is being cut (recorded in the run log and the approval)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workload-apply-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    name: Static preflight (no GCP credentials)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Read pinned Terraform version
+        id: terraform-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "terraform" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3
+        with:
+          terraform_version: ${{ steps.terraform-version.outputs.version }}
+          terraform_wrapper: false
+
+      - name: Install pinned Packer
+        shell: bash
+        env:
+          PACKER_LINUX_AMD64_SHA256: c3401da41a47d51e2ef3e78a76f625c753b6f19e81681e4cdc3bc6e6f8c699c0
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "packer" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          archive="${RUNNER_TEMP}/packer_${version}_linux_amd64.zip"
+          install_dir="${RUNNER_TEMP}/packer-bin"
+          curl -fsSL \
+            "https://releases.hashicorp.com/packer/${version}/packer_${version}_linux_amd64.zip" \
+            -o "$archive"
+          printf '%s  %s\n' "$PACKER_LINUX_AMD64_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          unzip -q "$archive" -d "$install_dir"
+          chmod 0755 "$install_dir/packer"
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Install pinned Nomad
+        shell: bash
+        env:
+          NOMAD_LINUX_AMD64_SHA256: 681832b4ffaff0626119420569f117fb7ad1e323d6c929ef3c0bccb432165c6b
+        run: |
+          set -euo pipefail
+          version="$(awk '$1 == "nomad" { print $2; exit }' .tool-versions)"
+          test -n "$version"
+          archive="${RUNNER_TEMP}/nomad_${version}_linux_amd64.zip"
+          install_dir="${RUNNER_TEMP}/nomad-bin"
+          curl -fsSL \
+            "https://releases.hashicorp.com/nomad/${version}/nomad_${version}_linux_amd64.zip" \
+            -o "$archive"
+          printf '%s  %s\n' "$NOMAD_LINUX_AMD64_SHA256" "$archive" | sha256sum --check --strict
+          mkdir -p "$install_dir"
+          unzip -q "$archive" -d "$install_dir"
+          chmod 0755 "$install_dir/nomad"
+          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
+
+      - name: Terraform fmt + validate (keyless, no backend)
+        run: |
+          terraform fmt -check -recursive iac/provider-gcp
+          terraform -chdir=iac/provider-gcp init -backend=false -input=false
+          terraform -chdir=iac/provider-gcp validate
+
+      - name: Workload topology, quota, and release-plan assertions
+        run: |
+          make -C iac/provider-gcp workload-plan-assertions-test
+          make -C iac/provider-gcp packer-reserve-check
+
+      - name: Write preflight summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            printf '## Workload apply preflight\n\n'
+            printf '| | |\n|---|---|\n'
+            printf '| environment | `%s` |\n' "${{ inputs.environment }}"
+            printf '| reason | %s |\n' "${{ inputs.reason }}"
+            printf '| ref | `%s` |\n' "${{ github.sha }}"
+            printf '| run | [%s](%s) |\n' "${{ github.run_id }}" "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            printf '\n'
+            printf 'This is a **static preflight only**. This workflow has no GCP\n'
+            printf 'credentials (no Workload Identity Federation pool/provider exists\n'
+            printf 'for this repo -- see #153) and cannot produce a live `terraform\n'
+            printf 'plan` against real state. It confirms `terraform fmt`/`validate`,\n'
+            printf 'the workload topology/quota/plan-assertion test suite, and the\n'
+            printf 'packer reserve check all pass against this ref.\n\n'
+            printf 'The reviewed plan that `workload-apply` actually consumes is\n'
+            printf 'produced locally, after this gate is approved -- see the\n'
+            printf '`operator-approval` job for the exact commands.\n'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  operator-approval:
+    name: Reviewer approval (${{ inputs.environment }})
+    needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: workload-apply-${{ inputs.environment }}
+    steps:
+      - name: Print operator runbook
+        shell: bash
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## Approved: run the release locally
+
+          This dispatch was approved for environment \`${{ inputs.environment }}\`
+          (reason: ${{ inputs.reason }}), ref \`${{ github.sha }}\`, by whoever is
+          recorded as the reviewer on this run's environment approval -- that
+          approval, not this job, is the release's audit trail.
+
+          Nothing in this workflow can reach GCP. Run the release yourself, with
+          your own \`gcloud\` auth:
+
+          \`\`\`sh
+          make switch-env ENV=${{ inputs.environment }}
+
+          # 1) Produce a fresh, hash-verified plan (fails if config or release
+          #    artifacts changed underneath it, or if topology/quota checks fail).
+          make -C iac/provider-gcp workload-plan
+
+          # 2) Read it.
+          terraform -chdir=iac/provider-gcp show .tfplan.workload.${{ inputs.environment }}
+
+          # 3) Apply exactly that reviewed plan (refuses without this exact phrase;
+          #    refuses if the plan file changed since step 1, or its lease/manifest
+          #    don't verify).
+          make -C iac/provider-gcp workload-apply CONFIRM='APPLY ONE WORKCELL CANARY'
+          \`\`\`
+
+          See the PR that introduced this workflow for the current scope (the
+          registry mirror module) and rollback steps.
+          EOF
+          cat "$GITHUB_STEP_SUMMARY"

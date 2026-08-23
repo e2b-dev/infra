@@ -609,4 +609,6 @@ module "remote_repository" {
 
   dockerhub_username_secret_name = module.init.dockerhub_username_secret_name
   dockerhub_password_secret_name = module.init.dockerhub_password_secret_name
+
+  dockerhub_upstream_allow_anonymous = var.dockerhub_upstream_allow_anonymous
 }
