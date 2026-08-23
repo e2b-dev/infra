@@ -66,6 +66,14 @@ func newInClusterKubeClient() (kubernetes.Interface, error) {
 	return c, nil
 }
 
+func newLokiQueryProvider(config cfg.Config) (*loki.LokiQueryProvider, error) {
+	if config.LokiURL == "" {
+		return nil, nil
+	}
+
+	return loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
+}
+
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type teamRunningSandboxCounter interface {
@@ -229,7 +237,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
 	}
 
-	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
+	queryLogsProvider, err := newLokiQueryProvider(config)
 	if err != nil {
 		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
 	}

@@ -33,6 +33,14 @@ func TestParse(t *testing.T) {
 		assert.ErrorContains(t, err, `environment variable "POSTGRES_CONNECTION_STRING" should not be empty`)
 	})
 
+	t.Run("Loki URL is optional", func(t *testing.T) { //nolint:paralleltest // cannot call t.Setenv and t.Parallel
+		removeEnv(t, "LOKI_URL")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Empty(t, result.LokiURL)
+	})
+
 	t.Run("base64 signing key can be parsed", func(t *testing.T) {
 		content := []byte{1, 2, 3, 4, 5, 6}
 		encoded := base64.StdEncoding.EncodeToString(content)

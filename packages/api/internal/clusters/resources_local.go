@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -31,6 +32,23 @@ type ClickhouseLogsReader interface {
 }
 
 var _ ClickhouseLogsReader = (*sandboxlogs.Reader)(nil)
+
+type lokiLogsReader interface {
+	QuerySandboxLogs(ctx context.Context, teamID string, sandboxID string, start, end time.Time, limit int, direction logproto.Direction, level *logs.LogLevel, search *string) ([]logs.LogEntry, error)
+	QueryBuildLogs(ctx context.Context, templateID, buildID string, start, end time.Time, limit int, offset int32, level *logs.LogLevel, direction logproto.Direction) ([]logs.LogEntry, error)
+}
+
+var _ lokiLogsReader = (*loki.LokiQueryProvider)(nil)
+
+var errPersistentLogsUnavailable = errors.New("persistent log backend is unavailable")
+
+type persistentLogBackend uint8
+
+const (
+	persistentLogBackendUnavailable persistentLogBackend = iota
+	persistentLogBackendLoki
+	persistentLogBackendClickhouse
+)
 
 // logReadMeter/logReadErrorCount count ClickHouse log read failures so
 // operators can alert on them, broken down by log kind.
@@ -62,7 +80,7 @@ func recordClickhouseLogReadError(ctx context.Context, kind string) {
 type LocalClusterResourceProvider struct {
 	config                      cfg.Config
 	querySandboxMetricsProvider clickhouse.SandboxQueriesProvider
-	queryLogsProvider           *loki.LokiQueryProvider
+	queryLogsProvider           lokiLogsReader
 	sandboxLogsReader           ClickhouseLogsReader
 	featureFlags                *featureflags.Client
 	instances                   *smap.Map[*Instance]
@@ -76,25 +94,42 @@ func newLocalClusterResourceProvider(
 	instances *smap.Map[*Instance],
 	config cfg.Config,
 ) ClusterResource {
+	var logsReader lokiLogsReader
+	if queryLogsProvider != nil {
+		logsReader = queryLogsProvider
+	}
+
 	return &LocalClusterResourceProvider{
 		config:                      config,
 		querySandboxMetricsProvider: querySandboxMetricsProvider,
-		queryLogsProvider:           queryLogsProvider,
+		queryLogsProvider:           logsReader,
 		sandboxLogsReader:           sandboxLogsReader,
 		featureFlags:                featureFlags,
 		instances:                   instances,
 	}
 }
 
-// readFromClickhouse reports whether log reads should hit ClickHouse. It is
-// true only when the logs-read-config flag is enabled AND a ClickHouse reader
-// is configured; otherwise reads stay on Loki (default behavior).
-func (l *LocalClusterResourceProvider) readFromClickhouse(ctx context.Context) bool {
-	if l.sandboxLogsReader == nil || l.featureFlags == nil {
-		return false
+// persistentLogBackend preserves logs-read-config as the routing authority.
+// ClickHouse is selected only when the flag is enabled and its reader exists;
+// otherwise Loki remains the fallback when configured.
+func (l *LocalClusterResourceProvider) persistentLogBackend(ctx context.Context) persistentLogBackend {
+	if l.featureFlags != nil && l.featureFlags.BoolFlag(ctx, featureflags.LogsReadConfigFlag) && l.sandboxLogsReader != nil {
+		return persistentLogBackendClickhouse
 	}
 
-	return l.featureFlags.BoolFlag(ctx, featureflags.LogsReadConfigFlag)
+	if l.queryLogsProvider != nil {
+		return persistentLogBackendLoki
+	}
+
+	return persistentLogBackendUnavailable
+}
+
+func persistentLogsUnavailableError() *api.APIError {
+	return &api.APIError{
+		Err:       fmt.Errorf("%w: Loki is not configured and ClickHouse is not selected or available", errPersistentLogsUnavailable),
+		ClientMsg: "Persistent logs are temporarily unavailable",
+		Code:      http.StatusServiceUnavailable,
+	}
 }
 
 // apiLogDirectionToSandboxLogsSortOrder converts an API log direction into the
@@ -203,7 +238,8 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		raw []logs.LogEntry
 		err error
 	)
-	if l.readFromClickhouse(ctx) {
+	switch l.persistentLogBackend(ctx) {
+	case persistentLogBackendClickhouse:
 		teamUUID, parseErr := uuid.Parse(teamID)
 		if parseErr != nil {
 			return api.SandboxLogs{}, &api.APIError{
@@ -217,8 +253,10 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		if err != nil {
 			recordClickhouseLogReadError(ctx, "sandbox")
 		}
-	} else {
+	case persistentLogBackendLoki:
 		raw, err = l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, apiLogDirectionToLokiProtoDirection(qDirection), level, search)
+	case persistentLogBackendUnavailable:
+		return api.SandboxLogs{}, persistentLogsUnavailableError()
 	}
 	if err != nil {
 		return api.SandboxLogs{}, &api.APIError{
@@ -263,10 +301,15 @@ func (l *LocalClusterResourceProvider) GetBuildLogs(
 	start, end := LogQueryWindow(cursor, direction)
 
 	var persistentFetcher logSourceFunc
-	if l.readFromClickhouse(ctx) {
+	switch l.persistentLogBackend(ctx) {
+	case persistentLogBackendClickhouse:
 		persistentFetcher = l.logsFromClickhouse(ctx, templateID, buildID, start, end, int(limit), offset, level, apiLogDirectionToSandboxLogsSortOrder(&direction))
-	} else {
+	case persistentLogBackendLoki:
 		persistentFetcher = l.logsFromLocalLoki(ctx, templateID, buildID, start, end, int(limit), offset, level, apiLogDirectionToLokiProtoDirection(&direction))
+	case persistentLogBackendUnavailable:
+		persistentFetcher = func() ([]logs.LogEntry, *api.APIError) {
+			return nil, persistentLogsUnavailableError()
+		}
 	}
 
 	return getBuildLogsWithSources(ctx, l.instances, nodeID, templateID, buildID, offset, limit, level, cursor, direction, source, persistentFetcher)

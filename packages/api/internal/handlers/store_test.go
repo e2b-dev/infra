@@ -12,8 +12,33 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
+
+func TestNewLokiQueryProvider(t *testing.T) {
+	t.Parallel()
+
+	t.Run("empty URL disables Loki", func(t *testing.T) {
+		t.Parallel()
+
+		provider, err := newLokiQueryProvider(cfg.Config{})
+		require.NoError(t, err)
+		assert.Nil(t, provider)
+	})
+
+	t.Run("nonempty URL initializes Loki", func(t *testing.T) {
+		t.Parallel()
+
+		provider, err := newLokiQueryProvider(cfg.Config{
+			LokiURL:      "http://loki:3100",
+			LokiUser:     "user",
+			LokiPassword: "password",
+		})
+		require.NoError(t, err)
+		assert.NotNil(t, provider)
+	})
+}
 
 func TestSendAPIError_BodyCarriesSemanticErrorCode(t *testing.T) {
 	t.Parallel()

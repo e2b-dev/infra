@@ -136,8 +136,9 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to
   Loki, with a LaunchDarkly-gated ClickHouse read path for local-cluster logs during the log
-  storage migration. LaunchDarkly feature flags also gate placement parameters, rate limits, and
-  rollouts.
+  storage migration. Loki is optional at API startup; if the flag selects a path with no configured
+  local persistent-log backend, log reads return 503 rather than bypassing the flag or returning
+  empty results. LaunchDarkly feature flags also gate placement parameters, rate limits, and rollouts.
 
 ### Orchestrator (`packages/orchestrator`)
 

@@ -43,7 +43,7 @@ type Config struct {
 	ClickhouseConnectionStrings []string `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
 
 	LokiPassword string `env:"LOKI_PASSWORD"`
-	LokiURL      string `env:"LOKI_URL,required"`
+	LokiURL      string `env:"LOKI_URL"`
 	LokiUser     string `env:"LOKI_USER"`
 
 	// ServiceDiscoveryProvider selects how the API discovers orchestrator and template-manager instances.
