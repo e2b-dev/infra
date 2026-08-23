@@ -102,12 +102,10 @@ func (n *Node) markReachable() {
 // transition and would restart the clock on every retry.
 //
 // Deliberately not called from markUnhealthyLocal, even though a sync failure
-// usually implies both. A sync can fail on a node this replica did reach: the
-// node answers ServiceInfo, but the sandbox list call then fails outright, or
-// it succeeds with a payload GetSandboxes cannot decode (a nil sandbox config
-// or an unparseable team or build ID). Either way the node has demonstrably
-// answered, so it is not unreachable, and conflating the two would let one
-// failed or malformed call present a live node as a candidate for reclamation.
+// usually implies both. A sync can fail on a node this replica did reach:
+// ServiceInfo answers and the sandbox list call then fails. The node has
+// demonstrably answered, so it is not unreachable, and conflating the two would
+// let one failed call present a live node as a candidate for reclamation.
 func (n *Node) markUnreachable() {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()

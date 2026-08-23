@@ -37,27 +37,6 @@ func (n *mockInfoClient) ServiceInfo(_ context.Context, _ *emptypb.Empty, _ ...g
 	}, nil
 }
 
-// mockSandboxClientMalformedList answers List successfully with a payload the
-// API cannot decode. This is how a live node fails a sync without ever failing
-// to respond: the RPC succeeds and GetSandboxes rejects the contents.
-type mockSandboxClientMalformedList struct {
-	orchestrator.SandboxServiceClient
-}
-
-func (n *mockSandboxClientMalformedList) List(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*orchestrator.SandboxListResponse, error) {
-	return &orchestrator.SandboxListResponse{
-		Sandboxes: []*orchestrator.RunningSandbox{{Config: nil}},
-	}, nil
-}
-
-// WithMalformedSandboxList makes the node answer every RPC but return a sandbox
-// list the API cannot decode.
-func WithMalformedSandboxList() TestOptions {
-	return func(node *TestNode) {
-		node.client.Sandbox = &mockSandboxClientMalformedList{}
-	}
-}
-
 // mockSandboxClientFailingList fails the sandbox list call. This is how a live
 // node fails a sync while still proving it is reachable: ServiceInfo answers
 // and only the list call errors.

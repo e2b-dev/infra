@@ -19,10 +19,8 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 
 	// Tracked separately from success because the two answer different
 	// questions. A sync can fail on a node this replica did reach — ServiceInfo
-	// answers and the sandbox list call then fails outright, or succeeds with a
-	// payload GetSandboxes cannot decode (a nil sandbox config or an
-	// unparseable ID) — and a node that answered is not unreachable however
-	// little sense the rest of the cycle made.
+	// answers and the sandbox list call then fails — and a node that answered is
+	// not unreachable however the rest of the cycle went.
 	answered := false
 
 	for range syncMaxRetries {

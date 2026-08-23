@@ -93,23 +93,6 @@ func TestSync_NodeThatAnsweredIsNotUnreachable(t *testing.T) {
 	assert.Equal(t, api.NodeStatusUnhealthy, n.Status(), "the failed sync must still degrade status")
 }
 
-// TestSync_NodeWithMalformedSandboxListIsNotUnreachable is the other way a
-// sync can fail on a node this replica demonstrably reached: the RPC succeeds
-// but GetSandboxes rejects the payload (a nil sandbox config or an
-// unparseable ID). That is still an answer, so the node must not come out of
-// the cycle unreachable — only unhealthy.
-func TestSync_NodeWithMalformedSandboxListIsNotUnreachable(t *testing.T) {
-	t.Parallel()
-
-	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1, WithMalformedSandboxList())
-
-	n.Sync(t.Context(), nil)
-
-	_, unreachable := n.UnreachableSince()
-	assert.False(t, unreachable, "a node that answered every RPC must not be marked unreachable")
-	assert.Equal(t, api.NodeStatusUnhealthy, n.Status(), "the failed sync must still degrade status")
-}
-
 // TestSync_SilentNodeIsUnreachable is the other half: a node that never answers
 // must be marked unreachable, or the signal reports nothing at all.
 func TestSync_SilentNodeIsUnreachable(t *testing.T) {

@@ -75,7 +75,7 @@ func TestStorageLocalStartsAtOneSkipsLiveNamespacesAndExhausts(t *testing.T) {
 
 	storage, err := newStorageLocal(context.Background(), Config{}, NewNoopEgressProxy(), dir)
 	require.NoError(t, err)
-	storage.slotsSize = 4
+	storage.slotsSize = 3
 
 	first, err := storage.Acquire(context.Background())
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestStorageLocalConcurrentAcquireIsUnique(t *testing.T) {
 
 	storage, err := newStorageLocal(context.Background(), Config{}, NewNoopEgressProxy(), t.TempDir())
 	require.NoError(t, err)
-	storage.slotsSize = 9
+	storage.slotsSize = 8
 
 	const acquisitions = 8
 	indices := make(chan int, acquisitions)
@@ -121,7 +121,7 @@ func TestStorageLocalConcurrentAcquireIsUnique(t *testing.T) {
 	seen := map[int]bool{}
 	for idx := range indices {
 		require.GreaterOrEqual(t, idx, 1)
-		require.Less(t, idx, storage.slotsSize)
+		require.LessOrEqual(t, idx, storage.slotsSize)
 		require.False(t, seen[idx], "slot %d was allocated twice", idx)
 		seen[idx] = true
 	}

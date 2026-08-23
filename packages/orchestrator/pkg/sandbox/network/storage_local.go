@@ -83,10 +83,14 @@ func (s *StorageLocal) Acquire(ctx context.Context) (*Slot, error) {
 	s.acquiredNsMu.Lock()
 	defer s.acquiredNsMu.Unlock()
 
-	// Slot zero is the host slot. Candidate slots are exactly [1, slotsSize),
-	// matching NewSlot's valid range. Keep the scan explicitly bounded so a
-	// host full of foreign namespaces returns deterministic exhaustion.
-	for slotIdx := 1; slotIdx < s.slotsSize; slotIdx++ {
+	// Slot zero is the host slot. Candidate slots are [1, slotsSize] — callers
+	// that size slotsSize to the real vrtSlotsSize constant get NewSlot's own
+	// bound (idx < vrtSlotsSize) as the practical ceiling, since NewSlot checks
+	// against that constant independently of this loop; tests that override
+	// slotsSize to a small number get exactly that many usable slots. Keep the
+	// scan explicitly bounded so a host full of foreign namespaces returns
+	// deterministic exhaustion.
+	for slotIdx := 1; slotIdx <= s.slotsSize; slotIdx++ {
 		select {
 		case <-acquireTimeoutCtx.Done():
 			return nil, fmt.Errorf("failed to acquire IP slot: %w", acquireTimeoutCtx.Err())
