@@ -66,8 +66,17 @@ resource "google_artifact_registry_repository" "dockerhub_remote_repository" {
       # actual source. Nothing else in this deployment exercises this path —
       # the operator's own runtime template pulls from lscr.io, not
       # docker.io, so a healthy operator build proves nothing about it.
-      condition     = trimspace(data.google_secret_manager_secret_version.dockerhub_username.secret_data) != ""
-      error_message = "remote_repository_enabled=true but the Docker Hub upstream credential secrets (${var.dockerhub_username_secret_name}, ${var.dockerhub_password_secret_name}) are still the Terraform-managed placeholder. Populate both with real Docker Hub credentials (gcloud secrets versions add ${var.dockerhub_username_secret_name} / ${var.dockerhub_password_secret_name} --project=${var.gcp_project_id}) before relying on this mirror for docker.io pulls — otherwise it silently degrades to anonymous, rate-limited Docker Hub access."
+      #
+      # var.dockerhub_upstream_allow_anonymous is the deliberate escape
+      # hatch: when an operator has decided (for now) to accept anonymous,
+      # rate-limited Docker Hub pulls instead of populating real credentials
+      # -- e.g. to unblock `FROM ubuntu:...` project-template builds before
+      # Docker Hub credentials are provisioned -- this flag makes that an
+      # explicit, reviewed choice recorded in the plan/tfvars instead of a
+      # silent placeholder-driven fallback. Default is false: the precondition
+      # still fails loud unless someone opts in.
+      condition     = trimspace(data.google_secret_manager_secret_version.dockerhub_username.secret_data) != "" || var.dockerhub_upstream_allow_anonymous
+      error_message = "remote_repository_enabled=true but the Docker Hub upstream credential secrets (${var.dockerhub_username_secret_name}, ${var.dockerhub_password_secret_name}) are still the Terraform-managed placeholder. Either populate both with real Docker Hub credentials (gcloud secrets versions add ${var.dockerhub_username_secret_name} / ${var.dockerhub_password_secret_name} --project=${var.gcp_project_id}), or set dockerhub_upstream_allow_anonymous=true to deliberately accept anonymous, rate-limited Docker Hub pulls."
     }
   }
 }

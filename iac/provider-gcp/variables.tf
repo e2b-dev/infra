@@ -613,6 +613,12 @@ variable "remote_repository_enabled" {
   default     = false
 }
 
+variable "dockerhub_upstream_allow_anonymous" {
+  type        = bool
+  description = "When remote_repository_enabled=true and the Docker Hub upstream credential secrets are still the Terraform-managed placeholder, explicitly accept anonymous, rate-limited Docker Hub pulls instead of failing the plan/apply. Can be set via TF_VAR_dockerhub_upstream_allow_anonymous or DOCKERHUB_UPSTREAM_ALLOW_ANONYMOUS env var. Default false."
+  default     = false
+}
+
 variable "client_clusters_config" {
   type = map(object({
     cluster_size = number
