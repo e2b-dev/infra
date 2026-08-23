@@ -26,7 +26,6 @@ type authStore interface {
 	GetTeamByHashedAPIKey(ctx context.Context, hashedKey string) (*types.Team, error)
 	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
 	GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error)
-	GetUserIDByHashedAccessToken(ctx context.Context, hashedToken string) (uuid.UUID, error)
 	GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error)
 	GetTeamMemberIDs(ctx context.Context, teamID uuid.UUID) ([]uuid.UUID, error)
 }
@@ -38,7 +37,6 @@ type APIError = apierrors.APIError
 // used by callers such as APIStore and the dashboard-api handlers.
 type Service interface {
 	ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, apiKey string) (*types.Team, *APIError)
-	ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError)
 	ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)
 	ValidateAuthProviderTeam(ctx context.Context, ginCtx *gin.Context, teamID string) (*types.Team, *APIError)
 	GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error)
@@ -142,40 +140,11 @@ func (s *AuthService) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types
 	})
 }
 
-// ValidateAccessToken verifies the access token format and fetches the associated user ID.
-func (s *AuthService) ValidateAccessToken(ctx context.Context, ginCtx *gin.Context, accessToken string) (uuid.UUID, *APIError) {
-	hashedToken, err := keys.VerifyKey(keys.AccessTokenPrefix, accessToken)
-	if err != nil {
-		return uuid.UUID{}, &APIError{
-			Err:       fmt.Errorf("failed to verify access token: %w", err),
-			ClientMsg: "Invalid access token format",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	userID, err := s.store.GetUserIDByHashedAccessToken(ctx, hashedToken)
-	if err != nil {
-		return uuid.UUID{}, &APIError{
-			Err:       fmt.Errorf("failed to get the user from db for an access token: %w", err),
-			ClientMsg: "Cannot get the user for the given access token",
-			Code:      http.StatusUnauthorized,
-		}
-	}
-
-	//nolint:contextcheck // We use the gin request context to set attributes on the parent span.
-	telemetry.SetAttributes(ginCtx.Request.Context(),
-		telemetry.WithMaskedAccessToken(keys.MaskToken(keys.AccessTokenPrefix, accessToken)),
-		telemetry.WithUserID(userID.String()),
-	)
-
-	return userID, nil
-}
-
 // ValidateAuthProviderToken verifies a JWT against the configured auth provider and resolves an internal user ID.
 //
 // When no auth provider verifier is configured (AUTH_PROVIDER_CONFIG is unset),
 // every token is denied with 401. This makes "no auth provider" a valid
-// configuration: API key / access token flows keep working, but JWT-based
+// configuration: API key flows keep working, but JWT-based
 // flows are universally rejected.
 func (s *AuthService) ValidateAuthProviderToken(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError) {
 	if s.authProviderVerifier == nil {

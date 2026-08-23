@@ -129,7 +129,7 @@ func (a *APIStore) getUserTeams(ctx context.Context, userID uuid.UUID) ([]*types
 
 // resolveTemplateAndTeam resolves a template identifier and returns both the alias info and the owning team.
 // For API key auth: supports both template ID and alias (team context is unambiguous).
-// For access token auth: only template ID lookup (aliases are ambiguous across multiple teams).
+// For user bearer auth: only template ID lookup (aliases are ambiguous across multiple teams).
 // Returns 403 if the template is found but user doesn't have ownership.
 func (a *APIStore) resolveTemplateAndTeam(
 	ctx context.Context,

@@ -29,7 +29,6 @@ const (
 	HeaderTeamID        = "X-Team-ID"
 	HeaderAdminToken    = "X-Admin-Token"
 	PrefixAPIKey        = "e2b_"
-	PrefixAccessToken   = "sk_e2b_"
 	PrefixBearer        = "Bearer "
 )
 
@@ -212,21 +211,6 @@ func NewApiKeyAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin
 		validationFunc: validationFunc,
 		setContextFunc: authcontext.SetTeamInfo,
 		errorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
-	}
-}
-
-// NewAccessTokenAuthenticator creates an authenticator for the AccessTokenAuth security scheme (Authorization Bearer sk_e2b_).
-func NewAccessTokenAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin.Context, token string) (uuid.UUID, *APIError)) Authenticator {
-	return &commonAuthenticator[uuid.UUID]{
-		schemeName: "AccessTokenAuth",
-		header: headerKey{
-			name:         HeaderAuthorization,
-			prefix:       PrefixAccessToken,
-			removePrefix: PrefixBearer,
-		},
-		validationFunc: validationFunc,
-		setContextFunc: authcontext.SetUserID,
-		errorMessage:   "Invalid Access token, try to login again by running `e2b auth login`.",
 	}
 }
 

@@ -8,7 +8,6 @@ const (
 	HeaderAdminToken    = "X-Admin-Token"
 
 	// Token prefixes.
-	PrefixAPIKey      = "e2b_"
-	PrefixAccessToken = "sk_e2b_"
-	PrefixBearer      = "Bearer "
+	PrefixAPIKey = "e2b_"
+	PrefixBearer = "Bearer "
 )

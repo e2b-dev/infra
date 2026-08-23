@@ -23,8 +23,6 @@ const (
 
 var (
 	teamID         = uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
-	tokenID        = uuid.MustParse("3d98c426-d348-446b-bdf6-5be3ca4123e2")
-	userTokenValue = "89215020937a4c989cde33d7bc647715"
 	teamTokenValue = "53ae1fed82754c17ad8077fbc8bcdd90"
 	userID         = uuid.MustParse("fb69f46f-eb51-4a87-a14e-306f7a3fd89c")
 )
@@ -77,11 +75,6 @@ func run(ctx context.Context) error {
 
 	if err = upsertUserIdentity(ctx, authDb, oidcIssuer, oidcSubject); err != nil {
 		return fmt.Errorf("failed to upsert user identity: %w", err)
-	}
-
-	// create user token
-	if err = upsertUserToken(ctx, authDb, keys.AccessTokenPrefix, userTokenValue); err != nil {
-		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
 	// create team token
@@ -145,28 +138,6 @@ SET is_default = CASE WHEN team_id = $2 THEN true ELSE false END
 WHERE user_id = $1
 `, userID, teamID); err != nil {
 		return fmt.Errorf("failed to set test team as default: %w", err)
-	}
-
-	return nil
-}
-
-func upsertUserToken(ctx context.Context, db *authdb.Client, tokenPrefix, token string) error {
-	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
-	if err != nil {
-		return fmt.Errorf("failed to create token hash: %w", err)
-	}
-
-	if _, err = db.CreateAccessToken(ctx, authqueries.CreateAccessTokenParams{
-		ID:                    tokenID,
-		UserID:                userID,
-		AccessTokenHash:       tokenHash,
-		AccessTokenPrefix:     tokenMask.Prefix,
-		AccessTokenLength:     int32(tokenMask.ValueLength),
-		AccessTokenMaskPrefix: tokenMask.MaskedValuePrefix,
-		AccessTokenMaskSuffix: tokenMask.MaskedValueSuffix,
-		Name:                  "local dev seed token",
-	}); ignoreConstraints(err) != nil {
-		return fmt.Errorf("failed to create token: %w", err)
 	}
 
 	return nil

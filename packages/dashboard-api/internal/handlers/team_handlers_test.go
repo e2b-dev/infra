@@ -829,10 +829,6 @@ func (noopAuthService) ValidateAPIKey(context.Context, *gin.Context, string) (*a
 	return nil, nil
 }
 
-func (noopAuthService) ValidateAccessToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
-	return uuid.Nil, nil
-}
-
 func (noopAuthService) ValidateAuthProviderToken(context.Context, *gin.Context, string) (uuid.UUID, *auth.APIError) {
 	return uuid.Nil, nil
 }

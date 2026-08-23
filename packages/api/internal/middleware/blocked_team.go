@@ -10,7 +10,7 @@ import (
 )
 
 // blockedTeamAllowlist enumerates routes a blocked team MAY still reach on
-// the api service. Admin and access-token-only routes are omitted: they
+// the api service. Admin and user-bearer-only routes are omitted: they
 // have no team on the gin context so the middleware short-circuits.
 var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 	http.MethodGet: {

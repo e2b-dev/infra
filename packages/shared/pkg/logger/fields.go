@@ -79,10 +79,6 @@ func WithMaskedAPIKey(maskedAPIKey string) zap.Field {
 	return zap.String("auth.api_key", maskedAPIKey)
 }
 
-func WithMaskedAccessToken(maskedAccessToken string) zap.Field {
-	return zap.String("auth.access_token", maskedAccessToken)
-}
-
 // timeFields emits both a human-readable RFC3339Nano string and a unix timestamp.
 type timeFields struct {
 	key string

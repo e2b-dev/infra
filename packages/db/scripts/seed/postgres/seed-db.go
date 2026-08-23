@@ -42,13 +42,6 @@ func main() {
 
 	teamUUID := uuid.New()
 
-	accessToken, err := keys.GenerateKey(keys.AccessTokenPrefix)
-	if err != nil {
-		fmt.Println("Error generating access token:", err)
-
-		return
-	}
-
 	teamAPIKey, err := keys.GenerateKey(keys.ApiKeyPrefix)
 	if err != nil {
 		fmt.Printf("Error: %v\n", err)
@@ -60,7 +53,6 @@ func main() {
 	fmt.Println("Seeding database with:")
 	fmt.Printf("  Email: %s\n", email)
 	fmt.Printf("  Team ID: %s\n", teamUUID)
-	fmt.Printf("  Access Token: %s\n", accessToken.PrefixedRawValue)
 	fmt.Printf("  Team API Key: %s\n", teamAPIKey.PrefixedRawValue)
 	fmt.Println()
 
@@ -159,32 +151,6 @@ VALUES ($1, $2, $3, $4, $5, $6)
 INSERT INTO users_teams (user_id, team_id, is_default)
 VALUES ($1, $2, $3)
 `, userID, teamUUID, true)
-	if err != nil {
-		panic(err)
-	}
-
-	// Create access token
-	tokenWithoutPrefix := strings.TrimPrefix(accessToken.PrefixedRawValue, keys.AccessTokenPrefix)
-	accessTokenBytes, err := hex.DecodeString(tokenWithoutPrefix)
-	if err != nil {
-		panic(err)
-	}
-	accessTokenHash := hasher.Hash(accessTokenBytes)
-	accessTokenMask, err := keys.MaskKey(keys.AccessTokenPrefix, tokenWithoutPrefix)
-	if err != nil {
-		panic(err)
-	}
-	_, err = authDb.CreateAccessToken(
-		ctx, authqueries.CreateAccessTokenParams{
-			ID:                    uuid.New(),
-			UserID:                userID,
-			AccessTokenHash:       accessTokenHash,
-			AccessTokenPrefix:     accessTokenMask.Prefix,
-			AccessTokenLength:     int32(accessTokenMask.ValueLength),
-			AccessTokenMaskPrefix: accessTokenMask.MaskedValuePrefix,
-			AccessTokenMaskSuffix: accessTokenMask.MaskedValueSuffix,
-			Name:                  "Seed Access Token",
-		})
 	if err != nil {
 		panic(err)
 	}

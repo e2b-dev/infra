@@ -268,10 +268,6 @@ func (f fakeAPIKeyAuthService) ValidateAPIKey(context.Context, *gin.Context, str
 	return nil, nil
 }
 
-func (f fakeAPIKeyAuthService) ValidateAccessToken(context.Context, *gin.Context, string) (uuid.UUID, *sharedauth.APIError) {
-	return uuid.Nil, nil
-}
-
 func (f fakeAPIKeyAuthService) ValidateAuthProviderToken(context.Context, *gin.Context, string) (uuid.UUID, *sharedauth.APIError) {
 	return uuid.Nil, nil
 }

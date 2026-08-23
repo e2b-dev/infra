@@ -345,22 +345,6 @@ type ConnectSandbox struct {
 	Timeout int32 `json:"timeout"`
 }
 
-// CreatedAccessToken defines model for CreatedAccessToken.
-type CreatedAccessToken struct {
-	// CreatedAt Timestamp of access token creation
-	CreatedAt time.Time `json:"createdAt"`
-
-	// Id Identifier of the access token
-	Id   openapi_types.UUID       `json:"id"`
-	Mask IdentifierMaskingDetails `json:"mask"`
-
-	// Name Name of the access token
-	Name string `json:"name"`
-
-	// Token The fully created access token
-	Token string `json:"token"`
-}
-
 // CreatedTeamAPIKey defines model for CreatedTeamAPIKey.
 type CreatedTeamAPIKey struct {
 	// CreatedAt Timestamp of API key creation
@@ -557,12 +541,6 @@ type Mcp map[string]interface{}
 
 // MemoryMB Memory for the sandbox in MiB
 type MemoryMB = int32
-
-// NewAccessToken defines model for NewAccessToken.
-type NewAccessToken struct {
-	// Name Name of the access token
-	Name string `json:"name"`
-}
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
@@ -1560,9 +1538,6 @@ type VolumeAndToken struct {
 	VolumeID string `json:"volumeID"`
 }
 
-// AccessTokenID defines model for accessTokenID.
-type AccessTokenID = string
-
 // ApiKeyID defines model for apiKeyID.
 type ApiKeyID = string
 
@@ -1607,9 +1582,6 @@ type N404 = Error
 
 // N409 defines model for 409.
 type N409 = Error
-
-// N410 defines model for 410.
-type N410 = Error
 
 // N429 defines model for 429.
 type N429 = Error
@@ -1799,11 +1771,6 @@ type GetV2TemplatesParams struct {
 	// Limit Maximum number of items to return per page
 	Limit *PaginationLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
-
-// PostAccessTokensJSONRequestBody defines body for PostAccessTokens for application/json ContentType.
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-type PostAccessTokensJSONRequestBody = NewAccessToken
 
 // PostAdminTeamsTeamIDApiKeysJSONRequestBody defines body for PostAdminTeamsTeamIDApiKeys for application/json ContentType.
 type PostAdminTeamsTeamIDApiKeysJSONRequestBody = NewTeamAPIKey
@@ -2100,35 +2067,6 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
-
-	// PostAccessTokensWithBody Create access token
-	//
-	// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-	//
-	// Takes any type of body and a specified content type.
-	//
-	// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostAccessTokens Create access token
-	//
-	// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-	//
-	// Takes a body of the `application/json` content type.
-	//
-	// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	PostAccessTokens(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// DeleteAccessTokensAccessTokenID Delete access token
-	//
-	// Delete an access token.
-	//
-	// Corresponds with DELETE /access-tokens/{accessTokenID} (the `DeleteAccessTokensAccessTokenID` operationId).
-	DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAdminSandboxesRunningCounts Count running sandboxes by team
 	//
@@ -2861,63 +2799,6 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /volumes/{volumeID} (the `GetVolumesVolumeID` operationId).
 	GetVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*http.Response, error)
-}
-
-// PostAccessTokensWithBody Create access token
-//
-// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-//
-// Takes any type of body and a specified content type.
-//
-// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *Client) PostAccessTokensWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostAccessTokensRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// PostAccessTokens Create access token
-//
-// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-//
-// Takes a body of the `application/json` content type.
-//
-// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *Client) PostAccessTokens(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostAccessTokensRequest(c.Server, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-// DeleteAccessTokensAccessTokenID Delete access token
-//
-// Delete an access token.
-//
-// Corresponds with DELETE /access-tokens/{accessTokenID} (the `DeleteAccessTokensAccessTokenID` operationId).
-func (c *Client) DeleteAccessTokensAccessTokenID(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeleteAccessTokensAccessTokenIDRequest(c.Server, accessTokenID)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
 }
 
 // GetAdminSandboxesRunningCounts Count running sandboxes by team
@@ -4506,80 +4387,6 @@ func (c *Client) GetVolumesVolumeID(ctx context.Context, volumeID VolumeID, reqE
 		return nil, err
 	}
 	return c.Client.Do(req)
-}
-
-// NewPostAccessTokensRequest calls the generic PostAccessTokens builder with application/json body
-func NewPostAccessTokensRequest(server string, body PostAccessTokensJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPostAccessTokensRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewPostAccessTokensRequestWithBody constructs an http.Request for the PostAccessTokens method, with any body, and a specified content type
-func NewPostAccessTokensRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/access-tokens")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
-
-	return req, nil
-}
-
-// NewDeleteAccessTokensAccessTokenIDRequest constructs an http.Request for the DeleteAccessTokensAccessTokenID method
-func NewDeleteAccessTokensAccessTokenIDRequest(server string, accessTokenID AccessTokenID) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "accessTokenID", accessTokenID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/access-tokens/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
 }
 
 // NewGetAdminSandboxesRunningCountsRequest constructs an http.Request for the GetAdminSandboxesRunningCounts method
@@ -7738,37 +7545,6 @@ func WithBaseURL(baseURL string) ClientOption {
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
 
-	// PostAccessTokensWithBodyWithResponse Create access token
-	//
-	// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-	//
-	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error)
-
-	// PostAccessTokensWithResponse Create access token
-	//
-	// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-	//
-	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-	//
-	// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	PostAccessTokensWithResponse(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error)
-
-	// DeleteAccessTokensAccessTokenIDWithResponse Delete access token
-	//
-	// Delete an access token.
-	//
-	// Returns a wrapper object for the known response body format(s).
-	//
-	// Corresponds with DELETE /access-tokens/{accessTokenID} (the `DeleteAccessTokensAccessTokenID` operationId).
-	DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error)
-
 	// GetAdminSandboxesRunningCountsWithResponse Count running sandboxes by team
 	//
 	// Returns a shared snapshot normally refreshed after five seconds. A
@@ -8574,123 +8350,6 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /volumes/{volumeID} (the `GetVolumesVolumeID` operationId).
 	GetVolumesVolumeIDWithResponse(ctx context.Context, volumeID VolumeID, reqEditors ...RequestEditorFn) (*GetVolumesVolumeIDResponse, error)
-}
-
-type PostAccessTokensResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON201 the response for an HTTP 201 `application/json` response
-	JSON201 *CreatedAccessToken
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *N401
-	// JSON410 the response for an HTTP 410 `application/json` response
-	JSON410 *N410
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *N500
-}
-
-// GetJSON201 returns the response for an HTTP 201 `application/json` response
-func (r PostAccessTokensResponse) GetJSON201() *CreatedAccessToken {
-	return r.JSON201
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r PostAccessTokensResponse) GetJSON401() *N401 {
-	return r.JSON401
-}
-
-// GetJSON410 returns the response for an HTTP 410 `application/json` response
-func (r PostAccessTokensResponse) GetJSON410() *N410 {
-	return r.JSON410
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r PostAccessTokensResponse) GetJSON500() *N500 {
-	return r.JSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r PostAccessTokensResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r PostAccessTokensResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostAccessTokensResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r PostAccessTokensResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
-}
-
-type DeleteAccessTokensAccessTokenIDResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	// JSON401 the response for an HTTP 401 `application/json` response
-	JSON401 *N401
-	// JSON404 the response for an HTTP 404 `application/json` response
-	JSON404 *N404
-	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *N500
-}
-
-// GetJSON401 returns the response for an HTTP 401 `application/json` response
-func (r DeleteAccessTokensAccessTokenIDResponse) GetJSON401() *N401 {
-	return r.JSON401
-}
-
-// GetJSON404 returns the response for an HTTP 404 `application/json` response
-func (r DeleteAccessTokensAccessTokenIDResponse) GetJSON404() *N404 {
-	return r.JSON404
-}
-
-// GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r DeleteAccessTokensAccessTokenIDResponse) GetJSON500() *N500 {
-	return r.JSON500
-}
-
-// GetBody returns the raw response body bytes
-func (r DeleteAccessTokensAccessTokenIDResponse) GetBody() []byte {
-	return r.Body
-}
-
-// Status returns HTTPResponse.Status
-func (r DeleteAccessTokensAccessTokenIDResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r DeleteAccessTokensAccessTokenIDResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
-func (r DeleteAccessTokensAccessTokenIDResponse) ContentType() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Header.Get("Content-Type")
-	}
-	return ""
 }
 
 type GetAdminSandboxesRunningCountsResponse struct {
@@ -12762,54 +12421,6 @@ func (r GetVolumesVolumeIDResponse) ContentType() string {
 	return ""
 }
 
-// PostAccessTokensWithBodyWithResponse Create access token
-//
-// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-//
-// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-//
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *ClientWithResponses) PostAccessTokensWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
-	rsp, err := c.PostAccessTokensWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostAccessTokensResponse(rsp)
-}
-
-// PostAccessTokensWithResponse Create access token
-//
-// Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-//
-// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
-//
-// Corresponds with POST /access-tokens (the `PostAccessTokens` operationId).
-// Deprecated: this operation has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-func (c *ClientWithResponses) PostAccessTokensWithResponse(ctx context.Context, body PostAccessTokensJSONRequestBody, reqEditors ...RequestEditorFn) (*PostAccessTokensResponse, error) {
-	rsp, err := c.PostAccessTokens(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostAccessTokensResponse(rsp)
-}
-
-// DeleteAccessTokensAccessTokenIDWithResponse Delete access token
-//
-// Delete an access token.
-//
-// Returns a wrapper object for the known response body format(s).
-//
-// Corresponds with DELETE /access-tokens/{accessTokenID} (the `DeleteAccessTokensAccessTokenID` operationId).
-func (c *ClientWithResponses) DeleteAccessTokensAccessTokenIDWithResponse(ctx context.Context, accessTokenID AccessTokenID, reqEditors ...RequestEditorFn) (*DeleteAccessTokensAccessTokenIDResponse, error) {
-	rsp, err := c.DeleteAccessTokensAccessTokenID(ctx, accessTokenID, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseDeleteAccessTokensAccessTokenIDResponse(rsp)
-}
-
 // GetAdminSandboxesRunningCountsWithResponse Count running sandboxes by team
 //
 // Returns a shared snapshot normally refreshed after five seconds. A
@@ -14131,96 +13742,6 @@ func (c *ClientWithResponses) GetVolumesVolumeIDWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseGetVolumesVolumeIDResponse(rsp)
-}
-
-// ParsePostAccessTokensResponse parses an HTTP response from a PostAccessTokensWithResponse call
-func ParsePostAccessTokensResponse(rsp *http.Response) (*PostAccessTokensResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PostAccessTokensResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest CreatedAccessToken
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON201 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 410:
-		var dest N410
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON410 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseDeleteAccessTokensAccessTokenIDResponse parses an HTTP response from a DeleteAccessTokensAccessTokenIDWithResponse call
-func ParseDeleteAccessTokensAccessTokenIDResponse(rsp *http.Response) (*DeleteAccessTokensAccessTokenIDResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &DeleteAccessTokensAccessTokenIDResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case rsp.StatusCode == 204:
-		break // No content-type
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
-		var dest N401
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON401 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
-		var dest N404
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON404 = &dest
-
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON500 = &dest
-
-	}
-
-	return response, nil
 }
 
 // ParseGetAdminSandboxesRunningCountsResponse parses an HTTP response from a GetAdminSandboxesRunningCountsWithResponse call

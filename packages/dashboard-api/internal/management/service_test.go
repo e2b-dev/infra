@@ -11,7 +11,6 @@ import (
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
-	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
@@ -98,16 +97,10 @@ func TestPurgeUserAccessTokens(t *testing.T) {
 	service, _ := newService(db)
 	userID := uuid.New()
 	require.NoError(t, db.AuthDB.UpsertPublicUser(t.Context(), userID))
-	_, err := db.AuthDB.CreateAccessToken(t.Context(), authqueries.CreateAccessTokenParams{
-		ID:                    uuid.New(),
-		UserID:                userID,
-		AccessTokenHash:       "access-token-hash",
-		AccessTokenPrefix:     "e2b_",
-		AccessTokenLength:     32,
-		AccessTokenMaskPrefix: "e2b_",
-		AccessTokenMaskSuffix: "token",
-		Name:                  "default",
-	})
+	err := db.AuthDB.TestsRawSQL(t.Context(), `
+INSERT INTO public.access_tokens (id, user_id, access_token_hash, access_token_prefix, access_token_length, access_token_mask_prefix, access_token_mask_suffix, name)
+VALUES ($1, $2, 'access-token-hash', 'e2b_', 32, 'e2b_', 'token', 'default')
+`, uuid.New(), userID)
 	require.NoError(t, err)
 	require.Equal(t, 1, accessTokenCount(t, db, userID))
 
@@ -153,10 +146,6 @@ var _ sharedauth.Service = noopAuthService{}
 
 func (noopAuthService) ValidateAPIKey(context.Context, *gin.Context, string) (*authtypes.Team, *sharedauth.APIError) {
 	return nil, nil
-}
-
-func (noopAuthService) ValidateAccessToken(context.Context, *gin.Context, string) (uuid.UUID, *sharedauth.APIError) {
-	return uuid.Nil, nil
 }
 
 func (noopAuthService) ValidateAuthProviderToken(context.Context, *gin.Context, string) (uuid.UUID, *sharedauth.APIError) {

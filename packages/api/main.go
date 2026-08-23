@@ -35,6 +35,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/factories"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -162,11 +163,19 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	r.Use(customMiddleware.CORS())
 
+	// Access tokens are removed. Registered before the OpenAPI validator
+	// middleware (which rejects paths missing from the spec) so old clients
+	// get a clear 410 instead of a 404.
+	accessTokensGone := func(c *gin.Context) {
+		apierrors.SendAPIStoreError(c, http.StatusGone, "E2B_ACCESS_TOKEN is deprecated and no longer supported. Use an API key (E2B_API_KEY) instead. See https://e2b.dev/docs/migration/access-token-deprecation")
+	}
+	r.POST("/access-tokens", accessTokensGone)
+	r.DELETE("/access-tokens/:accessTokenID", accessTokensGone)
+
 	// Create a team API Key auth validator
 	AuthenticationFunc := auth.CreateAuthenticationFunc(
 		[]auth.Authenticator{
 			auth.NewApiKeyAuthenticator(apiStore.GetTeamFromAPIKey),
-			auth.NewAccessTokenAuthenticator(apiStore.GetUserFromAccessToken),
 			auth.NewAuthProviderBearerAuthenticator(apiStore.GetUserIDFromAuthProviderToken),
 			auth.NewAuthProviderTeamAuthenticator(apiStore.GetTeamFromAuthProviderToken),
 			auth.NewAdminApiKeyAuthenticator(config.AdminToken),

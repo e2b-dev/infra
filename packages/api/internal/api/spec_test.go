@@ -71,7 +71,6 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 	// missing headers cause auth failure.
 	schemeHeaders := map[string]string{
 		"ApiKeyAuth":             auth.HeaderAPIKey,
-		"AccessTokenAuth":        auth.HeaderAuthorization,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
 		"AdminApiKeyAuth":        auth.HeaderAdminToken,
@@ -158,7 +157,6 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 
 	schemeHeaders := map[string]string{
 		"ApiKeyAuth":             auth.HeaderAPIKey,
-		"AccessTokenAuth":        auth.HeaderAuthorization,
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
 		"AdminApiKeyAuth":        auth.HeaderAdminToken,

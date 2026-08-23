@@ -33,10 +33,6 @@ func NewApiKeyAuthenticator(validationFunc func(context.Context, *gin.Context, s
 	return internalauthmiddleware.NewApiKeyAuthenticator(validationFunc)
 }
 
-func NewAccessTokenAuthenticator(validationFunc func(context.Context, *gin.Context, string) (uuid.UUID, *APIError)) Authenticator {
-	return internalauthmiddleware.NewAccessTokenAuthenticator(validationFunc)
-}
-
 func NewAuthProviderBearerAuthenticator(validationFunc func(context.Context, *gin.Context, string) (uuid.UUID, *APIError)) Authenticator {
 	return internalauthmiddleware.NewAuthProviderBearerAuthenticator(validationFunc)
 }

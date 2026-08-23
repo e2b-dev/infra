@@ -12,14 +12,6 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
-    AccessTokenAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: access_token
-      description: |
-        **Deprecated.** Access token authentication is deprecated and will be
-        removed in a future release. Use API key authentication (`X-API-Key`)
-        instead.
     # AuthProviderBearerAuth / AuthProviderTeamAuth: B before T in the name
     # so Bearer is validated before Team.
     AuthProviderBearerAuth:
@@ -74,12 +66,6 @@ components:
         type: string
     apiKeyID:
       name: apiKeyID
-      in: path
-      required: true
-      schema:
-        type: string
-    accessTokenID:
-      name: accessTokenID
       in: path
       required: true
       schema:
@@ -172,12 +158,6 @@ components:
             $ref: "#/components/schemas/Error"
     "409":
       description: Conflict
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    "410":
-      description: Gone
       content:
         application/json:
           schema:
@@ -1879,39 +1859,6 @@ components:
           format: uint64
           description: Number of sandbox create fails
 
-    CreatedAccessToken:
-      required:
-        - id
-        - name
-        - token
-        - mask
-        - createdAt
-      properties:
-        id:
-          type: string
-          format: uuid
-          description: Identifier of the access token
-        name:
-          type: string
-          description: Name of the access token
-        token:
-          type: string
-          description: The fully created access token
-        mask:
-          $ref: "#/components/schemas/IdentifierMaskingDetails"
-        createdAt:
-          type: string
-          format: date-time
-          description: Timestamp of access token creation
-
-    NewAccessToken:
-      required:
-        - name
-      properties:
-        name:
-          type: string
-          description: Name of the access token
-
     TeamAPIKey:
       required:
         - id
@@ -2218,7 +2165,6 @@ tags:
   - name: templates
   - name: sandboxes
   - name: auth
-  - name: access-tokens
   - name: api-keys
   - name: tags
   - name: volumes
@@ -2241,7 +2187,6 @@ paths:
       description: List all teams
       tags: [auth]
       security:
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
       responses:
         "200":
@@ -3097,7 +3042,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3169,7 +3113,6 @@ paths:
       description: Get an upload link for a tar file containing build layer files
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
@@ -3208,7 +3151,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3239,7 +3181,6 @@ paths:
       deprecated: true
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       requestBody:
@@ -3298,7 +3239,6 @@ paths:
       deprecated: true
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -3327,7 +3267,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3348,7 +3287,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3378,7 +3316,6 @@ paths:
       deprecated: true
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
       parameters:
@@ -3427,7 +3364,6 @@ paths:
       tags: [templates]
       security:
         - ApiKeyAuth: []
-        - AccessTokenAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
@@ -3460,7 +3396,6 @@ paths:
       description: Get template build info
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
@@ -3510,7 +3445,6 @@ paths:
       description: Get template build logs
       tags: [templates]
       security:
-        - AccessTokenAuth: []
         - ApiKeyAuth: []
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
@@ -3909,53 +3843,6 @@ paths:
           description: Team API key deleted successfully
         "400":
           $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /access-tokens:
-    post:
-      summary: Create access token
-      description: Create a new access token. Deprecated; use an API key (E2B_API_KEY) instead.
-      deprecated: true
-      tags: [access-tokens]
-      security:
-        - AuthProviderBearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/NewAccessToken"
-      responses:
-        "201":
-          description: Access token created successfully
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/CreatedAccessToken"
-        "401":
-          $ref: "#/components/responses/401"
-        "410":
-          $ref: "#/components/responses/410"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /access-tokens/{accessTokenID}:
-    delete:
-      summary: Delete access token
-      description: Delete an access token
-      tags: [access-tokens]
-      security:
-        - AuthProviderBearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/accessTokenID"
-      responses:
-        "204":
-          description: Access token deleted successfully
         "401":
           $ref: "#/components/responses/401"
         "404":

@@ -64,10 +64,6 @@ func WithMaskedAPIKey(maskedAPIKey string) attribute.KeyValue {
 	return zapFieldToOTELAttribute(logger.WithMaskedAPIKey(maskedAPIKey))
 }
 
-func WithMaskedAccessToken(maskedAccessToken string) attribute.KeyValue {
-	return zapFieldToOTELAttribute(logger.WithMaskedAccessToken(maskedAccessToken))
-}
-
 func zapFieldToOTELAttribute(f zap.Field) attribute.KeyValue {
 	e := &ZapFieldToOTELAttributeEncoder{}
 	f.AddTo(e)
