@@ -1,6 +1,7 @@
 package featureflags
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -30,7 +31,7 @@ func TestLogWriteConfigResolverCachesUntilTTL(t *testing.T) {
 	client, err := NewClientWithDatasource(source)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		assert.NoError(t, client.Close(t.Context()))
+		assert.NoError(t, client.Close(context.WithoutCancel(t.Context())))
 	})
 
 	source.Update(source.Flag(LogsWriteConfigFlag.Key()).ValueForAll(ldvalue.FromJSONMarshal(map[string]any{
@@ -61,7 +62,7 @@ func TestLogWriteConfigResolverRefreshesAfterTTL(t *testing.T) {
 	client, err := NewClientWithDatasource(source)
 	require.NoError(t, err)
 	t.Cleanup(func() {
-		assert.NoError(t, client.Close(t.Context()))
+		assert.NoError(t, client.Close(context.WithoutCancel(t.Context())))
 	})
 
 	source.Update(source.Flag(LogsWriteConfigFlag.Key()).ValueForAll(ldvalue.FromJSONMarshal(map[string]any{

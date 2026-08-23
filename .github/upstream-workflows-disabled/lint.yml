@@ -20,7 +20,7 @@ jobs:
     outputs:
       modules: ${{ steps.set-modules.outputs.modules }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Full history so we can diff against the PR base to find changed modules.
           fetch-depth: 0
@@ -66,7 +66,7 @@ jobs:
         modules: ${{ fromJSON(needs.detect-modules.outputs.modules) }}
       fail-fast: false
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Setup Go
         uses: ./.github/actions/go-setup-cache
         with:

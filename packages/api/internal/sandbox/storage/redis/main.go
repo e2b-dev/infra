@@ -139,7 +139,7 @@ func (s *Storage) Close(ctx context.Context) {
 }
 
 // Reconcile returns a list of sandboxes that are considered orphans on the current node.
-func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.Sandbox, nodeID string) []sandboxtypes.Sandbox {
+func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.NodeSandbox, nodeID string) []sandboxtypes.NodeSandbox {
 	if len(sbxs) == 0 {
 		return nil
 	}
@@ -148,7 +148,7 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.Sandbox, no
 
 	// Filter out sandboxes that are too young to be considered orphans.
 	type candidate struct {
-		sbx sandboxtypes.Sandbox
+		sbx sandboxtypes.NodeSandbox
 		key string
 	}
 
@@ -199,7 +199,7 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.Sandbox, no
 		return nil
 	}
 
-	var orphans []sandboxtypes.Sandbox
+	var orphans []sandboxtypes.NodeSandbox
 	for _, batch := range batches {
 		results := batch.cmd.Val()
 		for i, raw := range results {

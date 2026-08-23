@@ -38,17 +38,18 @@ type Proxy struct {
 	tlsPort   uint16 // For port 443 traffic - TLS SNI inspection
 	otherPort uint16 // For all other ports - CIDR-only, no protocol inspection
 
+	egressTOS network.EgressTOS
+
 	proxyRules []proxyRule
 	proxy      *tcpproxy.Proxy
 }
 
 func New(logger logger.Logger, networkConfig network.Config, sandboxes *sandbox.Map, meterProvider metric.MeterProvider, featureFlags *featureflags.Client) *Proxy {
-	sandboxEgressTOS.Store(uint32(networkConfig.SandboxEgressDSCP) << 2)
-
 	p := &Proxy{
 		httpPort:     networkConfig.SandboxTCPFirewallHTTPPort,
 		tlsPort:      networkConfig.SandboxTCPFirewallTLSPort,
 		otherPort:    networkConfig.SandboxTCPFirewallOtherPort,
+		egressTOS:    networkConfig.EgressTOS(),
 		logger:       logger,
 		sandboxes:    sandboxes,
 		metrics:      NewMetrics(meterProvider),
@@ -99,17 +100,26 @@ func (p *Proxy) Start(ctx context.Context) error {
 	tlsAddr := fmt.Sprintf("0.0.0.0:%d", p.tlsPort)
 	otherAddr := fmt.Sprintf("0.0.0.0:%d", p.otherPort)
 
+	deps := proxyDeps{
+		metrics:      p.metrics,
+		limiter:      p.limiter,
+		logger:       p.logger,
+		sandboxes:    p.sandboxes,
+		featureFlags: p.featureFlags,
+		egressTOS:    p.egressTOS,
+	}
+
 	// HTTP listener (port 80 traffic): inspect Host header for domain allowlist
-	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
-	p.proxy.AddRoute(httpAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolHTTP, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddHTTPHostMatchRoute(httpAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolHTTP, deps))
+	p.proxy.AddRoute(httpAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolHTTP, deps))
 
 	// TLS listener (port 443 traffic): inspect SNI for domain allowlist
-	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
-	p.proxy.AddRoute(tlsAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolTLS, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddSNIMatchRoute(tlsAddr, func(_ context.Context, _ string) bool { return true }, newConnectionHandler(ctx, domainHandler, ProtocolTLS, deps))
+	p.proxy.AddRoute(tlsAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolTLS, deps))
 
 	// Other listener (all other ports): CIDR-only check, no protocol inspection
 	// This prevents blocking on server-first protocols like SSH
-	p.proxy.AddRoute(otherAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolOther, p.metrics, p.limiter, p.logger, p.sandboxes, p.featureFlags))
+	p.proxy.AddRoute(otherAddr, newConnectionHandler(ctx, cidrOnlyHandler, ProtocolOther, deps))
 
 	p.logger.Info(ctx, "TCP firewall proxy started",
 		zap.Uint16("http_port", p.httpPort),
@@ -187,8 +197,44 @@ func (p *Proxy) SupportsBYOP() bool {
 	return false
 }
 
+// egressConn is one connection the proxy has admitted — past the per-sandbox
+// connection limit, with its sandbox and original destination resolved — plus
+// what the handler serving it records to.
+//
+// Handlers take this one value so that another per-connection input costs a
+// field rather than a positional argument on every handler, every helper down
+// the chain, and every test that drives one.
+type egressConn struct {
+	conn     net.Conn
+	sbx      *sandbox.Sandbox
+	dstIP    net.IP
+	dstPort  int
+	protocol Protocol
+	// tos is the byte stamped on the upstream socket, resolved per connection.
+	tos     int
+	logger  logger.Logger
+	metrics *Metrics
+}
+
+// upstreamAddr is the destination as a dial target.
+func (c egressConn) upstreamAddr() string {
+	return net.JoinHostPort(c.dstIP.String(), fmt.Sprintf("%d", c.dstPort))
+}
+
 // handlerFunc is the signature for connection handlers.
-type handlerFunc func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, logger logger.Logger, metrics *Metrics, protocol Protocol)
+type handlerFunc func(ctx context.Context, c egressConn)
+
+// proxyDeps are the proxy-lived collaborators every route's handler admits
+// connections with. Grouped for the same reason as egressConn: one new
+// collaborator is one field, not an edit at all three listeners.
+type proxyDeps struct {
+	metrics      *Metrics
+	limiter      *connlimit.ConnectionLimiter
+	logger       logger.Logger
+	sandboxes    *sandbox.Map
+	featureFlags *featureflags.Client
+	egressTOS    network.EgressTOS
+}
 
 var _ tcpproxy.Target = (*connectionHandler)(nil)
 
@@ -196,25 +242,17 @@ var _ tcpproxy.Target = (*connectionHandler)(nil)
 type connectionHandler struct {
 	ctx context.Context //nolint:containedctx // base context for request tracing
 
-	handler      handlerFunc
-	protocol     Protocol
-	metrics      *Metrics
-	limiter      *connlimit.ConnectionLimiter
-	logger       logger.Logger
-	sandboxes    *sandbox.Map
-	featureFlags *featureflags.Client
+	handler  handlerFunc
+	protocol Protocol
+	deps     proxyDeps
 }
 
-func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, metrics *Metrics, limiter *connlimit.ConnectionLimiter, logger logger.Logger, sandboxes *sandbox.Map, featureFlags *featureflags.Client) *connectionHandler {
+func newConnectionHandler(ctx context.Context, handler handlerFunc, protocol Protocol, deps proxyDeps) *connectionHandler {
 	return &connectionHandler{
-		ctx:          ctx,
-		handler:      handler,
-		protocol:     protocol,
-		metrics:      metrics,
-		limiter:      limiter,
-		logger:       logger,
-		sandboxes:    sandboxes,
-		featureFlags: featureFlags,
+		ctx:      ctx,
+		handler:  handler,
+		protocol: protocol,
+		deps:     deps,
 	}
 }
 
@@ -228,13 +266,13 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 
 	// Look up sandbox by source address
 	sourceAddr := rawConn.RemoteAddr().String()
-	sbx, err := t.sandboxes.GetByHostPort(sourceAddr)
+	sbx, err := t.deps.sandboxes.GetByHostPort(sourceAddr)
 	if err != nil {
 		sourceIP, _, _ := net.SplitHostPort(sourceAddr)
-		t.logger.Error(ctx, "failed to find sandbox for connection",
+		t.deps.logger.Error(ctx, "failed to find sandbox for connection",
 			logger.WithSandboxIP(sourceIP),
 			zap.Error(err))
-		t.metrics.RecordError(ctx, ErrorTypeSandboxLookup, t.protocol)
+		t.deps.metrics.RecordError(ctx, ErrorTypeSandboxLookup, t.protocol)
 		conn.Close()
 
 		return
@@ -245,13 +283,13 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	// checkpoint/resume and the IP is reused via the network slot pool, so
 	// only LifecycleID is unique per lifecycle.
 	limiterKey := sbx.LifecycleID
-	sbxLogger := t.logger.With(logger.WithSandboxID(sandboxID))
+	sbxLogger := t.deps.logger.With(logger.WithSandboxID(sandboxID))
 
 	// Check per-sandbox connection limit
-	maxLimit := t.featureFlags.IntFlag(ctx, featureflags.TCPFirewallMaxConnectionsPerSandbox)
-	count, acquired := t.limiter.TryAcquire(limiterKey, maxLimit)
+	maxLimit := t.deps.featureFlags.IntFlag(ctx, featureflags.TCPFirewallMaxConnectionsPerSandbox)
+	count, acquired := t.deps.limiter.TryAcquire(limiterKey, maxLimit)
 	if !acquired {
-		t.metrics.RecordError(ctx, ErrorTypeLimitExceeded, t.protocol)
+		t.deps.metrics.RecordError(ctx, ErrorTypeLimitExceeded, t.protocol)
 		conn.Close()
 
 		return
@@ -261,21 +299,27 @@ func (t *connectionHandler) HandleConn(conn net.Conn) {
 	ip, port, err := getOriginalDst(rawConn)
 	if err != nil {
 		sbxLogger.Error(ctx, "failed to get original destination", zap.Error(err))
-		t.metrics.RecordError(ctx, ErrorTypeOrigDst, t.protocol)
-		t.limiter.Release(limiterKey)
+		t.deps.metrics.RecordError(ctx, ErrorTypeOrigDst, t.protocol)
+		t.deps.limiter.Release(limiterKey)
 		conn.Close()
 
 		return
 	}
 
-	t.metrics.RecordConnectionsPerSandbox(ctx, count)
-	t.metrics.RecordConnection(ctx, t.protocol)
+	t.deps.metrics.RecordConnectionsPerSandbox(ctx, count)
+	t.deps.metrics.RecordConnection(ctx, t.protocol)
 
-	// Wrap the handler to release the connection slot when done
-	wrappedHandler := func(ctx context.Context, conn net.Conn, dstIP net.IP, dstPort int, sbx *sandbox.Sandbox, l logger.Logger, metrics *Metrics, protocol Protocol) {
-		defer t.limiter.Release(limiterKey)
-		t.handler(ctx, conn, dstIP, dstPort, sbx, l, metrics, protocol)
-	}
+	// Release the connection slot once the handler returns.
+	defer t.deps.limiter.Release(limiterKey)
 
-	wrappedHandler(ctx, conn, ip, port, sbx, sbxLogger, t.metrics, t.protocol)
+	t.handler(ctx, egressConn{
+		conn:     conn,
+		sbx:      sbx,
+		dstIP:    ip,
+		dstPort:  port,
+		protocol: t.protocol,
+		tos:      t.deps.egressTOS.For(sbx.Runtime.SandboxType.EgressClass()),
+		logger:   sbxLogger,
+		metrics:  t.deps.metrics,
+	})
 }

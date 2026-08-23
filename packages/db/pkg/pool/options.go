@@ -20,10 +20,8 @@ func WithMinIdle(minIdle int32) Option {
 	}
 }
 
-// WithRetryConfig sets custom retry configuration.
-// If not provided, default retry configuration is used.
-func WithRetryConfig(opts ...retry.Option) Option {
-	return func(_ *pgxpool.Config, cfg *retry.Config) {
-		cfg.Apply(opts...)
+func WithRuntimeParam(name string, value string) Option {
+	return func(config *pgxpool.Config, _ *retry.Config) {
+		config.ConnConfig.RuntimeParams[name] = value
 	}
 }

@@ -3,7 +3,6 @@
 package userfaultfd
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -42,7 +41,7 @@ func TestServeMetric(t *testing.T) {
 	))
 	t.Cleanup(func() { serveTimer = prev })
 
-	ctx := context.Background()
+	ctx := t.Context()
 	pageSize := int64(header.PageSize)
 
 	// Record a mix of faults the way the worker would. All under one
@@ -110,7 +109,7 @@ func TestPrefaultMetric(t *testing.T) {
 	))
 	t.Cleanup(func() { prefaultTimer = prev })
 
-	ctx := context.Background()
+	ctx := t.Context()
 	pageSize := int64(header.PageSize)
 
 	record := func(result faultResult, bytes int64, n int) {
@@ -219,7 +218,7 @@ func TestServeMetric_GenerationBucket(t *testing.T) {
 	))
 	t.Cleanup(func() { serveTimer = prev })
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	record := func(bucket generationBucket, n int) {
 		for range n {

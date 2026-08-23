@@ -24,7 +24,7 @@ func TestPostAccessTokensRejectsWhenIssuanceDisabled(t *testing.T) {
 	td.Update(td.Flag(featureflags.DisableE2BAccessTokenProvisioningFlag.Key()).VariationForAll(true))
 	ff, err := featureflags.NewClientWithDatasource(td)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	recorder := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(recorder)
@@ -59,7 +59,7 @@ func newAccessTokenAuthTestClient(t *testing.T, disabled bool) *featureflags.Cli
 	td.Update(td.Flag(featureflags.DisableE2BAccessTokenAuthFlag.Key()).VariationForAll(disabled))
 	ff, err := featureflags.NewClientWithDatasource(td)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	return ff
 }

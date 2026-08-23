@@ -15,6 +15,7 @@ package build
 // causing a race when closing the cancel channel.
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"testing"
@@ -31,6 +32,7 @@ import (
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const (
@@ -625,7 +627,7 @@ func TestEvictionThreshold(t *testing.T) {
 		flags, err := featureflags.NewClientWithDatasource(datastore)
 		require.NoError(t, err)
 		t.Cleanup(func() {
-			assert.NoError(t, flags.Close(t.Context()))
+			assert.NoError(t, flags.Close(context.WithoutCancel(t.Context())))
 		})
 
 		got := evictionThreshold(t.Context(), flags, cfg.Services{cfg.Orchestrator, cfg.TemplateManager})
@@ -647,7 +649,7 @@ func flagsWithMaxBuildCachePercentage(tb testing.TB, maxBuildCachePercentage int
 	require.NoError(tb, err)
 
 	tb.Cleanup(func() {
-		err := flags.Close(tb.Context())
+		err := flags.Close(context.WithoutCancel(tb.Context()))
 		assert.NoError(tb, err)
 	})
 
@@ -715,4 +717,44 @@ func mustParseCfg(t *testing.T) cfg.Config {
 	require.NoError(t, err)
 
 	return c
+}
+
+// A deferred rootfs diff whose background seal hasn't resolved must be skipped
+// by disk-pressure eviction: its data methods (FileSize) block on the seal, so
+// evicting it would stall the sole eviction goroutine, and a fresh, still-sealing
+// snapshot is exactly what a just-resumed peer needs. Once the seal resolves the
+// entry becomes evictable like any other.
+func TestDiffStoreEvictionSkipsUnsealedDeferredDiff(t *testing.T) {
+	t.Parallel()
+	cachePath := t.TempDir()
+
+	c, err := cfg.Parse()
+	require.NoError(t, err)
+	flags := flagsWithMaxBuildCachePercentage(t, 100)
+	store, err := NewDiffStore(c, flags, cachePath, 60*time.Second, 4*time.Second)
+	require.NoError(t, err)
+
+	// Oldest entry: a deferred rootfs diff whose background seal hasn't resolved.
+	promise := utils.NewSetOnce[Diff]()
+	deferred := NewDeferredDiff(GetDiffStoreKey("deferred-unsealed", Rootfs), blockSize, promise)
+	store.Add(deferred)
+
+	// A newer, ordinary diff behind it.
+	newer := newRootFSDiff(t, cachePath, "seal-newer")
+	store.Add(newer)
+
+	// Eviction must skip the unsealed deferred diff and fall through to the
+	// next-oldest instead of blocking on the seal.
+	ok, err := store.deleteOldestFromCache(t.Context())
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.False(t, store.isBeingDeleted(deferred.CacheKey()), "unsealed deferred diff must be skipped")
+	assert.True(t, store.isBeingDeleted(newer.CacheKey()), "eviction must fall through to the next-oldest")
+
+	// Once the seal resolves, the deferred diff is evictable like any other entry.
+	require.NoError(t, promise.SetValue(newRootFSDiff(t, cachePath, "seal-resolved")))
+	ok, err = store.deleteOldestFromCache(t.Context())
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.True(t, store.isBeingDeleted(deferred.CacheKey()), "sealed deferred diff must be evictable")
 }

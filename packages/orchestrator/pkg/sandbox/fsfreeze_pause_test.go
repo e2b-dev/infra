@@ -3,6 +3,7 @@
 package sandbox
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -49,8 +50,9 @@ func TestGuestPrepareFsForPause_FreezeFailureRollsBackThaw(t *testing.T) {
 	cleanup := NewCleanup()
 
 	// During the pause: freeze fails, so guestPrepareFsForPause aborts the pause.
-	err := s.guestPrepareFsForPause(t.Context(), cleanup)
+	frozen, err := s.guestPrepareFsForPause(t.Context(), cleanup)
 	require.Error(t, err, "a failed freeze must abort the filesystem-only pause")
+	require.False(t, frozen, "a failed freeze must not report the rootfs as frozen")
 	require.Equal(t, int32(1), freezeCalls.Load(), "freeze should have been attempted once")
 	require.Zero(t, thawCalls.Load(), "thaw must not run before the pause actually aborts")
 
@@ -85,7 +87,9 @@ func TestGuestPrepareFsForPause_SuccessDoesNotThaw(t *testing.T) {
 	s := newFsFreezeSandbox(t, srv.URL)
 	cleanup := NewCleanup()
 
-	require.NoError(t, s.guestPrepareFsForPause(t.Context(), cleanup))
+	frozen, err := s.guestPrepareFsForPause(t.Context(), cleanup)
+	require.NoError(t, err)
+	require.True(t, frozen, "a successful native freeze must report the rootfs as frozen")
 	require.Equal(t, int32(1), freezeCalls.Load(), "freeze should have run once")
 	require.Zero(t, thawCalls.Load(), "a successful freeze must not thaw (no abort)")
 }
@@ -95,7 +99,7 @@ func newFsFreezeSandbox(t *testing.T, envdURL string) *Sandbox {
 
 	ff, err := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(t.Context()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	token := "test-token"
 	s := &Sandbox{Metadata: &Metadata{

@@ -4,7 +4,6 @@ package block
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"math/rand"
 	"os"
@@ -176,7 +175,7 @@ func plannerDedup(budget DedupBudget) simPlanner {
 		t.Helper()
 		src := func(absOff int64) ([]byte, error) { return mem[absOff : absOff+simBlockSize], nil }
 		base := &fakeOriginalDevice{data: parent, hdr: hdr}
-		plan, err := dedupCompare(context.Background(), src, base, dirty, simBlockSize, false, budget)
+		plan, err := dedupCompare(t.Context(), src, base, dirty, simBlockSize, false, budget)
 		require.NoError(t, err)
 
 		return planFromDedup(plan), plan
@@ -247,7 +246,7 @@ func plannerRunKnapsack(budgetPages int) simPlanner {
 				if plan.pageDirty.Contains(idx) || plan.pageEmpty.Contains(idx) {
 					continue
 				}
-				m, err := hdr.GetShiftedMapping(context.Background(), off)
+				m, err := hdr.GetShiftedMapping(t.Context(), off)
 				if err != nil || m.BuildId == uuid.Nil {
 					continue
 				}
@@ -326,7 +325,7 @@ func simResume(t *testing.T, hdr *header.Header, wsBlocks []int) resumeStat {
 	for _, b := range wsBlocks {
 		blockFrames := make(map[frameKey]struct{})
 		for p := int64(b) * simBlockSize / simPageSize; p < int64(b+1)*simBlockSize/simPageSize; p++ {
-			m, err := hdr.GetShiftedMapping(context.Background(), p*simPageSize)
+			m, err := hdr.GetShiftedMapping(t.Context(), p*simPageSize)
 			require.NoError(t, err)
 			if m.BuildId == uuid.Nil {
 				continue
@@ -434,7 +433,7 @@ func runSimChain(t *testing.T, cfg simConfig, s simScenario) simResult {
 		meta, _ := s.planner(t, mem, parent, hdr, dirty, cycle)
 		storedPages += int64(meta.Dirty.GetCardinality())
 
-		hdr, err = meta.ToDiffHeader(context.Background(), hdr, uuid.New())
+		hdr, err = meta.ToDiffHeader(t.Context(), hdr, uuid.New())
 		require.NoError(t, err)
 		copy(parent, mem)
 	}
@@ -565,13 +564,13 @@ func TestDedupRandomChain_NoCorruption(t *testing.T) {
 				build := uuid.New()
 				layers[build] = payload
 
-				hdr, err = meta.ToDiffHeader(context.Background(), hdr, build)
+				hdr, err = meta.ToDiffHeader(t.Context(), hdr, build)
 				require.NoError(t, err)
 				copy(parent, mem)
 
 				for off := int64(0); off < cfg.size(); off += simPageSize {
 					page := off / simPageSize
-					m, err := hdr.GetShiftedMapping(context.Background(), off)
+					m, err := hdr.GetShiftedMapping(t.Context(), off)
 					require.NoError(t, err)
 					want := mem[off : off+simPageSize]
 					if m.BuildId == uuid.Nil {

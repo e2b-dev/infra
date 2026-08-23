@@ -19,6 +19,7 @@ type Provider string
 const (
 	GCPStorageProvider   Provider = "GCPBucket"
 	AWSStorageProvider   Provider = "AWSBucket"
+	AzureStorageProvider Provider = "AzureBucket"
 	LocalStorageProvider Provider = "Local"
 
 	DefaultStorageProvider Provider = GCPStorageProvider
@@ -29,7 +30,7 @@ const (
 type Spec struct {
 	Provider Provider
 
-	// Bucket for cloud providers (gs://, s3://).
+	// Bucket for cloud providers (gs://, s3://); the container name for azblob://.
 	Bucket string
 	// BasePath for the local filesystem provider (file://).
 	BasePath string
@@ -48,12 +49,14 @@ type Spec struct {
 //	gs://bucket                                                    Google Cloud Storage
 //	s3://bucket?endpoint=http://host:port/s3&s3ForcePathStyle=true S3 / S3-compatible
 //	s3://bucket?region=us-east-1                                   plain AWS S3
+//	azblob://container                                             Azure Blob Storage
 //	file:///var/lib/storage                                        local filesystem
 //	file:relative/path                                             local filesystem (relative)
 //
 // Unknown query parameters are rejected so typos fail fast. Credentials are
 // not accepted in URLs; they come from the provider's usual environment
-// (ADC / Workload Identity for gs://, AWS_ACCESS_KEY_ID etc. for s3://).
+// (ADC / Workload Identity for gs://, AWS_ACCESS_KEY_ID etc. for s3://,
+// AZURE_STORAGE_ACCOUNT_NAME + managed identity / account key for azblob://).
 func ParseStorageURL(raw string) (Spec, error) {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil {
@@ -72,10 +75,12 @@ func ParseStorageURL(raw string) (Spec, error) {
 		return parseBucketURL(u, GCPStorageProvider)
 	case "s3":
 		return parseBucketURL(u, AWSStorageProvider)
+	case "azblob":
+		return parseBucketURL(u, AzureStorageProvider)
 	case "file":
 		return parseFileURL(u)
 	default:
-		return Spec{}, fmt.Errorf("storage URL %q: unsupported scheme %q (want gs, s3, or file)", redactedURL(u), u.Scheme)
+		return Spec{}, fmt.Errorf("storage URL %q: unsupported scheme %q (want gs, s3, azblob, or file)", redactedURL(u), u.Scheme)
 	}
 }
 

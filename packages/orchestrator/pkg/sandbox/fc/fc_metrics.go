@@ -62,6 +62,7 @@ var (
 	// Block histograms.
 	fcBlockBytes                 = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockBytes))
 	fcBlockCount                 = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockCount))
+	fcBlockQueueEventCount       = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockQueueEventCount))
 	fcBlockRateLimiterThrottled  = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRateLimiterThrottled))
 	fcBlockRateLimiterEventCount = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockRateLimiterEventCount))
 	fcBlockIOEngineThrottled     = utils.Must(telemetry.GetHistogram(fcMeter, telemetry.SandboxFCBlockIOEngineThrottled))
@@ -160,6 +161,7 @@ type firecrackerBlockMetrics struct {
 	WriteBytes                 uint64 `json:"write_bytes"`
 	ReadCount                  uint64 `json:"read_count"`
 	WriteCount                 uint64 `json:"write_count"`
+	QueueEventCount            uint64 `json:"queue_event_count"`
 	RateLimiterThrottledEvents uint64 `json:"rate_limiter_throttled_events"`
 	RateLimiterEventCount      uint64 `json:"rate_limiter_event_count"`
 	IOEngineThrottledEvents    uint64 `json:"io_engine_throttled_events"`
@@ -263,6 +265,45 @@ func (p *Process) FlushAndReadBalloonMetrics(ctx context.Context) (BalloonMetric
 	}
 }
 
+// runMetricsFlushLoop asks Firecracker to flush its metrics on every tick until
+// the VM exits. It reports flush failures through onFlushErr.
+func runMetricsFlushLoop(
+	ctx context.Context,
+	exit <-chan struct{},
+	ticks <-chan time.Time,
+	flush func(context.Context) error,
+	onFlushErr func(error),
+) {
+	for {
+		select {
+		case <-exit:
+			return
+		case <-ticks:
+			// select picks ready cases at random, so a tick can win against an
+			// already-closed exit; re-check or the flush hits a dead Firecracker
+			// and logs a spurious API failure.
+			select {
+			case <-exit:
+				return
+			default:
+			}
+
+			if err := flush(ctx); err != nil {
+				// Firecracker can exit while the flush request is in flight,
+				// after the pre-flush re-check above: the failure is then the
+				// expected shutdown reset, not a real error worth warning about.
+				select {
+				case <-exit:
+					return
+				default:
+				}
+
+				onFlushErr(err)
+			}
+		}
+	}
+}
+
 // startMetricsReader opens the metrics FIFO and starts a goroutine that reads
 // Firecracker metrics lines and exports metrics via OTEL.
 // It must be called before setMetrics so that the FIFO is open for reading
@@ -280,19 +321,12 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 		ticker := time.NewTicker(metricsFlushInterval)
 		defer ticker.Stop()
 
-		for {
-			select {
-			case <-p.Exit.Done():
-				return
-			case <-ticker.C:
-				if err := p.client.flushMetrics(ctx); err != nil {
-					logger.L().Warn(ctx, "failed to flush fc metrics",
-						zap.Error(err),
-						logger.WithSandboxID(sandboxID),
-					)
-				}
-			}
-		}
+		runMetricsFlushLoop(ctx, p.Exit.Done(), ticker.C, p.client.flushMetrics, func(err error) {
+			logger.L().Warn(ctx, "failed to flush fc metrics",
+				zap.Error(err),
+				logger.WithSandboxID(sandboxID),
+			)
+		})
 	}()
 
 	go func() {
@@ -394,6 +428,11 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 			fcBlockBytes.Record(ctx, int64(b.WriteBytes), attrWrite)
 			fcBlockCount.Record(ctx, int64(b.ReadCount), attrRead)
 			fcBlockCount.Record(ctx, int64(b.WriteCount), attrWrite)
+			// Recorded unconditionally, unlike the throttle counters below: a stalled
+			// virtio-blk queue shows up as no notifications reaching Firecracker while
+			// requests are outstanding, and recording only non-zero values would render
+			// that as absent rather than zero.
+			fcBlockQueueEventCount.Record(ctx, int64(b.QueueEventCount))
 			fcBlockRateLimiterEventCount.Record(ctx, int64(b.RateLimiterEventCount))
 			fcBlockRemainingReqs.Record(ctx, int64(b.RemainingReqsCount))
 

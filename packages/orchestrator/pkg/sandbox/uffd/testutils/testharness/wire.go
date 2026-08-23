@@ -41,3 +41,25 @@ type FaultBarrierReply struct {
 type TokenArgs struct {
 	Token uint64
 }
+
+// CoWBeginArgs installs a CoW export window over the given page indices.
+type CoWBeginArgs struct {
+	Pages []uint64
+}
+
+// CoWStateReply is a snapshot of the child's active (or finished) window.
+type CoWStateReply struct {
+	Copied      int64
+	Canceled    bool
+	CancelCause string
+	// Sink is the identity-offset sink contents (pre-images captured so far;
+	// unwritten ranges are zero). Sized like the guest memory — fine at test
+	// scale, and consistent with Bootstrap shipping Content the same way.
+	Sink []byte
+}
+
+// CoWSweepReply carries the sweep + uninstall outcome.
+type CoWSweepReply struct {
+	SweepError  string
+	CancelCause string
+}

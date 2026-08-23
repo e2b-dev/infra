@@ -34,11 +34,6 @@ echo "$SWAPFILE none swap sw 0 0" | tee -a /etc/fstab
 sysctl vm.swappiness=10
 sysctl vm.vfs_cache_pressure=50
 
-# Add tmpfs for snapshotting
-# TODO: Parametrize this
-mkdir -p /mnt/snapshot-cache
-mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
-
 ulimit -n 1048576
 export GOMAXPROCS=$(nproc)
 

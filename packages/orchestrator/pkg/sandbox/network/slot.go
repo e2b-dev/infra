@@ -8,10 +8,12 @@ import (
 	"log"
 	"net"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"sync/atomic"
 
 	"github.com/containernetworking/plugins/pkg/ns"
+	"github.com/coreos/go-iptables/iptables"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -63,15 +65,15 @@ type Slot struct {
 	Key string
 	Idx int
 
-	// reservationValue binds a distributed StorageKV lease to the exact
-	// acquisition that created this Slot. It prevents a stale Slot handle from
-	// deleting a later allocation of the same numeric slot (the ABA case).
-	reservationValue []byte
-
 	Firewall *Firewall
 
 	// firewallCustomRules is used to track if custom firewall rules are set for the slot and need a cleanup.
 	firewallCustomRules atomic.Bool
+
+	// egressDSCP is the class the slot's rule currently stamps (0 = no rule).
+	// Not a synchronization point: callers need exclusive slot ownership,
+	// which the pool guarantees between Get and the recycle give-back.
+	egressDSCP atomic.Uint32
 
 	vPeerIp net.IP
 	vEthIp  net.IP
@@ -255,6 +257,100 @@ func (s *Slot) CloseFirewall() error {
 	return nil
 }
 
+// dscpMangleRuleArgs builds the mangle/POSTROUTING rule that stamps the given
+// DSCP class on everything leaving the sandbox netns through the vpeer uplink.
+func (s *Slot) dscpMangleRuleArgs(dscp uint8) []string {
+	return []string{"-o", s.VpeerName(), "-j", "DSCP", "--set-dscp", strconv.Itoa(int(dscp))}
+}
+
+// Without a timeout go-iptables emits a bare --wait, which blocks forever on
+// the legacy backend's host-wide lock.
+const iptablesLockTimeout = 5 // seconds
+
+// One handle for the package: New() execs `iptables --version` per call, and
+// commands run in the calling thread's netns regardless of where New() ran.
+// Cached on success only — a transient New() failure (fork EAGAIN/ENOMEM)
+// must not poison the process. A racing duplicate New() is harmless.
+var cachedIptables atomic.Pointer[iptables.IPTables]
+
+// IptablesHandle returns the package's shared iptables handle.
+func IptablesHandle() (*iptables.IPTables, error) {
+	return iptablesHandle()
+}
+
+func iptablesHandle() (*iptables.IPTables, error) {
+	if t := cachedIptables.Load(); t != nil {
+		return t, nil
+	}
+
+	t, err := iptables.New(iptables.Timeout(iptablesLockTimeout))
+	if err != nil {
+		return nil, err
+	}
+	cachedIptables.Store(t)
+
+	return t, nil
+}
+
+// applyEgressDSCP re-stamps the slot's egress rule so a build can be marked
+// differently from a regular sandbox. 0 removes the rule; returns without
+// entering the netns when the class already matches.
+func (s *Slot) applyEgressDSCP(ctx context.Context, dscp uint8) error {
+	current := uint8(s.egressDSCP.Load())
+	if current == dscp {
+		return nil
+	}
+
+	_, span := tracer.Start(ctx, "slot-egress-dscp-apply", trace.WithAttributes(
+		attribute.String("namespace_id", s.NamespaceID()),
+		attribute.Int("dscp", int(dscp)),
+	))
+	defer span.End()
+
+	n, err := ns.GetNS(filepath.Join(NetNamespacesDir, s.NamespaceID()))
+	if err != nil {
+		return fmt.Errorf("failed to get slot network namespace '%s': %w", s.NamespaceID(), err)
+	}
+	defer n.Close()
+
+	err = n.Do(func(_ ns.NetNS) error {
+		tables, err := iptablesHandle()
+		if err != nil {
+			return fmt.Errorf("error initializing iptables: %w", err)
+		}
+
+		// Append before delete: DSCP is non-terminal, so the appended (last)
+		// entry wins while both rules exist and egress is never unmarked.
+		// After a partial failure AppendUnique may keep an earlier duplicate
+		// in place instead of moving it last, but every such path errors into
+		// cleanupWith, so no tenant runs on that slot.
+		if dscp > 0 {
+			if err := tables.AppendUnique("mangle", "POSTROUTING", s.dscpMangleRuleArgs(dscp)...); err != nil {
+				return fmt.Errorf("error creating DSCP %d mangle rule on vpeer: %w", dscp, err)
+			}
+
+			s.egressDSCP.Store(uint32(dscp))
+		}
+
+		if current > 0 {
+			if err := tables.DeleteIfExists("mangle", "POSTROUTING", s.dscpMangleRuleArgs(current)...); err != nil {
+				return fmt.Errorf("error removing DSCP %d mangle rule on vpeer: %w", current, err)
+			}
+		}
+
+		if dscp == 0 {
+			s.egressDSCP.Store(0)
+		}
+
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed execution in network namespace '%s': %w", s.NamespaceID(), err)
+	}
+
+	return nil
+}
+
 func (s *Slot) ConfigureInternet(ctx context.Context, network *orchestrator.SandboxNetworkConfig) (e error) {
 	ctx, span := tracer.Start(ctx, "slot-internet-configure", trace.WithAttributes(
 		attribute.String("namespace_id", s.NamespaceID()),
@@ -296,6 +392,15 @@ func (s *Slot) UpdateInternet(ctx context.Context, egress *orchestrator.SandboxN
 		attribute.String("namespace_id", s.NamespaceID()),
 	))
 	defer span.End()
+
+	// A slot without a firewall (NewSlot does not attach one) must fail
+	// cleanly, not nil-panic inside the netns closure. This is also load-
+	// bearing for tests: namespace names are ns-<idx> only, so a fixture
+	// slot's GetNS can unexpectedly SUCCEED when a parallel test binary has
+	// a real netns with the same index open.
+	if s.Firewall == nil {
+		return fmt.Errorf("no firewall attached to slot namespace '%s'", s.NamespaceID())
+	}
 
 	allowedCIDRs := egress.GetAllowedCidrs()
 	deniedCIDRs := egress.GetDeniedCidrs()
@@ -395,6 +500,11 @@ func getHostNetworkCIDR() *net.IPNet {
 	log.Println("Using host network cidr", "cidr", cidr)
 
 	return subnet
+}
+
+// TapHostHardwareAddr returns the fixed host-side tap MAC.
+func TapHostHardwareAddr() net.HardwareAddr {
+	return slices.Clone(tapHostHardwareAddr)
 }
 
 // getTapHostHardwareAddr parses the fixed tapHostMAC constant once at package

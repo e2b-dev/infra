@@ -3,7 +3,6 @@
 package server
 
 import (
-	"context"
 	"net"
 	"reflect"
 	"testing"
@@ -28,6 +27,10 @@ import (
 var (
 	startTime = time.Now()
 	endTime   = time.Now().Add(time.Hour)
+
+	listSandboxID   = id.Generate()
+	listTeamID      = "6c6f2ba0-9c62-4f2a-9ab8-0a0a9c6f3e11"
+	listExecutionID = "8f7f6b3a-1a2b-4c3d-9e8f-7a6b5c4d3e2f"
 )
 
 func Test_server_List(t *testing.T) {
@@ -56,9 +59,11 @@ func Test_server_List(t *testing.T) {
 					},
 					Metadata: &sandbox.Metadata{
 						Runtime: sandbox.RuntimeMetadata{
-							SandboxID: id.Generate(),
+							SandboxID:   listSandboxID,
+							TeamID:      listTeamID,
+							ExecutionID: listExecutionID,
 						},
-						Config: sandbox.NewConfig(sandbox.Config{}),
+						Config: sandbox.NewConfig(sandbox.Config{Vcpu: 2, RamMB: 512}),
 					},
 					Resources: &sandbox.Resources{
 						Slot: &network.Slot{HostIP: net.IPv4(127, 0, 0, 1)},
@@ -71,8 +76,13 @@ func Test_server_List(t *testing.T) {
 					{
 						Config: &orchestrator.SandboxConfig{TemplateId: "template-id"},
 						// ClientId:  "client-id",
-						StartTime: timestamppb.New(startTime),
-						EndTime:   timestamppb.New(endTime),
+						StartTime:   timestamppb.New(startTime),
+						EndTime:     timestamppb.New(endTime),
+						SandboxId:   listSandboxID,
+						TeamId:      listTeamID,
+						ExecutionId: listExecutionID,
+						Vcpu:        2,
+						RamMb:       512,
 					},
 				},
 			},
@@ -165,11 +175,11 @@ func TestRecordSandboxKill(t *testing.T) {
 	counter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
 	require.NoError(t, err)
 
-	recordSandboxKill(context.Background(), counter, "timeout")
-	recordSandboxKill(context.Background(), counter, "")
+	recordSandboxKill(t.Context(), counter, "timeout")
+	recordSandboxKill(t.Context(), counter, "")
 
 	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &rm))
+	require.NoError(t, reader.Collect(t.Context(), &rm))
 
 	got := map[string]int64{}
 	for _, sm := range rm.ScopeMetrics {
@@ -191,4 +201,77 @@ func TestRecordSandboxKill(t *testing.T) {
 
 	assert.Equal(t, int64(1), got["timeout"])
 	assert.Equal(t, int64(1), got[killReasonUnknown])
+}
+
+func TestRecordExecutionDuration(t *testing.T) {
+	t.Parallel()
+
+	stoppedAt := time.Now()
+
+	endedSandbox := func(reason sandbox.StopReason) *sandbox.Sandbox {
+		sbx := &sandbox.Sandbox{Metadata: &sandbox.Metadata{}}
+		sbx.SetStartedAt(stoppedAt.Add(-time.Minute))
+		sbx.SetStopReason(reason)
+		sbx.SetStoppedAt(stoppedAt)
+
+		return sbx
+	}
+
+	neverStarted := &sandbox.Sandbox{Metadata: &sandbox.Metadata{}}
+	neverStarted.SetStopReason(sandbox.StopReasonKilled)
+	neverStarted.SetStoppedAt(stoppedAt)
+
+	stillRunning := &sandbox.Sandbox{Metadata: &sandbox.Metadata{}}
+	stillRunning.SetStartedAt(stoppedAt.Add(-time.Minute))
+
+	crashed := &sandbox.Sandbox{Metadata: &sandbox.Metadata{}}
+	crashed.SetStartedAt(stoppedAt.Add(-time.Minute))
+	crashed.SetStoppedAt(stoppedAt)
+
+	reader := sdkmetric.NewManualReader()
+	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
+	histogram, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxExecutionDurationName)
+	require.NoError(t, err)
+
+	s := &Server{sandboxExecutionDuration: histogram}
+
+	s.recordExecutionDuration(t.Context(), endedSandbox(sandbox.StopReasonKilled))
+	s.recordExecutionDuration(t.Context(), endedSandbox(sandbox.StopReasonPaused))
+	s.recordExecutionDuration(t.Context(), endedSandbox(sandbox.StopReasonCheckpointing))
+	// An execution nobody asked to stop is a crash.
+	s.recordExecutionDuration(t.Context(), crashed)
+	// Neither of these ran a guest for a known span, so they record nothing.
+	s.recordExecutionDuration(t.Context(), neverStarted)
+	s.recordExecutionDuration(t.Context(), stillRunning)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+
+	got := map[string]uint64{}
+	sum := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != string(telemetry.OrchestratorSandboxExecutionDurationName) {
+				continue
+			}
+
+			hist, ok := m.Data.(metricdata.Histogram[int64])
+			require.True(t, ok)
+
+			for _, dp := range hist.DataPoints {
+				v, ok := dp.Attributes.Value(attribute.Key("stop_reason"))
+				require.True(t, ok)
+				got[v.AsString()] += dp.Count
+				sum[v.AsString()] += dp.Sum
+			}
+		}
+	}
+
+	assert.Equal(t, map[string]uint64{
+		string(sandbox.StopReasonKilled):        1,
+		string(sandbox.StopReasonPaused):        1,
+		string(sandbox.StopReasonCheckpointing): 1,
+		string(sandbox.StopReasonCrashed):       1,
+	}, got)
+	assert.Equal(t, time.Minute.Milliseconds(), sum[string(sandbox.StopReasonKilled)])
 }

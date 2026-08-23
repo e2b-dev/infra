@@ -15,7 +15,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
-	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Add stores a sandbox in Redis atomically with its team index entry.
@@ -134,39 +133,18 @@ func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sand
 		return []sandboxtypes.Sandbox{}, nil
 	}
 
-	// Build keys and batch fetch with MGET
-	team := teamID.String()
-	keys := utils.Map(sandboxIDs, func(id string) string {
-		return getSandboxKey(team, id)
-	})
-
-	results, err := s.redisClient.MGet(ctx, keys...).Result()
+	// One MGET over the whole team, decoded by the same helper the store scans
+	// use. Deliberately not the batching iterator above it: that reaches teams
+	// through SSCAN, which is weakly consistent and may repeat members, and a
+	// user-facing listing wants the atomic snapshot SMembers gives.
+	fetched, err := s.fetchSandboxBatch(ctx, teamID.String(), sandboxIDs)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sandboxes from Redis: %w", err)
+		return nil, err
 	}
 
-	// Deserialize and filter
+	// Filter by state if states are specified
 	var sandboxes []sandboxtypes.Sandbox
-	for _, rawResult := range results {
-		if rawResult == nil {
-			continue // Stale index entry - sandbox was deleted
-		}
-
-		var sbx sandboxtypes.Sandbox
-		result, ok := rawResult.(string)
-		if !ok {
-			logger.L().Error(ctx, "Invalid sandbox data type in Redis")
-
-			continue
-		}
-
-		if err := json.Unmarshal([]byte(result), &sbx); err != nil {
-			logger.L().Error(ctx, "Failed to unmarshal sandbox", zap.Error(err))
-
-			continue
-		}
-
-		// Filter by state if states are specified
+	for _, sbx := range fetched {
 		if len(states) > 0 && !slices.Contains(states, sbx.State) {
 			continue
 		}

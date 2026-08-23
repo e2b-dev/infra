@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
@@ -45,9 +47,19 @@ type Uffd struct {
 	memfd      atomic.Pointer[block.Memfd]
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 	fdExit     utils.SetOnce[*fdexit.FdExit]
+
+	// syncWP records whether the paired Firecracker was resumed with
+	// use_sync_wp (synchronous WP fault delivery). Set once at resume from
+	// the same decision passed to fc.Resume; the backend owns its mode so
+	// DiffMetadata can refuse the tracker dirty source for a WP_ASYNC
+	// sandbox instead of trusting the caller's comment-enforced precondition.
+	syncWP atomic.Bool
 }
 
-var _ MemoryBackend = (*Uffd)(nil)
+var (
+	_ MemoryBackend = (*Uffd)(nil)
+	_ CoWExporter   = (*Uffd)(nil)
+)
 
 func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 	return &Uffd{
@@ -58,6 +70,11 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
 	}
+}
+
+// SetSyncWP records the sandbox's write-protect delivery mode; see the field.
+func (u *Uffd) SetSyncWP(v bool) {
+	u.syncWP.Store(v)
 }
 
 func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) (installed bool, e error) {
@@ -192,6 +209,10 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 	}
 
 	defer func() {
+		// A live CoW window reads pre-images from the memfd mmap below: cancel
+		// and drain it first so no copy is in flight when the view is unmapped.
+		uffd.CancelActiveCoWWindow(errors.New("uffd teardown"))
+
 		closeErr := uffd.Close()
 		if closeErr != nil {
 			logger.L().Error(ctx, "failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
@@ -247,24 +268,102 @@ func (u *Uffd) Exit() *utils.ErrorOnce {
 // DiffMetadata waits for the current requests to finish and returns the dirty pages.
 //
 // It *MUST* be only called after the sandbox was successfully paused via API and after the snapshot endpoint was called.
-func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error) {
+//
+// With useTrackerDirty set (sync-WP sandboxes only, behind the
+// sync-wp-tracker-dirty kill switch) the dirty and empty sets come entirely
+// from the page tracker — installs plus synchronous WP-fault promotions —
+// and Firecracker's GetDirtyMemory pagemap scan is skipped. Otherwise the
+// pagemap RPC stays the dirty source and the tracker view is only compared
+// against it (the divergence telemetry below: the dirty_divergence metric
+// and the per-pause log line), which doubles as the burn-in gate for
+// enabling the tracker source: pagemap_only must be zero for sync-WP
+// sandboxes, since a page only the pagemap sees dirty is a write the tracker
+// missed (snapshot corruption if the RPC were dropped). Flag off is thus the
+// dual-source shadow mode: both views are computed each pause and compared,
+// with the pagemap staying authoritative.
+func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process, useTrackerDirty bool) (*header.DiffMetadata, error) {
 	handler, err := u.handler.WaitWithContext(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get uffd: %w", err)
 	}
 
-	// Settle in-flight UFFD workers (and the REMOVE batch) before sampling
-	// FC's WP-async pagemap, so a Zero→Write install can't slip in between
-	// and escape both bitmaps.
-	_, empty := handler.ExportPageStates()
+	// Settle in-flight UFFD workers (WP resolves and the REMOVE batch
+	// included) before reading the dirty set, so a Zero→Write install or a
+	// pending promotion can't slip in after the readout. The vCPUs are
+	// paused, so no new faults arrive after the drain.
+	faulted, empty := handler.ExportPageStates()
+
+	// The build this sandbox resumed FROM, to correlate divergence readings
+	// with a template/build without a Loki join.
+	var buildID string
+	if u.memfile != nil {
+		if h := u.memfile.Header(); h != nil && h.Metadata != nil {
+			buildID = h.Metadata.BuildId.String()
+		}
+	}
+
+	if useTrackerDirty {
+		// Fail closed: under WP_ASYNC no WP events reach the serve loop, so
+		// the tracker misses every post-install guest write — a caller bug
+		// here must be a loud pause failure, not a silently corrupt snapshot.
+		if !u.syncWP.Load() {
+			return nil, errors.New("tracker dirty source requested for a sandbox without sync-WP fault delivery")
+		}
+
+		// The tracker state bitmaps are disjoint by invariant, so the empty
+		// set (zero ∪ removed) never intersects the dirty set. Enforce it
+		// anyway: downstream MergeMappings lets EMPTY win on overlap, which
+		// would restore a written page as zeros — if the invariant ever
+		// breaks, dirty must win (mirrors the pagemap branch below).
+		empty.AndNot(faulted)
+
+		handler.Logger().Info(ctx, "dirty source: page tracker (sync-WP)",
+			zap.String("build_id", buildID),
+			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),
+			zap.Uint64("tracker_empty_pages", empty.GetCardinality()))
+
+		return &header.DiffMetadata{
+			BlockSize: handler.PageSize(),
+			Dirty:     faulted,
+			Empty:     empty,
+		}, nil
+	}
 
 	diff, err := f.DirtyMemory(ctx, handler.PageSize())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get dirty memory: %w", err)
 	}
 
-	// Pages that were zero-installed and later written show up in diff.Dirty
-	// via WP-async, so dirty wins over empty for those.
+	// Dirty-source divergence telemetry: compare the page tracker's view with
+	// the pagemap readout, as burn-in evidence for the tracker source above.
+	//   tracker_only: tracker Dirty, pagemap clean — should converge to zero
+	//     now that MODE_WP installs are recorded Clean instead of Dirty.
+	//   pagemap_only: pagemap dirty, tracker unaware — expected under WP_ASYNC
+	//     (in-kernel WP clears deliver no event); must be zero under sync-WP,
+	//     where every clear passes through the serve loop and promotes.
+	// Gated on the sandbox's MODE, not on WPFaultsResolved() > 0: a sync-WP
+	// sandbox whose WP delivery silently broke resolves zero faults and has
+	// massive pagemap_only divergence — exactly the case the burn-in exists
+	// to catch, and exactly the case a fault-count gate would suppress.
+	// Under WP_ASYNC the pagemap diverges on every pause by design, so
+	// those sandboxes stay silent.
+	if u.syncWP.Load() {
+		trackerOnly, pagemapOnly, pagemapDirty := divergenceCardinalities(faulted, diff.Dirty)
+		dirtyDivergencePages.Record(ctx, int64(trackerOnly), dirtyDivergenceAttrs["tracker_only"])
+		dirtyDivergencePages.Record(ctx, int64(pagemapOnly), dirtyDivergenceAttrs["pagemap_only"])
+		dirtyDivergencePages.Record(ctx, int64(pagemapDirty), dirtyDivergenceAttrs["pagemap_dirty"])
+		handler.Logger().Info(ctx, "dirty-source divergence (tracker vs pagemap)",
+			zap.String("build_id", buildID),
+			zap.Uint64("tracker_only_pages", trackerOnly),
+			zap.Uint64("pagemap_only_pages", pagemapOnly),
+			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),
+			zap.Uint64("pagemap_dirty_pages", pagemapDirty),
+			zap.Int64("wp_faults_resolved", handler.WPFaultsResolved()))
+	}
+
+	// Pages that were zero-installed and later written show up in diff.Dirty —
+	// via the in-kernel WP-async clear or the synchronous WP-fault resolve —
+	// so dirty wins over empty for those.
 	empty.AndNot(diff.Dirty)
 
 	return &header.DiffMetadata{
@@ -288,6 +387,38 @@ func (u *Uffd) PrefetchData(ctx context.Context) (block.PrefetchData, error) {
 // the caller. The uffd teardown defer will no longer close it.
 func (u *Uffd) Memfd(_ context.Context) *block.Memfd {
 	return u.memfd.Swap(nil)
+}
+
+// BeginCoWExport arms the dirty set for write-protection on the live UFFD
+// handler and installs a CoW window capturing those pages' pause-time content
+// into sink, reading pre-images from the borrowed memfd (PeekMemfd
+// semantics: the running VM keeps ownership; the caller must finish or
+// cancel the window before teardown closes the fd). MUST be called while the
+// VM is paused.
+func (u *Uffd) BeginCoWExport(_ context.Context, dirty *roaring.Bitmap, sink io.WriterAt) (*userfaultfd.CoWWindow, error) {
+	handler, err := u.handler.Result()
+	if err != nil {
+		return nil, fmt.Errorf("%w: uffd handler not live: %w", ErrCoWExportUnsupported, err)
+	}
+	memfd := u.memfd.Load()
+	if memfd == nil {
+		return nil, fmt.Errorf("%w: no memfd from Firecracker", ErrCoWExportUnsupported)
+	}
+
+	return handler.BeginCoWExport(dirty, memfd, sink)
+}
+
+// EndCoWExport uninstalls the window if it is still the active one.
+func (u *Uffd) EndCoWExport(w *userfaultfd.CoWWindow) {
+	if handler, err := u.handler.Result(); err == nil {
+		handler.EndCoWExport(w)
+	}
+}
+
+// PeekMemfd returns the memfd without taking ownership (unlike Memfd, which
+// swaps it out). The running VM keeps using it after an in-place snapshot.
+func (u *Uffd) PeekMemfd(_ context.Context) *block.Memfd {
+	return u.memfd.Load()
 }
 
 // ServeStats returns a cumulative snapshot of demand faults served so far, or a

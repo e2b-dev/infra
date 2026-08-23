@@ -3,7 +3,6 @@
 package build
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -42,7 +41,7 @@ func fanoutSums(t *testing.T, reader *sdkmetric.ManualReader, name string) map[s
 	t.Helper()
 
 	var rm metricdata.ResourceMetrics
-	require.NoError(t, reader.Collect(context.Background(), &rm))
+	require.NoError(t, reader.Collect(t.Context(), &rm))
 
 	out := map[string][2]int64{}
 	for _, sm := range rm.ScopeMetrics {
@@ -69,7 +68,7 @@ func fanoutSums(t *testing.T, reader *sdkmetric.ManualReader, name string) map[s
 //nolint:paralleltest // swaps the package-level fan-out histograms
 func TestRecordReadFanout(t *testing.T) {
 	reader := swapReadFanoutMetrics(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	recordReadFanout(ctx, Memfile, 13, 4)
 	recordReadFanout(ctx, Memfile, 1, 1)

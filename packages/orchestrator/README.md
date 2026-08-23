@@ -298,9 +298,9 @@ Automatically set in local mode. Set before running to override:
 - `HOST_KERNELS_DIR` - Kernel versions dir (local: `{storage}/kernels`, prod: `/fc-kernels`)
 - `FIRECRACKER_VERSIONS_DIR` - Firecracker versions dir (local: `{storage}/fc-versions`, prod: `/fc-versions`)
 - `ORCHESTRATOR_BASE_PATH` - Base orchestrator data (local: `{storage}/orchestrator`, prod: `/orchestrator`)
-- `SNAPSHOT_CACHE_DIR` - Snapshot cache, ideally on NVMe (local: `{storage}/snapshot-cache`, prod: `/mnt/snapshot-cache`)
 - `SANDBOX_DIR` - Sandbox working dir (default: `/fc-vm`)
 
 ## Limitations
 
-- Custom template builds require Debian/Ubuntu-based base images (images that provide the `apt` package manager). Non-Debian images such as Alpine, CentOS/RHEL, or other distributions without `apt` are not supported and will fail during the template build/provisioning process. The provisioning scripts used during template build call `apt` and expect Debian-specific package names and file locations.
+- Custom template builds support base images from the declared distro families: **Debian/Ubuntu** (apt), the **RHEL family** — Fedora, CentOS Stream, Rocky, Alma — (dnf/microdnf/yum), **Arch** (pacman), and **Alpine** (apk, OpenRC). The distro is resolved from the image's `/etc/os-release` `ID` — never by probing for package managers. Images without an os-release identity (distroless, scratch) or from an undeclared family are rejected fast, with a build-log error naming the reason and the supported families (see `pkg/template/build/phases/base/distro`). Minimal/restricted-repo images may fail provisioning if their repos don't carry the required packages; the failure is surfaced in the build log.
+- Sandboxes always boot the kernel E2B supplies, never one from the base image: `/lib/modules` is empty, no kernel modules can be loaded, and SELinux is off. `kernel-devel` from a distro's repos resolves against a kernel that isn't running. **RHEL** (`rhel`, incl. UBI), **Oracle Linux** (`ol`) and **Amazon Linux** (`amzn`) are therefore not accepted even though they are RPM/dnf images — they are chosen for kABI, signed kernel modules and UEK, which this cannot honour. The community rebuilds above are supported because they are chosen for the userland.

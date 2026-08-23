@@ -1,0 +1,4 @@
+builds/
+linux/
+.env
+__pycache__

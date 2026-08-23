@@ -40,7 +40,7 @@ func TestAdminValidationFunction(t *testing.T) {
 func TestAdminTeamAuthenticatorSetsTeamContext(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	teamID := uuid.New()
 	team := types.NewTeam(&authqueries.Team{ID: teamID}, &authqueries.TeamLimit{})
 

@@ -27,7 +27,7 @@ func SetupInstance(t *testing.T) redis.UniversalClient {
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		err := container.Terminate(context.Background())
+		err := container.Terminate(context.WithoutCancel(t.Context()))
 		assert.NoError(t, err)
 	})
 

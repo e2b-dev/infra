@@ -71,7 +71,7 @@ func TestWatcherIncludeEntryInfo(t *testing.T) {
 			require.NoError(t, err)
 			watcherID := created.Msg.GetWatcherId()
 			t.Cleanup(func() {
-				_, _ = svc.RemoveWatcher(ctx, connect.NewRequest(&filesystem.RemoveWatcherRequest{
+				_, _ = svc.RemoveWatcher(context.WithoutCancel(ctx), connect.NewRequest(&filesystem.RemoveWatcherRequest{
 					WatcherId: watcherID,
 				}))
 			})
@@ -125,7 +125,7 @@ func TestWatcherIncludeEntryInfo_RemoveDoesNotCarryReplacement(t *testing.T) {
 	require.NoError(t, err)
 	watcherID := created.Msg.GetWatcherId()
 	t.Cleanup(func() {
-		_, _ = svc.RemoveWatcher(ctx, connect.NewRequest(&filesystem.RemoveWatcherRequest{
+		_, _ = svc.RemoveWatcher(context.WithoutCancel(ctx), connect.NewRequest(&filesystem.RemoveWatcherRequest{
 			WatcherId: watcherID,
 		}))
 	})
@@ -188,7 +188,7 @@ func TestCreateWatcherOnNetworkMount(t *testing.T) {
 
 	require.NoError(t, exec.CommandContext(t.Context(), "bindfs", sourceDir, mountDir).Run(), "failed to mount bindfs")
 	t.Cleanup(func() {
-		_ = exec.CommandContext(context.Background(), "fusermount", "-u", mountDir).Run()
+		_ = exec.CommandContext(context.WithoutCancel(t.Context()), "fusermount", "-u", mountDir).Run()
 	})
 
 	svc := mockService()
@@ -209,7 +209,7 @@ func TestCreateWatcherOnNetworkMount(t *testing.T) {
 	require.NoError(t, err)
 	watcherID := created.Msg.GetWatcherId()
 	t.Cleanup(func() {
-		_, _ = svc.RemoveWatcher(ctx, connect.NewRequest(&filesystem.RemoveWatcherRequest{
+		_, _ = svc.RemoveWatcher(context.WithoutCancel(ctx), connect.NewRequest(&filesystem.RemoveWatcherRequest{
 			WatcherId: watcherID,
 		}))
 	})

@@ -10,6 +10,11 @@ variable "allow_force_destroy" {
   default = false
 }
 
+variable "docker_reverse_proxy_enabled" {
+  type    = bool
+  default = true
+}
+
 variable "region" {
   type = string
 }

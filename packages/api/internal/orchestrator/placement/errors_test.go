@@ -3,7 +3,6 @@ package placement
 import (
 	"context"
 	"errors"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -85,7 +84,6 @@ func TestPlaceSandbox_CapacitySpikeToDeadlineClassifiedAsCapacity(t *testing.T) 
 	var noNodesErr NoNodesAvailableError
 	require.ErrorAs(t, err, &noNodesErr)
 	assert.True(t, result.TimedOut)
-	assert.Equal(t, "Failed to place sandbox: not enough capacity for the requested resources right now, please retry shortly", ClientMessage(err))
 }
 
 func TestPlaceSandbox_HardFailureThenRefusalsToDeadlineStaysTimeout(t *testing.T) {
@@ -131,7 +129,8 @@ func TestPlaceSandbox_AllExcludedForwardsLastCreateError(t *testing.T) {
 	var createErr SandboxCreateError
 	require.ErrorAs(t, err, &createErr)
 	assert.Equal(t, 1, createErr.Attempts)
-	assert.Equal(t, "Failed to place sandbox: sandbox files for 'abc' not found", ClientMessage(err))
+	assert.Equal(t, codes.FailedPrecondition, status.Code(createErr.LastErr))
+	assert.Contains(t, createErr.LastErr.Error(), "sandbox files for 'abc' not found")
 }
 
 func TestPlaceSandbox_NoEligibleNodeReturnsTypedError(t *testing.T) {
@@ -176,79 +175,6 @@ func TestPlaceSandbox_RetriesExhaustedKeepsLastError(t *testing.T) {
 	assert.Contains(t, createErr.LastErr.Error(), "sandbox files for 'abc' not found")
 }
 
-func TestClientMessage(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		err  error
-		want string
-	}{
-		{
-			name: "timeout",
-			err:  PlacementTimeoutError{Attempts: 2},
-			want: "Failed to place sandbox: placement timed out after 2 attempt(s), please retry",
-		},
-		{
-			name: "zero-attempt timeout has no counter",
-			err:  PlacementTimeoutError{Attempts: 0},
-			want: "Failed to place sandbox: placement timed out, please retry",
-		},
-		{
-			name: "no nodes available",
-			err:  NoNodesAvailableError{},
-			want: "Failed to place sandbox: not enough capacity for the requested resources right now, please retry shortly",
-		},
-		{
-			name: "no eligible node hides machine info and labels",
-			err: FailedToPlaceSandboxError{
-				filterByLabels:   true,
-				requiredLabels:   []string{"gpu"},
-				buildMachineInfo: machineinfo.MachineInfo{CPUArchitecture: "x86_64", CPUFlags: []string{"avx512f"}},
-			},
-			want: "Failed to place sandbox: no compatible node for this template's requirements",
-		},
-		{
-			name: "create failed forwards safe status message",
-			err:  SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.FailedPrecondition, "sandbox files for 'abc' not found")},
-			want: "Failed to place sandbox: sandbox files for 'abc' not found",
-		},
-		{
-			name: "create failed forwards invalid-argument message",
-			err:  SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.InvalidArgument, "invalid volume mount path")},
-			want: "Failed to place sandbox: invalid volume mount path",
-		},
-		{
-			name: "create failed hides unsafe status message",
-			err:  SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.Internal, "node ip-10-0-0-1: disk full")},
-			want: "Failed to place sandbox: sandbox creation failed on 3 node(s), please retry; if the problem persists, contact us",
-		},
-		{
-			name: "create failed hides non-grpc error",
-			err:  SandboxCreateError{Attempts: 2, LastErr: errors.New("dial tcp 10.0.0.1: connection refused")},
-			want: "Failed to place sandbox: sandbox creation failed on 2 node(s), please retry; if the problem persists, contact us",
-		},
-		{
-			name: "wrapped typed error still classified",
-			err:  fmt.Errorf("failed to place sandbox: %w", NoNodesAvailableError{}),
-			want: "Failed to place sandbox: not enough capacity for the requested resources right now, please retry shortly",
-		},
-		{
-			name: "unknown error keeps generic message",
-			err:  errors.New("boom"),
-			want: "Failed to place sandbox",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			assert.Equal(t, tt.want, ClientMessage(tt.err))
-		})
-	}
-}
-
 func TestPlaceSandbox_ChooseFailureAfterCreateAttemptForwardsCreateError(t *testing.T) {
 	t.Parallel()
 
@@ -269,5 +195,6 @@ func TestPlaceSandbox_ChooseFailureAfterCreateAttemptForwardsCreateError(t *test
 	var createErr SandboxCreateError
 	require.ErrorAs(t, err, &createErr)
 	assert.Equal(t, 1, createErr.Attempts)
-	assert.Equal(t, "Failed to place sandbox: sandbox files for 'sbx-1' not found", ClientMessage(err))
+	assert.Equal(t, codes.FailedPrecondition, status.Code(createErr.LastErr))
+	assert.Contains(t, createErr.LastErr.Error(), "sandbox files for 'sbx-1' not found")
 }

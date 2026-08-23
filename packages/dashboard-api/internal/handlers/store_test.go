@@ -20,7 +20,7 @@ func TestGetTeamFromAPIKeyUsesAuthService(t *testing.T) {
 	store := &APIStore{authService: authService}
 
 	ginCtx := &gin.Context{}
-	got, apiErr := store.GetTeamFromAPIKey(context.Background(), ginCtx, "e2b_test")
+	got, apiErr := store.GetTeamFromAPIKey(t.Context(), ginCtx, "e2b_test")
 	if apiErr != nil {
 		t.Fatalf("expected no auth error, got %v", apiErr)
 	}

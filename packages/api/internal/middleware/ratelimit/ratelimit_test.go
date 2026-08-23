@@ -1,6 +1,7 @@
 package ratelimit
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -38,7 +39,7 @@ func newTestFF(t *testing.T, routeConfigs ...map[string]map[string]int) *feature
 	require.NoError(t, err)
 
 	t.Cleanup(func() {
-		_ = ff.Close(t.Context())
+		_ = ff.Close(context.WithoutCancel(t.Context()))
 	})
 
 	return ff

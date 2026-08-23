@@ -77,9 +77,11 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) (
 
 	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
 	state := u.pageTracker.Get(idx)
-	if state == block.Dirty || state == block.Zero {
-		// The page is already resident (or zero-installed): a demand fault
-		// got there first, so this prefetch arrived too late.
+	if state != block.NotPresent {
+		// Dirty/Zero: the page is already resident (or zero-installed) — a
+		// demand fault got there first, so this prefetch arrived too late.
+		// Removed: the guest freed the page (madvise); it must read back as
+		// zeros, so installing source content would resurrect stale data.
 		result = faultResultSkipped
 
 		return false, nil
@@ -105,14 +107,19 @@ func (u *Userfaultfd) Prefault(ctx context.Context, offset int64, data []byte) (
 	switch outcome {
 	case faultInstalled, faultAlreadyPresent:
 		if outcome == faultInstalled {
-			// Page copied by this prefault → count its bytes; on a lost
-			// install race (EEXIST) the winning demand serve counted them.
+			// Page copied by this prefault → count its bytes, and record it
+			// Clean: installed WP-armed with content identical to the source,
+			// so the snapshot diff can inherit it from the parent layer until
+			// a write promotes it to Dirty. MarkInstalled (not SetRange) so a
+			// suspended prefault can't downgrade a page a concurrent WP fault
+			// already promoted. On a lost install race (EEXIST) the winning
+			// demand serve counted the bytes and records the state.
 			installed = true
 			installedBytes = int64(u.pageSize)
+			u.pageTracker.MarkInstalled(idx, idx+1, block.Clean)
 		} else {
 			result = faultResultPresent
 		}
-		u.pageTracker.SetRange(idx, idx+1, block.Dirty)
 		u.prefetchTracker.Add(offset, block.Prefetch)
 	case faultDeferred:
 		// The prefetcher does not retry: this page will not be prefaulted.

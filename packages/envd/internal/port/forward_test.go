@@ -1,7 +1,6 @@
 package port
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -28,7 +27,7 @@ func TestStartForwarding_StopsOnClosedMessages(t *testing.T) {
 	returned := make(chan struct{})
 	go func() {
 		defer close(returned)
-		f.StartForwarding(context.Background())
+		f.StartForwarding(t.Context())
 	}()
 
 	// Nothing is scanning (period is an hour and ScanAndBroadcast is never

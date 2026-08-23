@@ -14,7 +14,6 @@ type (
 	ObservableCounterType       string
 	GaugeFloatType              string
 	GaugeIntType                string
-	UpDownCounterType           string
 	ObservableUpDownCounterType string
 	HistogramType               string
 )
@@ -38,11 +37,92 @@ const (
 	OrchestratorHostBalanceDirtyPagesThreads CounterType = "orchestrator.host.balance_dirty_pages.threads"
 
 	OrchestratorSandboxKilledCounterName CounterType = "orchestrator.sandbox.killed"
+	// OrchestratorSandboxCheckpointCounterName counts Checkpoint RPCs by flow —
+	// the denominator that makes the in_place-labeled duration histograms
+	// cuttable as a ramp (what fraction went in-place, at what success rate).
+	OrchestratorSandboxCheckpointCounterName CounterType = "orchestrator.sandbox.checkpoint"
+	// OrchestratorFPRResumeCounterName counts free-page-reporting resume
+	// outcomes after a CoW window paused reporting. Guest memory is hugetlb
+	// with no swap and no memcg reclaim, so FPR discards are the ONLY
+	// mechanism returning freed guest pages to the host: outcome="abandoned"
+	// is lasting per-sandbox host-memory retention and the alertable signal
+	// for a leaked pause.
+	OrchestratorFPRResumeCounterName CounterType = "orchestrator.sandbox.fpr_resume"
 
 	// OrchestratorSnapshotUploadFailedCounterName counts pause-snapshot uploads
 	// that never landed durably (budget exhausted or a non-retryable error).
 	// A non-zero rate means lost snapshots.
 	OrchestratorSnapshotUploadFailedCounterName CounterType = "orchestrator.snapshot.upload.failed"
+
+	// SandboxPauseFsQuiescedCounterName counts filesystem-only pauses by whether
+	// the captured rootfs was frozen (quiesced=true, crash-consistent) vs a plain
+	// sync fallback (quiesced=false). quiesced/total is the fraction of newly
+	// minted fs-only snapshots that are safe to cold-boot / rewrite — the eligible
+	// population for the offline envd upgrade built on top of this flag.
+	SandboxPauseFsQuiescedCounterName CounterType = "orchestrator.sandbox.pause.fs_quiesced"
+
+	// SandboxResumeWPModeCounterName counts sandbox resumes by the write-protect
+	// tracking mode the resume chose (mode=sync|async, the use-sync-wp flag
+	// decision). This is the denominator for every sync-WP burn-in signal:
+	// wp_resolve rates and dirty-divergence readings only come from mode=sync
+	// sandboxes, so without this counter the fleet's sync coverage — and
+	// whether an error rate is "all sync sandboxes" or "one loud one" — is
+	// invisible.
+	SandboxResumeWPModeCounterName CounterType = "orchestrator.sandbox.resume.wp_mode"
+
+	// OrchestratorEnvdUpgradeAttempts counts resume-time envd live-upgrade
+	// attempts, by result (success|delivery_failed|not_ready|panic) and
+	// from_version/to_version. success/total is the rollout success rate;
+	// attempts/resumes is the fire rate.
+	OrchestratorEnvdUpgradeAttempts CounterType = "orchestrator.envd.upgrade.attempts"
+	// OrchestratorEnvdUpgradeGated counts resumes the envd-upgrade-target flag
+	// targeted but the min-version gate skipped (reason=old_envd) — a silent
+	// no-op worth watching during a ramp.
+	OrchestratorEnvdUpgradeGated CounterType = "orchestrator.envd.upgrade.gated"
+	// OrchestratorEnvdUpgradeHandover counts live-upgrade handover items by item
+	// (proc|retained|watcher) and result (ok|failed), reported back by the new
+	// envd on /init. failed/(ok+failed) is the handover error rate — the
+	// fleet-visible signal (otherwise only logged in-guest) that the new envd
+	// dropped or degraded something it re-adopted across the swap.
+	OrchestratorEnvdUpgradeHandover CounterType = "orchestrator.envd.upgrade.handover"
+
+	// OrchestratorEnvdOfflineUpgradeAttempts counts every OFFLINE envd upgrade
+	// OUTCOME on the cold boot of a filesystem-only snapshot — not only the ones that
+	// reach the rootfs binary swap — by result and from_version/to_version:
+	//
+	//	success | swap_failed | unrecoverable | envd_too_large
+	//	    the swap ran, or the rootfs itself declined it (see rootfs.SwapEnvdBinary)
+	//	not_quiesced
+	//	    an upgrade was wanted, but the snapshot's rootfs was not frozen at pause,
+	//	    so it must not be rewritten
+	//	same_version
+	//	    already on the target
+	//	not_staged | downgrade | invalid_target | getversion_failed
+	//	    the resolver refused the configured target
+	//
+	// Every no-op except flag-off is counted, so the eligible population adds up.
+	// Flag-off is deliberately absent: it is the whole filesystem-only population
+	// minus the rest, already available as sandbox.create.duration{fs_only="true"}.
+	// to_version is empty on the resolver's refusals — it has no target to name.
+	//
+	// On result=success a refire label says whether the rootfs ALREADY held the target
+	// bytes. from_version cannot answer that on its own: it is a claim read off the
+	// snapshot record, and the swap keys on that record without ever advancing it, so
+	// an already-upgraded snapshot resolves the same upgrade on every cold boot and
+	// rewrites identical bytes while reporting the same from_version as a genuine
+	// upgrade. refire="false" is the count that actually moved sandboxes. The label is
+	// absent on every other result, where nothing was compared.
+	OrchestratorEnvdOfflineUpgradeAttempts CounterType = "orchestrator.envd.offline_upgrade.attempts"
+
+	// TemplateBuildCmdlineArgs counts template builds by the guest kernel command line
+	// parameters they actually booted with, after parsing and validation. This is the
+	// engagement signal for the per-team cmdline-variant flag: a non-zero rate on a
+	// non-empty label is proof builds ran the path, which is what the flag
+	// reading "on" in the feature-flag service does not tell you. Zero here while the
+	// flag is targeted is the alarm that the opt-in is silently inert. Because it
+	// records what was APPLIED, a rejected fragment shows up as the empty label rather
+	// than as the parameters that were asked for.
+	TemplateBuildCmdlineArgs CounterType = "orchestrator.template.build.cmdline_args"
 
 	// PauseResumePrefetchHarvestAttempts counts pause-resume prefetch harvest
 	// attempts, by result (success|resume_failed|collect_failed|skipped). The
@@ -106,6 +186,27 @@ const (
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
 	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
+	PauseDurationHistogramName            HistogramType = "orchestrator.sandbox.pause.duration"
+	SnapshotProcessMemoryDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_memory.duration"
+	SnapshotProcessRootfsDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_rootfs.duration"
+	SnapshotRootfsSealDurationName        HistogramType = "orchestrator.sandbox.snapshot.rootfs_seal.duration"
+	SnapshotGuestFreezeDurationName       HistogramType = "orchestrator.sandbox.snapshot.guest_freeze.duration"
+	SnapshotMemorySealDurationName        HistogramType = "orchestrator.sandbox.snapshot.memory_seal.duration"
+
+	// OrchestratorSandboxExecutionDurationName is one sample per Firecracker
+	// run, so a sandbox that is paused and resumed records one per run.
+	OrchestratorSandboxExecutionDurationName HistogramType = "orchestrator.sandbox.execution.duration"
+
+	// OrchestratorEnvdUpgradeDurationName is the wall-time of a resume-time envd
+	// live-upgrade (delivery + trigger + WaitForEnvd) = overhead added to the
+	// resume. Labeled by result.
+	OrchestratorEnvdUpgradeDurationName HistogramType = "orchestrator.envd.upgrade.duration"
+
+	// OrchestratorEnvdOfflineUpgradeDurationName is the wall-time of the offline
+	// rootfs envd swap (jailed debugfs), recorded once per swap attempt. Catches
+	// pathological rewrites; the swap runs in the cold-boot PreBootFn, so it adds
+	// directly to resume latency.
+	OrchestratorEnvdOfflineUpgradeDurationName HistogramType = "orchestrator.envd.offline_upgrade.duration"
 
 	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
@@ -122,12 +223,20 @@ const (
 	// success, so its bottom bucket surfaces the empty-trace (idle-at-pause) rate.
 	PauseResumePrefetchHarvestDurationName     HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.duration"
 	PauseResumePrefetchHarvestPagesName        HistogramType = "orchestrator.sandbox.pause_resume_prefetch.harvest.pages"
+	PauseResumePrefetchSealWaitDurationName    HistogramType = "orchestrator.sandbox.pause_resume_prefetch.seal_wait.duration"
 	PauseResumePrefetchPersistWaitDurationName HistogramType = "orchestrator.sandbox.pause_resume_prefetch.persist_wait.duration"
 
 	// Sandbox startup working-set histograms: demand-fault pages/bytes a guest
 	// needed to reach a successful envd init, recorded once per start. Sampled
 	// per start (not per fault), so histogram_quantile yields per-sandbox
 	// percentiles.
+	EnvdFreezeDurationHistogramName     HistogramType = "orchestrator.sandbox.envd.freeze.duration"
+	EnvdFreezeSweepHistogramName        HistogramType = "orchestrator.sandbox.envd.freeze.sweep"
+	EnvdFreezeWaitHistogramName         HistogramType = "orchestrator.sandbox.envd.freeze.wait"
+	EnvdFreezeVisitedHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.visited"
+	EnvdFreezeAuditHistogramName        HistogramType = "orchestrator.sandbox.envd.freeze.audit"
+	EnvdFreezeCgroupsHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.cgroups"
+	EnvdUnfreezeDurationHistogramName   HistogramType = "orchestrator.sandbox.envd.unfreeze.duration"
 	UffdStartupPagesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.pages"
 	UffdStartupSourcePagesHistogramName HistogramType = "orchestrator.sandbox.uffd.startup.source_pages"
 	UffdStartupBytesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.bytes"
@@ -187,6 +296,7 @@ const (
 	// Symmetric read/write metrics carry a direction=read/write attribute.
 	SandboxFCBlockBytes                 HistogramType = "orchestrator.sandbox.fc.block.bytes"
 	SandboxFCBlockCount                 HistogramType = "orchestrator.sandbox.fc.block.count"
+	SandboxFCBlockQueueEventCount       HistogramType = "orchestrator.sandbox.fc.block.queue_event_count"
 	SandboxFCBlockRateLimiterThrottled  HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_throttled"
 	SandboxFCBlockRateLimiterEventCount HistogramType = "orchestrator.sandbox.fc.block.rate_limiter_event_count"
 	SandboxFCBlockIOEngineThrottled     HistogramType = "orchestrator.sandbox.fc.block.io_engine_throttled"
@@ -238,7 +348,16 @@ var counterDesc = map[CounterType]string{
 	EnvdInitCalls:                               "Number of envd initialization calls",
 	EnvdCollapseChunks:                          "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:        "Number of sandboxes killed, labeled by kill reason",
+	OrchestratorSandboxCheckpointCounterName:    "Number of sandbox checkpoints taken, labeled by in_place and success",
+	OrchestratorFPRResumeCounterName:            "Free-page-reporting resumes after a CoW window, labeled by outcome (inline, retry, fenced, fc_exited, abandoned)",
 	OrchestratorSnapshotUploadFailedCounterName: "Number of pause-snapshot uploads that never landed durably",
+	SandboxPauseFsQuiescedCounterName:           "Filesystem-only pauses by whether the rootfs was frozen (quiesced) vs sync fallback",
+	SandboxResumeWPModeCounterName:              "Sandbox resumes by write-protect tracking mode (sync|async)",
+	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
+	OrchestratorEnvdOfflineUpgradeAttempts:      "Cold-boot offline envd rootfs-swap attempts, by result and from/to version",
+	TemplateBuildCmdlineArgs:                    "Template builds by the guest kernel cmdline parameters applied",
+	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
+	OrchestratorEnvdUpgradeHandover:             "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
 	PauseResumePrefetchHarvestAttempts:          "Pause-resume prefetch harvest attempts, by result",
 	TCPFirewallConnectionsTotal:                 "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:                      "Total number of TCP firewall errors",
@@ -273,7 +392,16 @@ var counterUnits = map[CounterType]string{
 	EnvdInitCalls:                               "1",
 	EnvdCollapseChunks:                          "{chunk}",
 	OrchestratorSandboxKilledCounterName:        "{sandbox}",
+	OrchestratorSandboxCheckpointCounterName:    "{checkpoint}",
+	OrchestratorFPRResumeCounterName:            "{resume}",
 	OrchestratorSnapshotUploadFailedCounterName: "{snapshot}",
+	SandboxPauseFsQuiescedCounterName:           "{snapshot}",
+	SandboxResumeWPModeCounterName:              "{resume}",
+	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
+	OrchestratorEnvdOfflineUpgradeAttempts:      "{attempt}",
+	TemplateBuildCmdlineArgs:                    "{build}",
+	OrchestratorEnvdUpgradeGated:                "{sandbox}",
+	OrchestratorEnvdUpgradeHandover:             "{item}",
 	PauseResumePrefetchHarvestAttempts:          "{attempt}",
 	TCPFirewallConnectionsTotal:                 "{connection}",
 	TCPFirewallErrorsTotal:                      "{error}",
@@ -306,10 +434,6 @@ var observableCounterUnits = map[ObservableCounterType]string{
 	ApiOrchestratorSbxCreateSuccess: "{sandbox}",
 	ApiOrchestratorSbxCreateFailure: "{sandbox}",
 }
-
-var upDownCounterDesc = map[UpDownCounterType]string{}
-
-var upDownCounterUnits = map[UpDownCounterType]string{}
 
 var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	OrchestratorSandboxCountMeterName:                  "Counter of running sandboxes on the orchestrator.",
@@ -393,16 +517,6 @@ func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, erro
 	)
 }
 
-func GetUpDownCounter(meter metric.Meter, name UpDownCounterType) (metric.Int64UpDownCounter, error) {
-	desc := upDownCounterDesc[name]
-	unit := upDownCounterUnits[name]
-
-	return meter.Int64UpDownCounter(string(name),
-		metric.WithDescription(desc),
-		metric.WithUnit(unit),
-	)
-}
-
 func GetObservableCounter(meter metric.Meter, name ObservableCounterType, callback metric.Int64Callback) (metric.Int64ObservableCounter, error) {
 	desc := observableCounterDesc[name]
 	unit := observableCounterUnits[name]
@@ -448,19 +562,36 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
 
-	BuildDurationHistogramName:            "Time taken to build a template",
-	BuildPhaseDurationHistogramName:       "Time taken to build each phase of a template",
-	BuildStepDurationHistogramName:        "Time taken to build each step of a template",
-	BuildRootfsSizeHistogramName:          "Size of the built template rootfs in bytes",
-	OrchestratorSandboxCreateDurationName: "Time taken to create a sandbox",
-	WaitForEnvdDurationHistogramName:      "Time taken for Envd to initialize successfully",
-	EnvdCollapseDurationHistogramName:     "Time taken for the pre-pause envd heap collapse round-trip",
-	GuestSyncDurationHistogramName:        "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
+	BuildDurationHistogramName:                 "Time taken to build a template",
+	BuildPhaseDurationHistogramName:            "Time taken to build each phase of a template",
+	BuildStepDurationHistogramName:             "Time taken to build each step of a template",
+	BuildRootfsSizeHistogramName:               "Size of the built template rootfs in bytes",
+	OrchestratorSandboxCreateDurationName:      "Time taken to create a sandbox",
+	OrchestratorSandboxExecutionDurationName:   "Time a single sandbox execution ran, from the guest being ready until it stopped executing, labeled by stop reason",
+	OrchestratorEnvdUpgradeDurationName:        "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
+	WaitForEnvdDurationHistogramName:           "Time taken for Envd to initialize successfully",
+	EnvdCollapseDurationHistogramName:          "Time taken for the pre-pause envd heap collapse round-trip",
+	GuestSyncDurationHistogramName:             "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
+	PauseDurationHistogramName:                 "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
+	SnapshotProcessMemoryDurationName:          "Time to export+diff the memory file during a pause snapshot (memory pauses only), labeled by success",
+	SnapshotProcessRootfsDurationName:          "Time to export+diff the rootfs during a pause snapshot, labeled by fs_only and success",
+	SnapshotRootfsSealDurationName:             "Time for the background deferred rootfs reflink seal (off the pause critical path), labeled by in_place and success",
+	SnapshotGuestFreezeDurationName:            "Wall time the guest is frozen during an in-place checkpoint, from the FC pause call to the in-place resume; success=false means the resume ran on the pause-failure cleanup path",
+	SnapshotMemorySealDurationName:             "Time for the background CoW-window memory capture (off the in-place resume critical path), labeled by success",
+	OrchestratorEnvdOfflineUpgradeDurationName: "Wall-time of the offline cold-boot envd rootfs swap (jailed debugfs)",
 
 	PauseResumePrefetchHarvestDurationName:     "Time the pause-resume prefetch harvest held a start slot (throwaway resume, trace collection, reap)",
 	PauseResumePrefetchHarvestPagesName:        "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
+	PauseResumePrefetchSealWaitDurationName:    "Time the prefetch harvest waited for the deferred rootfs seal before its warm resume",
 	PauseResumePrefetchPersistWaitDurationName: "Time the prefetch harvest waited for the in-flight snapshot upload before persisting the mapping",
 
+	EnvdFreezeDurationHistogramName:     "Round-trip duration of the pre-pause workload freeze call, per pause",
+	EnvdFreezeSweepHistogramName:        "Time envd spent issuing cgroup.freeze writes, per pause (scales with cgroup count)",
+	EnvdFreezeWaitHistogramName:         "Time envd spent waiting for cgroups to quiesce, per pause (scales with guest I/O depth)",
+	EnvdFreezeVisitedHistogramName:      "Cgroups the pre-pause freeze walk examined, per pause. Sizes the walk's bound: the bound should sit an order of magnitude above this",
+	EnvdFreezeAuditHistogramName:        "Resume-time audit of the frozen cgroup set, by kind: escaped (ran through the snapshot, whether created after the sweep or missed by a truncated or failed one -- read alongside freeze.truncated and the failed outcome) and violations (a cgroup the resume depends on was frozen -- a bug, expected to be zero)",
+	EnvdFreezeCgroupsHistogramName:      "Cgroups affected by a pre-pause freeze, per pause, split by outcome",
+	EnvdUnfreezeDurationHistogramName:   "Round-trip duration of the pause-rollback workload thaw call, per rollback",
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
 	UffdStartupBytesHistogramName:       "Bytes faulted into a guest to reach a successful envd init, per start",
@@ -482,6 +613,7 @@ var histogramDesc = map[HistogramType]string{
 	// Firecracker block histograms (direction=read/write attribute)
 	SandboxFCBlockBytes:                 "Distribution of Firecracker VMM block bytes per metrics flush",
 	SandboxFCBlockCount:                 "Distribution of Firecracker VMM block I/O operations per metrics flush",
+	SandboxFCBlockQueueEventCount:       "Distribution of Firecracker VMM block queue notifications per metrics flush",
 	SandboxFCBlockRateLimiterThrottled:  "Distribution of Firecracker VMM block ops throttled by rate limiter per metrics flush",
 	SandboxFCBlockRateLimiterEventCount: "Distribution of Firecracker VMM block rate limiter events per metrics flush",
 	SandboxFCBlockIOEngineThrottled:     "Distribution of Firecracker VMM block ops throttled by io_uring engine per metrics flush",
@@ -504,12 +636,29 @@ var histogramUnits = map[HistogramType]string{
 	BuildStepDurationHistogramName:                "ms",
 	BuildRootfsSizeHistogramName:                  "{By}",
 	OrchestratorSandboxCreateDurationName:         "ms",
+	OrchestratorSandboxExecutionDurationName:      "ms",
+	OrchestratorEnvdUpgradeDurationName:           "ms",
+	OrchestratorEnvdOfflineUpgradeDurationName:    "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
 	GuestSyncDurationHistogramName:                "ms",
+	PauseDurationHistogramName:                    "ms",
+	SnapshotProcessMemoryDurationName:             "ms",
+	SnapshotProcessRootfsDurationName:             "ms",
+	SnapshotRootfsSealDurationName:                "ms",
+	SnapshotGuestFreezeDurationName:               "ms",
+	SnapshotMemorySealDurationName:                "ms",
 	PauseResumePrefetchHarvestDurationName:        "ms",
 	PauseResumePrefetchHarvestPagesName:           "{page}",
+	PauseResumePrefetchSealWaitDurationName:       "ms",
 	PauseResumePrefetchPersistWaitDurationName:    "ms",
+	EnvdFreezeDurationHistogramName:               "ms",
+	EnvdFreezeSweepHistogramName:                  "ms",
+	EnvdFreezeWaitHistogramName:                   "ms",
+	EnvdFreezeVisitedHistogramName:                "{cgroup}",
+	EnvdFreezeAuditHistogramName:                  "{cgroup}",
+	EnvdFreezeCgroupsHistogramName:                "{cgroup}",
+	EnvdUnfreezeDurationHistogramName:             "ms",
 	UffdStartupPagesHistogramName:                 "{page}",
 	UffdStartupSourcePagesHistogramName:           "{page}",
 	UffdStartupBytesHistogramName:                 "{By}",
@@ -530,6 +679,7 @@ var histogramUnits = map[HistogramType]string{
 	// Firecracker block histograms
 	SandboxFCBlockBytes:                 "{By}",
 	SandboxFCBlockCount:                 "{op}",
+	SandboxFCBlockQueueEventCount:       "{event}",
 	SandboxFCBlockRateLimiterThrottled:  "{op}",
 	SandboxFCBlockRateLimiterEventCount: "{event}",
 	SandboxFCBlockIOEngineThrottled:     "{op}",
@@ -544,6 +694,8 @@ var histogramUnits = map[HistogramType]string{
 	UploadCompressionRatio:  "{1}",
 }
 
+// GetHistogram returns an Int64 histogram with the registered description and
+// unit. It sets no bucket boundaries: histogramAggregation discards them.
 func GetHistogram(meter metric.Meter, name HistogramType) (metric.Int64Histogram, error) {
 	desc := histogramDesc[name]
 	unit := histogramUnits[name]

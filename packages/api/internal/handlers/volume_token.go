@@ -13,12 +13,14 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 )
 
 var ErrVolumesTokenNotConfigured = errors.New("volumes content token signing is not supported by this deployment")
 
-func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Volume, team *types.Team) (string, *api.APIError) {
+// generateVolumeContentToken mints the JWT the SDK presents to the volume
+// content API. audience is the origin the token is valid for
+// (`https://api.<domain>`, see volumeTokenAudience).
+func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Volume, team *types.Team, audience string) (string, *api.APIError) {
 	if !config.IsConfigured() {
 		return "", &api.APIError{
 			Err:       ErrVolumesTokenNotConfigured,
@@ -27,14 +29,12 @@ func generateVolumeContentToken(config cfg.VolumesTokenConfig, volume queries.Vo
 		}
 	}
 
-	clusterID := clusters.WithClusterFallback(team.ClusterID)
-
 	now := time.Now()
 	expiration := now.Add(config.Duration)
 
 	claims := jwt.MapClaims{
 		// registered
-		"aud": clusterID.String(),
+		"aud": audience,
 		"exp": jwt.NewNumericDate(expiration),
 		"iat": jwt.NewNumericDate(now),
 		"iss": config.Issuer,

@@ -109,3 +109,7 @@ func (s *authStoreImpl) GetUserIDByHashedAccessToken(ctx context.Context, hashed
 func (s *authStoreImpl) GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error) {
 	return s.authDB.GetTeamAPIKeyHashes(ctx, teamID)
 }
+
+func (s *authStoreImpl) GetTeamMemberIDs(ctx context.Context, teamID uuid.UUID) ([]uuid.UUID, error) {
+	return s.authDB.GetTeamMemberIDs(ctx, teamID)
+}

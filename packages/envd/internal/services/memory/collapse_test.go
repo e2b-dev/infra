@@ -3,7 +3,6 @@
 package memory
 
 import (
-	"context"
 	"testing"
 	"unsafe"
 
@@ -70,7 +69,7 @@ func TestCollapseRange(t *testing.T) {
 		raw[off+i*hugePageSize] = 1
 	}
 
-	s := collapseRange(context.Background(), aligned, aligned+uintptr(size))
+	s := collapseRange(t.Context(), aligned, aligned+uintptr(size))
 	assert.Equal(t, windows, s.Chunks)
 	if s.Collapsed == 0 {
 		t.Skip("MADV_COLLAPSE unsupported on this kernel; only window count verified")
@@ -84,7 +83,7 @@ func TestCollapseRange(t *testing.T) {
 func TestCollapseSelf(t *testing.T) {
 	t.Parallel()
 
-	s, err := CollapseSelf(context.Background())
+	s, err := CollapseSelf(t.Context())
 	require.NoError(t, err)
 	assert.Positive(t, s.Regions)
 	assert.Equal(t, s.Chunks, s.Collapsed+s.AlreadyHuge+s.Skipped)

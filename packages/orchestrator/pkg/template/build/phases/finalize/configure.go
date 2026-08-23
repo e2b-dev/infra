@@ -34,6 +34,14 @@ var ConfigureScriptTemplate = tt.Must(tt.New("provisioning-finish-script").Parse
 // on cold boot, trading the regen's scattered rootfs reads for one sequential
 // read. -h dereferences the hash-named symlinks so the real cert contents are
 // packed instead of links that would still fault the lazily-fetched rootfs.
+// Deliberately Debian/Alpine-only. Adding an update-ca-trust branch for the RHEL
+// family regresses it: extract regenerates the extracted/pem/directory-hash tree
+// that /etc/ssl/certs points at, replacing the absolute ca-certificates.crt
+// symlink provisioning created with a relative one that tar -h then packs as a
+// link instead of dereferencing — the packed bundle drops from ~226 KB of PEM to
+// a 20-byte symlink, and envd's egress-CA append needs a real file. Provisioning
+// already refreshes the store per family; this step only has to merge CAs that
+// later build layers dropped in, which is a Debian/Alpine convention anyway.
 const packCertBundleCmd = `set -e
 # Recreate dpkg-recorded paths under /etc/ssl/certs lost to this fresh boot's
 # tmpfs re-seed (build-layer dpkg writes never reach the rootfs), then settle

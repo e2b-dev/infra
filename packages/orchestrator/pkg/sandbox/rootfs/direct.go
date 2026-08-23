@@ -113,6 +113,22 @@ func (o *DirectProvider) ExportDiff(
 	return m, nil
 }
 
+func (o *DirectProvider) PrepareExportDiff(_ context.Context, _ func(context.Context) error) (*block.Cache, error) {
+	return nil, ErrDeferredExportNotSupported
+}
+
+func (o *DirectProvider) ExportDiffInPlace(_ context.Context, _ *os.File) (*header.DiffMetadata, error) {
+	return nil, fmt.Errorf("direct provider does not support in-place export")
+}
+
+func (o *DirectProvider) SwapForBackgroundSeal(_ context.Context) (*block.Cache, error) {
+	return nil, ErrDeferredExportNotSupported
+}
+
+func (o *DirectProvider) FoldSealed(_ context.Context) (*block.Cache, error) {
+	return nil, nil
+}
+
 func (o *DirectProvider) Close(ctx context.Context) error {
 	o.finishedOperations <- struct{}{}
 
@@ -164,12 +180,4 @@ func (o *DirectProvider) sync(ctx context.Context) error {
 	}
 
 	return flush(ctx, o.path)
-}
-
-type FileCtx struct {
-	*os.File
-}
-
-func (f *FileCtx) ReadAt(_ context.Context, p []byte, off int64) (int, error) {
-	return f.File.ReadAt(p, off)
 }

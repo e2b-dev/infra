@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -143,7 +144,9 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 			require.NoError(t, err, "resume failed for FC %s", fcVersion)
 			t.Logf("resumed in %s", time.Since(t0))
 
-			// Phase 3: freeze and thaw the live guest rootfs.
+			// Phase 3: freeze and thaw the live guest rootfs. (envd readiness
+			// is already guaranteed: ResumeSandbox runs WaitForEnvd before
+			// returning unless SkipEnvdWait is set.)
 			assertFsFreezeQuiescesRootfs(t, ctx, sbx, token)
 
 			sbx.Close(context.WithoutCancel(ctx))
@@ -163,8 +166,8 @@ type testInfra struct {
 
 func (ti *testInfra) close(ctx context.Context) {
 	cleanCtx := context.WithoutCancel(ctx)
-	for i := len(ti.closers) - 1; i >= 0; i-- {
-		ti.closers[i](cleanCtx)
+	for _, closer := range slices.Backward(ti.closers) {
+		closer(cleanCtx)
 	}
 }
 
@@ -267,6 +270,15 @@ func checkPrerequisites(t *testing.T) {
 	if _, err := os.Stat("/dev/kvm"); err != nil {
 		t.Skip("/dev/kvm not available")
 	}
+
+	// Firecracker host assets, shipped with the orchestrator host image.
+	builderConfig, err := cfg.ParseBuilder()
+	require.NoError(t, err)
+
+	busybox := filepath.Join(builderConfig.HostBusyboxDir, builderConfig.BusyboxVersion, runtime.GOARCH, "busybox")
+	if _, err := os.Stat(busybox); err != nil {
+		t.Skipf("busybox binary %q not available; set HOST_BUSYBOX_DIR/BUSYBOX_VERSION", busybox)
+	}
 }
 
 // --- envd -------------------------------------------------------------------
@@ -313,14 +325,18 @@ func findOrBuildEnvd(t *testing.T) string {
 func locateEnvdSource(t *testing.T) string {
 	t.Helper()
 
-	// Walk up from the test directory to find packages/envd
 	wd, err := os.Getwd()
 	require.NoError(t, err)
 
+	// belt keeps envd at go/oss/envd, infra at packages/envd.
+	layouts := [][]string{{"go", "oss", "envd"}, {"packages", "envd"}}
+
 	for dir := wd; dir != "/"; dir = filepath.Dir(dir) {
-		candidate := filepath.Join(dir, "packages", "envd", "main.go")
-		if _, err := os.Stat(candidate); err == nil {
-			return filepath.Join(dir, "packages", "envd")
+		for _, layout := range layouts {
+			candidate := filepath.Join(append([]string{dir}, layout...)...)
+			if _, err := os.Stat(filepath.Join(candidate, "main.go")); err == nil {
+				return candidate
+			}
 		}
 	}
 
@@ -331,10 +347,10 @@ func locateEnvdSource(t *testing.T) string {
 
 func setupLocalDirs(t *testing.T, dataDir string) {
 	t.Helper()
-	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "snapshot-cache", "fc-versions", "build-cache"} {
+	for _, d := range []string{"kernels", "templates", "sandbox", "orchestrator", "fc-versions", "build-cache"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dataDir, d), 0o755))
 	}
-	for _, d := range []string{"build", "build-templates", "sandbox", "snapshot-cache", "template"} {
+	for _, d := range []string{"build", "build-templates", "sandbox", "template"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dataDir, "orchestrator", d), 0o755))
 	}
 }
@@ -358,9 +374,7 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 		"LOCAL_BUILD_CACHE_STORAGE_BASE_PATH": abs(filepath.Join(dataDir, "build-cache")),
 		"ORCHESTRATOR_BASE_PATH":              abs(filepath.Join(dataDir, "orchestrator")),
 		"SANDBOX_DIR":                         abs(filepath.Join(dataDir, "sandbox")),
-		"SNAPSHOT_CACHE_DIR":                  abs(filepath.Join(dataDir, "snapshot-cache")),
 		"STORAGE_PROVIDER":                    "Local",
-		"USE_LOCAL_NAMESPACE_STORAGE":         "true",
 	}
 
 	for k, v := range vars {
@@ -474,8 +488,18 @@ func assertFsFreezeQuiescesRootfsAt(t *testing.T, ctx context.Context, envdURL, 
 	// releases it, which would look like a completion.
 	client := &http.Client{Timeout: thawedWriteTimeout + envdRequestTimeout}
 
+	// The pre-freeze write retries transport errors: the first call after a
+	// snapshot resume can be reset by the guest. Every observed CI failure
+	// was a read-phase reset (the handshake completed, then the connection
+	// died) on this first call, while envd itself was up — the resume's own
+	// /init, on its own connection, had already succeeded. Production
+	// tolerates this window because its first-contact paths retry; a
+	// one-shot client turned it into a flake. The frozen write below must
+	// NOT retry — blocking is its assertion.
 	readable := rootfsProbeDir + "/smoke-before-freeze"
-	status, err := writeGuestFile(ctx, client, envdURL, accessToken, readable, "before freeze")
+	status, err := retryTransportErrors(ctx, envdRequestTimeout, func() (int, error) {
+		return writeGuestFile(ctx, client, envdURL, accessToken, readable, "before freeze")
+	})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, status, "a rootfs write should succeed before the freeze")
 
@@ -532,8 +556,17 @@ func assertFsFreezeQuiescesRootfsAt(t *testing.T, ctx context.Context, envdURL, 
 	}
 
 	// Reads are unaffected — freezing is a write barrier — and serving this at all
-	// shows envd is still responsive with its own filesystem frozen.
-	status, err = readGuestFile(ctx, client, envdURL, accessToken, readable)
+	// shows envd is still responsive with its own filesystem frozen. This read is
+	// forced onto a FRESH dial (the client's only pooled connection is held by
+	// the blocked write above), making it the next-most-exposed call after the
+	// pre-freeze write, so it retries the same way; reads are idempotent. The
+	// freeze/thaw POSTs are deliberately not retried: they reuse pooled
+	// connections, no observed failure has ever hit anything but the first
+	// post-resume call, and blindly retrying a state-flipping POST is unsound
+	// (a lost-response retry can observe its own success as an error).
+	status, err = retryTransportErrors(ctx, envdRequestTimeout, func() (int, error) {
+		return readGuestFile(ctx, client, envdURL, accessToken, readable)
+	})
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, status, "reads should still work while the rootfs is frozen")
 
@@ -567,6 +600,25 @@ func postEnvd(ctx context.Context, client *http.Client, envdURL, accessToken, ro
 
 	return doEnvd(client, req, accessToken)
 }
+
+// retryTransportErrors reruns an envd call while it fails at the transport
+// layer, for up to budget. Immediately after a snapshot resume the guest can
+// reset connections it has already accepted: every observed CI failure was a
+// read-phase reset (handshake completed, so NOT a dial-phase stale-tuple
+// refusal) on the first call after a resume, never on a later one. Retrying
+// past that window is how production's first-contact paths cross it. Use
+// only for calls that are safe to rerun.
+func retryTransportErrors(ctx context.Context, budget time.Duration, call func() (int, error)) (int, error) {
+	deadline := time.Now().Add(budget)
+	for {
+		status, err := call()
+		if err == nil || time.Now().After(deadline) || ctx.Err() != nil {
+			return status, err
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
 
 // writeGuestFile uploads content to path on the guest as root, through envd's
 // public file API. Writing as root keeps the probe off any assumption about which

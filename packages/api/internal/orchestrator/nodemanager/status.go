@@ -13,6 +13,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// ApiNodeToOrchestratorStateMapper translates an api.NodeStatus into the status
+// an orchestrator understands. It has callers with different needs. Adding an entry
+// purely to make a status overridable therefore also makes it routable if its
+// orchestrator counterpart is. TestStatusMappersAreInverses pins this map
+// against OrchestratorToApiNodeStateMapper so the two cannot drift apart.
 var ApiNodeToOrchestratorStateMapper = map[api.NodeStatus]orchestratorinfo.ServiceInfoStatus{
 	api.NodeStatusReady:     orchestratorinfo.ServiceInfoStatus_Healthy,
 	api.NodeStatusDraining:  orchestratorinfo.ServiceInfoStatus_Draining,
@@ -27,6 +32,15 @@ type StatusInfo struct {
 
 func (n *Node) Status() api.NodeStatus {
 	return n.StatusInfo().Status
+}
+
+// CanAcceptNewRequests reports whether the node may be sent new requests. A
+// status with no orchestrator counterpart — api.NodeStatusConnecting, which is
+// derived from the local gRPC channel state — is treated as unroutable.
+func (n *Node) CanAcceptNewRequests() bool {
+	status, ok := ApiNodeToOrchestratorStateMapper[n.Status()]
+
+	return ok && status.CanAcceptNewRequests()
 }
 
 func (n *Node) StatusInfo() StatusInfo {
@@ -88,11 +102,10 @@ func (n *Node) markReachable() {
 // transition and would restart the clock on every retry.
 //
 // Deliberately not called from markUnhealthyLocal, even though a sync failure
-// usually implies both. A sync can fail on a response the node did deliver: a
-// nil sandbox config or an unparseable team or build ID makes GetSandboxes
-// reject the payload after the RPC succeeded. The node has demonstrably
-// answered, so it is not unreachable, and conflating the two would let one
-// malformed record present a live node as a candidate for reclamation.
+// usually implies both. A sync can fail on a node this replica did reach:
+// ServiceInfo answers and the sandbox list call then fails. The node has
+// demonstrably answered, so it is not unreachable, and conflating the two would
+// let one failed call present a live node as a candidate for reclamation.
 func (n *Node) markUnreachable() {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()

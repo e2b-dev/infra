@@ -68,6 +68,11 @@ type testConfig struct {
 	alwaysWP bool
 	// removeEnabled toggles UFFD_FEATURE_EVENT_REMOVE in configureApi.
 	removeEnabled bool
+	// syncWP registers the uffd WITHOUT WP_ASYNC: writes to armed pages
+	// block on a synchronous WP event until the serve loop resolves them
+	// (production use-sync-wp). Under the default WP_ASYNC the kernel
+	// auto-resolves such writes and the serve loop never sees them.
+	syncWP bool
 	// gated is a doc-only marker for tests that drive Pause/Resume.
 	gated bool
 	// barriers enables the per-worker fault hook (race tests only).
@@ -102,25 +107,21 @@ type operation struct {
 }
 
 type handlerPageStates struct {
-	faulted []uint
-	removed []uint
+	faulted []uint // block.Dirty: materialized by a write (or write reinstall)
+	zero    []uint // block.Zero: installed zero page
+	removed []uint // block.Removed: zapped by a REMOVE, not reinstalled
+	clean   []uint // block.Clean: WP-armed install, content == source
 }
 
-// allAccessed returns the sorted union of faulted+removed offsets.
+// allAccessed returns the sorted union of every tracked (non-NotPresent)
+// page offset.
 func (s handlerPageStates) allAccessed() []uint {
-	out := make([]uint, 0, len(s.faulted)+len(s.removed))
-	i, j := 0, 0
-	for i < len(s.faulted) && j < len(s.removed) {
-		if s.faulted[i] <= s.removed[j] {
-			out = append(out, s.faulted[i])
-			i++
-		} else {
-			out = append(out, s.removed[j])
-			j++
-		}
-	}
-	out = append(out, s.faulted[i:]...)
-	out = append(out, s.removed[j:]...)
+	out := make([]uint, 0, len(s.faulted)+len(s.zero)+len(s.removed)+len(s.clean))
+	out = append(out, s.faulted...)
+	out = append(out, s.zero...)
+	out = append(out, s.removed...)
+	out = append(out, s.clean...)
+	slices.Sort(out)
 
 	return out
 }
@@ -145,11 +146,17 @@ func (h *testHandler) pageStates() (handlerPageStates, error) {
 		case block.Dirty:
 			states.faulted = append(states.faulted, uint(e.Offset))
 		case block.Zero:
+			states.zero = append(states.zero, uint(e.Offset))
+		case block.Removed:
 			states.removed = append(states.removed, uint(e.Offset))
+		case block.Clean:
+			states.clean = append(states.clean, uint(e.Offset))
 		}
 	}
 	slices.Sort(states.faulted)
+	slices.Sort(states.zero)
 	slices.Sort(states.removed)
+	slices.Sort(states.clean)
 
 	return states, nil
 }

@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
-	"slices"
 	"sync"
 
+	"github.com/gaissmai/extnetip"
 	"github.com/google/nftables"
 	"github.com/google/nftables/binaryutil"
 	"github.com/google/nftables/expr"
@@ -431,43 +431,89 @@ func (fw *Firewall) DenyEgress(ctx context.Context) (err error) {
 	return nil
 }
 
+var maxIPv4 = netip.MustParseAddr("255.255.255.255")
+
 // clearAndReplaceCIDRs clears a set and repopulates it with the given CIDRs.
-// All operations are buffered — nothing is sent to the kernel until conn.Flush().
-// Handles the special 0.0.0.0/0 case which the firewall_toolkit validation
-// rejects (0.0.0.0 is "unspecified") by directly creating nftables elements.
+// Buffered — nothing commits until conn.Flush() in ReplaceUserRules.
 func clearAndReplaceCIDRs(conn *nftables.Conn, s set.Set, cidrs []string) error {
-	if len(cidrs) == 0 {
-		// Buffer a "clear set" command. Note: conn.FlushSet only appends to the
-		// message buffer, it does NOT commit to the kernel. The actual kernel
-		// commit happens in ReplaceUserRules via conn.Flush().
-		conn.FlushSet(s.Set())
+	toolkitCIDRs, boundaryStart := splitEgressCIDRs(cidrs)
 
+	if len(toolkitCIDRs) == 0 {
+		conn.FlushSet(s.Set())
+	} else {
+		data, err := set.AddressStringsToSetData(toolkitCIDRs)
+		if err != nil {
+			return err
+		}
+
+		if err := s.ClearAndAddElements(conn, data); err != nil {
+			return err
+		}
+	}
+
+	if !boundaryStart.IsValid() {
 		return nil
 	}
 
-	// 0.0.0.0/0 must be handled specially: the firewall_toolkit's
-	// ValidateAddress rejects 0.0.0.0 as "unspecified", so we bypass
-	// the toolkit and create raw nftables interval elements directly.
-	if slices.Contains(cidrs, sandbox_network.AllInternetTrafficCIDR) {
-		conn.FlushSet(s.Set())
-
-		elems := []nftables.SetElement{
-			{Key: netip.MustParseAddr("0.0.0.0").AsSlice()},
-			{Key: netip.MustParseAddr("255.255.255.255").AsSlice(), IntervalEnd: true},
-		}
-		if err := conn.SetAddElements(s.Set(), elems); err != nil {
-			return fmt.Errorf("add all-traffic elements: %w", err)
-		}
-
-		return nil
+	// A lone start element (no interval end) runs to the top — nft's own encoding;
+	// an explicit 255.255.255.255 end is exclusive and would drop the broadcast.
+	if err := conn.SetAddElements(s.Set(), []nftables.SetElement{
+		{Key: boundaryStart.AsSlice()},
+	}); err != nil {
+		return fmt.Errorf("add max-boundary CIDR element: %w", err)
 	}
 
-	// ClearAndAddElements buffers both a FlushSet and SetAddElements — no kernel
-	// commit happens here, only when ReplaceUserRules calls conn.Flush().
-	data, err := set.AddressStringsToSetData(cidrs)
-	if err != nil {
-		return err
+	return nil
+}
+
+// splitEgressCIDRs separates toolkit-encodable CIDRs from max-ending ranges (the
+// toolkit's end.Next() overflows there). Those collapse to one [boundaryStart,
+// maxIPv4] interval; ordinary CIDRs it subsumes are dropped, since the non-merge
+// set silently corrupts overlapping elements in a single flush.
+func splitEgressCIDRs(cidrs []string) (toolkit []string, boundaryStart netip.Addr) {
+	toolkit = make([]string, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		start, end, ok := ipv4Range(cidr)
+		if ok && end == maxIPv4 {
+			if !boundaryStart.IsValid() || start.Less(boundaryStart) {
+				boundaryStart = start
+			}
+
+			continue
+		}
+
+		toolkit = append(toolkit, cidr)
 	}
 
-	return s.ClearAndAddElements(conn, data)
+	if !boundaryStart.IsValid() {
+		return toolkit, boundaryStart
+	}
+
+	kept := toolkit[:0]
+	for _, cidr := range toolkit {
+		if start, _, ok := ipv4Range(cidr); ok && !start.Less(boundaryStart) {
+			continue
+		}
+		kept = append(kept, cidr)
+	}
+
+	return kept, boundaryStart
+}
+
+// ipv4Range returns the [start, end] of an IPv4 CIDR or bare address; ok is
+// false for non-IPv4 or unparseable input.
+func ipv4Range(cidr string) (start, end netip.Addr, ok bool) {
+	if p, err := netip.ParsePrefix(cidr); err == nil {
+		if !p.Addr().Is4() {
+			return netip.Addr{}, netip.Addr{}, false
+		}
+		start, end = extnetip.Range(p.Masked())
+
+		return start, end, true
+	}
+	if a, err := netip.ParseAddr(cidr); err == nil && a.Is4() {
+		return a, a, true
+	}
+
+	return netip.Addr{}, netip.Addr{}, false
 }

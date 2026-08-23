@@ -21,28 +21,6 @@ const (
 	ReportFail
 )
 
-type SandboxMetricsFields struct {
-	Timestamp      int64
-	CPUCount       uint32
-	CPUUsedPercent float32
-	MemTotalMiB    uint64
-	MemUsedMiB     uint64
-	MemCacheBytes  uint64
-}
-
-func (sl *SandboxLogger) Metrics(ctx context.Context, metrics SandboxMetricsFields) {
-	sl.Info(
-		ctx,
-		"",
-		zap.String("category", "metrics"),
-		zap.Float32("cpuUsedPct", metrics.CPUUsedPercent),
-		zap.Uint32("cpuCount", metrics.CPUCount),
-		zap.Uint64("memTotalMiB", metrics.MemTotalMiB),
-		zap.Uint64("memUsedMiB", metrics.MemUsedMiB),
-		zap.Uint64("memCacheBytes", metrics.MemCacheBytes),
-	)
-}
-
 func (sl *SandboxLogger) Healthcheck(ctx context.Context, action HealthCheckAction) {
 	switch action {
 	case Success:

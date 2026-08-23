@@ -13,6 +13,35 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+// Observe0 records one synchronous operation returning only an error.
+func Observe0(ctx context.Context, tracer trace.Tracer, name string, fn func(context.Context) error, opts ...trace.SpanStartOption) error {
+	_, err := observe(ctx, tracer, name, func(ctx context.Context) (struct{}, error) {
+		return struct{}{}, fn(ctx)
+	}, opts...)
+
+	return err
+}
+
+// Observe1 records one synchronous operation returning one value and an error.
+func Observe1[T any](ctx context.Context, tracer trace.Tracer, name string, fn func(context.Context) (T, error), opts ...trace.SpanStartOption) (T, error) {
+	return observe(ctx, tracer, name, fn, opts...)
+}
+
+func observe[T any](ctx context.Context, tracer trace.Tracer, name string, fn func(context.Context) (T, error), opts ...trace.SpanStartOption) (T, error) {
+	ctx, span := tracer.Start(ctx, name, opts...)
+	defer span.End()
+
+	value, err := fn(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	} else {
+		span.SetStatus(codes.Ok, "")
+	}
+
+	return value, err
+}
+
 func SetAttributes(ctx context.Context, attrs ...attribute.KeyValue) {
 	span := trace.SpanFromContext(ctx)
 	span.SetAttributes(attrs...)

@@ -109,7 +109,7 @@ func TestStaleSourceRaceMissingAndRemove(t *testing.T) {
 				err = h.executeRemove(operation{offset: pageOffset, mode: operationModeRemove})
 				require.NoError(t, err, "MADV_DONTNEED on page %d did not return — handler dispatch wedged", pageIdx)
 
-				require.NoError(t, waitForState(ctx, h, uint64(pageOffset), block.Zero, barrierArrivalDeadline),
+				require.NoError(t, waitForState(ctx, h, uint64(pageOffset), block.Removed, barrierArrivalDeadline),
 					"handler did not transition page %d to `removed` after MADV_DONTNEED", pageIdx)
 
 				require.NoError(t, h.releaseFault(ctx, token))
@@ -302,9 +302,13 @@ func waitForState(ctx context.Context, h *testHandler, offset uint64, want block
 		var bucket []uint
 		switch want {
 		case block.Zero:
+			bucket = states.zero
+		case block.Removed:
 			bucket = states.removed
 		case block.Dirty:
 			bucket = states.faulted
+		case block.Clean:
+			bucket = states.clean
 		default:
 			return fmt.Errorf("waitForState: unsupported want=%d", want)
 		}

@@ -35,7 +35,9 @@ func (m *NoopMemory) Prefault(_ context.Context, _ int64, _ []byte) (bool, error
 	return false, nil
 }
 
-func (m *NoopMemory) DiffMetadata(ctx context.Context, f *fc.Process) (*header.DiffMetadata, error) {
+// DiffMetadata ignores useTrackerDirty: without a UFFD serve loop there is no
+// page tracker, so the memory-info RPC is the only source.
+func (m *NoopMemory) DiffMetadata(ctx context.Context, f *fc.Process, _ bool) (*header.DiffMetadata, error) {
 	diffInfo, err := f.MemoryInfo(ctx, m.blockSize)
 	if err != nil {
 		return nil, err
@@ -86,6 +88,10 @@ func (m *NoopMemory) Exit() *utils.ErrorOnce {
 }
 
 func (m *NoopMemory) Memfd(context.Context) *block.Memfd {
+	return nil
+}
+
+func (m *NoopMemory) PeekMemfd(context.Context) *block.Memfd {
 	return nil
 }
 

@@ -25,10 +25,31 @@ const metricExportPeriod = 15 * time.Second
 type Client struct {
 	MetricExporter  sdkmetric.Exporter
 	MeterProvider   metric.MeterProvider
+	forceFlush      func(ctx context.Context) error
 	SpanExporter    sdktrace.SpanExporter
 	TracerProvider  trace.TracerProvider
 	TracePropagator propagation.TextMapPropagator
 	LogsProvider    LogProvider
+}
+
+// histogramAggregation exports every histogram as base-2 exponential, whose
+// buckets adapt to the data instead of the SDK default boundaries that stop at
+// 10s. It also means metric.WithExplicitBucketBoundaries on an instrument is
+// discarded — that advice only survives when the reader default is an
+// explicit-bucket aggregation. Override per metric with a View, not with
+// boundaries.
+//
+// Sizing from https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
+func histogramAggregation(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
+	if kind == sdkmetric.InstrumentKindHistogram {
+		return sdkmetric.AggregationBase2ExponentialHistogram{
+			MaxSize:  160,
+			MaxScale: 20,
+			NoMinMax: false,
+		}
+	}
+
+	return sdkmetric.DefaultAggregationSelector(kind)
 }
 
 // New creates a telemetry client that exports traces, metrics, and logs via gRPC.
@@ -40,18 +61,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 	}
 
 	// Setup metrics
-	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(func(kind sdkmetric.InstrumentKind) sdkmetric.Aggregation {
-		if kind == sdkmetric.InstrumentKindHistogram {
-			// Defaults from https://github.com/open-telemetry/opentelemetry-specification/blob/main/specification/metrics/sdk.md#base2-exponential-bucket-histogram-aggregation
-			return sdkmetric.AggregationBase2ExponentialHistogram{
-				MaxSize:  160,
-				MaxScale: 20,
-				NoMinMax: false,
-			}
-		}
-
-		return sdkmetric.DefaultAggregationSelector(kind)
-	}))
+	metricsExporter, err := NewMeterExporter(ctx, otlpmetricgrpc.WithAggregationSelector(histogramAggregation))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create metrics exporter: %w", err)
 	}
@@ -89,6 +99,7 @@ func New(ctx context.Context, nodeID, serviceName, serviceCommit, serviceVersion
 	return &Client{
 		MetricExporter:  metricsExporter,
 		MeterProvider:   meterProvider,
+		forceFlush:      meterProvider.ForceFlush,
 		SpanExporter:    spanExporter,
 		TracerProvider:  tracerProvider,
 		TracePropagator: propagator,
@@ -112,6 +123,13 @@ func NewAnonymous(ctx context.Context, serviceName string) (*Client, error) {
 
 func (t *Client) Shutdown(ctx context.Context) error {
 	var errs []error
+
+	// Flush before the exporter is torn down: shutting it down first would
+	// leave the reader's pending batch with nowhere to go.
+	if err := t.forceFlush(ctx); err != nil {
+		errs = append(errs, err)
+	}
+
 	if t.MetricExporter != nil {
 		if err := t.MetricExporter.Shutdown(ctx); err != nil {
 			errs = append(errs, err)
@@ -135,6 +153,7 @@ func NewNoopClient() *Client {
 	return &Client{
 		MetricExporter:  &noopMetricExporter{},
 		MeterProvider:   noopMetric.MeterProvider{},
+		forceFlush:      func(context.Context) error { return nil },
 		SpanExporter:    &noopSpanExporter{},
 		TracerProvider:  noopTrace.NewTracerProvider(),
 		TracePropagator: propagation.NewCompositeTextMapPropagator(),

@@ -16,7 +16,7 @@ func newTestFeatureFlags(t *testing.T) (*featureflags.Client, *ldtestdata.TestDa
 	source := ldtestdata.DataSource()
 	ff, err := featureflags.NewClientWithDatasource(source)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(context.Background()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	return ff, source
 }

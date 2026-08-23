@@ -71,3 +71,27 @@ func (c *Client) ReleaseFault(token uint64) error {
 func (c *Client) Close() error {
 	return c.conn.Close()
 }
+
+// CoWBegin installs a CoW export window over the given page indices in the
+// serving child (real BeginCoWExport: arm + install through the live uffd).
+func (c *Client) CoWBegin(pages []uint64) error {
+	return c.rpc.Call("CoW.Begin", &CoWBeginArgs{Pages: pages}, &Empty{})
+}
+
+// CoWSweep drives the child's window Sweep to completion and uninstalls it
+// (real EndCoWExport through the serve loop's locks).
+func (c *Client) CoWSweep() (CoWSweepReply, error) {
+	var reply CoWSweepReply
+	err := c.rpc.Call("CoW.Sweep", &Empty{}, &reply)
+
+	return reply, err
+}
+
+// CoWState snapshots the child's window: capture progress, cancellation and
+// the sink contents.
+func (c *Client) CoWState() (CoWStateReply, error) {
+	var reply CoWStateReply
+	err := c.rpc.Call("CoW.State", &Empty{}, &reply)
+
+	return reply, err
+}

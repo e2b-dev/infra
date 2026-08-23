@@ -11,6 +11,7 @@ data "google_artifact_registry_docker_image" "db_migrator_image" {
 }
 
 data "google_artifact_registry_docker_image" "docker_reverse_proxy_image" {
+  count         = var.docker_reverse_proxy_enabled ? 1 : 0
   location      = var.gcp_region
   image_name    = "docker-reverse-proxy:latest"
   repository_id = var.core_repository_name

@@ -89,17 +89,20 @@ func legacyStorageURL(e storageEnv, bucket, basePath, name, bucketEnv, defaultBa
 		// The hierarchical file:// form cannot express a relative base
 		// path; use the opaque form.
 		return (&url.URL{Scheme: "file", Opaque: basePath}).String(), nil
-	case storage.GCPStorageProvider, storage.AWSStorageProvider:
+	case storage.GCPStorageProvider, storage.AWSStorageProvider, storage.AzureStorageProvider:
 		if bucket == "" {
 			return "", fmt.Errorf("%s storage bucket not configured: set %s", name, bucketEnv)
 		}
 
 		u := url.URL{Scheme: "gs", Host: bucket}
-		if provider == storage.AWSStorageProvider {
+		switch provider {
+		case storage.AWSStorageProvider:
 			u.Scheme = "s3"
 			if e.S3PathStyle {
 				u.RawQuery = url.Values{"s3ForcePathStyle": []string{"true"}}.Encode()
 			}
+		case storage.AzureStorageProvider:
+			u.Scheme = "azblob"
 		}
 
 		return u.String(), nil

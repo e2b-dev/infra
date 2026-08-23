@@ -14,7 +14,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
@@ -38,24 +37,22 @@ func (n *mockInfoClient) ServiceInfo(_ context.Context, _ *emptypb.Empty, _ ...g
 	}, nil
 }
 
-// mockSandboxClientMalformedList answers List successfully with a payload the
-// API cannot decode. This is how a live node fails a sync without ever failing
-// to respond: the RPC succeeds and GetSandboxes rejects the contents.
-type mockSandboxClientMalformedList struct {
+// mockSandboxClientFailingList fails the sandbox list call. This is how a live
+// node fails a sync while still proving it is reachable: ServiceInfo answers
+// and only the list call errors.
+type mockSandboxClientFailingList struct {
 	orchestrator.SandboxServiceClient
 }
 
-func (n *mockSandboxClientMalformedList) List(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*orchestrator.SandboxListResponse, error) {
-	return &orchestrator.SandboxListResponse{
-		Sandboxes: []*orchestrator.RunningSandbox{{Config: nil}},
-	}, nil
+func (n *mockSandboxClientFailingList) List(_ context.Context, _ *emptypb.Empty, _ ...grpc.CallOption) (*orchestrator.SandboxListResponse, error) {
+	return nil, errors.New("listing sandboxes failed")
 }
 
-// WithMalformedSandboxList makes the node answer every RPC but return a sandbox
-// list the API cannot decode.
-func WithMalformedSandboxList() TestOptions {
+// WithFailingSandboxList makes the node answer ServiceInfo but fail every
+// sandbox list call.
+func WithFailingSandboxList() TestOptions {
 	return func(node *TestNode) {
-		node.client.Sandbox = &mockSandboxClientMalformedList{}
+		node.client.Sandbox = &mockSandboxClientFailingList{}
 	}
 }
 
@@ -81,9 +78,24 @@ type mockSandboxClient struct {
 	orchestrator.SandboxServiceClient
 }
 
-// Create is a mock implementation that always returns success
-func (n *mockSandboxClient) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+// Create is a mock implementation that always returns success, echoing the
+// filesystem-boot demand like a current orchestrator build.
+func (n *mockSandboxClient) Create(_ context.Context, req *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	return &orchestrator.SandboxCreateResponse{FilesystemBootApplied: req.GetFilesystemBoot()}, nil
+}
+
+// mockLegacySandboxClient mimics an orchestrator that predates the
+// filesystem_boot field: it succeeds but never echoes the applied boot path.
+type mockLegacySandboxClient struct {
+	orchestrator.SandboxServiceClient
+}
+
+func (n *mockLegacySandboxClient) Create(_ context.Context, _ *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
 	return &orchestrator.SandboxCreateResponse{}, nil
+}
+
+func (n *mockLegacySandboxClient) Delete(_ context.Context, _ *orchestrator.SandboxDeleteRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
 }
 
 // mockTemplateClient implements templatemanager.TemplateServiceClient
@@ -121,6 +133,12 @@ func newMockGRPCClient() *clusters.GRPCClient {
 }
 
 type TestOptions func(node *TestNode)
+
+func WithLegacySandboxClient() TestOptions {
+	return func(node *TestNode) {
+		node.client.Sandbox = &mockLegacySandboxClient{}
+	}
+}
 
 func WithSandboxSleepingClient(baseSandboxCreateTime time.Duration) TestOptions {
 	return func(node *TestNode) {
@@ -166,13 +184,6 @@ func WithSandboxCreateError(err error) TestOptions {
 		node.client.Sandbox = &mockSandboxClientWithError{
 			err: err,
 		}
-	}
-}
-
-// WithFeatureFlags sets a custom feature flags client for the test node
-func WithFeatureFlags(ff *featureflags.Client) TestOptions {
-	return func(node *TestNode) {
-		node.featureflags = ff
 	}
 }
 

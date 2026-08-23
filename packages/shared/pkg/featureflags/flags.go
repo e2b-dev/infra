@@ -2,10 +2,11 @@ package featureflags
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/url"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -16,6 +17,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // kinds
@@ -134,6 +137,12 @@ var (
 	// guest lacks fsfreeze or the freeze fails.
 	FsFreezeViaExecFlag = NewBoolFlag("fsfreeze-via-exec", false)
 
+	// FsOnlyResumeAPIFlag accepts memory:false on resume/connect of a
+	// memory-inclusive snapshot (an explicit cold-boot rescue). Off = the
+	// request is rejected, never silently downgraded to a memory restore.
+	FsOnlyResumeAPIFlag = NewBoolFlag("fs-only-resume-api", false)
+
+
 	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
 	// tombstone on header load (one extra GCS Attrs on cold load). Off = no overhead.
 	StorageSoftDeleteCheckFlag = NewBoolFlag("storage-soft-delete-check", false)
@@ -145,6 +154,52 @@ var (
 	// pass the fd over the UFFD socket; the orchestrator then mmaps it
 	// directly instead of using process_vm_readv on pause.
 	UseMemFdFlag = NewBoolFlag("use-memfd", true)
+
+	// UseSyncWPFlag asks Firecracker (via use_sync_wp on snapshot load) to
+	// register guest memory for SYNCHRONOUS userfault write-protect events,
+	// which the orchestrator's serve loop resolves, instead of the kernel's
+	// in-place WP_ASYNC clears. Foundation for the copy-on-write background
+	// memory snapshot. Default off = WP_ASYNC, today's behavior. Enable only
+	// where the deployed FC accepts the use_sync_wp field: FC rejects unknown
+	// fields on snapshot load, so a mismatch fails the resume loudly.
+	UseSyncWPFlag = NewBoolFlag("use-sync-wp", false)
+
+	// InPlaceCheckpointFlag makes Checkpoint pause, snapshot and resume the
+	// SAME Firecracker process (in-place) instead of resuming a fresh sandbox
+	// from the new build. Only honored for sandboxes resumed with
+	// UseSyncWPFlag on: in-place skips the snapshot re-load that re-arms
+	// write-protection, so dirty tracking across repeated checkpoints relies
+	// on the sync-WP serve loop; resume-fresh stays the fallback for async
+	// sandboxes and when this flag is off.
+	InPlaceCheckpointFlag = NewBoolFlag("in-place-checkpoint", false)
+
+	// DeferMemoryExportFlag makes the in-place checkpoint export guest
+	// memory through the CoW window instead of the synchronous dirty-RAM
+	// copy: the dirty set is write-protect-armed while the VM is paused, the
+	// guest resumes immediately, and pages are captured in the background
+	// (first guest write to an uncaptured page copies the pre-image before
+	// the write proceeds). Only takes effect on the in-place path with a
+	// sync-WP UFFD backend. When the VM's balloon runs continuous free-page
+	// REPORTING, reporting is PAUSED for the window's lifetime (a REMOVE
+	// zapping an uncaptured page would export zeros where pause-time content
+	// is owed); requires an FC build with /balloon/reporting — pause failures
+	// fall back to the synchronous copy. (The synchronous pre-pause
+	// free-page-hinting drain settles before the dirty readout and needs no
+	// pause.) Default off = today's synchronous copy.
+	DeferMemoryExportFlag = NewBoolFlag("defer-memory-export", false)
+
+	// SyncWPTrackerDirtyFlag derives the pause-time dirty set from the
+	// orchestrator's page tracker (installs + synchronous WP-fault
+	// promotions) instead of Firecracker's GetDirtyMemory pagemap scan,
+	// skipping that RPC entirely. Only consulted for sandboxes resumed with
+	// UseSyncWPFlag on — under WP_ASYNC the kernel clears protections
+	// in-place and the tracker never sees guest writes. Evaluated fresh at
+	// each pause, so flipping it off immediately reverts running sandboxes to
+	// the pagemap source (kill switch). Burn-in gate before enabling: the
+	// dirty-source divergence log (emitted while this flag is off) must
+	// show pagemap_only == 0 for sync-WP sandboxes — a nonzero count means
+	// the tracker missed a write and would corrupt the snapshot.
+	SyncWPTrackerDirtyFlag = NewBoolFlag("sync-wp-tracker-dirty", false)
 
 	// MemfdBackgroundCopyFlag streams the memfd into the snapshot cache on
 	// a goroutine so Pause returns as soon as the diff metadata is written.
@@ -183,11 +238,40 @@ var (
 	// of synchronous. Only safe to enable after PeerToPeerChunkTransferFlag is ON.
 	PeerToPeerAsyncCheckpointFlag = NewBoolFlag("peer-to-peer-async-checkpoint", false)
 
-	PersistentVolumesFlag            = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
-	SandboxLabelBasedSchedulingFlag  = NewBoolFlag("sandbox-label-based-scheduling", false)
-	OptimisticResourceAccountingFlag = NewBoolFlag("sandbox-placement-optimistic-resource-accounting", false)
-	FreePageReportingFlag            = NewBoolFlag("free-page-reporting", false)
-	FreezeUserCgroupFlag             = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// DeferRootfsExportFlag moves the rootfs diff seal (the reflink, which forces a
+	// synchronous host->NVMe writeback) off the pause critical path. On the
+	// suspend (pause) path, pause() ejects the cache and stops the sandbox, then
+	// reflinks the diff in the background — nothing reads the diff until a later
+	// resume. On the in-place checkpoint path, pause() swaps a fresh writable
+	// cache in, resumes the VM, seals the frozen old cache in the background and
+	// folds it back into the writable cache when done. Off by default; falls
+	// back to the synchronous export when off or on a non-NBD provider.
+	DeferRootfsExportFlag = NewBoolFlag("defer-rootfs-export", false)
+
+	PersistentVolumesFlag           = NewBoolFlag("can-use-persistent-volumes", env.IsDevelopment())
+	SandboxLabelBasedSchedulingFlag = NewBoolFlag("sandbox-label-based-scheduling", false)
+	FreePageReportingFlag           = NewBoolFlag("free-page-reporting", false)
+	FreezeUserCgroupFlag            = NewBoolFlag("freeze-user-cgroup", env.IsDevelopment())
+	// FreezeGuestHierarchyFlag selects the hierarchy walk over the static user/pty list,
+	// i.e. whether cgroups the customer created anywhere in the tree are frozen before a
+	// pause. Default off: it changes which cgroups are stopped, which is a behaviour
+	// change on the pause path.
+	//
+	// Evaluated here rather than in envd because envd has no LaunchDarkly, so the mode
+	// travels on the /freeze call. That also means it can be ON at pause and OFF at the
+	// following resume, which is why the thaw discovers what is frozen instead of
+	// recomputing what should have been.
+	FreezeGuestHierarchyFlag = NewBoolFlag("freeze-guest-hierarchy", false)
+
+	// FreezeGuestHierarchyMaxCgroupsFlag bounds one hierarchy sweep. A safety guard, not
+	// a performance one -- the walk is breadth-bounded along a 2-deep chain, so a normal
+	// guest visits tens. It exists for a pathological or hostile hierarchy, the guest
+	// being the threat model, and truncation is reported rather than swallowed.
+	//
+	// Safe to lower; the THAW's bound (in envd) is separate and must never be lowered,
+	// because a thaw that truncates below what a freeze covered strands a guest frozen.
+	FreezeGuestHierarchyMaxCgroupsFlag = NewIntFlag("freeze-guest-hierarchy-max-cgroups", 512)
+
 	// CollapseEnvdHeapFlag makes the orchestrator ask envd to collapse its own
 	// anonymous heap into 2 MiB hugepages just before pause, reducing the number
 	// of distinct frames envd faults on resume. Off by default; rolled out via LD.
@@ -200,6 +284,25 @@ var (
 	// helps, so this can be tuned per rollout without redeploying. The fallback
 	// (returned when LD is unavailable or the flag is unset) is the default.
 	CollapseEnvdHeapTimeoutMsFlag = NewIntFlag("collapse-envd-heap-timeout-ms", 10000) // 10s in milliseconds
+
+	// FreezeUserCgroupTimeoutMsFlag bounds the pre-pause freeze call that
+	// FreezeUserCgroupFlag enables, in milliseconds. The call waits for the workload's
+	// cgroups to actually stop, and quiesce latency is the guest's cost, not ours: a
+	// cgroup whose tasks are idle confirms in single-digit milliseconds, one in
+	// continuous I/O has been measured taking seconds. The default keeps the historical
+	// budget; raise it once the freeze metrics show how often it is the binding
+	// constraint. envd is told to confirm within a margin of this, so one knob moves
+	// both halves.
+	//
+	// The value bounds pause latency directly: a sandbox that will not quiesce holds the
+	// pause for this long before we give up on it. That is the cost being traded against
+	// snapshotting a running workload, and it is why raising it wants evidence.
+	//
+	// Effective ceiling of 10s. The shared sandbox HTTP client caps every request at that,
+	// so a larger value here is silently truncated to it while the failure is still
+	// recorded against the value set here. Tracked separately; until it is lifted, a value
+	// above 10s buys nothing and makes the timeout metric misleading.
+	FreezeUserCgroupTimeoutMsFlag = NewIntFlag("freeze-user-cgroup-timeout-ms", 2000) // 2s in milliseconds
 
 	// VolumeFallbackToUnmatchedNodesFlag allows volume operations to fall back to
 	// orchestrator nodes that don't advertise the volume's type label when every
@@ -221,6 +324,11 @@ var (
 	// SandboxIamTokensFlag gates the sandbox IAM workload token configuration
 	// (iam.tokens) per team during beta.
 	SandboxIamTokensFlag = NewBoolFlag("enable-sandbox-iam-tokens", env.IsDevelopment())
+
+	// CustomerSecretsFlag gates the customer-facing secret management routes
+	// per project during rollout. It falls back to off, so a deployment that
+	// cannot reach LaunchDarkly keeps the routes dark.
+	CustomerSecretsFlag = NewBoolFlag("customer-secrets", false)
 
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,
@@ -345,6 +453,37 @@ var (
 	// MemoryPrefetchMaxCopyWorkers is the maximum number of parallel copy workers per sandbox for memory prefetching.
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
+
+	// MemoryPrefetchCoalesceMaxMB caps how many contiguous prefetch blocks are
+	// merged into a single source.Slice fetch (in MiB of extent size). 0
+	// disables coalescing: every block is fetched individually, matching
+	// today's behavior. The copy phase is unaffected either way — it always
+	// installs one page at a time, because Userfaultfd.Prefault installs a
+	// single page per call.
+	MemoryPrefetchCoalesceMaxMB = NewIntFlag("memory-prefetch-coalesce-max-mb", 0)
+
+	// ResumePrefetchSourceFlag selects which trace the resume prefetcher
+	// replays:
+	//   "init"     — only the build-time / harvested read-hot init trace
+	//                (meta.Prefetch.Memory), prefaulted. Preserves today's
+	//                behavior, so this is the default and a no-op-equivalent.
+	//   "last-cycle" — only the sandbox's own pause diff (the pages the last
+	//                resume→pause cycle wrote), derived from the memfile header
+	//                and replayed fetch-only.
+	//   "both"     — init first (prefaulted), then last-cycle (fetch-only) behind
+	//                a barrier, so the large last-cycle fetch stays off the
+	//                resume-critical path.
+	//   "off"      — kill switch, no resume prefetch.
+	// Unknown values fall back to "init".
+	ResumePrefetchSourceFlag = NewStringFlag("resume-prefetch-source", "init")
+
+	// ResumeLastCyclePrefetchMaxMiBFlag caps how much of the last-cycle diff a single
+	// resume prefetches, in MiB. -1 (the default, negative = no limit per the
+	// codebase convention) is uncapped; the recorded diff is small by
+	// construction, so this exists to throttle the heavy-churn tail against the
+	// shared object-store pool without a redeploy. A non-negative N keeps the
+	// first N MiB of blocks in offset order and leaves the rest to demand-fault.
+	ResumeLastCyclePrefetchMaxMiBFlag = NewIntFlag("resume-last-cycle-prefetch-max-mib", -1)
 
 	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
 	// snapshot is durable, run a throwaway warm resume of the just-written
@@ -515,12 +654,54 @@ var FirecrackerVersionMap = map[string]string{
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
-	BuildFirecrackerVersion     = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
-	BuildKernelVersion          = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
-	BuildIoEngine               = NewStringFlag("build-io-engine", "Sync")
-	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
-	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	BuildFirecrackerVersion = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
+	BuildKernelVersion      = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
+	BuildIoEngine           = NewStringFlag("build-io-engine", "Sync")
+
+	// BuildKernelCmdlineArgs supplies extra guest kernel command line parameters at
+	// template build time, keyed on team, as a command line fragment:
+	//
+	//	psi=1
+	//	psi=1 nokaslr
+	//
+	// Empty (the default) is the command line every sandbox has always booted with, so a
+	// team that is not targeted is unaffected. Adding a parameter is a flag edit — no
+	// orchestrator change and no deploy.
+	//
+	// Parsed the way the kernel parses a command line: whitespace separates parameters,
+	// the first '=' separates a name from its value, and a parameter with no '=' has an
+	// empty value. The orchestrator rejects the whole fragment if it sets a parameter it
+	// reserves (init, clocksource, root, ip, console, rootflags, panic, reboot, loglevel,
+	// quiet — see packages/orchestrator/pkg/sandbox/fc), falling back to the default
+	// command line rather than failing the build. The parsed parameters are recorded in
+	// the template's metadata and replayed when a filesystem-only snapshot cold-boots, so
+	// a snapshot keeps booting the way it was built even if this flag later changes.
+	BuildKernelCmdlineArgs = NewStringFlag("build-kernel-cmdline-args", "")
+
+	// EnvdUpgradeTargetFlag drives the resume-time envd live-upgrade.
+	// Multivariate string:
+	//   "off"        (fallback) — no upgrade; dev has no LD so this is inert & safe.
+	//   "promoted"   — track the node-local promoted envd (HOST_ENVD_PATH); upgrade
+	//                  whenever it differs from the sandbox's built-with version
+	//                  (no per-publish flag edits needed).
+	//   "<git-sha>"  — pin a specific versioned binary (/fc-envd/envd.<sha>).
+	// The resume-site LD context carries envd-version/team/template, so %-ramp
+	// and cohort canaries come for free. The fallback is env-overridable
+	// (ENVD_UPGRADE_TARGET) so it can be exercised where there is no LD (dev),
+	// mirroring build-firecracker-version's DEFAULT_FIRECRACKER_VERSION.
+	EnvdUpgradeTargetFlag = NewStringFlag("envd-upgrade-target", env.GetEnv("ENVD_UPGRADE_TARGET", "off"))
+	// EnvdOfflineUpgradeTargetFlag drives the OFFLINE envd upgrade of a
+	// filesystem-only snapshot: at cold-boot resume the rootfs binary is rewritten
+	// (jailed debugfs) before the guest boots, reaching envd too old to self-upgrade
+	// (< MinEnvdVersionForUpgrade). Same value grammar and resolver as
+	// EnvdUpgradeTargetFlag ("off" / "promoted" / "<git-sha>"); a SEPARATE flag so
+	// the newer/riskier offline mechanism ramps independently of the live path. The
+	// fallback is env-overridable (ENVD_OFFLINE_UPGRADE_TARGET) for dev, where there
+	// is no LD. Default off.
+	EnvdOfflineUpgradeTargetFlag = NewStringFlag("envd-offline-upgrade-target", env.GetEnv("ENVD_OFFLINE_UPGRADE_TARGET", "off"))
+	DefaultPersistentVolumeType  = NewStringFlag("default-persistent-volume-type", "")
+	BuildNodeInfo                = NewJSONFlag("preferred-build-node", ldvalue.Null())
+	FirecrackerVersions          = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 
 	// ClickhouseReadEndpointFlag selects which ClickHouse DSN to use for reads.
 	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).
@@ -809,27 +990,184 @@ func isSafeLogURL(raw string) bool {
 	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
 }
 
+// Named under orchestrator.* (the resolver's sole caller) so it passes the
+// otel collector's include-only metric allow-list.
+const firecrackerVersionResolutionMetricName = "orchestrator.firecracker.version_resolution"
+
+var firecrackerVersionResolutionMetric = mustLogRoutingCounter(
+	firecrackerVersionResolutionMetricName,
+	"Number of firecracker version resolutions by outcome, fallback reason, map key and served version",
+)
+
+// The version attribute is set only on hits, where it is a flag-map value.
+// The raw stored string never becomes a label: it carries per-build entropy
+// that LDKey strips to the release line, so fallbacks record only the key.
+func recordFirecrackerResolved(ctx context.Context, key, version string) {
+	addFirecrackerResolution(ctx, "resolved", "", key, version)
+}
+
+func recordFirecrackerFallback(ctx context.Context, reason, key string) {
+	addFirecrackerResolution(ctx, "fallback", reason, key, "")
+}
+
+func addFirecrackerResolution(ctx context.Context, outcome, reason, key, version string) {
+	if firecrackerVersionResolutionMetric == nil {
+		return
+	}
+
+	firecrackerVersionResolutionMetric.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("outcome", outcome),
+		attribute.String("reason", reason),
+		attribute.String("key", key),
+		attribute.String("version", version),
+	))
+}
+
 // ResolveFirecrackerVersion resolves the firecracker version using the FirecrackerVersions feature flag.
-// The buildVersion format is "v1.12.1_210cbac" — we extract "v1.12" as the lookup key.
+// The stored version's LD key (e.g. "v1.12" for "v1.12.1_210cbac", "v1.14-0"
+// for "v1.14-0.1.0") is looked up in the flag map; on parse failure or a
+// missing key the stored version is returned unchanged.
 func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion string) string {
-	parts := strings.Split(buildVersion, "_")
-	if len(parts) < 2 {
+	info, err := fcversion.New(buildVersion)
+	if err != nil {
+		recordFirecrackerFallback(ctx, "parse_error", "")
+
 		return buildVersion
 	}
 
-	versionParts := strings.Split(strings.TrimPrefix(parts[0], "v"), ".")
-	if len(versionParts) < 2 {
+	key, ok := info.LDKey()
+	if !ok {
+		recordFirecrackerFallback(ctx, "no_ld_key", "")
+
 		return buildVersion
 	}
 
-	key := fmt.Sprintf("v%s.%s", versionParts[0], versionParts[1])
 	versions := ff.JSONFlag(ctx, FirecrackerVersions).AsValueMap()
 
 	if resolved, ok := versions.Get(key).AsOptionalString().Get(); ok {
+		// An empty map value would blank the binary path fleet-wide; serve
+		// the stored version instead and make the misconfiguration loud.
+		if resolved == "" {
+			recordFirecrackerFallback(ctx, "empty_value", key)
+
+			return buildVersion
+		}
+		recordFirecrackerResolved(ctx, key, resolved)
+
 		return resolved
 	}
 
+	recordFirecrackerFallback(ctx, "key_absent", key)
+
 	return buildVersion
+}
+
+// ResolveEnvdUpgrade decides whether a resuming sandbox's envd should be swapped
+// for a newer node-local build, per EnvdUpgradeTargetFlag, and returns the local
+// path of the target binary ("" = no upgrade). It is the resume-time analog of
+// ResolveFirecrackerVersion.
+//
+// hostEnvdPath is the promoted binary (cfg HostEnvdPath, e.g. /fc-envd/envd);
+// versioned binaries live beside it as envd.<sha>. getVersion resolves a
+// binary's baked version (orchestrator's build/core/envd.GetEnvdVersion) — it is
+// injected so this shared package does not depend on the orchestrator.
+//
+// The "should we upgrade?" test compares baked version *strings* (built-with vs
+// the target's version). This is sufficient because CLAUDE.md mandates bumping
+// packages/envd/pkg/version.go on every behavioral change; if that ever stops
+// holding, a same-version binary swap would be skipped and this must switch to
+// comparing by git SHA.
+// It returns the target binary's path and baked version ("" path = no upgrade),
+// plus a reason for the no-upgrade case — off | not_staged | getversion_failed |
+// same_version | downgrade, and "" when an upgrade IS returned — so the caller
+// can tell a benign no-op (off / same_version) from a misconfigured target
+// (not_staged from a bad SHA, getversion_failed, a refused downgrade).
+func ResolveEnvdUpgrade(
+	ctx context.Context,
+	ff *Client,
+	builtWithVersion string,
+	hostEnvdPath string,
+	getVersion func(context.Context, string) (string, error),
+) (path, version, reason string) {
+	return resolveEnvdUpgradePath(ctx, ff.StringFlag(ctx, EnvdUpgradeTargetFlag), builtWithVersion, hostEnvdPath, getVersion)
+}
+
+// ResolveEnvdOfflineUpgrade is the offline-swap analog of ResolveEnvdUpgrade
+// same pure decision, keyed on EnvdOfflineUpgradeTargetFlag so the
+// offline path ramps independently of the live one. builtWithVersion is the
+// snapshot's recorded envd version (there is no running envd at cold-boot swap
+// time), so — unlike the live path, which keys on the reported LiveEnvdVersion —
+// the built-with never advances across an upgrade and this resolver keeps
+// returning the same target on every resume until a re-pause re-bakes the
+// version (an accepted, idempotent per-resume re-fire).
+func ResolveEnvdOfflineUpgrade(
+	ctx context.Context,
+	ff *Client,
+	builtWithVersion string,
+	hostEnvdPath string,
+	getVersion func(context.Context, string) (string, error),
+	evalContexts ...ldcontext.Context,
+) (path, version, reason string) {
+	return resolveEnvdUpgradePath(ctx, ff.StringFlag(ctx, EnvdOfflineUpgradeTargetFlag, evalContexts...), builtWithVersion, hostEnvdPath, getVersion)
+}
+
+// resolveEnvdUpgradePath is the pure decision, split out so it can be unit-tested
+// without a LaunchDarkly client (the flag value is passed directly). It returns
+// the target path and its baked version, or ("", "", <reason>) for no upgrade.
+// envdUpgradeTargetRe constrains a concrete-SHA EnvdUpgradeTargetFlag value to a
+// bare alphanumeric identifier (git SHAs are hex, but any staged-binary suffix
+// is safe) so it can't traverse out of the envd staging directory when joined
+// into the candidate path.
+var envdUpgradeTargetRe = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+
+func resolveEnvdUpgradePath(
+	ctx context.Context,
+	target string,
+	builtWithVersion string,
+	hostEnvdPath string,
+	getVersion func(context.Context, string) (string, error),
+) (path, version, reason string) {
+	var candidate string
+	switch target {
+	case "", "off":
+		return "", "", "off"
+	case "promoted":
+		candidate = hostEnvdPath
+	default:
+		// A concrete git SHA -> the versioned binary next to the promoted one.
+		// The flag value becomes both a filesystem path and an exec target
+		// (version probing runs `<candidate> -version`), so reject anything that
+		// isn't a bare alphanumeric identifier: a value with path separators or
+		// ".." (e.g. "../../bin/sh") would otherwise escape the staging directory
+		// and run an arbitrary host binary.
+		if !envdUpgradeTargetRe.MatchString(target) {
+			return "", "", "invalid_target"
+		}
+		candidate = filepath.Join(filepath.Dir(hostEnvdPath), "envd."+target)
+	}
+
+	if _, err := os.Stat(candidate); err != nil {
+		// Not staged on this node — e.g. a bad SHA / rubbish flag value, or a
+		// node that has not fetched the target yet.
+		return "", "", "not_staged"
+	}
+
+	targetVersion, err := getVersion(ctx, candidate)
+	if err != nil || targetVersion == "" {
+		return "", "", "getversion_failed"
+	}
+	if targetVersion == builtWithVersion {
+		return "", "", "same_version" // already on the target (idempotent re-resume)
+	}
+	// Upgrade only: refuse to swap in an older envd. A staged binary that is not
+	// strictly newer than the sandbox's built-with version would otherwise be a
+	// live downgrade on resume. (Rollback, if ever needed, must be an explicit
+	// separate mechanism.)
+	if newer, verr := utils.IsGTEVersion(targetVersion, builtWithVersion); verr != nil || !newer {
+		return "", "", "downgrade"
+	}
+
+	return candidate, targetVersion, ""
 }
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.

@@ -89,10 +89,6 @@ func GRPCLogger(l Logger) logging.Logger {
 	})
 }
 
-func WithoutHealthCheck() selector.Matcher {
-	return WithoutRoutes(HealthCheckRoute)
-}
-
 func WithoutRoutes(routes ...string) selector.Matcher {
 	return selector.MatchFunc(func(_ context.Context, c interceptors.CallMeta) bool {
 		return !slices.Contains(routes, c.FullMethod())

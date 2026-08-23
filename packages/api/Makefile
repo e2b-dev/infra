@@ -6,13 +6,37 @@ PREFIX := $(strip $(subst ",,$(PREFIX)))
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
 
-expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
+# Read the latest migration from the sibling db package. The path is relative
+# to this package, not to the repository root, so it resolves both here and in
+# the published repository, where this package sits at packages/api.
+expectedMigration := $(shell ls ../db/migrations | sed 's/_.*//' | sort | tail -n 1)
 
 ifeq ($(PROVIDER),aws)
 	REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core
 else
 	REGISTRY_PREFIX := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core
 endif
+
+# E2B-hosted registry repo holding released, prebuilt api AND db-migrator
+# images — they release as one unit from this package's docker-bake.hcl.
+# Published to by the release-please workflow on tagging a release.
+E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/api
+
+# Optional version "hook" for the released-image flow.
+# When empty (default), build-and-upload bakes both images from source and
+# pushes to the client's own core repo (the existing flow, unchanged).
+# When set (e.g. API_VERSION=v0.1.0), skip building: pull the released api
+# and db-migrator images from $(E2B_ARTIFACTS_REGISTRY) and retag/push them
+# into the client's core repo. One API_VERSION covers BOTH images on purpose:
+# the api bakes in the migration timestamp its startup guard expects and the
+# migrator bakes in the migrations, so a shared version makes schema skew
+# between them impossible.
+#
+# Set it either on the command line (make ... API_VERSION=v0.1.0) or in the
+# active .env.${ENV} file, which is included above. Quotes are stripped so
+# both `=v0.1.0` and `="v0.1.0"` work; a command-line value always wins over
+# the env file.
+API_VERSION := $(strip $(subst ",,$(API_VERSION)))
 
 .PHONY: generate
 generate:
@@ -25,11 +49,17 @@ build:
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
 	CGO_ENABLED=0 go build -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
 
+# Compiler flags for debug builds. The default disables optimizations and
+# inlining so binaries are debugger-friendly. CI overrides this with an empty
+# value: race-instrumented but optimized binaries compile faster and speed up
+# every integration test at runtime.
+DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
+
 .PHONY: build-debug
 build-debug:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
-	CGO_ENABLED=1 go build -race -gcflags=all="-N -l" -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
+	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
 
 .PHONY: run
 run:
@@ -73,12 +103,31 @@ profiler:
 
 .PHONY: build-and-upload
 build-and-upload:
+ifeq ($(strip $(API_VERSION)),)
+	# Existing flow: bake both images from source and push to the client's
+	# own core repo.
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
 	cd .. && REGISTRY_PREFIX=$(REGISTRY_PREFIX) \
 		COMMIT_SHA=$(COMMIT_SHA) \
 		EXPECTED_MIGRATION_TIMESTAMP=$(EXPECTED_MIGRATION_TIMESTAMP) \
 		docker buildx bake -f api/docker-bake.hcl --push
+else
+	# Released-image flow: pull the prebuilt, versioned api + db-migrator
+	# images from the E2B artifacts registry and retag/push them into the
+	# client's own core repo.
+	@echo "Using released api + db-migrator $(API_VERSION) from $(E2B_ARTIFACTS_REGISTRY)"
+	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION)
+	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION)
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION) $(REGISTRY_PREFIX)/api:latest
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION) $(REGISTRY_PREFIX)/api:$(API_VERSION)
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION) $(REGISTRY_PREFIX)/db-migrator:latest
+	docker tag $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION) $(REGISTRY_PREFIX)/db-migrator:$(API_VERSION)
+	docker push $(REGISTRY_PREFIX)/api:latest
+	docker push $(REGISTRY_PREFIX)/api:$(API_VERSION)
+	docker push $(REGISTRY_PREFIX)/db-migrator:latest
+	docker push $(REGISTRY_PREFIX)/db-migrator:$(API_VERSION)
+endif
 
 .PHONY: test
 test:

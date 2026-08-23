@@ -31,13 +31,27 @@ var authExcludedPaths = []string{
 	"POST/init",
 }
 
+// handoverPreInitAllowedPaths is the MINIMAL set reachable on a live-upgraded
+// envd before its post-upgrade /init has restored the access token: only /init
+// (which restores auth and lifts this gate, self-authenticated via MMDS) and
+// the health check. It deliberately omits /files — unlike authExcludedPaths —
+// so a re-adopted (possibly hostile) guest process can't reach the
+// root-privileged file API unauthenticated in that window. The orchestrator
+// delivers the upgrade over /upgrade's body, not /files, so nothing legitimate
+// needs /files before /init.
+var handoverPreInitAllowedPaths = []string{
+	"GET/health",
+	"POST/init",
+}
+
 func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		if a.accessToken.IsSet() {
-			authHeader := req.Header.Get(accessTokenHeader)
+		// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
+		allowedPath := slices.Contains(authExcludedPaths, req.Method+req.URL.Path)
 
-			// check if this path is allowed without authentication (e.g., health check, endpoints supporting signing)
-			allowedPath := slices.Contains(authExcludedPaths, req.Method+req.URL.Path)
+		switch {
+		case a.accessToken.IsSet():
+			authHeader := req.Header.Get(accessTokenHeader)
 
 			if !a.accessToken.Equals(authHeader) && !allowedPath {
 				a.logger.Error().Msg("Trying to access secured envd without correct access token")
@@ -47,6 +61,24 @@ func (a *API) WithAuthorization(handler http.Handler) http.Handler {
 
 				return
 			}
+
+		case a.handover != nil && !a.initialized.Load() && !slices.Contains(handoverPreInitAllowedPaths, req.Method+req.URL.Path):
+			// A live-upgraded envd serves before its post-upgrade /init has
+			// restored the access token — and the fallback thaw may already be
+			// running the re-adopted workload. The sandbox HAD a token (it is a
+			// resume), so treat the unset token as "not yet restored" and fail
+			// CLOSED here rather than falling through to the open path below,
+			// which would let a re-adopted (and possibly hostile) guest process
+			// reach control endpoints unauthenticated in this window. Only the
+			// minimal handoverPreInitAllowedPaths (/init, /health) get through —
+			// notably NOT /files, whose root file API is otherwise unauthenticated
+			// (it is in authExcludedPaths). /init self-authenticates via MMDS and
+			// lifts this gate.
+			a.logger.Warn().Msg("blocking pre-init request on live-upgraded envd (auth not yet restored)")
+
+			jsonError(w, http.StatusUnauthorized, errors.New("envd not initialized"))
+
+			return
 		}
 
 		handler.ServeHTTP(w, req)

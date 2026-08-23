@@ -15,11 +15,13 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.uber.org/zap"
+	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	sandboxcountscache "github.com/e2b-dev/infra/packages/api/internal/cache/sandboxcounts"
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -28,6 +30,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	orchdiscovery "github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	managementv1 "github.com/e2b-dev/infra/packages/api/internal/secretsstore/management/v1"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -65,12 +68,17 @@ func newInClusterKubeClient() (kubernetes.Interface, error) {
 
 var _ api.ServerInterface = (*APIStore)(nil)
 
+type teamRunningSandboxCounter interface {
+	TeamRunningSandboxCounts(ctx context.Context) (map[uuid.UUID]int64, error)
+}
+
 type APIStore struct {
 	Healthy               atomic.Bool
 	config                cfg.Config
 	posthog               *analyticscollector.PosthogClient
 	Telemetry             *telemetry.Client
 	orchestrator          *orchestrator.Orchestrator
+	teamSandboxCounter    teamRunningSandboxCounter
 	templateManager       *template_manager.TemplateManager
 	sqlcDB                *sqlcdb.Client
 	authDB                *authdb.Client
@@ -88,6 +96,12 @@ type APIStore struct {
 	snapshotUpsertSem     *sharedutils.AdjustableSemaphore
 	sandboxListSem        *sharedutils.AdjustableSemaphore
 	snapshotBuildQuerySem *sharedutils.AdjustableSemaphore
+
+	// secretsConn and secretsManagement are nil when no secrets store backend
+	// address is configured. The routes stay registered either way and answer
+	// as they do when the feature gate is closed.
+	secretsConn       *grpc.ClientConn
+	secretsManagement managementv1.SecretManagementServiceClient
 }
 
 func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.UniversalClient, featureFlags *featureflags.Client, config cfg.Config) *APIStore {
@@ -271,9 +285,25 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	// Start the periodic sync of template builds statuses
 	go templateManager.BuildsStatusPeriodicalSync(ctx)
 
+	// An unset address leaves the secret management routes registered and
+	// answering as they do when the feature gate is closed.
+	var (
+		secretsConn       *grpc.ClientConn
+		secretsManagement managementv1.SecretManagementServiceClient
+	)
+	if config.SecretsStoreBackendGrpcAddress != "" {
+		secretsConn, err = newSecretsManagementClient(config.SecretsStoreBackendGrpcAddress)
+		if err != nil {
+			logger.L().Fatal(ctx, "Initializing secrets store management client", zap.Error(err))
+		}
+
+		secretsManagement = managementv1.NewSecretManagementServiceClient(secretsConn)
+	}
+
 	a := &APIStore{
 		config:                config,
 		orchestrator:          orch,
+		teamSandboxCounter:    sandboxcountscache.NewCountsCache(orch, redisClient),
 		templateManager:       templateManager,
 		sqlcDB:                sqlcDB,
 		authDB:                authDB,
@@ -293,6 +323,8 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		snapshotUpsertSem:     snapshotUpsertSem,
 		sandboxListSem:        sandboxListSem,
 		snapshotBuildQuerySem: snapshotBuildQuerySem,
+		secretsConn:           secretsConn,
+		secretsManagement:     secretsManagement,
 	}
 
 	go a.updateDBThrottleLimits(ctx)
@@ -370,6 +402,12 @@ func (a *APIStore) Close(ctx context.Context) error {
 	if a.sandboxLogsReader != nil {
 		if err := a.sandboxLogsReader.Close(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("closing ClickHouse sandbox logs reader: %w", err))
+		}
+	}
+
+	if a.secretsConn != nil {
+		if err := a.secretsConn.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("closing secrets store management client: %w", err))
 		}
 	}
 

@@ -33,7 +33,7 @@ func newTestFeatureFlags(t *testing.T) (*featureflags.Client, *ldtestdata.TestDa
 	source := ldtestdata.DataSource()
 	ff, err := featureflags.NewClientWithDatasource(source)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = ff.Close(context.Background()) })
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
 
 	return ff, source
 }
@@ -103,7 +103,7 @@ func TestNew_AlternateFactoryFailures(t *testing.T) {
 	require.False(t, s.alternateNonNil[1])
 	require.False(t, s.alternateNonNil[2])
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Should fall back to default for skipped alternates
 	setFlag(t, source, flag.Key(), "1") // bad-err
@@ -160,7 +160,7 @@ func TestSwitcher_Resolve_EdgeCases(t *testing.T) {
 			})
 			require.NoError(t, err)
 
-			ctx := context.Background()
+			ctx := t.Context()
 			setFlag(t, source, flag.Key(), tt.flagVal)
 			require.Equal(t, tt.expected, s.Resolve(ctx).id)
 			require.Equal(t, tt.warns, s.warnCount.Load())
@@ -178,7 +178,7 @@ func TestSwitcher_WarnCap_Deduplication(t *testing.T) {
 	}, WithWarnCap[*fakeResource](2))
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Warn 1
 	setFlag(t, source, flag.Key(), "bad-1")
@@ -266,7 +266,7 @@ func TestSwitcher_Close_Idempotence(t *testing.T) {
 	s, err := New[*fakeResource](t.Context(), ff, flag, "", nil, func(string) (*fakeResource, error) { return nil, nil }, WithDefaultClient[*fakeResource](def))
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := t.Context()
 	require.NoError(t, s.Close(ctx))
 	require.Equal(t, int32(1), def.closeCalls.Load())
 
@@ -287,7 +287,7 @@ func TestSwitcher_WithDefaultClient(t *testing.T) {
 		WithDefaultClient[*fakeResource](def),
 	)
 	require.NoError(t, err)
-	require.Equal(t, def, s.Resolve(context.Background()))
+	require.Equal(t, def, s.Resolve(t.Context()))
 
 	// P1: Test WithDefaultClient(nil) vulnerability
 	_, err = New[*fakeResource](
@@ -313,7 +313,7 @@ func TestSwitcher_WithMeter(t *testing.T) {
 
 	// Exercise Resolve with metrics enabled
 	setFlag(t, source, flag.Key(), "")
-	s.Resolve(context.Background())
+	s.Resolve(t.Context())
 }
 
 func TestSwitcher_RecoveryAfterInvalid(t *testing.T) {
@@ -326,7 +326,7 @@ func TestSwitcher_RecoveryAfterInvalid(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// 1. Start with invalid
 	setFlag(t, source, flag.Key(), "bad")
@@ -361,7 +361,7 @@ func TestSwitcher_Concurrency_LiveUpdates(t *testing.T) {
 	require.NoError(t, err)
 
 	var wg sync.WaitGroup
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Hammer resolve
 	for i := range 20 {

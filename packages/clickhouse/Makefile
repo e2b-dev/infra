@@ -6,6 +6,8 @@ CLICKHOUSE_HOST ?= clickhouse
 
 ifeq ($(PROVIDER),aws)
 	CLICKHOUSE_MIGRATOR_IMAGE ?= $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core/clickhouse-migrator
+else ifeq ($(PROVIDER),azure)
+	CLICKHOUSE_MIGRATOR_IMAGE ?= $(AZURE_REGISTRY_NAME).azurecr.io/$(PREFIX)core/clickhouse-migrator
 else
 	CLICKHOUSE_MIGRATOR_IMAGE ?= $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/clickhouse-migrator
 endif
@@ -47,6 +49,17 @@ migrate-without-build:
 migrate-local:
 	@echo "Applying Clickhouse migrations for local environment"
 	GOOSE_DBSTRING="clickhouse://clickhouse:clickhouse@localhost:9000/default" go tool goose -table "_migrations" -dir "migrations" clickhouse up
+	@echo "Done"
+
+# Like migrate-without-build but runs goose directly on the host instead of
+# inside the migrator image, using the CLICKHOUSE_* environment credentials.
+# Used by CI, where building the migrator image costs ~2 minutes per job for
+# no benefit (the migrations directory is mounted over the baked-in copy at
+# runtime anyway).
+.PHONY: migrate-host
+migrate-host:
+	@echo "Applying Clickhouse migrations *$(notdir $@)*"
+	@GOOSE_DBSTRING="clickhouse://$(CLICKHOUSE_USERNAME):$(CLICKHOUSE_PASSWORD)@localhost:$(CLICKHOUSE_PORT)/$(CLICKHOUSE_DATABASE)" go tool goose -table "_migrations" -dir "migrations" clickhouse up
 	@echo "Done"
 
 .PHONY: build
@@ -110,4 +123,4 @@ run:
 				--health-retries=5 \
 				-v ./local/users.xml:/etc/clickhouse-server/users.d/users.xml \
 				-v ./local/config.xml:/etc/clickhouse-server/config.d/config.xml \
-				clickhouse/clickhouse-server:25.4.5.24
+				clickhouse/clickhouse-server:25.8.30.16

@@ -16,22 +16,86 @@ import (
 )
 
 func New(ctx context.Context, databaseURL string, poolName string, options ...Option) (types.DBTX, *pgxpool.Pool, error) {
-	// Parse the connection pool configuration
+	config, retryConfig, err := newConfig(databaseURL, otelpgx.NewTracer(), options...)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+
+	if err = recordStats(pool, attribute.String("pool.name", poolName)); err != nil {
+		pool.Close()
+
+		return nil, nil, fmt.Errorf("failed to record stats: %w", err)
+	}
+
+	return retry.Wrap(pool, retryConfig), pool, nil
+}
+
+// Client owns a PostgreSQL connection pool and the session-scoped operations
+// that must stay on one of its connections.
+type Client struct {
+	pool *pgxpool.Pool
+}
+
+// Connect creates a checked PostgreSQL client. Unlike New, it returns the raw
+// pool without statement-level retries, so callers can make retry decisions at
+// transaction boundaries where the outcome is unambiguous.
+func Connect(ctx context.Context, databaseURL string, poolName string, options ...Option) (*Client, error) {
+	tracer := otelpgx.NewTracer(otelpgx.WithDisableConnectionDetailsInAttributes())
+	config, _, err := newConfig(databaseURL, tracer, options...)
+	if err != nil {
+		return nil, err
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create connection pool: %w", err)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+	if err := recordStats(pool, attribute.String("pool.name", poolName)); err != nil {
+		pool.Close()
+
+		return nil, fmt.Errorf("failed to record stats: %w", err)
+	}
+
+	return &Client{pool: pool}, nil
+}
+
+// Close closes every connection in the pool.
+func (c *Client) Close() {
+	c.pool.Close()
+}
+
+// Pool returns the underlying pool for libraries that integrate directly with
+// pgxpool.
+func (c *Client) Pool() *pgxpool.Pool {
+	return c.pool
+}
+
+func newConfig(
+	databaseURL string,
+	tracer pgx.QueryTracer,
+	options ...Option,
+) (*pgxpool.Config, retry.Config, error) {
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to parse connection pool config: %w", err)
+		return nil, retry.Config{}, fmt.Errorf("failed to parse connection pool config: %w", err)
 	}
 
 	retryConfig := retry.DefaultConfig()
-
 	for _, opt := range options {
 		opt(config, &retryConfig)
 	}
 
-	// expose otel traces
-	config.ConnConfig.Tracer = otelpgx.NewTracer()
-
-	// Disable statement caching to avoid issues with prepared statements in transactions
+	config.ConnConfig.Tracer = tracer
 	config.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
 
 	previousAfterConnect := config.AfterConnect
@@ -59,18 +123,9 @@ func New(ctx context.Context, databaseURL string, poolName string, options ...Op
 		return nil
 	}
 
-	// Create the connection pool
-	pool, err := pgxpool.NewWithConfig(ctx, config)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to create connection pool: %w", err)
-	}
+	return config, retryConfig, nil
+}
 
-	// expose otel metrics
-	if err = otelpgx.RecordStats(pool, otelpgx.WithStatsAttributes(attribute.String("pool.name", poolName))); err != nil {
-		pool.Close()
-
-		return nil, nil, fmt.Errorf("failed to record stats: %w", err)
-	}
-
-	return retry.Wrap(pool, retryConfig), pool, nil
+func recordStats(pool otelpgx.PoolStats, poolName attribute.KeyValue) error {
+	return otelpgx.RecordStats(pool, otelpgx.WithStatsAttributes(poolName))
 }

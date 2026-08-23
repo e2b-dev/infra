@@ -161,9 +161,10 @@ func (a *APIStore) PostSandboxesSandboxIDFork(c *gin.Context, sandboxID api.Sand
 				forkedSandboxID,
 				forkTimeout,
 				teamInfo,
-				a.buildResumeSandboxDataFromSnapshot(sandboxID, forkedSandboxID, nil),
+				a.buildResumeSandboxDataFromSnapshot(sandboxID, forkedSandboxID, nil, nil),
 				&c.Request.Header,
 				true,
+				false,
 				nil, // mcp
 			)
 			if createErr != nil {

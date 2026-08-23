@@ -292,7 +292,7 @@ func TestStartRemoving_ContextCancellation(t *testing.T) {
 	assert.Less(t, elapsed, 200*time.Millisecond)
 
 	// Clean up
-	callback1(context.Background(), nil)
+	callback1(t.Context(), nil)
 }
 
 func TestWaitForStateChange_NoTransition(t *testing.T) {
@@ -387,7 +387,7 @@ func TestWaitForStateChange_ContextCancellation(t *testing.T) {
 	}
 
 	// Clean up
-	callback(context.Background(), nil)
+	callback(t.Context(), nil)
 }
 
 func TestWaitForStateChange_MultipleWaiters(t *testing.T) {

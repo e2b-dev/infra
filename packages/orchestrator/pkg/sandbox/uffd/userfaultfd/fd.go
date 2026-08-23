@@ -49,7 +49,8 @@ const (
 	UFFDIO_REGISTER_MODE_MISSING = C.UFFDIO_REGISTER_MODE_MISSING
 	UFFDIO_REGISTER_MODE_WP      = C.UFFDIO_REGISTER_MODE_WP
 
-	UFFDIO_COPY_MODE_WP = C.UFFDIO_COPY_MODE_WP
+	UFFDIO_COPY_MODE_WP       = C.UFFDIO_COPY_MODE_WP
+	UFFDIO_COPY_MODE_DONTWAKE = C.UFFDIO_COPY_MODE_DONTWAKE
 
 	UFFDIO_WRITEPROTECT_MODE_WP = C.UFFDIO_WRITEPROTECT_MODE_WP
 
@@ -202,8 +203,21 @@ func (f Fd) zero(addr, pagesize uintptr, mode CULong) error {
 	return nil
 }
 
-func (f Fd) writeProtect(addr, pagesize uintptr, mode CULong) error {
-	writeProtect := newUffdioWriteProtect(CULong(addr)&^CULong(pagesize-1), CULong(pagesize), mode)
+// writeProtectRange write-protects (mode UFFDIO_WRITEPROTECT_MODE_WP) or
+// unprotects (mode 0) the range [start, start+length), spanning any number of
+// pages of size pagesize. start and length must be page-aligned (fault
+// addresses need aligning down to their page base first); no masking is
+// applied. Clearing protection also wakes any threads blocked on a WP fault
+// in the range.
+func (f Fd) writeProtectRange(start, length, pagesize uintptr, mode CULong) error {
+	if start&(pagesize-1) != 0 {
+		return fmt.Errorf("writeProtectRange: start %#x is not aligned to page size %#x", start, pagesize)
+	}
+	if length&(pagesize-1) != 0 {
+		return fmt.Errorf("writeProtectRange: length %#x is not aligned to page size %#x", length, pagesize)
+	}
+
+	writeProtect := newUffdioWriteProtect(CULong(start), CULong(length), mode)
 
 	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(f), UFFDIO_WRITEPROTECT, uintptr(unsafe.Pointer(&writeProtect))); errno != 0 {
 		return errno

@@ -261,9 +261,11 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		sandboxID,
 		timeout,
 		team,
-		s.api.buildResumeSandboxData(sandboxID, nil),
+		// Auto-resume never demands a cold boot: no memory override exists here.
+		s.api.buildResumeSandboxData(sandboxID, nil, nil),
 		&headers,
 		true,
+		false,
 		nil, // mcp
 	)
 	if apiErr != nil {

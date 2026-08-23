@@ -35,8 +35,7 @@ func TestDenyEgress_InstallsAllProtocolDrop(t *testing.T) { //nolint:paralleltes
 	config, err := ParseConfig()
 	require.NoError(t, err)
 
-	const idx = 30002 // high, fixed: avoid colliding with the pool's low-index Populate
-	slot, err := NewSlot("deny-egress-test", idx, config, NewNoopEgressProxy())
+	slot, err := NewSlot("deny-egress-test", reserveNSTestIdx(t), config, NewNoopEgressProxy())
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))

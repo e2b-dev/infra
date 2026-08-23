@@ -1,7 +1,6 @@
 package discovery
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -78,7 +77,7 @@ func TestNewStaticFromAddress(t *testing.T) {
 
 			require.NoError(t, err)
 
-			items, err := sd.Query(context.Background())
+			items, err := sd.Query(t.Context())
 			require.NoError(t, err)
 			require.Len(t, items, 1)
 			require.Equal(t, tt.wantHost, items[0].LocalIPAddress)

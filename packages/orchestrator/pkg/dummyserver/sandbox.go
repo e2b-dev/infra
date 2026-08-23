@@ -66,10 +66,15 @@ func (s *SandboxServer) Create(_ context.Context, req *orchestrator.SandboxCreat
 	cfg, _ := proto.Clone(req.GetSandbox()).(*orchestrator.SandboxConfig)
 
 	running := &orchestrator.RunningSandbox{
-		Config:    cfg,
-		ClientId:  s.clientID,
-		StartTime: startTime,
-		EndTime:   req.GetEndTime(),
+		Config:      cfg, //nolint:staticcheck // mirrors the real orchestrator until config is dropped
+		ClientId:    s.clientID,
+		StartTime:   startTime,
+		EndTime:     req.GetEndTime(),
+		SandboxId:   sbxID,
+		TeamId:      req.GetSandbox().GetTeamId(),
+		ExecutionId: req.GetSandbox().GetExecutionId(),
+		Vcpu:        req.GetSandbox().GetVcpu(),
+		RamMb:       req.GetSandbox().GetRamMb(),
 	}
 
 	s.mu.Lock()
@@ -145,8 +150,4 @@ func (s *SandboxServer) Pause(_ context.Context, req *orchestrator.SandboxPauseR
 func (s *SandboxServer) Checkpoint(_ context.Context, _ *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {
 	// No-op: there is no real disk/memory to checkpoint.
 	return &orchestrator.SandboxCheckpointResponse{}, nil
-}
-
-func (s *SandboxServer) ListCachedBuilds(_ context.Context, _ *emptypb.Empty) (*orchestrator.SandboxListCachedBuildsResponse, error) {
-	return &orchestrator.SandboxListCachedBuildsResponse{Builds: nil}, nil
 }

@@ -1,4 +1,3 @@
-//nolint:paralleltest // env-driven tests use t.Setenv
 package cfg
 
 import (
@@ -67,6 +66,12 @@ func TestTemplateStorage_Legacy(t *testing.T) {
 			bucket:      "legacy-bucket",
 			s3PathStyle: "True",
 			want:        storage.Spec{Provider: storage.AWSStorageProvider, Bucket: "legacy-bucket", UsePathStyle: true},
+		},
+		{
+			name:     "azure container",
+			provider: "AzureBucket",
+			bucket:   "fc-templates",
+			want:     storage.Spec{Provider: storage.AzureStorageProvider, Bucket: "fc-templates"},
 		},
 		{
 			name:     "local absolute path",

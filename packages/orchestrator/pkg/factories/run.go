@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
 	"github.com/gofrs/flock"
 	"github.com/google/uuid"
 	"github.com/soheilhy/cmux"
@@ -48,6 +49,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	networkv2 "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network/v2"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/server"
@@ -76,12 +78,163 @@ import (
 // Deps holds shared infrastructure created during orchestrator init.
 // Passed to factory callbacks so editions can build components using shared deps.
 type Deps struct {
-	Config        cfg.Config
-	Tel           *telemetry.Client
-	MeterProvider metric.MeterProvider
-	Logger        logger.Logger
-	Sandboxes     *sandbox.Map
-	FeatureFlags  *featureflags.Client
+	Config              cfg.Config
+	Tel                 *telemetry.Client
+	MeterProvider       metric.MeterProvider
+	Logger              logger.Logger
+	Sandboxes           *sandbox.Map
+	FeatureFlags        *featureflags.Client
+	ClickhouseEndpoints []ClickhouseEndpoint
+}
+
+type ClickhouseEndpoint struct {
+	Conn driver.Conn
+
+	// Label is the credential-stripped host:port, empty for the primary.
+	// Never the DSN: it carries the password.
+	Label string
+
+	// Primary is the endpoint from the singular connection string.
+	// Its writes are ungated and a writer that fails to build on it is fatal.
+	Primary bool
+}
+
+// BatcherName suffixes base with the endpoint so per-endpoint queue metrics
+// stay distinct. The primary keeps the bare name existing dashboards use.
+func (e ClickhouseEndpoint) BatcherName(base string) string {
+	if e.Label == "" {
+		return base
+	}
+
+	return base + ":" + e.Label
+}
+
+// newClickhouseEventsDelivery builds the sandbox events writer for one endpoint.
+// Returns nil when a best-effort endpoint cannot take one.
+func newClickhouseEventsDelivery(ctx context.Context, endpoint ClickhouseEndpoint, featureFlags *featureflags.Client) event.Delivery[event.SandboxEvent] {
+	delivery, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(
+		ctx,
+		endpoint.Conn,
+		featureFlags,
+		endpoint.BatcherName(clickhouseevents.DefaultBatcherName),
+	)
+	if err != nil {
+		if endpoint.Primary {
+			logger.L().Fatal(ctx, "failed to create clickhouse events delivery", zap.Error(err))
+		}
+
+		logger.L().Error(ctx, "failed to create clickhouse events delivery, skipping endpoint",
+			zap.String("endpoint", endpoint.Label),
+			zap.Error(err),
+		)
+
+		return nil
+	}
+
+	if endpoint.Primary {
+		return delivery
+	}
+
+	return clickhouseevents.NewGatedDelivery(delivery, featureFlags)
+}
+
+// newClickhouseHostStatsDelivery builds the host stats writer for one endpoint.
+// Returns nil when a best-effort endpoint cannot take one.
+func newClickhouseHostStatsDelivery(ctx context.Context, endpoint ClickhouseEndpoint, featureFlags *featureflags.Client) clickhousehoststats.Delivery {
+	delivery, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
+		ctx,
+		endpoint.Conn,
+		featureFlags,
+		endpoint.BatcherName(clickhousehoststats.DefaultBatcherName),
+	)
+	if err != nil {
+		if endpoint.Primary {
+			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
+		}
+
+		logger.L().Error(ctx, "failed to create clickhouse host stats delivery, skipping endpoint",
+			zap.String("endpoint", endpoint.Label),
+			zap.Error(err),
+		)
+
+		return nil
+	}
+
+	if endpoint.Primary {
+		return delivery
+	}
+
+	return clickhousehoststats.NewGatedDelivery(delivery, featureFlags)
+}
+
+// openClickhouseEndpoints connects to every configured endpoint, returning them
+// with the closers that release them. One driver per endpoint rather than per
+// writer keeps connection pools, batcher queues, and OTel metrics isolated so a
+// slow/failing endpoint cannot stall the others.
+func openClickhouseEndpoints(ctx context.Context, config cfg.Config) ([]ClickhouseEndpoint, []closer) {
+	var (
+		endpoints []ClickhouseEndpoint
+		closers   []closer
+	)
+
+	// Legacy singular ClickHouse delivery path. Fatal on init error and keeps
+	// the unsuffixed default batcher names to preserve pre-multi-endpoint
+	// behavior and existing dashboards/alerts.
+	if config.ClickhouseConnectionString != "" {
+		conn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create clickhouse driver", zap.Error(err))
+		}
+
+		endpoints = append(endpoints, ClickhouseEndpoint{Conn: conn, Primary: true})
+		closers = append(closers, closer{"clickhouse connection", func(context.Context) error {
+			return conn.Close()
+		}})
+	}
+
+	additionalEndpoints, droppedDuplicates := config.AdditionalClickhouseEndpoints()
+	for _, dsn := range droppedDuplicates {
+		endpoint, err := clickhouse.EndpointFromDSN(dsn)
+		if err != nil {
+			logger.L().Info(ctx, "dropped duplicate unparseable ClickHouse endpoint", zap.Error(err))
+
+			continue
+		}
+		logger.L().Info(ctx, "dropped duplicate ClickHouse endpoint", zap.String("endpoint", endpoint))
+	}
+
+	if len(additionalEndpoints) > 0 {
+		logger.L().Info(ctx, "resolved additional ClickHouse delivery endpoints",
+			zap.Int("count", len(additionalEndpoints)),
+		)
+	}
+
+	// Additional ClickHouse delivery endpoints are best-effort.
+	for _, dsn := range additionalEndpoints {
+		label, err := clickhouse.EndpointFromDSN(dsn)
+		if err != nil {
+			logger.L().Error(ctx, "failed to parse clickhouse DSN, skipping endpoint", zap.Error(err))
+
+			continue
+		}
+
+		conn, err := clickhouse.NewDriver(dsn)
+		if err != nil {
+			logger.L().Error(ctx, "failed to create clickhouse driver, skipping endpoint",
+				zap.String("endpoint", label),
+				zap.Error(err),
+			)
+
+			continue
+		}
+
+		endpoints = append(endpoints, ClickhouseEndpoint{Conn: conn, Label: label})
+		closers = append(closers, closer{"clickhouse connection " + label, func(context.Context) error {
+			return conn.Close()
+		}})
+	}
+
+	return endpoints, closers
 }
 
 // EgressSetup is returned by EgressFactory with the proxy implementation
@@ -159,7 +312,6 @@ func ensureDirs(c cfg.Config) error {
 		c.StorageConfig.SandboxCacheDir,
 		c.SandboxDir,
 		c.SharedChunkCacheDir,
-		c.StorageConfig.SnapshotCacheDir,
 		c.StorageConfig.TemplateCacheDir,
 		c.TemplatesDir,
 	} {
@@ -464,6 +616,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
+		RedisTLSEnabled:  config.RedisTLSEnabled,
+		RedisPassword:    config.RedisPassword,
 		PoolSize:         config.RedisPoolSize,
 		MinIdleConns:     config.RedisMinIdleConns,
 	})
@@ -493,133 +647,20 @@ func run(config cfg.Config, opts Options) (success bool) {
 		return nil
 	}})
 
-	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0)
-	hostStatsTargets := make([]clickhousehoststats.Delivery, 0, 1+len(config.ClickhouseConnectionStrings))
+	// clickhouse delivery endpoints
+	clickhouseEndpoints, clickhouseClosers := openClickhouseEndpoints(ctx, config)
+	closers = append(closers, clickhouseClosers...)
 
-	// Legacy singular ClickHouse delivery path. Fatal on init error and uses
-	// the unsuffixed default batcher names to preserve pre-multi-endpoint
-	// behavior and existing dashboards/alerts.
-	if config.ClickhouseConnectionString != "" {
-		clickhouseConn, err := clickhouse.NewDriver(config.ClickhouseConnectionString)
-		if err != nil {
-			logger.L().Fatal(ctx, "failed to create clickhouse driver", zap.Error(err))
-		}
-		closers = append(closers, closer{"clickhouse connection", func(context.Context) error {
-			return clickhouseConn.Close()
-		}})
+	sbxEventsDeliveryTargets := make([]event.Delivery[event.SandboxEvent], 0, len(clickhouseEndpoints))
+	hostStatsTargets := make([]clickhousehoststats.Delivery, 0, len(clickhouseEndpoints))
 
-		sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(
-			ctx,
-			clickhouseConn,
-			featureFlags,
-			clickhouseevents.DefaultBatcherName,
-		)
-		if err != nil {
-			logger.L().Fatal(ctx, "failed to create clickhouse events delivery", zap.Error(err))
-		}
-		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryClickhouse)
-
-		hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
-			ctx,
-			clickhouseConn,
-			featureFlags,
-			clickhousehoststats.DefaultBatcherName,
-		)
-		if err != nil {
-			logger.L().Fatal(ctx, "failed to create clickhouse host stats delivery", zap.Error(err))
-		}
-		hostStatsTargets = append(hostStatsTargets, hostStatsDeliveryClickhouse)
-	}
-
-	// Additional ClickHouse delivery endpoints are best-effort. One driver +
-	// delivery pair per endpoint keeps connection pools, batcher queues, and
-	// OTel metrics isolated so a slow/failing endpoint cannot stall the others.
-	additionalEndpoints, droppedDuplicates := config.AdditionalClickhouseEndpoints()
-	for _, d := range droppedDuplicates {
-		endpoint, err := clickhouse.EndpointFromDSN(d)
-		if err != nil {
-			logger.L().Info(ctx, "dropped duplicate unparseable ClickHouse endpoint", zap.Error(err))
-
-			continue
-		}
-		logger.L().Info(ctx, "dropped duplicate ClickHouse endpoint", zap.String("endpoint", endpoint))
-	}
-	if len(additionalEndpoints) > 0 {
-		logger.L().Info(ctx, "resolved additional ClickHouse delivery endpoints",
-			zap.Int("count", len(additionalEndpoints)),
-		)
-
-		logClose := func(what, label string, fn func() error) {
-			if err := fn(); err != nil {
-				logger.L().Error(ctx, "failed to close "+what,
-					zap.String("endpoint", label), zap.Error(err))
-			}
+	for _, endpoint := range clickhouseEndpoints {
+		if delivery := newClickhouseEventsDelivery(ctx, endpoint, featureFlags); delivery != nil {
+			sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, delivery)
 		}
 
-		for _, dsn := range additionalEndpoints {
-			label, err := clickhouse.EndpointFromDSN(dsn)
-			if err != nil {
-				logger.L().Error(ctx, "failed to parse clickhouse DSN, skipping endpoint", zap.Error(err))
-
-				continue
-			}
-
-			clickhouseConn, err := clickhouse.NewDriver(dsn)
-			if err != nil {
-				logger.L().Error(ctx, "failed to create clickhouse driver, skipping endpoint",
-					zap.String("endpoint", label),
-					zap.Error(err),
-				)
-
-				continue
-			}
-
-			sbxEventsDeliveryClickhouse, err := clickhouseevents.NewDefaultClickhouseSandboxEventsDelivery(
-				ctx,
-				clickhouseConn,
-				featureFlags,
-				clickhouseevents.DefaultBatcherName+":"+label,
-			)
-			if err != nil {
-				logger.L().Error(ctx, "failed to create clickhouse events delivery, skipping endpoint",
-					zap.String("endpoint", label),
-					zap.Error(err),
-				)
-				logClose("clickhouse connection after events delivery failure", label, clickhouseConn.Close)
-
-				continue
-			}
-			sbxGatedEventsDeliveryClickhouse := clickhouseevents.NewGatedDelivery(sbxEventsDeliveryClickhouse, featureFlags)
-
-			hostStatsDeliveryClickhouse, err := clickhousehoststats.NewDefaultClickhouseHostStatsDelivery(
-				ctx,
-				clickhouseConn,
-				featureFlags,
-				clickhousehoststats.DefaultBatcherName+":"+label,
-			)
-			if err != nil {
-				logger.L().Error(ctx, "failed to create clickhouse host stats delivery, skipping endpoint",
-					zap.String("endpoint", label),
-					zap.Error(err),
-				)
-				// Events delivery before its underlying driver — it holds a goroutine writing to it.
-				logClose(
-					"clickhouse events delivery after host stats delivery failure",
-					label,
-					func() error { return sbxEventsDeliveryClickhouse.Close(ctx) },
-				)
-				logClose("clickhouse connection after host stats delivery failure", label, clickhouseConn.Close)
-
-				continue
-			}
-			hostStatsGatedDeliveryClickhouse := clickhousehoststats.NewGatedDelivery(hostStatsDeliveryClickhouse, featureFlags)
-
-			sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxGatedEventsDeliveryClickhouse)
-			closers = append(closers, closer{"clickhouse connection " + label, func(context.Context) error {
-				return clickhouseConn.Close()
-			}})
-
-			hostStatsTargets = append(hostStatsTargets, hostStatsGatedDeliveryClickhouse)
+		if delivery := newClickhouseHostStatsDelivery(ctx, endpoint, featureFlags); delivery != nil {
+			hostStatsTargets = append(hostStatsTargets, delivery)
 		}
 	}
 
@@ -680,12 +721,13 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	// egress proxy — built by the edition-specific factory
 	deps := &Deps{
-		Config:        config,
-		Tel:           tel,
-		MeterProvider: tel.MeterProvider,
-		Logger:        globalLogger,
-		Sandboxes:     sandboxes,
-		FeatureFlags:  featureFlags,
+		Config:              config,
+		Tel:                 tel,
+		MeterProvider:       tel.MeterProvider,
+		Logger:              globalLogger,
+		Sandboxes:           sandboxes,
+		FeatureFlags:        featureFlags,
+		ClickhouseEndpoints: clickhouseEndpoints,
 	}
 
 	egressSetup, err := opts.EgressFactory(ctx, deps)
@@ -704,16 +746,22 @@ func run(config cfg.Config, opts Options) (success bool) {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
 	}
 
-	// Sandbox-runtime reclaim must run before newStorage below: reclaim deletes
-	// leaked ns-* from /run/netns, and NewStorageLocal snapshots the remaining
-	// namespaces as foreign at construction.
+	// Sandbox-runtime reclaim must run before NewStorageLocal below: reclaim
+	// deletes leaked ns-* from /run/netns, and NewStorageLocal snapshots the
+	// remaining namespaces as foreign at construction.
+	// reclaimClean is true only when reclaim ran AND tore every slot down; a
+	// partial failure leaves anchor namespaces that must keep their v2 set entries.
+	reclaimClean := false
+	reclaimRan := false
 	if usesSandboxRuntime && !config.DisableStartupReclaim {
-		startupreclaim.Run(ctx, startupreclaim.Config{
+		reclaimRan = true
+		summary := startupreclaim.Run(ctx, startupreclaim.Config{
 			NetworkConfig: config.NetworkConfig,
 			EgressProxy:   egressSetup.Proxy,
 			CgroupManager: cgroupManager,
 			StorageConfig: config.StorageConfig,
 		})
+		reclaimClean = !summary.HasFailures()
 	}
 
 	// device pool
@@ -729,17 +777,80 @@ func run(config cfg.Config, opts Options) (success bool) {
 	closers = append(closers, closer{"device pool", devicePool.Close})
 
 	// network pool
-	slotStorage, err := newStorage(ctx, nodeID, config.NetworkConfig, egressSetup.Proxy)
+	slotStorage, err := network.NewStorageLocal(ctx, config.NetworkConfig, egressSetup.Proxy)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create network pool", zap.Error(err))
 	}
-	networkPool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
-	startService("network pool", func() error {
-		networkPool.Populate(ctx)
+	var networkPool network.PoolInterface
+	selectedNetworkVersion := 0
+	switch config.NetworkConfig.NetworkVersion {
+	case 2:
+		logger.L().Info(ctx, "using v2 network pool (nftables)")
+		v2Metrics, metricsErr := networkv2.NewMetrics(tel.MeterProvider)
+		if metricsErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 network metrics", zap.Error(metricsErr))
+		}
 
-		return nil
-	})
+		if err := networkv2.ValidateV2Prerequisites(); err != nil {
+			logger.L().Fatal(ctx, "v2 network prerequisites not met", zap.Error(err))
+		}
+
+		hostFw, hfErr := networkv2.NewHostFirewallWithMetrics(network.DefaultGateway(), config.NetworkConfig, v2Metrics)
+		if hfErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 host firewall", zap.Error(hfErr))
+		}
+
+		// Flush to empty only when reclaim tore every slot down; a partial
+		// failure leaves anchor namespaces whose set entries must survive.
+		if reclaimClean {
+			if err := hostFw.ReconcileSlots(ctx, nil); err != nil {
+				logger.L().Fatal(ctx, "failed to reconcile v2 host firewall slots", zap.Error(err))
+			}
+		} else if reclaimRan {
+			v2Metrics.RecordReconciliationSkipped(ctx)
+		}
+
+		observer, obsErr := networkv2.NewVethObserver()
+		if obsErr != nil {
+			logger.L().Fatal(ctx, "failed to create v2 veth observer", zap.Error(obsErr))
+		}
+
+		v2Pool := networkv2.NewV2Pool(slotStorage, config.NetworkConfig, hostFw, observer, networkv2.WithPoolMetrics(v2Metrics))
+		startService("network pool", func() error {
+			v2Pool.Populate(ctx)
+
+			return nil
+		})
+		networkPool = v2Pool
+		selectedNetworkVersion = 2
+	case 1:
+		if usesSandboxRuntime && !config.DisableStartupReclaim {
+			if err := networkv2.PurgeHostFirewallTable(); err != nil {
+				logger.L().Fatal(ctx, "refusing to start v1: stale v2 host firewall table could hijack v1 sandbox egress", zap.Error(err))
+			}
+		}
+		v1Pool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
+		startService("network pool", func() error {
+			v1Pool.Populate(ctx)
+
+			return nil
+		})
+		networkPool = v1Pool
+		selectedNetworkVersion = 1
+	default:
+		// Config validation runs before startup side effects. Keep this exhaustive
+		// defense so future parsing and selection logic cannot silently diverge.
+		logger.L().Fatal(ctx, "unsupported NETWORK_VERSION after validated config", zap.Int("network_version", config.NetworkConfig.NetworkVersion))
+	}
 	closers = append(closers, closer{"network pool", networkPool.Close})
+
+	datapathRegistration, err := network.RegisterDatapathMetric(tel.MeterProvider, selectedNetworkVersion)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to register network datapath metric", zap.Error(err))
+	}
+	closers = append(closers, closer{"network datapath metric", func(context.Context) error {
+		return datapathRegistration.Unregister()
+	}})
 
 	// sandbox factory
 	networkAssignHook := egressSetup.NetworkAssignHook
@@ -1105,12 +1216,4 @@ func setupBuildStorage(ctx context.Context, limiter *limit.Limiter, orchConfig c
 	}
 
 	return provider, uploadHandler, nil
-}
-
-func newStorage(ctx context.Context, nodeID string, config network.Config, egressProxy network.EgressProxy) (network.Storage, error) {
-	if env.IsDevelopment() || config.UseLocalNamespaceStorage {
-		return network.NewStorageLocal(ctx, config, egressProxy)
-	}
-
-	return network.NewStorageKV(nodeID, config, egressProxy)
 }

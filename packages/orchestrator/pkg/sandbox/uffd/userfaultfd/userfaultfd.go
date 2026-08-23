@@ -32,6 +32,27 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/san
 
 const maxRequestsInProgress = 4096
 
+// maxWPResolvesInProgress bounds the dedicated WP-resolve pool. A plain
+// resolve is a single ioctl; a resolve that captures into a CoW window also
+// copies one page (read + unlocked sink write), so during a window the bound
+// additionally caps concurrent page copies. It still mainly guards against
+// pathological fault storms.
+const maxWPResolvesInProgress = 256
+
+// wpResolveRetryDelay paces the redispatch of a WP resolve that hit
+// mmap_changing, bounding the serve loop's self-wake spin while an address-
+// space change (madvise batch) is in flight.
+const wpResolveRetryDelay = 250 * time.Microsecond
+
+// wpResolveErrEscalation is the number of consecutive failed unprotects OF
+// THE SAME PAGE (reset by that page resolving) after which the handler stops
+// treating the failure as transient and fails the serve loop: the wake→
+// re-fault retry would otherwise livelock the guest writer forever on a
+// deterministic failure. Per-page, not global: a burst of concurrent
+// transient failures across different pages (each writer woken, each
+// recovering on re-fault) must not be mistaken for a livelock.
+const wpResolveErrEscalation = 8
+
 const (
 	// sliceMaxRetries is the number of times to retry source.Slice() after the initial attempt.
 	// Total attempts = sliceMaxRetries + 1.
@@ -42,6 +63,13 @@ const (
 	// sliceRetryMaxDelay is the maximum backoff delay between retries.
 	sliceRetryMaxDelay = 500 * time.Millisecond
 )
+
+// errWPResolveAgain reports that a WP resolve hit EAGAIN (the address space
+// is changing, mmap_changing); the caller re-queues the fault via the
+// deferred queue instead of retrying in place — a worker sleeping under
+// settleRequests.RLock would block the REMOVE batch whose completion clears
+// the condition.
+var errWPResolveAgain = errors.New("uffd WP resolve: address space changing")
 
 var ErrUnexpectedEventType = errors.New("unexpected event type")
 
@@ -78,7 +106,11 @@ type Userfaultfd struct {
 
 	// settleRequests guards the pageTracker / prefetchTracker. Workers take
 	// RLock for the lookup→install→SetRange sequence; the REMOVE batch takes
-	// Lock so a concurrent worker can't overwrite a removed state.
+	// Lock so a concurrent worker can't overwrite a removed state. The lock
+	// cannot order a batch against an install that completed while the batch
+	// WAITED, so a batch may record Removed for a page a racing reinstall
+	// already re-populated — the WP resolve's presence probe disambiguates
+	// that reading against the kernel.
 	settleRequests sync.RWMutex
 
 	// readSerial serializes serve-loop iterations (read+apply) with snapshot-time
@@ -94,6 +126,12 @@ type Userfaultfd struct {
 	defaultCopyMode CULong
 
 	wg errgroup.Group
+
+	// wgWP is a dedicated pool for write-protect resolves. WP resolves are
+	// microsecond ioctls, but the shared pool's MISSING workers can hold a
+	// slot through seconds of source-read backoff — a full pool would then
+	// queue guest writes to already-present pages behind slow fetches.
+	wgWP errgroup.Group
 
 	// wakeupPipe is a self-pipe that wakes the poll loop after a worker
 	// defers a fault, so a deferred fault isn't orphaned waiting for the
@@ -121,7 +159,40 @@ type Userfaultfd struct {
 	// generation range, so fault latency can be cut by chain depth.
 	genBucket generationBucket
 
+	// wpFaultsResolved counts synchronous userfault write-protect faults resolved
+	// (non-zero only when paired with a sync-WP Firecracker that omits WP_ASYNC).
+	wpFaultsResolved atomic.Int64
+
+	// wpResolveErrPages counts consecutive failed unprotects per page
+	// (entry removed when that page resolves). A transient failure
+	// self-heals via wake→re-fault; a deterministic one re-fails the SAME
+	// page repeatedly, so a per-page streak reaching wpResolveErrEscalation
+	// escalates to a serve-loop exit. wpResolveErrPending gates the success
+	// path: it stays lock-free until at least one failure is outstanding.
+	wpResolveErrMu      sync.Mutex
+	wpResolveErrPages   map[uintptr]int32
+	wpResolveErrPending atomic.Int32
+
+	// cowWindow, when set, owns pre-image capture for an in-flight deferred
+	// memory export: WP resolves for its pages copy the pause-time content to
+	// the export sink BEFORE unprotecting (see resolveWriteProtect). Installed
+	// by BeginCoWExport while the guest is paused; cleared by EndCoWExport.
+	cowWindow atomic.Pointer[CoWWindow]
+
 	logger logger.Logger
+}
+
+// NewStateOnly builds a handler around an existing page tracker with NO
+// userfaultfd behind it, for tests and tooling that exercise the state-export
+// surface (ExportPageStates, PageSize, Logger, WPFaultsResolved). Serving,
+// prefaulting or resolving faults on a state-only handler would ioctl a zero
+// fd and must not be attempted.
+func NewStateOnly(tracker *block.Tracker, pageSize uintptr, lg logger.Logger) *Userfaultfd {
+	return &Userfaultfd{
+		pageSize:    pageSize,
+		pageTracker: tracker,
+		logger:      lg,
+	}
 }
 
 // faultPhase identifies the worker fault hook call site (test-only).
@@ -188,14 +259,29 @@ func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, generat
 		logger:          logger,
 	}
 	u.wg.SetLimit(maxRequestsInProgress)
+	u.wgWP.SetLimit(maxWPResolvesInProgress)
 
 	return u, nil
 }
 
-// ExportPageStates returns snapshots of the faulted and removed page-index
-// bitmaps after draining in-flight serve-loop iterations and workers.
-// Lock order matches the serve loop to avoid AB-BA inversion.
-func (u *Userfaultfd) ExportPageStates() (faulted, removed *roaring.Bitmap) {
+// Logger returns this handler's logger, already tagged with the sandbox ID.
+func (u *Userfaultfd) Logger() logger.Logger {
+	return u.logger
+}
+
+// WPFaultsResolved returns the number of synchronous write-protect faults
+// this handler has resolved — non-zero only when the paired Firecracker
+// registered guest memory for sync WP delivery.
+func (u *Userfaultfd) WPFaultsResolved() int64 {
+	return u.wpFaultsResolved.Load()
+}
+
+// ExportPageStates returns snapshots of the tracker's dirty and empty
+// (zero ∪ removed) page-index bitmaps after draining in-flight serve-loop
+// iterations and workers. Clean pages appear in NEITHER set: their content
+// matches the source, so a snapshot diff inherits them from the parent
+// layer. Lock order matches the serve loop to avoid AB-BA inversion.
+func (u *Userfaultfd) ExportPageStates() (dirty, empty *roaring.Bitmap) {
 	u.readSerial.Lock()
 	defer u.readSerial.Unlock()
 
@@ -255,10 +341,23 @@ func (u *Userfaultfd) Serve(
 	ctx context.Context,
 	fdExit *fdexit.FdExit,
 ) error {
-	// Workers spawned via u.wg.Go may still be running when an error path
+	var deferred deferredFaults
+
+	// Workers spawned via the pools may still be running when an error path
 	// returns early. Drain them before returning so a worker can't outlive
-	// Serve and race with Close() on wakeupPipe / the uffd fd.
-	defer func() { _ = u.wg.Wait() }()
+	// Serve and race with Close() on wakeupPipe / the uffd fd. Then wake any
+	// fault still parked in the deferred queue: the kernel never redelivers
+	// it, so a guest thread blocked on it would otherwise have no retry
+	// signal until the uffd itself closes. The wake makes it re-fault; if
+	// this handler is gone the close releases it.
+	defer func() {
+		_ = u.wg.Wait()
+		_ = u.wgWP.Wait()
+		for _, pf := range deferred.drain() {
+			addr := getPagefaultAddress(pf)
+			_ = u.fd.wake(addr&^(u.pageSize-1), u.pageSize)
+		}
+	}()
 
 	pollFds := []unix.PollFd{
 		{Fd: int32(u.fd), Events: unix.POLLIN},
@@ -284,8 +383,6 @@ func (u *Userfaultfd) Serve(
 		unix.POLLNVAL: "POLLNVAL",
 	}
 
-	var deferred deferredFaults
-
 	for {
 		if _, err := unix.Poll(
 			pollFds,
@@ -310,7 +407,7 @@ func (u *Userfaultfd) Serve(
 
 		exitFd := pollFds[1]
 		if hasEvent(exitFd.Revents, unix.POLLIN) {
-			errMsg := u.wg.Wait()
+			errMsg := errors.Join(u.wg.Wait(), u.wgWP.Wait())
 			if errMsg != nil {
 				u.logger.Warn(ctx, "UFFD fd exit error while waiting for goroutines to finish", zap.Error(errMsg))
 
@@ -378,7 +475,23 @@ func (u *Userfaultfd) Serve(
 
 					startIdx := uint32(header.BlockIdx(startOff, int64(u.pageSize)))
 					endIdx := startIdx + uint32(uint64(rm.end-rm.start)/uint64(u.pageSize))
-					u.pageTracker.SetRange(startIdx, endIdx, block.Zero)
+					u.pageTracker.SetRange(startIdx, endIdx, block.Removed)
+
+					// Corruption tripwire: a REMOVE zapping a window page
+					// whose pre-image is not captured yet destroys content
+					// the export still owes. This must not happen — free-page
+					// reporting is paused for the window's lifetime — so any
+					// hit means the pause has a hole: fail the export cleanly
+					// (the checkpoint errors; the sandbox keeps running)
+					// instead of shipping a silently corrupt snapshot.
+					if w := u.cowWindow.Load(); w != nil && w.Overlaps(startIdx, endIdx) {
+						u.logger.Error(ctx, "uffd REMOVE overlaps CoW-window pages; canceling export",
+							zap.Uint32("start_idx", startIdx), zap.Uint32("end_idx", endIdx))
+						// The reason label is what separates a hole in the
+						// FPR pause (systemic) from ordinary I/O failures.
+						recordCoWCancel(ctx, "remove_tripwire")
+						w.Cancel(fmt.Errorf("REMOVE zapped window pages [%d, %d)", startIdx, endIdx))
+					}
 				}
 				u.settleRequests.Unlock()
 			}
@@ -408,17 +521,51 @@ func (u *Userfaultfd) Serve(
 				return errors.New("unexpected MINOR pagefault event, closing UFFD")
 			}
 
-			// WP faults are not registered: we use UFFD_FEATURE_WP_ASYNC.
-			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
-				return errors.New("unexpected WP pagefault event, closing UFFD")
-			}
-
 			addr := getPagefaultAddress(pf)
 			offset, err := u.ma.GetOffset(addr)
 			if err != nil {
 				u.logger.Error(ctx, "UFFD serve got mapping error", zap.Error(err))
 
 				return fmt.Errorf("failed to map: %w", err)
+			}
+
+			if pf.flags&UFFD_PAGEFAULT_FLAG_WP != 0 {
+				// Synchronous WP fault: the guest wrote a write-protected present
+				// page (the paired sync-WP Firecracker build registers guest RAM
+				// without WP_ASYNC). Clear the protection so the write proceeds;
+				// dirtiness is not recorded here — the kernel's WP-bit clear is
+				// what the pagemap read at pause observes. With a WP_ASYNC
+				// Firecracker these events are never delivered, so this path is
+				// inert.
+				//
+				// The stall clock starts here, before the worker-pool dispatch,
+				// so the recorded latency is what the blocked guest write
+				// actually observes (including any queueing behind slow
+				// MISSING serves).
+				start := time.Now()
+				u.wgWP.Go(func() error {
+					err := u.resolveWriteProtect(ctx, addr, offset, fdExit.SignalExit, start)
+					if errors.Is(err, errWPResolveAgain) {
+						// mmap_changing (e.g. a REMOVE batch in flight):
+						// retry via the deferred queue like MISSING EAGAINs
+						// rather than blocking a worker under
+						// settleRequests.RLock, which the REMOVE batch needs
+						// to make progress. The short sleep damps the
+						// redispatch: with no other events pending, the
+						// self-wake would otherwise spin the serve loop at
+						// full speed for as long as mmap_changing stays set
+						// (e.g. a multi-second balloon drain).
+						time.Sleep(wpResolveRetryDelay)
+						deferred.push(pf)
+						u.signalWakeup()
+
+						return nil
+					}
+
+					return err
+				})
+
+				continue
 			}
 
 			u.wg.Go(func() error {
@@ -452,17 +599,23 @@ func (u *Userfaultfd) Serve(
 
 				idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
 
-				switch state := u.pageTracker.Get(idx); state {
-				case block.Dirty:
-					// Pages must not be swappable for this short-circuit to hold:
-					// only UFFD_EVENT_REMOVE moves a page out of Dirty.
+				state := u.pageTracker.Get(idx)
+				switch state {
+				case block.Dirty, block.Clean:
+					// Pages must not be swappable for this short-circuit to
+					// hold: only UFFD_EVENT_REMOVE moves a page out of
+					// Dirty/Clean, and it records Removed.
 					pclass = pageClassResident
 					result = faultResultPresent
 
 					return nil
-				case block.Zero:
-					// Zero-fill. We still owe the kernel an ack for the original
-					// MISSING fault or the faulting thread stays blocked.
+				case block.Zero, block.Removed:
+					// Zero-fill. Removed is the expected state here (a REMOVE
+					// zapped the page and it reads back as zeros); Zero means
+					// installed-zero and should not MISSING-fault, but is
+					// served identically for safety. We still owe the kernel
+					// an ack for the original MISSING fault or the faulting
+					// thread stays blocked.
 					pclass = pageClassZero
 				case block.NotPresent:
 					pclass = pageClassNew
@@ -510,12 +663,27 @@ func (u *Userfaultfd) Serve(
 					} else {
 						result = faultResultPresent
 					}
-					// Zero-fill on a read fault installs zero+WP; the page still
-					// reads as zero, so keep the tracker entry as Zero so the
-					// snapshot diff marks it Empty. WP-async will catch any
-					// later write and surface it via DirtyMemory.
-					if source != nil || accessType == block.Write {
+					// Tracker bookkeeping. Write access installs mode-0
+					// (unprotected): Dirty, unconditional — top of the lattice.
+					// Read access installs WP-armed, so record the content
+					// class: Clean for source content (the diff inherits it
+					// from the parent until a WP fault promotes it), Zero for
+					// a zero-fill (a reinstalled Removed page becomes an
+					// installed zero page again, so a later write can promote
+					// it — promotions skip Removed, which means "zapped,
+					// absent"). MarkInstalled never downgrades: on a lost
+					// install race (EEXIST) the winner already recorded the
+					// state, and a suspended worker must not overwrite a
+					// concurrent WP-fault promotion to Dirty. Under WP-async
+					// the pause-time pagemap readout catches later writes
+					// instead.
+					switch {
+					case accessType == block.Write:
 						u.pageTracker.SetRange(idx, idx+1, block.Dirty)
+					case source != nil:
+						u.pageTracker.MarkInstalled(idx, idx+1, block.Clean)
+					default:
+						u.pageTracker.MarkInstalled(idx, idx+1, block.Zero)
 					}
 					u.prefetchTracker.Add(offset, accessType)
 				case faultDeferred:
@@ -534,6 +702,230 @@ func (u *Userfaultfd) Serve(
 				return nil
 			})
 		}
+	}
+}
+
+// resolveWriteProtect handles a synchronous userfault write-protect fault:
+// the guest wrote a write-protected, present page. It clears the protection,
+// which also wakes the blocked writer, and promotes the page to Dirty in the
+// tracker — this is the write signal the tracker-based dirty source relies
+// on. The promotion is safe against the REMOVE race that used to keep the
+// tracker read-only here: MarkWritten skips Removed pages (a stale WP fault
+// racing a REMOVE batch must not tag an absent page Dirty, or the reinstall
+// fault would short-circuit without installing or waking), and the state
+// split in the tracker makes Removed distinguishable from an installed zero
+// page, whose promotion is required (a written page exported as Empty is
+// content loss). Both this worker and the REMOVE batch run under
+// settleRequests, so the two cannot interleave; either order yields the
+// correct final state. Returns errWPResolveAgain on EAGAIN so the caller
+// defers the fault (re-served and re-timed like a deferred MISSING fault);
+// nothing is promoted then — the blocked writer's store has not happened.
+// The copy-before-unprotect (background memory export) lands later.
+//
+// A failed unprotect is self-healing as long as the writer can be woken: it
+// re-faults and the resolve retries (a REMOVEd page re-faults MISSING and is
+// served normally), so that case is logged but does not fail the handler — a
+// transient hiccup the guest already recovered from must not surface as a
+// sandbox failure at teardown. Two cases escalate to onFailure (the serve
+// exit signal) and a returned error: the wake ALSO failing (guest thread
+// stranded mid-write with no retry signal, mirroring the MISSING path's
+// data-fetch failure), and wpResolveErrEscalation consecutive failures of
+// the same page (a deterministic failure that the retry loop would
+// otherwise turn into an unbounded fault/wake livelock).
+func (u *Userfaultfd) resolveWriteProtect(ctx context.Context, addr uintptr, offset int64, onFailure func() error, start time.Time) error {
+	outcome := wpResolveOK
+	defer func() {
+		attrs := wpResolveAttrs[u.genBucket][outcome]
+		wpResolveDuration.Record(ctx, time.Since(start).Microseconds(), attrs)
+		wpResolveCount.Add(ctx, 1, attrs)
+	}()
+
+	u.settleRequests.RLock()
+	defer u.settleRequests.RUnlock()
+
+	if u.closed {
+		outcome = wpResolveClosed
+
+		return nil
+	}
+
+	alignedAddr := addr &^ (u.pageSize - 1)
+	idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
+
+	// A Removed reading here is ambiguous: either a REMOVE zapped the page
+	// after this fault queued (the fault is stale; the page is gone), or a
+	// REMOVE batch that waited on the serve lock recorded Removed AFTER a
+	// racing reinstall had already re-populated and re-armed the page (the
+	// tracker is stale; the page is present). Unprotecting is wrong for the
+	// first case (it would strip a concurrent reinstall's fresh arm) and
+	// wake-only is wrong for the second (the page stays armed and tracker-
+	// Removed forever: every retried write re-faults into this same path —
+	// a livelock, since a present page never MISSING-faults and nothing
+	// else transitions it out of Removed). Only the kernel can tell the
+	// cases apart, so probe it: a zero-page COPY|MODE_WP|DONTWAKE either
+	// installs (page truly absent → it is now the armed zero page REMOVE
+	// semantics promise; record Zero and wake, the retried write WP-faults
+	// and promotes normally) or returns EEXIST (page present → the tracker
+	// is what's stale; fall through to unprotect and promote through
+	// MarkWrittenPresent). Transitions INTO Removed take the settleRequests
+	// write lock, so the probe verdict cannot go stale for the rest of the
+	// resolve. Probed BEFORE the CoW window: the truly-absent verdict
+	// carries no pre-image obligation (the stalled write never landed, and
+	// a REMOVE overlapping an uncaptured window page has already tripped
+	// the serve loop's cancel); the present verdict falls through to the
+	// window capture below like any other resolve.
+	presenceVerified := false
+	var err error
+	if u.pageTracker.Get(idx) == block.Removed {
+		probeErr := u.fd.copy(alignedAddr, u.pageSize, header.EmptyHugePage[:u.pageSize], UFFDIO_COPY_MODE_WP|UFFDIO_COPY_MODE_DONTWAKE)
+		switch {
+		case probeErr == nil:
+			u.pageTracker.MarkInstalled(idx, idx+1, block.Zero)
+			outcome = wpResolveStale
+			if wakeErr := u.fd.wake(alignedAddr, u.pageSize); wakeErr != nil {
+				var signalErr error
+				if onFailure != nil {
+					signalErr = onFailure()
+				}
+
+				return fmt.Errorf("uffd stale WP resolve at %#x stranded the writer: %w",
+					addr, errors.Join(wakeErr, signalErr))
+			}
+
+			return nil
+		case errors.Is(probeErr, unix.EEXIST):
+			presenceVerified = true
+		case errors.Is(probeErr, syscall.EAGAIN):
+			outcome = wpResolveDeferred
+
+			return errWPResolveAgain
+		default:
+			// Fed into the shared failure handling below (wake → re-fault,
+			// per-page escalation), same as a failed unprotect.
+			err = fmt.Errorf("stale-WP presence probe: %w", probeErr)
+		}
+	}
+
+	// CoW window: capture the page's pre-image into the export sink BEFORE
+	// clearing the protection — the faulting writer is still blocked, so the
+	// bytes copied are the pause-time content by construction. Outside the
+	// window (or after its cancel) this is a no-op and the resolve is
+	// tracking-only. Blocking here (a claim wait is bounded by one page copy)
+	// happens under settleRequests.RLock; that is acceptable because a live
+	// window excludes free-page reporting, so no REMOVE batch is waiting.
+	cow := false
+	if err == nil {
+		if w := u.cowWindow.Load(); w != nil {
+			handled, copyErr := w.EnsureCopied(ctx, idx)
+			if copyErr != nil {
+				// Only a dead ctx interrupts a claim wait: the serve loop is
+				// tearing down and the pre-image is not guaranteed captured,
+				// so do not unprotect. The window is canceled with the
+				// teardown.
+				outcome = wpResolveError
+
+				return fmt.Errorf("uffd WP resolve at %#x: CoW pre-image wait: %w", addr, copyErr)
+			}
+			cow = handled
+		}
+
+		// mode 0 = clear write-protection + wake the faulting thread (no
+		// DONTWAKE).
+		err = u.fd.writeProtectRange(alignedAddr, u.pageSize, u.pageSize, 0)
+	}
+	if errors.Is(err, syscall.EAGAIN) {
+		// Deferred: record the attempt under its own outcome so a fault
+		// bouncing off mmap_changing repeatedly stays diagnosable; the
+		// eventual re-serve records the resolution separately. A captured
+		// pre-image stays captured; the re-served resolve's EnsureCopied
+		// takes the lock-free fast path.
+		outcome = wpResolveDeferred
+
+		return errWPResolveAgain
+	}
+	if err != nil {
+		// Not promoted on any failure path: the write has not happened, and
+		// whichever path completes it records the page Dirty.
+		wakeErr := u.fd.wake(alignedAddr, u.pageSize)
+		outcome = wpResolveError
+		streak := u.recordWPResolveFailure(alignedAddr)
+		if wakeErr == nil && streak < wpResolveErrEscalation {
+			u.logger.Error(ctx, "uffd WP resolve failed; writer woken to re-fault",
+				zap.Uintptr("addr", addr), zap.Int32("consecutive_failures", streak), zap.Error(err))
+
+			return nil
+		}
+
+		var signalErr error
+		if onFailure != nil {
+			signalErr = onFailure()
+		}
+		if wakeErr != nil {
+			return fmt.Errorf("uffd WP resolve at %#x stranded the writer: %w",
+				addr, errors.Join(err, wakeErr, signalErr))
+		}
+
+		return fmt.Errorf("uffd WP resolve of page %#x failed %d consecutive times (deterministic failure, not retrying): %w",
+			alignedAddr, streak, errors.Join(err, signalErr))
+	}
+
+	u.clearWPResolveFailure(alignedAddr)
+
+	// The protection is cleared and the writer is waking: promote the page to
+	// Dirty. Still under settleRequests.RLock, so a REMOVE batch cannot slip
+	// between the clear and the promotion. Ordering vs the window's
+	// Dirty→Clean rebaseline: EnsureCopied returned before this point, and
+	// the rebaseline happens inside the copy, so this promotion always lands
+	// after it — the write is dirty for the NEXT interval. When the presence
+	// probe proved a Removed reading stale, promote THROUGH it —
+	// MarkWritten's Removed-skip is for genuinely absent pages, which the
+	// probe has just excluded.
+	var prev block.State
+	if presenceVerified {
+		prev = u.pageTracker.MarkWrittenPresent(idx)
+	} else {
+		prev = u.pageTracker.MarkWritten(idx)
+	}
+	wpPromoteCount.Add(ctx, 1, wpPromoteAttrs[u.genBucket][prev])
+
+	if cow {
+		outcome = wpResolveOKCoW
+	}
+	u.wpFaultsResolved.Add(1)
+
+	return nil
+}
+
+// recordWPResolveFailure bumps the consecutive-failure streak for one page
+// and returns it. Streaks are per page: only the same page failing again and
+// again indicates the deterministic fault/wake livelock the escalation
+// exists for.
+func (u *Userfaultfd) recordWPResolveFailure(alignedAddr uintptr) int32 {
+	u.wpResolveErrMu.Lock()
+	defer u.wpResolveErrMu.Unlock()
+
+	if u.wpResolveErrPages == nil {
+		u.wpResolveErrPages = make(map[uintptr]int32)
+	}
+	u.wpResolveErrPages[alignedAddr]++
+	u.wpResolveErrPending.Store(int32(len(u.wpResolveErrPages)))
+
+	return u.wpResolveErrPages[alignedAddr]
+}
+
+// clearWPResolveFailure drops the page's failure streak after a successful
+// resolve. The pending gate keeps the common all-successes path lock-free.
+func (u *Userfaultfd) clearWPResolveFailure(alignedAddr uintptr) {
+	if u.wpResolveErrPending.Load() == 0 {
+		return
+	}
+
+	u.wpResolveErrMu.Lock()
+	defer u.wpResolveErrMu.Unlock()
+
+	if _, ok := u.wpResolveErrPages[alignedAddr]; ok {
+		delete(u.wpResolveErrPages, alignedAddr)
+		u.wpResolveErrPending.Store(int32(len(u.wpResolveErrPages)))
 	}
 }
 
@@ -565,25 +957,23 @@ func (u *Userfaultfd) faultPage(
 		mode = UFFDIO_COPY_MODE_WP
 	}
 
-	// nil source = zero-fill. 4K read needs zero → WP → wake (anonymous mappings
-	// cannot be write-protected until they are populated, so wake must come last).
+	// nil source = zero-fill.
 	switch {
-	case source == nil && u.pageSize == header.PageSize && accessType == block.Read:
-		writeErr = u.fd.zero(addr, u.pageSize, UFFDIO_ZEROPAGE_MODE_DONTWAKE)
-		if writeErr != nil {
-			break
-		}
-		writeErr = u.fd.writeProtect(addr, u.pageSize, UFFDIO_WRITEPROTECT_MODE_WP)
-		if writeErr != nil {
-			writeErr = errors.Join(writeErr, u.fd.wake(addr, u.pageSize))
-
-			break
-		}
-		writeErr = u.fd.wake(addr, u.pageSize)
 	case source == nil && u.pageSize == header.PageSize && accessType == block.Write:
+		// Write fault on a hole: plain zero-install, unprotected — the
+		// write that faulted lands immediately and the page is recorded
+		// Dirty.
 		writeErr = u.fd.zero(addr, u.pageSize, 0)
-	case source == nil && u.pageSize == header.HugepageSize:
-		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage, mode)
+	case source == nil:
+		// Zero-fill via COPY of a zero buffer instead of UFFDIO_ZEROPAGE,
+		// so read faults get install+write-protect in ONE atomic ioctl
+		// (MODE_WP). The previous 4K sequence — ZEROPAGE(DONTWAKE) →
+		// WRITEPROTECT → wake — had two windows that lose guest writes
+		// under the tracker dirty source: another thread's write between
+		// install and arm raises no UFFD event (the page is present and
+		// unprotected), and an EAGAIN'd arm after a successful install was
+		// never retried because the deferred re-serve hits EEXIST.
+		writeErr = u.fd.copy(addr, u.pageSize, header.EmptyHugePage[:u.pageSize], mode)
 	default:
 		var b []byte
 		if u.pageSize == header.HugepageSize {

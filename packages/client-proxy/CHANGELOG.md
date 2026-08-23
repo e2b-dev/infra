@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.0](https://github.com/e2b-dev/infra/compare/client-proxy-v0.0.1...client-proxy-v0.1.0) (2026-08-17)
+
+
+### Features
+
+* **azure:** add azure provider arms to byoc build tooling ([d910cfa](https://github.com/e2b-dev/infra/commit/d910cfa3548968e36de0b4ea06e845d0028a891f))
+* **azure:** add azure provider arms to byoc build tooling ([#1361](https://github.com/e2b-dev/infra/issues/1361)) ([ec32c42](https://github.com/e2b-dev/infra/commit/ec32c421386920ac218c90e69dec3720294420e1))
+* **fcversion:** parse vX.Y-&lt;e2b-semver&gt; tags alongside {tag}_{sha} ([#1679](https://github.com/e2b-dev/infra/issues/1679)) ([a8cb6fb](https://github.com/e2b-dev/infra/commit/a8cb6fb8ce04d60fadfe566ef23bdc59b82c089d))
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.0 ([#1583](https://github.com/e2b-dev/infra/issues/1583)) ([acbefda](https://github.com/e2b-dev/infra/commit/acbefdae0e45d5c816cc8659dc8d34784ffa0056))
+* **deps:** update opentelemetry ([#1700](https://github.com/e2b-dev/infra/issues/1700)) ([ea3100a](https://github.com/e2b-dev/infra/commit/ea3100a890ad7e2ba890b0112c41576589eb0e9d))
+* **deps:** update opentelemetry-go-contrib monorepo ([#1607](https://github.com/e2b-dev/infra/issues/1607)) ([5852c94](https://github.com/e2b-dev/infra/commit/5852c942f9b5cff8a66ad008196d7025273febea))
+* **deps:** update testcontainers-go monorepo to v0.43.0 ([#1701](https://github.com/e2b-dev/infra/issues/1701)) ([08b1cbe](https://github.com/e2b-dev/infra/commit/08b1cbe6b6e4e4cddf4b91c068e0b4632ce2e94c))
+
 ## 0.0.1 (2026-07-11)
 
 

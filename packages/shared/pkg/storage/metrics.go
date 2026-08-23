@@ -56,6 +56,7 @@ const (
 	SourceNFS
 	SourceGCS
 	SourceAWS
+	SourceAzure
 	numSources
 )
 
@@ -69,6 +70,7 @@ var sourceStrings = [numSources]string{
 	SourceNFS:     "nfs",
 	SourceGCS:     "gcs",
 	SourceAWS:     "aws",
+	SourceAzure:   "azure",
 }
 
 // Outcome maps a read-path error to the outcome enum. PeerTransitionedError is a

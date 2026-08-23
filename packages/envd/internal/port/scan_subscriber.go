@@ -21,10 +21,6 @@ func NewScannerSubscriber(id string, filter *ScannerFilter) *ScannerSubscriber {
 	}
 }
 
-func (ss *ScannerSubscriber) ID() string {
-	return ss.id
-}
-
 // Signal delivers a scan result to the subscriber, blocking until the receiver
 // takes it or exit is closed.
 func (ss *ScannerSubscriber) Signal(proc []net.ConnectionStat, exit <-chan struct{}) {
