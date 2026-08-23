@@ -33,6 +33,20 @@
 # E2B_REAPER_SCHEDULED in rehoboam-lab/tams stay inert until an operator
 # flips them.
 #
+# WIF ATTRIBUTE CONDITION (operator decision, 2026-08-23): nothing in this
+# system may be tightly coupled to this repo's GitHub NAME -- a later move
+# to a private repo must not break auth. When you provision the pool/
+# provider above, write the attribute condition (and any principalSet
+# binding on the drift SA) against the repository's stable numeric id, not
+# its name:
+#   assertion.repository_id == '1314394330'          # NOT
+#   assertion.repository == 'rehoboam-lab/monad-e2b-infra'
+# repository_id survives a rename or an owner transfer; a brand-new private
+# repo (rather than an in-place transfer) gets its own new id, so that one
+# case needs the condition/binding updated -- everything else (rename,
+# transfer) needs no change at all. Confirm the id hasn't drifted with
+# `gh api repos/rehoboam-lab/monad-e2b-infra -q .id` before using it.
+#
 # On drift (terraform plan -detailed-exitcode == 2) or on the watch itself
 # failing (auth/init/plan error), this upserts ONE tracking issue titled
 # "infra drift: dev" -- updated in place on repeat alarms, never duplicated,
@@ -67,8 +81,12 @@ jobs:
     timeout-minutes: 20
     # Scheduled workflows fire on every fork with the file on its default
     # branch; refuse to run anywhere but the real repo so a fork's cron
-    # never tries to assume a (nonexistent) WIF identity.
-    if: github.repository == 'rehoboam-lab/monad-e2b-infra'
+    # never tries to assume a (nonexistent) WIF identity. Keyed on the
+    # numeric repository id (not github.repository's owner/name string) so
+    # this guard survives a rename or an owner transfer -- see the WIF
+    # ATTRIBUTE CONDITION note above the GCP auth step for why, and how to
+    # get the current id if this repo is ever moved.
+    if: github.repository_id == '1314394330'
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
