@@ -75,6 +75,7 @@ systemctl mask e2scrub_reap.service`,
 	// boot sequence and wire the runlevels a container image ships without.
 	InitOpenRC: `echo "Installing boot inittab (busybox init -> OpenRC runlevels)"
 printf '%s\n' \
+    '::sysinit:/bin/sh -c "mkdir -p /dev/pts && mount -t devpts devpts /dev/pts 2>/dev/null; [ -c /dev/ptmx ] || mknod /dev/ptmx c 5 2 2>/dev/null"' \
     '::sysinit:/sbin/openrc sysinit' \
     '::sysinit:/sbin/openrc boot' \
     '::wait:/sbin/openrc default' \
