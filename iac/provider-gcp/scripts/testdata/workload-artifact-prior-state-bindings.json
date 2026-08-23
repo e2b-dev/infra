@@ -39,7 +39,7 @@
               "sensitive_values": {}
             },
             {
-              "address": "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image",
+              "address": "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image[0]",
               "mode": "data",
               "type": "google_artifact_registry_docker_image",
               "name": "docker_reverse_proxy_image",

@@ -185,6 +185,19 @@ variable "os_login_operator_access_confirmed" {
   description = "Whether the operator proved IAP tunnel and OS Login administrator access for this rollout."
 }
 
+variable "snapshot_cache_tmpfs_enabled" {
+  type        = bool
+  description = <<-EOT
+    Whether the build/client pool startup script mounts the legacy 65G
+    tmpfs snapshot cache at /mnt/snapshot-cache. Upstream dropped the
+    orchestrator config surface that read this path; the currently
+    deployed fleet's instance templates still carry the mount, so this
+    defaults to true so an ordinary `workload-plan` stays a no-op until a
+    deliberate, reviewed rollout flips it off.
+  EOT
+  default     = true
+}
+
 variable "build_cluster_name" {
   type    = string
   default = "orch-build"

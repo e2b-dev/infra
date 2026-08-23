@@ -31,6 +31,21 @@ variable "os_login_operator_access_confirmed" {
   description = "In-graph authorization proving IAP and OS Login operator access before this pool enables OS Login."
 }
 
+variable "snapshot_cache_tmpfs_enabled" {
+  type        = bool
+  description = <<-EOT
+    Whether the client startup script mounts the legacy 65G tmpfs snapshot
+    cache at /mnt/snapshot-cache. Upstream removed the orchestrator config
+    surface that read this path (chore: remove dead config surface and
+    legacy scripts), but the currently deployed fleet's instance templates
+    still carry it, so this defaults to true to keep an ordinary
+    `workload-plan` a no-op for these pools. Flip to false only as a
+    deliberate, reviewed fleet roll (see the linked follow-up), not as an
+    incidental side effect of an unrelated template replacement.
+  EOT
+  default     = true
+}
+
 variable "machine_type" {
   type = string
 }

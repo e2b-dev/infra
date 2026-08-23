@@ -308,6 +308,7 @@ module "cluster" {
   network_hardening_rollout_stage          = var.network_hardening_rollout_stage
   network_hardening_rollout_wait_seconds   = var.network_hardening_rollout_wait_seconds
   os_login_operator_access_confirmed       = var.os_login_operator_access_confirmed
+  snapshot_cache_tmpfs_enabled             = var.snapshot_cache_tmpfs_enabled
 
   api_cluster_size        = var.api_cluster_size
   clickhouse_cluster_size = var.clickhouse_cluster_size

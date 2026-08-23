@@ -48,6 +48,7 @@ render_startup() {
   local swap_size_gb="$1"
   local set_orchestrator_version_metadata="$2"
   local output_path="$3"
+  local snapshot_cache_tmpfs_enabled="${4:-true}"
   local config_path="${test_dir}/main.tf"
 
   cat >"${config_path}" <<EOF
@@ -81,6 +82,7 @@ locals {
     SET_ORCHESTRATOR_VERSION_METADATA = "${set_orchestrator_version_metadata}"
     NODE_LABELS = ""
     PERSISTENT_VOLUME_TYPES = {}
+    SNAPSHOT_CACHE_TMPFS_ENABLED = "${snapshot_cache_tmpfs_enabled}"
   })
 }
 EOF
@@ -93,11 +95,27 @@ EOF
 
 dev_render="${test_dir}/dev-startup.sh"
 nondev_render="${test_dir}/nondev-startup.sh"
+snapshot_cache_disabled_render="${test_dir}/snapshot-cache-disabled-startup.sh"
 render_startup "${canary_swap_size_gb}" "false" "${dev_render}"
 render_startup 48 "true" "${nondev_render}"
+render_startup "${canary_swap_size_gb}" "false" "${snapshot_cache_disabled_render}" "false"
 
 bash -n "${dev_render}"
 bash -n "${nondev_render}"
+bash -n "${snapshot_cache_disabled_render}"
+
+# The 65G tmpfs snapshot cache mount was dropped upstream (chore: remove dead
+# config surface and legacy scripts) but the currently deployed fleet's
+# instance templates still carry it, so SNAPSHOT_CACHE_TMPFS_ENABLED must
+# default to true -- keeping an ordinary `workload-plan` a no-op -- and only
+# disappear when a deliberate, reviewed rollout flips the flag off.
+grep -F 'mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache' \
+  "${dev_render}" >/dev/null
+if grep -F 'mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache' \
+  "${snapshot_cache_disabled_render}" >/dev/null; then
+  printf 'SNAPSHOT_CACHE_TMPFS_ENABLED=false must remove the tmpfs snapshot-cache mount.\n' >&2
+  exit 1
+fi
 
 if grep -Eq '^[[:space:]]*set[[:space:]]+-x([[:space:]]|$)' \
   "${template_path}" "${dev_render}" "${nondev_render}"; then

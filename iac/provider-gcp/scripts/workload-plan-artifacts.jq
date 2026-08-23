@@ -69,7 +69,7 @@ def core_specs:
     },
     {
       image: "docker-reverse-proxy",
-      address: "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image",
+      address: "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image[0]",
       name: "docker_reverse_proxy_image"
     },
     {
@@ -91,7 +91,7 @@ def job_specs:
       images: ["api", "db-migrator"]
     },
     {
-      address: "module.nomad.nomad_job.docker_reverse_proxy",
+      address: "module.nomad.nomad_job.docker_reverse_proxy[0]",
       images: ["docker-reverse-proxy"]
     },
     {

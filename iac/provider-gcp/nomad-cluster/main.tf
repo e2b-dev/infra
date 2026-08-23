@@ -400,6 +400,7 @@ module "build_cluster" {
   set_orchestrator_version_metadata  = false
   enable_os_login                    = local.os_login_enabled.build
   os_login_operator_access_confirmed = terraform_data.os_login_operator_access_guard.output
+  snapshot_cache_tmpfs_enabled       = var.snapshot_cache_tmpfs_enabled
 
   depends_on = [
     google_storage_bucket_object.setup_config_objects["scripts/configure-docker-gcp.sh"],
@@ -428,6 +429,7 @@ module "client_cluster" {
   workload_autoscaler_mutation_enabled = each.key == "default" && var.monad_worker_autoscaler_mutation_enabled
   enable_os_login                      = local.os_login_enabled.client
   os_login_operator_access_confirmed   = terraform_data.os_login_operator_access_guard.output
+  snapshot_cache_tmpfs_enabled         = var.snapshot_cache_tmpfs_enabled
 
   // This is here for backwards compatibility
   cluster_name              = each.key == "default" ? "${var.prefix}${var.client_cluster_name}" : "${var.prefix}${var.client_cluster_name}-${each.key}"

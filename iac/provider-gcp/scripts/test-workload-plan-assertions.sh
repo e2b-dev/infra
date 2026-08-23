@@ -2519,7 +2519,7 @@ jq '
   (
     .resource_changes[]
     | select(
-        .address == "module.nomad.nomad_job.docker_reverse_proxy"
+        .address == "module.nomad.nomad_job.docker_reverse_proxy[0]"
       )
     | .change.after.jobspec
   ) |= sub(
@@ -2536,7 +2536,7 @@ jq '
   (
     .resource_changes[]
     | select(
-        .address == "module.nomad.nomad_job.docker_reverse_proxy"
+        .address == "module.nomad.nomad_job.docker_reverse_proxy[0]"
       )
     | .change.after.jobspec
   ) |= sub(

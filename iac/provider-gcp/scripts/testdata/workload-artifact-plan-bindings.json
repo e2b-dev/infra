@@ -346,7 +346,7 @@
               }
             },
             {
-              "address": "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image",
+              "address": "module.nomad.data.google_artifact_registry_docker_image.docker_reverse_proxy_image[0]",
               "mode": "data",
               "type": "google_artifact_registry_docker_image",
               "name": "docker_reverse_proxy_image",
@@ -442,7 +442,7 @@
       }
     },
     {
-      "address": "module.nomad.nomad_job.docker_reverse_proxy",
+      "address": "module.nomad.nomad_job.docker_reverse_proxy[0]",
       "mode": "managed",
       "type": "nomad_job",
       "name": "docker_reverse_proxy",

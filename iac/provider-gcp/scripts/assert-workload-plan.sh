@@ -663,7 +663,7 @@ if [[ "${scope}" == "full" ]]; then
   core_job_specs="$(
     jq -cn '[
       "module.nomad.module.api.nomad_job.api",
-      "module.nomad.nomad_job.docker_reverse_proxy",
+      "module.nomad.nomad_job.docker_reverse_proxy[0]",
       "module.nomad.module.client_proxy.nomad_job.client_proxy"
     ]'
   )"

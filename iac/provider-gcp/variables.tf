@@ -346,6 +346,20 @@ variable "os_login_operator_access_confirmed" {
   default     = false
 }
 
+variable "snapshot_cache_tmpfs_enabled" {
+  type        = bool
+  description = <<-EOT
+    Whether the build/client pool startup script mounts the legacy 65G
+    tmpfs snapshot cache at /mnt/snapshot-cache. Upstream dropped the
+    orchestrator config surface that read this path (chore: remove dead
+    config surface and legacy scripts); the currently deployed fleet's
+    instance templates still carry the mount, so this defaults to true so
+    an ordinary `workload-plan` stays a no-op until a deliberate, reviewed
+    rollout flips it off.
+  EOT
+  default     = true
+}
+
 variable "network_hardening_rollout_stage" {
   type        = string
   description = "Dev invited-beta state-backed serial network/OS Login rollout stage. Non-dev environments must remain disabled; only the guarded saved-plan workflow may advance it."
