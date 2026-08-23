@@ -11,19 +11,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type AccessToken struct {
-	UserID    uuid.UUID
-	CreatedAt time.Time
-	ID        uuid.UUID
-	// sensitive
-	AccessTokenHash       string
-	Name                  string
-	AccessTokenPrefix     string
-	AccessTokenLength     int32
-	AccessTokenMaskPrefix string
-	AccessTokenMaskSuffix string
-}
-
 type ActiveEnv struct {
 	ID            string
 	CreatedAt     time.Time
@@ -169,6 +156,13 @@ type ProjectLimit struct {
 	DefaultFreeDiskSizeMb    int64
 	MaxDiskSizeMb            int64
 	UpdatedAt                time.Time
+}
+
+type ProjectionProjectLimit struct {
+	ProjectID uuid.UUID
+	Revision  int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type ProjectionProjectMember struct {

@@ -251,9 +251,7 @@ already owned by a different user returns 409. A revocation removes only that Us
 `users_teams` row; projected Users and identities are retained. Membership writes live in
 `internal/management` with their post-commit cache eviction rather than in the handlers: auth
 caches member authorization, so each accepted command invalidates that User's authorization for
-the Project after commit. `DELETE /v1/management/users/{userID}/access-tokens` separately
-removes every access token for a deleted User while retaining their projected User and identity
-records.
+the Project after commit.
 
 `DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
 `volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
@@ -265,7 +263,7 @@ planes today.
 
 | Store | Owner packages | What lives there |
 |---|---|---|
-| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `access_tokens` (legacy user tokens, retained until the table is dropped), `volumes`, `clusters` |
+| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
 | **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |

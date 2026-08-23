@@ -74,41 +74,6 @@ func identityOwner(t *testing.T, db *testutils.Database, identity ProjectMemberI
 	return userID
 }
 
-func accessTokenCount(t *testing.T, db *testutils.Database, userID uuid.UUID) int {
-	t.Helper()
-
-	var count int
-	err := db.AuthDB.TestsRawSQLQuery(t.Context(),
-		"SELECT count(*) FROM public.access_tokens WHERE user_id = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&count)
-		}, userID)
-	require.NoError(t, err)
-
-	return count
-}
-
-func TestPurgeUserAccessTokens(t *testing.T) {
-	t.Parallel()
-
-	db := testutils.SetupDatabase(t)
-	service, _ := newService(db)
-	userID := uuid.New()
-	require.NoError(t, db.AuthDB.UpsertPublicUser(t.Context(), userID))
-	err := db.AuthDB.TestsRawSQL(t.Context(), `
-INSERT INTO public.access_tokens (id, user_id, access_token_hash, access_token_prefix, access_token_length, access_token_mask_prefix, access_token_mask_suffix, name)
-VALUES ($1, $2, 'access-token-hash', 'e2b_', 32, 'e2b_', 'token', 'default')
-`, uuid.New(), userID)
-	require.NoError(t, err)
-	require.Equal(t, 1, accessTokenCount(t, db, userID))
-
-	require.NoError(t, service.PurgeUserAccessTokens(t.Context(), userID))
-
-	require.Zero(t, accessTokenCount(t, db, userID))
-}
-
 type memberKey struct {
 	userID uuid.UUID
 	teamID string

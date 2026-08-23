@@ -2310,26 +2310,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /v1/management/users/{userID}/access-tokens:
-    parameters:
-      - $ref: "#/components/parameters/userID"
-    delete:
-      operationId: managementPurgeUserAccessTokens
-      summary: Revoke a deleted User's access tokens (v1).
-      description: >-
-        Removes every access token for a deleted User while retaining their
-        projected User and identity records.
-      tags: [control-plane-management]
-      security:
-        - AdminJWTAuth: []
-      responses:
-        "204":
-          description: User access tokens are absent.
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
   /v1/management/projects/{projectID}/limits:
     parameters:
       - $ref: "#/components/parameters/projectID"

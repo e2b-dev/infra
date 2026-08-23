@@ -13,9 +13,6 @@ DROP POLICY IF EXISTS "Allow to create a user team connection to new user" ON pu
 DROP POLICY IF EXISTS "Allow users to create a new team user entry" ON public.users_teams;
 DROP POLICY IF EXISTS "Allow users to delete a team user entry" ON public.users_teams;
 
-DROP POLICY IF EXISTS "Enable select for users based on user_id" ON public.access_tokens;
-DROP POLICY IF EXISTS "Allow to create an access token to new user" ON public.access_tokens;
-
 DROP POLICY IF EXISTS "Allow selection for users that are in the team" ON public.team_api_keys;
 DROP POLICY IF EXISTS "Allow to create a team api key to new user" ON public.team_api_keys;
 DROP POLICY IF EXISTS "Allow users to delete a team api key" ON public.team_api_keys;
@@ -44,9 +41,6 @@ ALTER TABLE IF EXISTS public.env_aliases DISABLE ROW LEVEL SECURITY;
 
 ALTER TABLE IF EXISTS public.team_api_keys NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.team_api_keys DISABLE ROW LEVEL SECURITY;
-
-ALTER TABLE IF EXISTS public.access_tokens NO FORCE ROW LEVEL SECURITY;
-ALTER TABLE IF EXISTS public.access_tokens DISABLE ROW LEVEL SECURITY;
 
 ALTER TABLE IF EXISTS public.users_teams NO FORCE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.users_teams DISABLE ROW LEVEL SECURITY;

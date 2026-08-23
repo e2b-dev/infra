@@ -58,7 +58,6 @@ func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 	projectID := uuid.New().String()
 	userID := uuid.New().String()
 	project := "/v1/management/projects/" + projectID
-	user := "/v1/management/users/" + userID
 
 	for _, tt := range []struct {
 		operation string
@@ -69,7 +68,6 @@ func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 		{"upsertProject", http.MethodPut, project, `{"name":"a","slug":"a","project_type":"base_v1"}`},
 		{"deleteProject", http.MethodDelete, project, ""},
 		{"applyProjectMember", http.MethodPut, project + "/members/" + userID, `{"revision":1,"present":false}`},
-		{"purgeUserAccessTokens", http.MethodDelete, user + "/access-tokens", ""},
 		{"upsertLimits", http.MethodPut, project + "/limits", `{}`},
 	} {
 		t.Run(tt.operation, func(t *testing.T) {
@@ -118,10 +116,6 @@ func (r *routeRecorder) ManagementDeleteProject(c *gin.Context, _ api.ProjectID)
 
 func (r *routeRecorder) ManagementApplyProjectMember(c *gin.Context, _ api.ProjectID, _ api.UserID) {
 	r.report(c, "applyProjectMember")
-}
-
-func (r *routeRecorder) ManagementPurgeUserAccessTokens(c *gin.Context, _ api.UserID) {
-	r.report(c, "purgeUserAccessTokens")
 }
 
 func (r *routeRecorder) ManagementUpsertProjectLimits(c *gin.Context, _ api.ProjectID) {
