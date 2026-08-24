@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0 (2026-08-24)
+
+
+### Features
+
+* **redis:** password auth and explicit TLS enablement (1c49ecf)
+* **shared:** use TypeID encoding for object IDs (4a5075b)
+
 ## [0.1.0](https://github.com/e2b-dev/infra/compare/client-proxy-v0.0.1...client-proxy-v0.1.0) (2026-08-17)
 
 
