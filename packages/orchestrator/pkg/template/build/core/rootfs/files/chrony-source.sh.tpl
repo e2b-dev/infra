@@ -16,9 +16,29 @@
 # same name (Alpine).
 set -eu
 
+# Record which source was chosen so an operator can tell, after the fact, why a
+# guest's clock did or didn't converge. The fallback to the public NTP pool is
+# the slow, network-dependent path; when it is taken silently there is nothing
+# to inspect after boot. We log to stderr (captured by the systemd journal / the
+# OpenRC service log), to syslog via logger when present, and to a stable marker
+# file that survives for the life of the boot.
+log() {
+    echo "e2b-chrony-source: $1" >&2
+    if command -v logger >/dev/null 2>&1; then
+        logger -t e2b-chrony-source "$1" || true
+    fi
+}
+
 mkdir -p /run/chrony-e2b
 if [ -e /dev/ptp0 ]; then
-    echo "refclock PHC /dev/ptp0 poll 2 dpoll 2" >/run/chrony-e2b/source.conf
+    source_line="refclock PHC /dev/ptp0 poll 2 dpoll 2"
+    selected="phc"
+    log "/dev/ptp0 present: using hypervisor PHC refclock"
 else
-    echo "pool pool.ntp.org iburst maxsources 3" >/run/chrony-e2b/source.conf
+    source_line="pool pool.ntp.org iburst maxsources 3"
+    selected="pool"
+    log "/dev/ptp0 absent: falling back to public NTP pool (pool.ntp.org) — first sync races iburst convergence over the network"
 fi
+
+echo "$source_line" >/run/chrony-e2b/source.conf
+echo "$selected" >/run/chrony-e2b/selected

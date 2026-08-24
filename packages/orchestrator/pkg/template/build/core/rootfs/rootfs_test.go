@@ -131,6 +131,18 @@ func TestAdditionalOCILayers(t *testing.T) {
 		assert.Contains(t, chronySource, "/run/chrony-e2b/source.conf")
 		assert.Contains(t, chronySource, "refclock PHC /dev/ptp0")
 		assert.Contains(t, chronySource, "pool pool.ntp.org")
+
+		// Ships verbatim into every guest boot; parse it the way the guest's sh will.
+		chronyScript := filepath.Join(t.TempDir(), "e2b-chrony-source")
+		require.NoError(t, os.WriteFile(chronyScript, []byte(chronySource), 0o700))
+		chronyOut, chronyErr := exec.Command("sh", "-n", chronyScript).CombinedOutput()
+		require.NoErrorf(t, chronyErr, "e2b-chrony-source is not valid sh:\n%s", chronyOut)
+
+		// The fallback to the public NTP pool is the slow, network-dependent path
+		// that makes "is the clock synchronized" flap; it must not be silent, so
+		// the selector logs the chosen source and records it in a stable marker.
+		assert.Contains(t, chronySource, "/run/chrony-e2b/selected")
+		assert.Contains(t, chronySource, "logger -t e2b-chrony-source")
 		assert.Contains(t, actualFiles["etc/systemd/system/e2b-chrony-source.service"],
 			"ExecStart=/usr/local/bin/e2b-chrony-source")
 		openrcChronySource := actualFiles["usr/local/share/e2b/chrony-source.openrc"]
