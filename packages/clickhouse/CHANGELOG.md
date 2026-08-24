@@ -1,11 +1,11 @@
 # Changelog
 
-## [0.4.0](https://github.com/e2b-dev/belt/compare/clickhouse-migrator-v0.3.0...clickhouse-migrator-v0.4.0) (2026-08-21)
+## 0.4.0 (2026-08-21)
 
 
 ### Features
 
-* **clickhouse:** record the outbound destinations sandboxes connect to ([#1918](https://github.com/e2b-dev/belt/issues/1918)) ([24ef5c5](https://github.com/e2b-dev/belt/commit/24ef5c5b1719ebd31e5694c83e4d1fbda56d96f3))
+* **clickhouse:** record the outbound destinations sandboxes connect to (24ef5c5)
 
 ## [0.3.0](https://github.com/e2b-dev/infra/compare/clickhouse-migrator-v0.2.0...clickhouse-migrator-v0.3.0) (2026-08-17)
 
