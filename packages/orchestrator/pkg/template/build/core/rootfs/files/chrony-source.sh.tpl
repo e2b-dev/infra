@@ -22,8 +22,13 @@ set -eu
 # to inspect after boot. We log to stderr (captured by the systemd journal / the
 # OpenRC service log), to syslog via logger when present, and to a stable marker
 # file that survives for the life of the boot.
+#
+# Logging is strictly best-effort and MUST NOT be able to abort this script:
+# with `set -e`, a failed write (e.g. a broken stderr) would otherwise bail
+# before chrony's source file is written, leaving chronyd with no source at all.
+# For the same reason all writes to source.conf happen before we log.
 log() {
-    echo "e2b-chrony-source: $1" >&2
+    echo "e2b-chrony-source: $1" >&2 2>/dev/null || true
     if command -v logger >/dev/null 2>&1; then
         logger -t e2b-chrony-source "$1" || true
     fi
@@ -33,12 +38,14 @@ mkdir -p /run/chrony-e2b
 if [ -e /dev/ptp0 ]; then
     source_line="refclock PHC /dev/ptp0 poll 2 dpoll 2"
     selected="phc"
-    log "/dev/ptp0 present: using hypervisor PHC refclock"
+    message="/dev/ptp0 present: using hypervisor PHC refclock"
 else
     source_line="pool pool.ntp.org iburst maxsources 3"
     selected="pool"
-    log "/dev/ptp0 absent: falling back to public NTP pool (pool.ntp.org) — first sync races iburst convergence over the network"
+    message="/dev/ptp0 absent: falling back to public NTP pool (pool.ntp.org) — first sync races iburst convergence over the network"
 fi
 
 echo "$source_line" >/run/chrony-e2b/source.conf
 echo "$selected" >/run/chrony-e2b/selected
+
+log "$message"
