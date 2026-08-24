@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 (2026-08-24)
+
+
+### Features
+
+* **api:** remove deprecated E2B access token auth (a301352)
+* **shared:** use TypeID encoding for object IDs (4a5075b)
+
 ## 0.2.0 (2026-08-20)
 
 
