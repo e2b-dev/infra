@@ -82,8 +82,12 @@ build_salt() {
     arm64) rpm_arch="aarch64" ;;
     *)     rpm_arch="$target_arch" ;;
   esac
-  # The distro is the tag's last dot-separated field: amzn2, amzn2023.
-  echo "${version}-${tag##*.}.${rpm_arch}"
+  # The distro field get_tag matched on, found by name rather than by position:
+  # its glob ends open, so this field is not always the tag's last. A tag
+  # without one is not one get_tag returns, so fail rather than salt with
+  # whatever happens to sit there.
+  [[ "$tag" =~ amzn2[0-9]* ]] || return 1
+  echo "${version}-${BASH_REMATCH[0]}.${rpm_arch}"
 }
 
 apply_patches() {

@@ -10,10 +10,8 @@
 #
 # Options:
 #   --tag <tag>          Release tag / version name (e.g. v1.14-0.1.0).
-#   --deployment <name>  Deployment to upload to. One of:
-#                          public, legacy-public, or a cluster name (root from FC_CLUSTER_BUCKET_ROOT)
-#                        Every deployment but public and legacy-public reads
-#                        its bucket root from FC_CLUSTER_BUCKET_ROOT.
+#   --deployment <name>  public, or a cluster name whose bucket root comes from
+#                        FC_CLUSTER_BUCKET_ROOT.
 #   --repo <repo>        GitHub repo (default: e2b-dev/fc-versions).
 #   --dry-run            Print what would be uploaded without writing.
 #   -h, --help           Show this help.
@@ -47,12 +45,11 @@ command -v gcloud >/dev/null || { echo "ERROR: gcloud CLI not found" >&2; exit 1
 # Cluster buckets are not public names, so their roots arrive through the
 # environment.
 case "$DEPLOYMENT" in
-  public)        BUCKET_URI="gs://e2b-artifact-binaries/firecrackers" ;;
-  legacy-public) BUCKET_URI="gs://e2b-prod-public-builds/firecrackers" ;;
+  public) BUCKET_URI="gs://e2b-artifact-binaries/firecrackers" ;;
   *)
     [[ -n "${FC_CLUSTER_BUCKET_ROOT:-}" ]] || {
       echo "ERROR: unknown deployment '$DEPLOYMENT'" >&2
-      echo "Shared destinations: public, legacy-public. A cluster deployment needs FC_CLUSTER_BUCKET_ROOT set to its bucket root, e.g. gs://a-bucket" >&2
+      echo "The shared destination is public. A cluster deployment needs FC_CLUSTER_BUCKET_ROOT set to its bucket root, e.g. gs://a-bucket" >&2
       exit 1
     }
     BUCKET_URI="${FC_CLUSTER_BUCKET_ROOT%/}"
