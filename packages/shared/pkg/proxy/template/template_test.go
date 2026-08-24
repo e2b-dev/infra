@@ -97,6 +97,56 @@ func TestHandleErrorContentNegotiation(t *testing.T) {
 	}
 }
 
+// Every synthesized error is answered by the proxy itself, so each one must
+// carry Access-Control-Allow-Origin — without it a browser hides the status
+// and body from JS. The table covers every constructor so a new error type
+// cannot ship without the header.
+func TestHandleErrorSetsCORSHeader(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		handler interface {
+			HandleError(w http.ResponseWriter, r *http.Request) error
+		}
+	}{
+		{"sandbox not found", NewSandboxNotFoundError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
+		{"port closed", NewPortClosedError("im9r2ycjiy2534qsdy1oo", "e2b.app", 3000)},
+		{"sandbox still transitioning", NewSandboxStillTransitioningError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
+		{"sandbox resume permission denied", NewSandboxResumePermissionDeniedError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
+		{"sandbox too many connections", NewSandboxTooManyConnectionsError("im9r2ycjiy2534qsdy1oo", "e2b.app", 100)},
+		{"team sandbox limit", NewTeamSandboxLimitError("im9r2ycjiy2534qsdy1oo", "e2b.app", "limit reached")},
+		{"internal route", NewInternalRouteError("e2b.app", "/init")},
+		{"traffic access token missing", NewTrafficAccessTokenMissingHeader("im9r2ycjiy2534qsdy1oo", "e2b.app", "e2b-traffic-access-token")},
+		{"traffic access token invalid", NewTrafficAccessTokenInvalidHeader("im9r2ycjiy2534qsdy1oo", "e2b.app", "e2b-traffic-access-token")},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			t.Run("json", func(t *testing.T) {
+				t.Parallel()
+
+				r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
+				w := httptest.NewRecorder()
+
+				require.NoError(t, tt.handler.HandleError(w, r))
+				assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+			})
+
+			t.Run("html", func(t *testing.T) {
+				t.Parallel()
+
+				r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health", nil)
+				r.Header.Set("User-Agent", chromeUserAgent)
+				w := httptest.NewRecorder()
+
+				require.NoError(t, tt.handler.HandleError(w, r))
+				assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+			})
+		})
+	}
+}
+
 func TestHandleErrorRejectsInvalidStatusCode(t *testing.T) {
 	t.Parallel()
 

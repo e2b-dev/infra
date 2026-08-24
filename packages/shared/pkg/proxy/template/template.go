@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/cors"
 )
 
 var browserRegex = regexp.MustCompile(`(?i)mozilla|chrome|safari|firefox|edge|opera|msie`)
@@ -43,6 +45,11 @@ func (e *TemplatedError[T]) HandleError(
 	if e.vars.StatusCode() <= 0 {
 		return fmt.Errorf("invalid status code: %d", e.vars.StatusCode())
 	}
+
+	// These responses are synthesized by the proxy, so nobody upstream can mark
+	// them readable for browser JS; without this header a browser reports an
+	// opaque network error instead of the status and body.
+	cors.SetHeaders(w)
 
 	if wantsHtml(r) {
 		body, buildErr := e.buildHtml()

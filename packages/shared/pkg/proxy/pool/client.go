@@ -14,6 +14,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/cors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/tracking"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -119,18 +120,25 @@ func newProxyClient(
 			}
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			// The upstream could not answer, so the proxy is the only party left
+			// to answer the preflight, and a browser drops the real request
+			// unless the preflight gets a 2xx.
+			if cors.HandlePreflight(w, r) {
+				return
+			}
+
 			ctx := r.Context()
 			t, ok := pc.getDestination(r)
 			if !ok {
 				logger.L().Error(ctx, "proxy request without sandbox received error", zap.Error(err))
-				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+				cors.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
 
 				return
 			}
 
 			if r.Host == "" { // kept around for historical reasons, unsure of usefulness. todo: find out if this is useful.
 				t.RequestLogger.Error(ctx, "error handler called from rewrite because of missing DestinationContext", zap.Error(err))
-				http.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
+				cors.Error(w, "Failed to route request to sandbox", http.StatusInternalServerError)
 
 				return
 			}
@@ -154,7 +162,7 @@ func newProxyClient(
 				if err != nil {
 					logger.L().Error(ctx, "failed to handle error", zap.Error(err))
 
-					http.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
+					cors.Error(w, "Failed to handle closed port error", http.StatusInternalServerError)
 
 					return
 				}
@@ -162,7 +170,7 @@ func newProxyClient(
 				return
 			}
 
-			http.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
+			cors.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
 		},
 		ModifyResponse: func(r *http.Response) error {
 			ctx := r.Request.Context()

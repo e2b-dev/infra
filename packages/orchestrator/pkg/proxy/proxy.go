@@ -80,6 +80,10 @@ func newDestinationResolver(sandboxes *sandbox.Map) func(r *http.Request) (*pool
 
 		// Handle traffic access token validation.
 		// We are skipping envd port as it has its own access validation mechanism.
+		// Preflights fail this check too — the Fetch standard forbids a preflight
+		// from carrying custom headers, so it can never present the token. The
+		// proxy answers them from the resulting error path, so no unauthenticated
+		// request ever reaches the guest port.
 		if accessToken != "" && isNonEnvdTraffic {
 			accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
 			if accessTokenRaw == "" {

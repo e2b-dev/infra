@@ -69,3 +69,47 @@ func TestSandboxNotFound(t *testing.T) {
 	assert.Contains(t, string(body), sbx.SandboxID)
 	assert.True(t, strings.HasSuffix(string(body), "</html>"))
 }
+
+// A browser only shows JS the proxy's error if the preflight got a 2xx and the
+// response carries Access-Control-Allow-Origin; without them the SDK sees an
+// opaque network error instead of the 502 and its JSON body.
+func TestSandboxNotFoundCORS(t *testing.T) {
+	t.Parallel()
+	proxyURL, err := url.Parse(setup.EnvdProxy)
+	require.NoError(t, err)
+
+	port := 3210
+
+	client := &http.Client{
+		Timeout: 1000 * time.Second,
+	}
+
+	sbxID := "i" + id.Generate()
+	sbx := &api.Sandbox{
+		SandboxID: sbxID,
+		ClientID:  "unknown",
+	}
+
+	preflight := utils.NewRequest(sbx, proxyURL, port, &http.Header{
+		"Origin":                         []string{"https://app.example.com"},
+		"Access-Control-Request-Method":  []string{http.MethodGet},
+		"Access-Control-Request-Headers": []string{"e2b-sandbox-id,e2b-sandbox-port"},
+	})
+	preflight.Method = http.MethodOptions
+
+	resp, err := client.Do(preflight)
+	require.NoError(t, err)
+	require.NoError(t, resp.Body.Close())
+
+	assert.GreaterOrEqual(t, resp.StatusCode, 200)
+	assert.Less(t, resp.StatusCode, 300)
+	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "e2b-sandbox-id,e2b-sandbox-port", resp.Header.Get("Access-Control-Allow-Headers"))
+
+	headers := &http.Header{"Origin": []string{"https://app.example.com"}}
+	resp = utils.WaitForStatus(t, client, sbx, proxyURL, port, headers, http.StatusBadGateway)
+	require.NotNil(t, resp)
+	require.NoError(t, resp.Body.Close())
+	require.Equal(t, http.StatusBadGateway, resp.StatusCode)
+	assert.Equal(t, "*", resp.Header.Get("Access-Control-Allow-Origin"))
+}
