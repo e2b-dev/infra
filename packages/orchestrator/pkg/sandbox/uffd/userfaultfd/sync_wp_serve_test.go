@@ -69,12 +69,10 @@ func TestSyncWPResolveDirectFault(t *testing.T) {
 	defer debug.SetGCPercent(prevGC)
 
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		runtime.LockOSThread()
 		mem[0] = 0x42 // sync WP fault → blocks until resolved below
-	}()
+	})
 
 	// Read the WP fault event and resolve it. Poll with a deadline instead
 	// of a bare blocking read: on a kernel that does not deliver the sync WP

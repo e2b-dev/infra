@@ -1,6 +1,7 @@
 package secretsstore
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -38,8 +39,8 @@ func TestNormalizeNameRejectsEachInvalidBranchWithAFixedError(t *testing.T) {
 			if got != "" {
 				t.Fatalf("NormalizeName() = %q, want empty", got)
 			}
-			if err != ErrInvalidName {
-				t.Fatalf("NormalizeName() error = %v, want exact ErrInvalidName", err)
+			if !errors.Is(err, ErrInvalidName) {
+				t.Fatalf("NormalizeName() error = %v, want ErrInvalidName", err)
 			}
 			if err.Error() != "secret name is invalid" {
 				t.Fatalf("NormalizeName() error = %q, want fixed message", err)

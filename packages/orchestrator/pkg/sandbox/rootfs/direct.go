@@ -118,7 +118,7 @@ func (o *DirectProvider) PrepareExportDiff(_ context.Context, _ func(context.Con
 }
 
 func (o *DirectProvider) ExportDiffInPlace(_ context.Context, _ *os.File) (*header.DiffMetadata, error) {
-	return nil, fmt.Errorf("direct provider does not support in-place export")
+	return nil, errors.New("direct provider does not support in-place export")
 }
 
 func (o *DirectProvider) SwapForBackgroundSeal(_ context.Context) (*block.Cache, error) {

@@ -153,9 +153,9 @@ func (u *Userfaultfd) EndCoWExport(w *CoWWindow) {
 // The uffd teardown calls this BEFORE unmapping the memfd the window reads
 // pre-images from — an in-flight copy reading an unmapped view would fault
 // the orchestrator itself.
-func (u *Userfaultfd) CancelActiveCoWWindow(err error) {
+func (u *Userfaultfd) CancelActiveCoWWindow(ctx context.Context, err error) {
 	if w := u.cowWindow.Swap(nil); w != nil {
-		recordCoWCancel(context.Background(), "teardown")
+		recordCoWCancel(ctx, "teardown")
 		w.CancelAndDrain(err)
 	}
 }

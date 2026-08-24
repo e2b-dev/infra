@@ -23,7 +23,7 @@ import (
 	"os"
 	"runtime"
 	"runtime/debug"
-	"sort"
+	"slices"
 	"strconv"
 	"sync"
 	"syscall"
@@ -83,10 +83,7 @@ func percentile(sorted []time.Duration, p float64) time.Duration {
 	if len(sorted) == 0 {
 		return 0
 	}
-	idx := int(math.Ceil(p/100*float64(len(sorted)))) - 1
-	if idx < 0 {
-		idx = 0
-	}
+	idx := max(int(math.Ceil(p/100*float64(len(sorted))))-1, 0)
 	if idx >= len(sorted) {
 		idx = len(sorted) - 1
 	}
@@ -119,7 +116,7 @@ func TestSyncWPFaultLatency(t *testing.T) {
 
 	// Populate every hugepage (present, no uffd yet) so the measured faults are
 	// pure WP faults, not MISSING faults.
-	for i := 0; i < nPages; i++ {
+	for i := range nPages {
 		mem[uint64(i)*pagesize] = 0
 	}
 
@@ -210,7 +207,7 @@ func TestSyncWPFaultLatency(t *testing.T) {
 	arms := make([]time.Duration, 0, nRounds-1)
 
 	deadline := time.Now().Add(120 * time.Second)
-	for r := 0; r < nRounds; r++ {
+	for r := range nRounds {
 		// Arm: WP the whole range (this is the per-snapshot re-arm cost).
 		armStart := time.Now()
 		if err := fd.writeProtectRange(memStart, uintptr(size), uintptr(pagesize), UFFDIO_WRITEPROTECT_MODE_WP); err != nil {
@@ -255,7 +252,7 @@ func TestSyncWPFaultLatency(t *testing.T) {
 		t.Errorf("got %d non-WP pagefaults (expected all WP)", res.nonWP)
 	}
 
-	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	slices.Sort(latencies)
 	var sum time.Duration
 	for _, l := range latencies {
 		sum += l
@@ -300,14 +297,11 @@ func TestAsyncWPWriteLatency(t *testing.T) {
 
 	const pagesize = uint64(header.HugepageSize)
 	nPages := envInt("E2B_WP_PAGES", 256)
-	nRounds := envInt("E2B_WP_ROUNDS", 20)
-	if nRounds < 2 {
-		nRounds = 2
-	}
+	nRounds := max(envInt("E2B_WP_ROUNDS", 20), 2)
 	size := pagesize * uint64(nPages)
 
 	mem, memStart := hugepageMmap(t, size)
-	for i := 0; i < nPages; i++ {
+	for i := range nPages {
 		mem[uint64(i)*pagesize] = 0
 	}
 
@@ -352,7 +346,7 @@ func TestAsyncWPWriteLatency(t *testing.T) {
 	arms := make([]time.Duration, 0, nRounds-1)
 	scans := make([]time.Duration, 0, nRounds-1)
 
-	for r := 0; r < nRounds; r++ {
+	for r := range nRounds {
 		armStart := time.Now()
 		if err := fd.writeProtectRange(memStart, uintptr(size), uintptr(pagesize), UFFDIO_WRITEPROTECT_MODE_WP); err != nil {
 			t.Fatalf("arm writeProtectRange (round %d): %v", r, err)
@@ -392,7 +386,7 @@ func TestAsyncWPWriteLatency(t *testing.T) {
 		}
 	}
 
-	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
+	slices.Sort(latencies)
 	var sum time.Duration
 	for _, l := range latencies {
 		sum += l
@@ -419,7 +413,7 @@ func TestAsyncWPWriteLatency(t *testing.T) {
 		meanOf(scans), nPages, meanOf(scans)/time.Duration(nPages))
 }
 
-// runConcurrentSyncWP runs W writer goroutines (simulating W vCPUs), each on its
+// runConcurrentSyncWP runs nWriters writer goroutines (simulating nWriters vCPUs), each on its
 // own OS thread, each dirtying a disjoint sub-range of the hugepages with real
 // stores that trigger synchronous WP faults. A single reader goroutine drains the
 // uffd and fans fault resolution out to `handlers` worker goroutines — mirroring
@@ -427,9 +421,9 @@ func TestAsyncWPWriteLatency(t *testing.T) {
 // writer's per-fault latencies (merged) and the wall time.
 //
 // Deadlock note: a goroutine blocked in a page fault holds its P (unlike a
-// syscall), so the caller MUST set GOMAXPROCS > W or the resolvers starve. The
+// syscall), so the caller MUST set GOMAXPROCS > nWriters or the resolvers starve. The
 // blocked writers consume no CPU, so resolvers still run on the physical cores.
-func runConcurrentSyncWP(t *testing.T, mem []byte, memStart uintptr, pagesize uint64, nPages, nRounds, W, handlers int) ([]time.Duration, time.Duration) {
+func runConcurrentSyncWP(t *testing.T, mem []byte, memStart uintptr, pagesize uint64, nPages, nRounds, nWriters, handlers int) ([]time.Duration, time.Duration) {
 	t.Helper()
 
 	size := pagesize * uint64(nPages)
@@ -454,14 +448,12 @@ func runConcurrentSyncWP(t *testing.T, mem []byte, memStart uintptr, pagesize ui
 	// `handlers` resolver workers — mirrors the production serve loop.
 	workCh := make(chan uintptr, handlers*8)
 	var resolvers sync.WaitGroup
-	for k := 0; k < handlers; k++ {
-		resolvers.Add(1)
-		go func() {
-			defer resolvers.Done()
+	for range handlers {
+		resolvers.Go(func() {
 			for addr := range workCh {
 				_ = fd.writeProtectRange(addr, uintptr(pagesize), uintptr(pagesize), 0) // unprotect + wake
 			}
-		}()
+		})
 	}
 
 	// stop pipe: signalled once all writers finish — by then every fault is
@@ -518,12 +510,12 @@ func runConcurrentSyncWP(t *testing.T, mem []byte, memStart uintptr, pagesize ui
 		}
 	}()
 
-	// Writers: W disjoint sub-ranges, each re-arms its own range every round.
-	perW := (nPages + W - 1) / W
-	results := make([][]time.Duration, W)
+	// Writers: nWriters disjoint sub-ranges, each re-arms its own range every round.
+	perW := (nPages + nWriters - 1) / nWriters
+	results := make([][]time.Duration, nWriters)
 	start := make(chan struct{})
 	var writers sync.WaitGroup
-	for w := range W {
+	for w := range nWriters {
 		lo := w * perW
 		hi := min(lo+perW, nPages)
 		if lo >= hi {
@@ -571,7 +563,7 @@ func runConcurrentSyncWP(t *testing.T, mem []byte, memStart uintptr, pagesize ui
 		_, _ = syscall.Write(stop[1], []byte{1})
 		<-readerDone
 		close(workCh)
-		t.Fatalf("W=%d: writers did not finish within 60s (handler not keeping up / deadlock)", W)
+		t.Fatalf("nWriters=%d: writers did not finish within 60s (handler not keeping up / deadlock)", nWriters)
 	}
 	wall := time.Since(wallStart)
 
@@ -604,15 +596,12 @@ func TestSyncWPConcurrentLatency(t *testing.T) {
 
 	const pagesize = uint64(header.HugepageSize)
 	nPages := envInt("E2B_WP_PAGES", 256)
-	nRounds := envInt("E2B_WP_ROUNDS", 20)
-	if nRounds < 2 {
-		nRounds = 2
-	}
+	nRounds := max(envInt("E2B_WP_ROUNDS", 20), 2)
 	handlers := envInt("E2B_WP_HANDLERS", runtime.NumCPU())
 	size := pagesize * uint64(nPages)
 
 	mem, memStart := hugepageMmap(t, size)
-	for i := 0; i < nPages; i++ {
+	for i := range nPages {
 		mem[uint64(i)*pagesize] = 0
 	}
 
@@ -627,7 +616,7 @@ func TestSyncWPConcurrentLatency(t *testing.T) {
 			writerCounts = append(writerCounts, w)
 		}
 	}
-	sort.Ints(writerCounts)
+	slices.Sort(writerCounts)
 	maxW := writerCounts[len(writerCounts)-1]
 
 	// GOMAXPROCS must exceed max concurrent fault-blocked writers so resolvers
@@ -651,7 +640,7 @@ func TestSyncWPConcurrentLatency(t *testing.T) {
 		if len(lats) == 0 {
 			continue
 		}
-		sort.Slice(lats, func(i, j int) bool { return lats[i] < lats[j] })
+		slices.Sort(lats)
 		p50 := percentile(lats, 50)
 		if W == writerCounts[0] {
 			base = p50

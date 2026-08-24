@@ -211,7 +211,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 	defer func() {
 		// A live CoW window reads pre-images from the memfd mmap below: cancel
 		// and drain it first so no copy is in flight when the view is unmapped.
-		uffd.CancelActiveCoWWindow(errors.New("uffd teardown"))
+		uffd.CancelActiveCoWWindow(ctx, errors.New("uffd teardown"))
 
 		closeErr := uffd.Close()
 		if closeErr != nil {

@@ -88,10 +88,10 @@ func putV3Header(t *testing.T, cache *fakeCache, buildID uuid.UUID, fileType bui
 	cache.put(buildID.String(), tpl)
 }
 
-func mappingTo(t *testing.T, blockSize uint64, ancestorID uuid.UUID, length uint64) headers.Mapping {
+func mappingTo(t *testing.T, ancestorID uuid.UUID) headers.Mapping {
 	t.Helper()
-	m, err := headers.NewMapping(blockSize, []headers.BuildMap{{
-		Offset: 0, Length: length, BuildId: ancestorID, BuildStorageOffset: 0,
+	m, err := headers.NewMapping(testBlockSize, []headers.BuildMap{{
+		Offset: 0, Length: testBlockSize, BuildId: ancestorID, BuildStorageOffset: 0,
 	}})
 	require.NoError(t, err)
 
@@ -115,7 +115,7 @@ func TestAppendAncestorBuilds_V3AncestorSynthesizesEntry(t *testing.T) {
 	u := &Upload{buildID: uuid.New(), uploads: uploads}
 	dst := map[uuid.UUID]headers.BuildData{}
 
-	err := u.appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
+	err := u.appendAncestorBuilds(t.Context(), dst, mappingTo(t, ancestorID), build.Memfile)
 	require.NoError(t, err)
 
 	bd, ok := dst[ancestorID]
@@ -135,7 +135,7 @@ func TestAppendAncestorBuilds_V4AncestorCopiesEntry(t *testing.T) {
 	u := &Upload{buildID: uuid.New(), uploads: uploads}
 	dst := map[uuid.UUID]headers.BuildData{}
 
-	err := u.appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
+	err := u.appendAncestorBuilds(t.Context(), dst, mappingTo(t, ancestorID), build.Memfile)
 	require.NoError(t, err)
 
 	_, ok := dst[ancestorID]
@@ -152,7 +152,7 @@ func TestAppendAncestorBuilds_NilDstSkipsSynthesis(t *testing.T) {
 	putV3Header(t, cache, ancestorID, build.Memfile, 1024)
 
 	u := &Upload{buildID: uuid.New(), uploads: uploads}
-	err := u.appendAncestorBuilds(t.Context(), nil, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
+	err := u.appendAncestorBuilds(t.Context(), nil, mappingTo(t, ancestorID), build.Memfile)
 	require.NoError(t, err)
 }
 
@@ -196,7 +196,7 @@ func TestAppendAncestorBuilds_RecoversInheritedGapFromStoredHeader(t *testing.T)
 		Return(headerBlob, nil).Once()
 
 	dst := map[uuid.UUID]headers.BuildData{}
-	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, ancestorID), build.Memfile))
 	require.Equal(t, want, dst[ancestorID])
 }
 
@@ -212,7 +212,7 @@ func TestAppendAncestorBuilds_LeavesGapAbsentWithoutStoredHeader(t *testing.T) {
 		Return(nil, storage.ErrObjectNotExist).Once()
 
 	dst := map[uuid.UUID]headers.BuildData{}
-	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, ancestorID), build.Memfile))
 	require.NotContains(t, dst, ancestorID)
 }
 
@@ -229,7 +229,7 @@ func TestAppendAncestorBuilds_TransientLoadFailureKeepsUploadAlive(t *testing.T)
 		Return(nil, errors.New("storage unavailable")).Once()
 
 	dst := map[uuid.UUID]headers.BuildData{}
-	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.NoError(t, gapUpload(t, provider).appendAncestorBuilds(t.Context(), dst, mappingTo(t, ancestorID), build.Memfile))
 	require.NotContains(t, dst, ancestorID)
 }
 
@@ -248,7 +248,7 @@ func TestAppendAncestorBuilds_CancelledContextFailsUpload(t *testing.T) {
 	cancel()
 
 	dst := map[uuid.UUID]headers.BuildData{}
-	err := gapUpload(t, provider).appendAncestorBuilds(ctx, dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile)
+	err := gapUpload(t, provider).appendAncestorBuilds(ctx, dst, mappingTo(t, ancestorID), build.Memfile)
 	require.ErrorIs(t, err, context.Canceled)
 }
 
@@ -260,7 +260,7 @@ func TestAppendAncestorBuilds_ExistingEntrySkipsStorage(t *testing.T) {
 	ancestorID := uuid.New()
 	want := headers.BuildData{Size: 777}
 	dst := map[uuid.UUID]headers.BuildData{ancestorID: want}
-	require.NoError(t, gapUpload(t, storage.NewMockStorageProvider(t)).appendAncestorBuilds(t.Context(), dst, mappingTo(t, 4096, ancestorID, 4096), build.Memfile))
+	require.NoError(t, gapUpload(t, storage.NewMockStorageProvider(t)).appendAncestorBuilds(t.Context(), dst, mappingTo(t, ancestorID), build.Memfile))
 	require.Equal(t, want, dst[ancestorID])
 }
 

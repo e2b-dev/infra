@@ -544,7 +544,7 @@ func (c *apiClient) freePageReportingPaused(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("error describing balloon free-page reporting: %w", err)
 	}
 	if res.Payload == nil || res.Payload.Paused == nil {
-		return false, fmt.Errorf("balloon free-page reporting status carried no paused field")
+		return false, errors.New("balloon free-page reporting status carried no paused field")
 	}
 
 	return *res.Payload.Paused, nil

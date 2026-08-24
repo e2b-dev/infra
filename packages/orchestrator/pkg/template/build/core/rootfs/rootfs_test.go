@@ -119,7 +119,7 @@ func TestAdditionalOCILayers(t *testing.T) {
 		// Ships verbatim into every guest boot; parse it the way the guest's sh will.
 		seedScript := filepath.Join(t.TempDir(), "e2b-seed-certs")
 		require.NoError(t, os.WriteFile(seedScript, []byte(seedCerts), 0o700))
-		shOut, shErr := exec.Command("sh", "-n", seedScript).CombinedOutput()
+		shOut, shErr := exec.CommandContext(t.Context(), "sh", "-n", seedScript).CombinedOutput()
 		require.NoErrorf(t, shErr, "e2b-seed-certs is not valid sh:\n%s", shOut)
 
 		// Both init families run the same boot-time chrony source selector, and
