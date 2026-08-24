@@ -17,6 +17,21 @@ const (
 	catalogRedisTimeout = time.Second * 1
 )
 
+// deleteIfSameExecution deletes the catalog entry only if its stored execution_id
+// still matches the one passed in, as one atomic server-side script — so a stale
+// teardown can't remove an entry a concurrent StoreSandbox wrote for a newer execution.
+var deleteIfSameExecution = redis.NewScript(`
+local v = redis.call('GET', KEYS[1])
+if not v then
+  return 0
+end
+local ok, info = pcall(cjson.decode, v)
+if ok and type(info) == 'table' and info.execution_id == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`)
+
 type RedisSandboxCatalog struct {
 	redisClient redis.UniversalClient
 }
@@ -85,25 +100,17 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
-	data, err := c.redisClient.Get(ctx, c.getCatalogKey(sandboxID)).Bytes()
-	// If sandbox does not exist, we can return early
+	deleted, err := deleteIfSameExecution.Run(ctx, c.redisClient, []string{c.getCatalogKey(sandboxID)}, executionID).Int()
 	if err != nil {
+		// Best-effort cleanup — never fail the caller (as the original did not); the entry has a TTL.
+		logger.L().Warn(ctx, "sandbox catalog delete did not complete; entry will expire via TTL", logger.WithSandboxID(sandboxID), zap.Error(err))
+
 		return nil
 	}
 
-	var info *SandboxInfo
-	err = json.Unmarshal(data, &info)
-	if err != nil {
-		return fmt.Errorf("failed to unmarshal sandbox info: %w", err)
+	if deleted == 1 {
+		logger.L().Debug(ctx, "deleted sandbox from redis catalog", logger.WithSandboxID(sandboxID))
 	}
-
-	// Different execution is stored in the cache, we don't want to remove it
-	if info.ExecutionID != executionID {
-		return nil
-	}
-
-	logger.L().Debug(ctx, "deleting sandbox from redis catalog", logger.WithSandboxID(sandboxID))
-	c.redisClient.Del(ctx, c.getCatalogKey(sandboxID))
 
 	return nil
 }
