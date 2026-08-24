@@ -39,6 +39,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/auth/pkg/auth/intern
 var (
 	ErrNoAuthHeader      = errors.New("authorization header is missing")
 	ErrInvalidAuthHeader = errors.New("authorization header is malformed")
+	ErrMalformedAPIKey   = fmt.Errorf("API key is malformed: expected the %q prefix, visit https://docs.e2b.dev/api-key for more information", PrefixAPIKey)
 )
 
 // headerKey describes how to extract an authentication token from an HTTP request header.
@@ -46,6 +47,12 @@ type headerKey struct {
 	name         string
 	prefix       string
 	removePrefix string
+
+	// malformedError, when set, is returned instead of ErrInvalidAuthHeader
+	// when the token is present but lacks prefix. Only set it for a scheme
+	// that owns its header exclusively: a shared header must keep the
+	// generic error so another scheme can claim the token.
+	malformedError error
 }
 
 // Authenticator is implemented by types that can authenticate requests against a security scheme.
@@ -75,6 +82,10 @@ func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) (st
 	}
 
 	if a.header.prefix != "" && !strings.HasPrefix(key, a.header.prefix) {
+		if a.header.malformedError != nil {
+			return "", a.header.malformedError
+		}
+
 		return "", ErrInvalidAuthHeader
 	}
 
@@ -205,12 +216,13 @@ func NewApiKeyAuthenticator(validationFunc func(ctx context.Context, ginCtx *gin
 	return &commonAuthenticator[*types.Team]{
 		schemeName: "ApiKeyAuth",
 		header: headerKey{
-			name:   HeaderAPIKey,
-			prefix: PrefixAPIKey,
+			name:           HeaderAPIKey,
+			prefix:         PrefixAPIKey,
+			malformedError: ErrMalformedAPIKey,
 		},
 		validationFunc: validationFunc,
 		setContextFunc: authcontext.SetTeamInfo,
-		errorMessage:   "Invalid API key, please visit https://e2b.dev/docs/api-key for more information.",
+		errorMessage:   "Invalid API key, please visit https://docs.e2b.dev/api-key for more information.",
 	}
 }
 

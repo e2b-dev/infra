@@ -145,6 +145,45 @@ func TestNewAuthenticatorStripsTheConfiguredPrefix(t *testing.T) {
 	require.Equal(t, "raw-token", seen)
 }
 
+// A present X-API-Key without the e2b_ prefix returns the API-key-specific
+// malformed error so the client sees the expected format, while a missing
+// header keeps the generic ErrNoAuthHeader.
+func TestApiKeyAuthenticatorReturnsMalformedKeyError(t *testing.T) {
+	t.Parallel()
+
+	authenticator := NewApiKeyAuthenticator(func(context.Context, *gin.Context, string) (*types.Team, *APIError) {
+		return nil, nil
+	})
+
+	t.Run("malformed key", func(t *testing.T) {
+		t.Parallel()
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		req.Header.Set(HeaderAPIKey, "not-a-standard-key")
+		recorder := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(recorder)
+
+		err := authenticator.Authenticate(t.Context(), ginCtx, &openapi3filter.AuthenticationInput{
+			RequestValidationInput: &openapi3filter.RequestValidationInput{Request: req},
+		})
+		require.ErrorIs(t, err, ErrMalformedAPIKey)
+		require.Equal(t, http.StatusUnauthorized, ginCtx.Writer.Status())
+	})
+
+	t.Run("missing key", func(t *testing.T) {
+		t.Parallel()
+
+		ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+
+		err := authenticator.Authenticate(t.Context(), ginCtx, &openapi3filter.AuthenticationInput{
+			RequestValidationInput: &openapi3filter.RequestValidationInput{
+				Request: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil),
+			},
+		})
+		require.ErrorIs(t, err, ErrNoAuthHeader)
+	})
+}
+
 // A missing header stamps 401 rather than leaving the validator's 400
 // fallback to win, which is what makes an auth failure look like one.
 func TestNewAuthenticatorStamps401OnAMissingHeader(t *testing.T) {
