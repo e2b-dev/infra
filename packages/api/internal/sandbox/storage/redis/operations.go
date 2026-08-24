@@ -143,10 +143,12 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandboxtypes.State) ([]sandboxtypes.Sandbox, error) {
 	if s.cacheEnabled(ctx) {
 		if sandboxes, ok := s.subManager.cache.getTeam(teamID, states); ok {
+			s.cacheMetrics.hits.Add(ctx, 1)
 			return sandboxes, nil
 		}
 
 		// Cache cold for this team: fall through to Redis, then warm the cache.
+		s.cacheMetrics.misses.Add(ctx, 1)
 		return s.teamItemsFromRedisAndWarm(ctx, teamID, states)
 	}
 

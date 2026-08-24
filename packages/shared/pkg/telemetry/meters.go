@@ -146,6 +146,16 @@ const (
 	// score drifted from the stored EndTime and were re-scored by the evictor
 	// scan. Sustained non-zero rate means score updates are being lost.
 	ApiRedisStorageExpirationIndexRescored CounterType = "api.redis_storage.expiration_index.rescored"
+
+	// ApiRedisStorageSandboxCacheHits counts TeamItems calls served from the
+	// per-allocation in-process cache (zero Redis reads). Only incremented when
+	// the sandbox-team-items-cache feature flag is enabled.
+	ApiRedisStorageSandboxCacheHits CounterType = "api.redis_storage.sandbox_cache.team_items.hits"
+	// ApiRedisStorageSandboxCacheMisses counts TeamItems calls that fell
+	// through to a Redis cold-fetch because the team's cache was not yet warm.
+	// Each miss triggers one SMEMBERS + batched MGET and warms the cache for
+	// all subsequent calls from this allocation.
+	ApiRedisStorageSandboxCacheMisses CounterType = "api.redis_storage.sandbox_cache.team_items.misses"
 )
 
 const (
@@ -379,6 +389,9 @@ var counterDesc = map[CounterType]string{
 	ApiRedisStorageExpirationIndexHealed:   "Sandboxes re-added to the global expiration index by the healer; sustained non-zero rate means index writes are being lost",
 	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution|invalid)",
 	ApiRedisStorageExpirationIndexRescored: "Live expiration index members re-scored after drifting from the stored EndTime",
+
+	ApiRedisStorageSandboxCacheHits:   "TeamItems calls served from the per-allocation in-process cache without touching Redis",
+	ApiRedisStorageSandboxCacheMisses: "TeamItems cold-fetches that bypassed the cache and read from Redis (one per team per allocation lifetime)",
 }
 
 var counterUnits = map[CounterType]string{
@@ -423,6 +436,9 @@ var counterUnits = map[CounterType]string{
 	ApiRedisStorageExpirationIndexHealed:   "{sandbox}",
 	ApiRedisStorageExpirationIndexSwept:    "{member}",
 	ApiRedisStorageExpirationIndexRescored: "{member}",
+
+	ApiRedisStorageSandboxCacheHits:   "{call}",
+	ApiRedisStorageSandboxCacheMisses: "{call}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{

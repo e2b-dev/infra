@@ -41,7 +41,28 @@ type Storage struct {
 	featureFlags *featureflags.Client
 	cacheForced  bool // set only in tests via forceCacheEnabled
 
-	metrics expirationIndexMetrics
+	metrics      expirationIndexMetrics
+	cacheMetrics sandboxCacheMetrics
+}
+
+// sandboxCacheMetrics tracks per-allocation TeamItems cache effectiveness.
+type sandboxCacheMetrics struct {
+	hits   metric.Int64Counter
+	misses metric.Int64Counter
+}
+
+func newSandboxCacheMetrics(meter metric.Meter) (sandboxCacheMetrics, error) {
+	hits, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageSandboxCacheHits)
+	if err != nil {
+		return sandboxCacheMetrics{}, fmt.Errorf("sandbox cache hits counter: %w", err)
+	}
+
+	misses, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageSandboxCacheMisses)
+	if err != nil {
+		return sandboxCacheMetrics{}, fmt.Errorf("sandbox cache misses counter: %w", err)
+	}
+
+	return sandboxCacheMetrics{hits: hits, misses: misses}, nil
 }
 
 // expirationIndexMetrics observes global expiration index consistency.
@@ -104,6 +125,11 @@ func NewStorage(
 		return nil, fmt.Errorf("failed to create expiration index metrics: %w", err)
 	}
 
+	cacheMetrics, err := newSandboxCacheMetrics(meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox cache metrics: %w", err)
+	}
+
 	return &Storage{
 		redisClient:  redisClient,
 		locker:       newStorageLocker(redisClient, subManager, pub),
@@ -111,6 +137,7 @@ func NewStorage(
 		publisher:    pub,
 		featureFlags: featureFlags,
 		metrics:      metrics,
+		cacheMetrics: cacheMetrics,
 	}, nil
 }
 
