@@ -22,8 +22,12 @@ type fakeTemplateManagerClient struct {
 	getStatusErr      error
 }
 
-func (f fakeTemplateManagerClient) SetStatus(context.Context, uuid.UUID, types.BuildStatusGroup, *templatemanagergrpc.TemplateBuildStatusReason) error {
-	return f.setStatusError
+func (f fakeTemplateManagerClient) SetTerminalStatus(context.Context, uuid.UUID, types.BuildStatusGroup, *templatemanagergrpc.TemplateBuildStatusReason) (bool, error) {
+	return f.setStatusError == nil, f.setStatusError
+}
+
+func (f fakeTemplateManagerClient) DeleteBuild(context.Context, uuid.UUID, string, uuid.UUID, string) error {
+	return nil
 }
 
 func (f fakeTemplateManagerClient) SetFinished(context.Context, uuid.UUID, int64, string, string, string) error {

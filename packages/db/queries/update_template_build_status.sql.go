@@ -13,16 +13,21 @@ import (
 	"github.com/google/uuid"
 )
 
-const failTemplateBuildAndDeactivate = `-- name: FailTemplateBuildAndDeactivate :exec
-WITH deactivated AS (
-    DELETE FROM public.active_template_builds WHERE build_id = $5
+const failTemplateBuildAndDeactivate = `-- name: FailTemplateBuildAndDeactivate :one
+WITH failed AS (
+    UPDATE "public"."env_builds"
+    SET status = $1,
+        finished_at = $2,
+        reason = $3,
+        version = $4
+    WHERE id = $5
+      AND status_group NOT IN ('ready', 'failed')
+    RETURNING id
+), deactivated AS (
+    DELETE FROM public.active_template_builds
+    WHERE build_id IN (SELECT id FROM failed)
 )
-UPDATE "public"."env_builds"
-SET status = $1,
-    finished_at = $2,
-    reason = $3,
-    version = $4
-WHERE id = $5
+SELECT EXISTS (SELECT 1 FROM failed) AS recorded
 `
 
 type FailTemplateBuildAndDeactivateParams struct {
@@ -33,15 +38,21 @@ type FailTemplateBuildAndDeactivateParams struct {
 	BuildID    uuid.UUID
 }
 
-func (q *Queries) FailTemplateBuildAndDeactivate(ctx context.Context, arg FailTemplateBuildAndDeactivateParams) error {
-	_, err := q.db.Exec(ctx, failTemplateBuildAndDeactivate,
+// Several pollers watch the same build, and it keeps the first terminal outcome
+// recorded. A write that loses must not release the team's concurrency slot
+// either, so the deactivation reads from the update instead of running on its
+// own.
+func (q *Queries) FailTemplateBuildAndDeactivate(ctx context.Context, arg FailTemplateBuildAndDeactivateParams) (bool, error) {
+	row := q.db.QueryRow(ctx, failTemplateBuildAndDeactivate,
 		arg.Status,
 		arg.FinishedAt,
 		arg.Reason,
 		arg.Version,
 		arg.BuildID,
 	)
-	return err
+	var recorded bool
+	err := row.Scan(&recorded)
+	return recorded, err
 }
 
 const updateEnvBuildStatus = `-- name: UpdateEnvBuildStatus :exec
