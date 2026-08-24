@@ -42,7 +42,7 @@ require (
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/posthog/posthog-go v0.0.0-20230801140217-d607812dee69
-	github.com/redis/go-redis/v9 v9.17.3
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/samber/lo v1.53.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0
@@ -133,7 +133,6 @@ require (
 	github.com/dchest/uniuri v1.2.0 // indirect
 	github.com/dennwc/varint v1.0.0 // indirect
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/go-connections v0.7.0 // indirect
 	github.com/docker/go-units v0.5.0 // indirect

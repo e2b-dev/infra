@@ -46,7 +46,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.26
 	github.com/pkg/xattr v0.4.12
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3
-	github.com/redis/go-redis/v9 v9.17.3
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/stretchr/testify v1.11.1
 	github.com/sumup/typeid v0.7.0
 	github.com/testcontainers/testcontainers-go v0.43.0
@@ -149,7 +149,6 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dennwc/varint v1.0.0 // indirect
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/dlclark/regexp2 v1.12.0 // indirect
 	github.com/docker/cli v29.5.3+incompatible // indirect

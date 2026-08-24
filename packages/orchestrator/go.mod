@@ -52,7 +52,7 @@ require (
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.6.0
-	github.com/redis/go-redis/v9 v9.17.3
+	github.com/redis/go-redis/v9 v9.21.0
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.11.1
@@ -148,7 +148,6 @@ require (
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dchest/uniuri v1.2.0 // indirect
-	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/cli v29.5.3+incompatible // indirect
 	github.com/docker/docker-credential-helpers v0.9.3 // indirect
@@ -313,6 +312,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.45.0 // indirect
 	go.opentelemetry.io/otel/sdk/log v0.21.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
+	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/arch v0.29.0 // indirect
