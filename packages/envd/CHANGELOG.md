@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0 (2026-08-24)
+
+
+### Features
+
+* **envd:** freeze the customer's cgroups before a pause, not only our own (e117443)
+* **envd:** wait for the pre-pause freeze to stop the workload (99ca5cc)
+* **orch:** forbid envd's private endpoints in the sandbox proxy (b6de7ae)
+* **shared:** use TypeID encoding for object IDs (4a5075b)
+
+
+### Bug Fixes
+
+* **deps:** update module cloud.google.com/go/storage to v1.64.0 (e66f1a8)
+* **deps:** update module github.com/getkin/kin-openapi to v0.146.0 (5307ba8)
+* **deps:** update module google.golang.org/grpc to v1.83.0 (acbefda)
+* **deps:** update opentelemetry-go-contrib monorepo (5852c94)
+* **deps:** update testcontainers-go monorepo to v0.43.0 (08b1cbe)
+
 ## 0.0.1 (2026-07-29)
 
 
