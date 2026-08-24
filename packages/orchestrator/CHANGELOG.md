@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/e2b-dev/infra/compare/orchestrator-v0.1.0...orchestrator-v0.2.0) (2026-08-24)
+
+
+### Features
+
+* **checkpoint:** capture the in-place memory export through an async CoW window ([#1948](https://github.com/e2b-dev/infra/issues/1948)) ([8f14236](https://github.com/e2b-dev/infra/commit/8f1423617974aaa2cd1992baaadfdacfb394ec3d))
+* **envd:** freeze the customer's cgroups before a pause, not only our own ([#1929](https://github.com/e2b-dev/infra/issues/1929)) ([e117443](https://github.com/e2b-dev/infra/commit/e117443ac949de0810e8eaa9bec9f5d0126d1fa4))
+* **envd:** wait for the pre-pause freeze to stop the workload ([#1900](https://github.com/e2b-dev/infra/issues/1900)) ([99ca5cc](https://github.com/e2b-dev/infra/commit/99ca5ccbfdb47a05c3a2914df2c21b0bdfcefa95))
+* filesystem-only resume of memory-inclusive snapshots ([#1958](https://github.com/e2b-dev/infra/issues/1958)) ([6061743](https://github.com/e2b-dev/infra/commit/60617431dda40837e8530508f2ed29ac077c2319))
+* **shared:** use TypeID encoding for object IDs ([#2016](https://github.com/e2b-dev/infra/issues/2016)) ([4a5075b](https://github.com/e2b-dev/infra/commit/4a5075b135262c8ecd9c53d87fc6617d8811dfd7))
+
+
+### Bug Fixes
+
+* **network:** match wildcard transform domains ([#1897](https://github.com/e2b-dev/infra/issues/1897)) ([0521db3](https://github.com/e2b-dev/infra/commit/0521db34f974a129cbb62a4e32b8347c5b6cfdad))
+* **orchestrator:** apply egress CIDRs whose range ends at 255.255.255.255 ([#2012](https://github.com/e2b-dev/infra/issues/2012)) ([bceeaec](https://github.com/e2b-dev/infra/commit/bceeaec13483548db307a6358b90005e00087f17))
+* **orchestrator:** copy skeleton files without invoking cd ([#1949](https://github.com/e2b-dev/infra/issues/1949)) ([b8238ac](https://github.com/e2b-dev/infra/commit/b8238ac7512482d5a87fd4c8e52dfd61387cf411))
+* **orchestrator:** stop flushing Firecracker metrics after the VM exits ([#1335](https://github.com/e2b-dev/infra/issues/1335)) ([454a1ae](https://github.com/e2b-dev/infra/commit/454a1aea3f038b01ef01be9aaba006cfc3258de4))
+* **proxy:** add CORS to synthesized responses and answer proxy-only preflights ([#2068](https://github.com/e2b-dev/infra/issues/2068)) ([26faf4f](https://github.com/e2b-dev/infra/commit/26faf4f4dae8f87ca5682bcfca85c03f2a27b215))
+
 ## [0.1.0](https://github.com/e2b-dev/infra/compare/orchestrator-v0.0.2...orchestrator-v0.1.0) (2026-08-18)
 
 
