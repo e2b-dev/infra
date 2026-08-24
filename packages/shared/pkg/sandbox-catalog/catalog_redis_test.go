@@ -78,3 +78,70 @@ func TestRedisSandboxCatalog(t *testing.T) {
 		require.NoError(t, catalog.DeleteSandbox(ctx, "sbx-never-stored", "exec-1"))
 	})
 }
+
+func TestDeleteIfSameExecutionOutcomes(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	catalog := NewRedisSandboxCatalog(client)
+	ctx := t.Context()
+
+	run := func(t *testing.T, id, executionID string) int {
+		t.Helper()
+		outcome, err := deleteIfSameExecution.Run(ctx, client, []string{catalog.getCatalogKey(id)}, executionID).Int()
+		require.NoError(t, err)
+
+		return outcome
+	}
+
+	t.Run("absent key", func(t *testing.T) {
+		t.Parallel()
+
+		require.Equal(t, catalogDeleteAbsent, run(t, "sbx-outcome-absent", "exec-1"))
+	})
+
+	t.Run("matching execution deletes", func(t *testing.T) {
+		t.Parallel()
+
+		id := "sbx-outcome-match"
+		require.NoError(t, catalog.StoreSandbox(ctx, id, testSandboxInfo("exec-1", "orch-A"), time.Minute))
+
+		require.Equal(t, catalogDeleteDeleted, run(t, id, "exec-1"))
+		_, err := catalog.GetSandbox(ctx, id)
+		require.ErrorIs(t, err, ErrSandboxNotFound)
+	})
+
+	t.Run("different execution is a mismatch and keeps the entry", func(t *testing.T) {
+		t.Parallel()
+
+		id := "sbx-outcome-mismatch"
+		require.NoError(t, catalog.StoreSandbox(ctx, id, testSandboxInfo("exec-2", "orch-B"), time.Minute))
+
+		require.Equal(t, catalogDeleteMismatch, run(t, id, "exec-1"))
+		got, err := catalog.GetSandbox(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, "exec-2", got.ExecutionID)
+	})
+
+	t.Run("unreadable value is reported and kept", func(t *testing.T) {
+		t.Parallel()
+
+		id := "sbx-outcome-unreadable"
+		require.NoError(t, client.Set(ctx, catalog.getCatalogKey(id), "not-json", time.Minute).Err())
+
+		require.Equal(t, catalogDeleteUnreadable, run(t, id, "exec-1"))
+		require.EqualValues(t, 1, client.Exists(ctx, catalog.getCatalogKey(id)).Val())
+	})
+
+	t.Run("valid JSON without an execution_id is unreadable, not a mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		// A table that decodes but has no execution_id must not be mislabeled as an
+		// execution-mismatch (which would read as "a newer execution owns it").
+		id := "sbx-outcome-no-execid"
+		require.NoError(t, client.Set(ctx, catalog.getCatalogKey(id), `{"orchestrator_id":"orch-A"}`, time.Minute).Err())
+
+		require.Equal(t, catalogDeleteUnreadable, run(t, id, "exec-1"))
+		require.EqualValues(t, 1, client.Exists(ctx, catalog.getCatalogKey(id)).Val())
+	})
+}

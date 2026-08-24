@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -15,21 +16,32 @@ import (
 
 const (
 	catalogRedisTimeout = time.Second * 1
+
+	// deleteIfSameExecution outcomes, distinguished for diagnostics.
+	catalogDeleteAbsent     = 0 // no entry
+	catalogDeleteDeleted    = 1 // entry deleted (execution matched)
+	catalogDeleteMismatch   = 2 // entry kept — a different execution owns it now
+	catalogDeleteUnreadable = 3 // entry kept — value undecodable or missing execution_id
 )
 
 // deleteIfSameExecution deletes the catalog entry only if its stored execution_id
 // still matches the one passed in, as one atomic server-side script — so a stale
 // teardown can't remove an entry a concurrent StoreSandbox wrote for a newer execution.
+// Returns the catalogDelete* outcome.
 var deleteIfSameExecution = redis.NewScript(`
 local v = redis.call('GET', KEYS[1])
 if not v then
   return 0
 end
 local ok, info = pcall(cjson.decode, v)
-if ok and type(info) == 'table' and info.execution_id == ARGV[1] then
-  return redis.call('DEL', KEYS[1])
+if not (ok and type(info) == 'table' and type(info.execution_id) == 'string') then
+  return 3
 end
-return 0
+if info.execution_id == ARGV[1] then
+  redis.call('DEL', KEYS[1])
+  return 1
+end
+return 2
 `)
 
 type RedisSandboxCatalog struct {
@@ -100,7 +112,7 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 	ctx, ctxCancel := context.WithTimeout(spanCtx, catalogRedisTimeout)
 	defer ctxCancel()
 
-	deleted, err := deleteIfSameExecution.Run(ctx, c.redisClient, []string{c.getCatalogKey(sandboxID)}, executionID).Int()
+	outcome, err := deleteIfSameExecution.Run(ctx, c.redisClient, []string{c.getCatalogKey(sandboxID)}, executionID).Int()
 	if err != nil {
 		// Best-effort cleanup — never fail the caller (as the original did not); the entry has a TTL.
 		logger.L().Warn(ctx, "sandbox catalog delete did not complete; entry will expire via TTL", logger.WithSandboxID(sandboxID), zap.Error(err))
@@ -108,8 +120,22 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 		return nil
 	}
 
-	if deleted == 1 {
+	switch outcome {
+	case catalogDeleteDeleted:
+		span.SetAttributes(attribute.String("delete.outcome", "deleted"))
 		logger.L().Debug(ctx, "deleted sandbox from redis catalog", logger.WithSandboxID(sandboxID))
+	case catalogDeleteMismatch:
+		// A newer execution owns the entry — the stale-teardown race the atomic delete guards against.
+		span.SetAttributes(attribute.String("delete.outcome", "execution-mismatch"))
+		logger.L().Debug(ctx, "kept sandbox catalog entry owned by a different execution", logger.WithSandboxID(sandboxID))
+	case catalogDeleteUnreadable:
+		span.SetAttributes(attribute.String("delete.outcome", "unreadable"))
+		logger.L().Warn(ctx, "sandbox catalog entry is unreadable; leaving it to expire via TTL", logger.WithSandboxID(sandboxID))
+	case catalogDeleteAbsent:
+		span.SetAttributes(attribute.String("delete.outcome", "absent"))
+	default:
+		span.SetAttributes(attribute.String("delete.outcome", "unexpected"))
+		logger.L().Warn(ctx, "unexpected sandbox catalog delete outcome", logger.WithSandboxID(sandboxID), zap.Int("outcome", outcome))
 	}
 
 	return nil
