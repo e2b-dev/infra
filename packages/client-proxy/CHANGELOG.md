@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.1 (2026-08-25)
+
+
+### Dependencies
+
+* bump go-redis to v9.21.0 across the OSS modules (1aa38f8)
+
 ## 0.2.0 (2026-08-24)
 
 
