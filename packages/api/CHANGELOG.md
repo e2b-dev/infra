@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0 (2026-08-25)
+
+
+### Features
+
+* **api:** confine filesystem-only resume to one CPU model (e6a0985)
+
+
+### Bug Fixes
+
+* **api:** record terminal template build status on a live context (fe829d4)
+
+
+### Dependencies
+
+* bump go-redis to v9.21.0 across the OSS modules (1aa38f8)
+
+
+### Code Refactoring
+
+* **api:** extract service-discovery construction from the store (2924266)
+* **shared:** unify service discovery into one nodediscovery package (f214e11)
+
 ## 0.3.0 (2026-08-24)
 
 
