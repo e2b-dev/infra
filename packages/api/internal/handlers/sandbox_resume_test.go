@@ -72,6 +72,30 @@ func TestResolveFilesystemBoot(t *testing.T) {
 	}
 }
 
+func TestSnapshotIsFilesystemOnly(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		snapshot queries.Snapshot
+		want     bool
+	}{
+		{"filesystem-only snapshot", queries.Snapshot{Config: &dbtypes.PausedSandboxConfig{FilesystemOnly: true}}, true},
+		{"memory snapshot", queries.Snapshot{Config: &dbtypes.PausedSandboxConfig{}}, false},
+		// Rows written before the kind was recorded: a memory snapshot, and so
+		// not subject to the resume CPU pin.
+		{"row without config", queries.Snapshot{}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, snapshotIsFilesystemOnly(tt.snapshot))
+		})
+	}
+}
+
 func TestSetMemoryOverrideOutcome(t *testing.T) {
 	t.Parallel()
 

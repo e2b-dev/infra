@@ -5,17 +5,31 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
-// isNodeCPUCompatible checks if a single node is compatible with the build CPU requirements.
-// Returns true if:
-// - Build has no CPU requirements (empty architecture)
-// - Node's CPU info matches the build's requirements
-func isNodeCPUCompatible(node *nodemanager.Node, buildMachineInfo machineinfo.MachineInfo) bool {
-	// If build has no machine info, all nodes are compatible (backward compatibility)
-	if buildMachineInfo.CPUArchitecture == "" {
+// CPURequirement is the CPU constraint a sandbox puts on a candidate node.
+type CPURequirement struct {
+	// Build is the CPU the sandbox's build ran on. The zero value constrains
+	// nothing: builds that predate CPU recording carry no machine info.
+	Build machineinfo.MachineInfo
+
+	// PinnedModel, when set, additionally holds the sandbox to nodes reporting
+	// this CPU model. It narrows Build's rule rather than replacing it, so a
+	// build the pinned model cannot run has no candidates at all.
+	PinnedModel string
+}
+
+// NodeSatisfiesCPU reports whether node meets req. A build with no recorded CPU
+// accepts any node the pin allows; a node with no reported CPU satisfies only
+// such a build.
+func NodeSatisfiesCPU(node *nodemanager.Node, req CPURequirement) bool {
+	nodeMachineInfo := node.MachineInfo()
+
+	if req.PinnedModel != "" && nodeMachineInfo.CPUModel != req.PinnedModel {
+		return false
+	}
+
+	if req.Build.CPUArchitecture == "" {
 		return true
 	}
 
-	nodeMachineInfo := node.MachineInfo()
-
-	return buildMachineInfo.IsCompatibleWith(nodeMachineInfo)
+	return req.Build.IsCompatibleWith(nodeMachineInfo)
 }

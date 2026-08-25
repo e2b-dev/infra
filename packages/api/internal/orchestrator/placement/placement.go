@@ -12,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -35,7 +34,7 @@ type PlacementResult struct {
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
 type Algorithm interface {
-	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error)
+	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, cpu CPURequirement, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error)
 }
 
 func PlaceSandbox(
@@ -44,7 +43,7 @@ func PlaceSandbox(
 	clusterNodes []*nodemanager.Node,
 	preferredNode *nodemanager.Node,
 	sbxRequest *orchestrator.SandboxCreateRequest,
-	buildMachineInfo machineinfo.MachineInfo,
+	cpu CPURequirement,
 	labelFilteringEnabled bool,
 	requiredLabels []string,
 ) (PlacementResult, error) {
@@ -55,7 +54,9 @@ func PlaceSandbox(
 	var err error
 
 	var node *nodemanager.Node
-	if preferredNode != nil {
+	// Vetted here rather than trusted: the preferred node skips chooseNode, so
+	// affinity would otherwise outrank the CPU requirement on every resume.
+	if preferredNode != nil && NodeSatisfiesCPU(preferredNode, cpu) {
 		node = preferredNode
 	}
 
@@ -112,7 +113,7 @@ func PlaceSandbox(
 				return failed(NoNodesAvailableError{})
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, buildMachineInfo, labelFilteringEnabled, requiredLabels)
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, cpu, labelFilteringEnabled, requiredLabels)
 			if err != nil {
 				// A create was already attempted: its error explains the failure
 				// better than the empty candidate set it caused.

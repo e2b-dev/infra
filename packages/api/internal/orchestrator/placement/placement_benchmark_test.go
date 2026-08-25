@@ -16,7 +16,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 // BenchmarkConfig contains configuration for realistic benchmark scenarios
@@ -419,7 +418,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 							SandboxId: sbx.ID,
 							Vcpu:      sbx.RequestedCPU,
 							RamMb:     sbx.RequestedMemory,
-						}}, machineinfo.MachineInfo{}, false, nil)
+						}}, CPURequirement{}, false, nil)
 
 						placementTime := time.Since(placementStart)
 						sbx.PlacementLatency = placementTime
@@ -715,7 +714,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 									Vcpu:      s.RequestedCPU,
 									RamMb:     s.RequestedMemory,
 								},
-							}, machineinfo.MachineInfo{}, false, nil)
+							}, CPURequirement{}, false, nil)
 
 							if err == nil && result.Node != nil {
 								if simNode, ok := nodeMap[result.Node.ID]; ok {

@@ -8,7 +8,6 @@ import (
 	"sync"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 // BestOfKConfig holds the configuration parameters for the placement algorithm
@@ -89,12 +88,12 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 }
 
 // chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
+func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, cpu CPURequirement, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config, excludedNodes, buildMachineInfo, filterByLabels, requiredLabels)
+	candidates := b.sample(nodes, config, excludedNodes, cpu, filterByLabels, requiredLabels)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
@@ -111,9 +110,9 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 
 	if bestNode == nil {
 		return nil, FailedToPlaceSandboxError{
-			filterByLabels:   filterByLabels,
-			requiredLabels:   requiredLabels,
-			buildMachineInfo: buildMachineInfo,
+			filterByLabels: filterByLabels,
+			requiredLabels: requiredLabels,
+			cpu:            cpu,
 		}
 	}
 
@@ -121,15 +120,19 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 }
 
 type FailedToPlaceSandboxError struct {
-	filterByLabels   bool
-	requiredLabels   []string
-	buildMachineInfo machineinfo.MachineInfo
+	filterByLabels bool
+	requiredLabels []string
+	cpu            CPURequirement
 }
 
 var _ error = FailedToPlaceSandboxError{}
 
 func (e FailedToPlaceSandboxError) Error() string {
-	message := fmt.Sprintf("no node available with required metadata: machine=%v", e.buildMachineInfo)
+	message := fmt.Sprintf("no node available with required metadata: machine=%v", e.cpu.Build)
+
+	if e.cpu.PinnedModel != "" {
+		message += fmt.Sprintf(", cpu_model_pinned=%s", e.cpu.PinnedModel)
+	}
 
 	if e.filterByLabels {
 		message += fmt.Sprintf(", labels=%v", e.requiredLabels)
@@ -139,7 +142,7 @@ func (e FailedToPlaceSandboxError) Error() string {
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, buildMachineInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, cpu CPURequirement, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
 	if config.K <= 0 || len(items) == 0 {
 		return nil
 	}
@@ -174,7 +177,7 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 		}
 
 		// Skip if node is not CPU compatible
-		if !isNodeCPUCompatible(n, buildMachineInfo) {
+		if !NodeSatisfiesCPU(n, cpu) {
 			continue
 		}
 

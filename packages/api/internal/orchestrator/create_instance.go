@@ -72,6 +72,10 @@ type SandboxMetadata struct {
 	// (explicit memory:false resume). Set only by the resume data fetchers;
 	// template creates and auto-resume never set it.
 	FilesystemBoot bool
+	// FilesystemOnlySnapshot marks a resume whose snapshot persists only the
+	// rootfs. Unlike FilesystemBoot it describes the stored artifact rather than
+	// the request, so every path that resumes such a snapshot sets it.
+	FilesystemOnlySnapshot bool
 }
 
 // iamToProto maps the sandbox workload identity configuration into the
@@ -358,6 +362,11 @@ func (o *Orchestrator) CreateSandbox(
 		sbxRequest.FilesystemBoot = new(true)
 	}
 
+	cpuRequirement := o.resolveCPURequirement(ctx, sandboxID, team, sbxData)
+	// Recorded before placement runs: a placement the pin starved is the case
+	// worth querying.
+	telemetry.SetAttributes(ctx, attribute.String("placement.cpu_model_pinned", cpuRequirement.PinnedModel))
+
 	var node *nodemanager.Node
 
 	if isResume && sbxData.NodeID != nil {
@@ -375,7 +384,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	allLabels, labelFilteringEnabled := o.generateRequiredNodeLabels(ctx, sandboxID, team, sbxData)
 
-	placed, err := placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, builds.ToMachineInfo(sbxData.Build), labelFilteringEnabled, allLabels)
+	placed, err := placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, cpuRequirement, labelFilteringEnabled, allLabels)
 	if err != nil {
 		if isResume && placed.TimedOut {
 			// Remap by the snapshot's own sandbox ID: when forking, the started
@@ -559,6 +568,29 @@ func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID
 		zap.String("old_origin_node_id", oldNodeID),
 		zap.String("new_origin_node_id", newNode.ID),
 	)
+}
+
+// resolveCPURequirement builds the CPU constraint placement filters nodes with.
+//
+// A memory restore may move to the newer models IsCompatibleWith treats as
+// supersets. A filesystem-only snapshot is instead confined to one CPU model,
+// keeping the cold-boot resume on a single generation while that path is
+// unproven across them. FsOnlyResumeCPUModelFlag names the model, and empty
+// returns filesystem-only resumes to the shared rule.
+func (o *Orchestrator) resolveCPURequirement(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) placement.CPURequirement {
+	requirement := placement.CPURequirement{Build: builds.ToMachineInfo(sbxData.Build)}
+
+	if !sbxData.FilesystemOnlySnapshot {
+		return requirement
+	}
+
+	requirement.PinnedModel = o.featureFlagsClient.StringFlag(ctx, featureflags.FsOnlyResumeCPUModelFlag,
+		featureflags.TeamContext(team.ID.String()),
+		featureflags.SandboxContext(sandboxID),
+		featureflags.ClusterContext(clusters.WithClusterFallback(team.ClusterID)),
+	)
+
+	return requirement
 }
 
 func (o *Orchestrator) generateRequiredNodeLabels(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) ([]string, bool) {

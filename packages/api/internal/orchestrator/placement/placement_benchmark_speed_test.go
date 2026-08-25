@@ -7,7 +7,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 func BenchmarkChooseNode(b *testing.B) {
@@ -51,7 +50,7 @@ func BenchmarkChooseNode(b *testing.B) {
 				b.ReportAllocs()
 				b.ResetTimer()
 				for range b.N {
-					_, _ = alg.chooseNode(ctx, nodes, exclude, resources, machineinfo.MachineInfo{}, false, nil)
+					_, _ = alg.chooseNode(ctx, nodes, exclude, resources, CPURequirement{}, false, nil)
 				}
 			})
 		}

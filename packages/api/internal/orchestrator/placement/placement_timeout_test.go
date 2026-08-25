@@ -12,7 +12,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 // stubAlgorithm is a placement Algorithm whose chooseNode behavior is injected.
@@ -25,7 +24,7 @@ func (s stubAlgorithm) chooseNode(
 	_ []*nodemanager.Node,
 	nodesExcluded map[string]struct{},
 	_ nodemanager.SandboxResources,
-	_ machineinfo.MachineInfo,
+	_ CPURequirement,
 	_ bool,
 	_ []string,
 ) (*nodemanager.Node, error) {
@@ -88,7 +87,7 @@ func TestPlaceSandbox_TimeoutPinsFirstTriedNode(t *testing.T) {
 		[]*nodemanager.Node{node},
 		node,
 		testSbxRequest("sbx-1"),
-		machineinfo.MachineInfo{},
+		CPURequirement{},
 		false,
 		nil,
 	)
@@ -125,7 +124,7 @@ func TestPlaceSandbox_PinsFirstTriedNodeNotLater(t *testing.T) {
 		[]*nodemanager.Node{first, second},
 		first,
 		testSbxRequest("sbx-2"),
-		machineinfo.MachineInfo{},
+		CPURequirement{},
 		false,
 		nil,
 	)
@@ -151,7 +150,7 @@ func TestPlaceSandbox_HardFailureNotWrapped(t *testing.T) {
 		[]*nodemanager.Node{node},
 		node,
 		testSbxRequest("sbx-3"),
-		machineinfo.MachineInfo{},
+		CPURequirement{},
 		false,
 		nil,
 	)
@@ -177,7 +176,7 @@ func TestPlaceSandbox_ResourceExhaustedNotPinned(t *testing.T) {
 		[]*nodemanager.Node{node},
 		node,
 		testSbxRequest("sbx-4"),
-		machineinfo.MachineInfo{},
+		CPURequirement{},
 		false,
 		nil,
 	)
@@ -202,7 +201,7 @@ func TestPlaceSandbox_TimeoutBeforeAnyAttemptNotWrapped(t *testing.T) {
 		[]*nodemanager.Node{node},
 		node,
 		testSbxRequest("sbx-5"),
-		machineinfo.MachineInfo{},
+		CPURequirement{},
 		false,
 		nil,
 	)
@@ -222,7 +221,7 @@ func TestPlaceSandbox_SuccessReturnsNode(t *testing.T) {
 		[]*nodemanager.Node{node},
 		node,
 		testSbxRequest("sbx-6"),
-		machineinfo.MachineInfo{},
+		CPURequirement{},
 		false,
 		nil,
 	)

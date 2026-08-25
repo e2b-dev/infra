@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,7 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -48,6 +50,14 @@ func testBuild() queries.EnvBuild {
 func newCreateSandboxTestOrchestrator(t *testing.T, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
 	t.Helper()
 
+	return newCreateSandboxTestOrchestratorWithFlags(t, ldtestdata.DataSource(), nodeOpts...)
+}
+
+// newCreateSandboxTestOrchestratorWithFlags is newCreateSandboxTestOrchestrator
+// with a caller-supplied flag source, for tests that drive a feature flag.
+func newCreateSandboxTestOrchestratorWithFlags(t *testing.T, flagSource *ldtestdata.TestDataSource, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
+	t.Helper()
+
 	client := redis_utils.SetupInstance(t)
 	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider(), nil)
 	require.NoError(t, err)
@@ -66,7 +76,7 @@ func newCreateSandboxTestOrchestrator(t *testing.T, nodeOpts ...nodemanager.Test
 	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	counter, _ := meter.Int64Counter("test-created-sandboxes")
 
-	ffClient, ffErr := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
+	ffClient, ffErr := featureflags.NewClientWithDatasource(flagSource)
 	require.NoError(t, ffErr)
 
 	algo := placement.NewBestOfK(placement.DefaultBestOfKConfig()).(*placement.BestOfK)
@@ -287,4 +297,139 @@ func TestCreateSandbox_UnconfirmedFilesystemBootFailsLoud(t *testing.T) {
 
 		assert.Nil(t, apiErr)
 	})
+}
+
+// buildOnCPU returns testBuild() recorded as having been built on cpuModel.
+func buildOnCPU(cpuModel string) queries.EnvBuild {
+	build := testBuild()
+	arch, family := "x86_64", "6"
+	build.CpuArchitecture = &arch
+	build.CpuFamily = &family
+	build.CpuModel = &cpuModel
+
+	return build
+}
+
+// fsOnlyPinFlagSource serves fs-only-resume-cpu-model as cpuModel.
+func fsOnlyPinFlagSource(cpuModel string) *ldtestdata.TestDataSource {
+	source := ldtestdata.DataSource()
+	source.Update(source.Flag("fs-only-resume-cpu-model").ValueForAll(ldvalue.String(cpuModel)))
+
+	return source
+}
+
+// A filesystem-only snapshot is held to its build's CPU model, so the
+// cross-generation upgrade a memory restore may take is withheld from it. The
+// pin has to beat snapshot node affinity too: the origin node reaches placement
+// as the preferred node, which otherwise skips the CPU filter.
+func TestCreateSandbox_FilesystemOnlySnapshotPinsCPUModel(t *testing.T) {
+	t.Parallel()
+
+	resumeFetcher := func(nodeID string, filesystemOnly bool) SandboxDataFetcher {
+		return func(_ context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{
+				TemplateID:             "tpl",
+				BaseTemplateID:         "base-tpl",
+				Build:                  buildOnCPU(machineinfo.IceLakeModel),
+				NodeID:                 &nodeID,
+				FilesystemOnlySnapshot: filesystemOnly,
+			}, nil
+		}
+	}
+
+	tests := []struct {
+		name string
+		// nil exercises the flag's own default rather than an injected value.
+		pinnedModel    *string
+		nodeCPUModel   string
+		filesystemOnly bool
+		wantErrCode    string
+	}{
+		{"fs-only, pinned to n2: n4 node refused", new(machineinfo.IceLakeModel), machineinfo.EmeraldRapidsModel, true, errCodeNoCompatibleNode},
+		{"fs-only, empty pin: n4 node accepted", new(""), machineinfo.EmeraldRapidsModel, true, ""},
+		{"memory snapshot, pinned to n2: n4 node accepted", new(machineinfo.IceLakeModel), machineinfo.EmeraldRapidsModel, false, ""},
+		{"fs-only, pinned to n2, n2 node: affinity kept", new(machineinfo.IceLakeModel), machineinfo.IceLakeModel, true, ""},
+		// A deployment with no LaunchDarkly must place as it did before the pin
+		// existed, not strand every filesystem-only resume on a compiled default.
+		{"fs-only, no flag rule: unpinned", nil, machineinfo.EmeraldRapidsModel, true, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			flagSource := ldtestdata.DataSource()
+			if tt.pinnedModel != nil {
+				flagSource = fsOnlyPinFlagSource(*tt.pinnedModel)
+			}
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, flagSource,
+				nodemanager.WithCPUInfo("x86_64", "6", tt.nodeCPUModel))
+			now := time.Now()
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-pin-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), resumeFetcher("node-1", tt.filesystemOnly),
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+			assert.Equal(t, http.StatusServiceUnavailable, apiErr.Code)
+		})
+	}
+}
+
+// A build predating CPU recording is still subject to the pin: the pin matches
+// on what the node reports, so there is no build machine info to exempt it.
+func TestCreateSandbox_FilesystemOnlySnapshotWithoutBuildCPUStillPinned(t *testing.T) {
+	t.Parallel()
+
+	resume := func(nodeID string) SandboxDataFetcher {
+		return func(_ context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{
+				TemplateID:             "tpl",
+				BaseTemplateID:         "base-tpl",
+				Build:                  testBuild(), // no CPU columns recorded
+				NodeID:                 &nodeID,
+				FilesystemOnlySnapshot: true,
+			}, nil
+		}
+	}
+
+	tests := []struct {
+		name         string
+		nodeCPUModel string
+		wantErrCode  string
+	}{
+		{"node reports the pinned model", machineinfo.IceLakeModel, ""},
+		{"node reports another model", machineinfo.EmeraldRapidsModel, errCodeNoCompatibleNode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, fsOnlyPinFlagSource(machineinfo.IceLakeModel),
+				nodemanager.WithCPUInfo("x86_64", "6", tt.nodeCPUModel))
+			now := time.Now()
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-nocpu-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), resume("node-1"),
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
 }

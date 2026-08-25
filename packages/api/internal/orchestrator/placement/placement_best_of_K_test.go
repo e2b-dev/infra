@@ -119,7 +119,7 @@ func TestBestOfK_ChooseNode(t *testing.T) {
 	}
 
 	// Test selection - should work with proper config
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, CPURequirement{}, false, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, selected)
 	assert.Contains(t, []string{"node1", "node2", "node3"}, selected.ID)
@@ -152,7 +152,7 @@ func TestBestOfK_ChooseNode_WithExclusions(t *testing.T) {
 		MiBMemory: 512,
 	}
 
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, CPURequirement{}, false, nil)
 	require.NoError(t, err)
 	// Should not select excluded node
 	assert.NotEqual(t, "node2", selected.ID)
@@ -176,7 +176,7 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 		MiBMemory: 1024,
 	}
 
-	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, CPURequirement{}, false, nil)
 	require.Error(t, err)
 	assert.Nil(t, selected)
 	assert.Contains(t, err.Error(), "no node available")
@@ -195,6 +195,7 @@ func TestFailedToPlaceSandboxError_Error(t *testing.T) {
 	tests := []struct {
 		name           string
 		filterByLabels bool
+		pinnedModel    string
 		requiredLabels []string
 		wantContains   []string
 		wantNotContain string
@@ -208,6 +209,23 @@ func TestFailedToPlaceSandboxError_Error(t *testing.T) {
 				fmt.Sprintf("machine=%v", machine),
 			},
 			wantNotContain: "labels=",
+		},
+		{
+			name:           "cpu model pinned",
+			filterByLabels: false,
+			pinnedModel:    machineinfo.IceLakeModel,
+			wantContains: []string{
+				"no node available with required metadata",
+				"cpu_model_pinned=" + machineinfo.IceLakeModel,
+			},
+		},
+		{
+			name:           "cpu model not pinned",
+			filterByLabels: false,
+			wantContains: []string{
+				"no node available with required metadata",
+			},
+			wantNotContain: "cpu_model_pinned",
 		},
 		{
 			name:           "with label filtering",
@@ -244,9 +262,9 @@ func TestFailedToPlaceSandboxError_Error(t *testing.T) {
 			t.Parallel()
 
 			err := FailedToPlaceSandboxError{
-				filterByLabels:   tt.filterByLabels,
-				requiredLabels:   tt.requiredLabels,
-				buildMachineInfo: machine,
+				filterByLabels: tt.filterByLabels,
+				requiredLabels: tt.requiredLabels,
+				cpu:            CPURequirement{Build: machine, PinnedModel: tt.pinnedModel},
 			}
 
 			msg := err.Error()
@@ -268,16 +286,16 @@ func TestFailedToPlaceSandboxError_IsError(t *testing.T) {
 	// The error returned by chooseNode when no node is available should be a
 	// FailedToPlaceSandboxError carrying the placement constraints.
 	var err error = FailedToPlaceSandboxError{
-		filterByLabels:   true,
-		requiredLabels:   []string{"gpu"},
-		buildMachineInfo: machineinfo.MachineInfo{CPUModelName: "Intel Ice Lake"},
+		filterByLabels: true,
+		requiredLabels: []string{"gpu"},
+		cpu:            CPURequirement{Build: machineinfo.MachineInfo{CPUModelName: "Intel Ice Lake"}},
 	}
 
 	var placeErr FailedToPlaceSandboxError
 	require.ErrorAs(t, err, &placeErr)
 	assert.True(t, placeErr.filterByLabels)
 	assert.Equal(t, []string{"gpu"}, placeErr.requiredLabels)
-	assert.Equal(t, "Intel Ice Lake", placeErr.buildMachineInfo.CPUModelName)
+	assert.Equal(t, "Intel Ice Lake", placeErr.cpu.Build.CPUModelName)
 }
 
 func TestBestOfK_ChooseNode_ReturnsPlacementError(t *testing.T) {
@@ -293,7 +311,7 @@ func TestBestOfK_ChooseNode_ReturnsPlacementError(t *testing.T) {
 	machine := machineinfo.MachineInfo{CPUModelName: "Intel Ice Lake"}
 	requiredLabels := []string{"gpu"}
 
-	selected, err := algo.chooseNode(ctx, nodes, make(map[string]struct{}), resources, machine, true, requiredLabels)
+	selected, err := algo.chooseNode(ctx, nodes, make(map[string]struct{}), resources, CPURequirement{Build: machine}, true, requiredLabels)
 	require.Error(t, err)
 	assert.Nil(t, selected)
 
@@ -321,7 +339,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	excludedNodes := make(map[string]struct{})
 
 	// Test sampling fewer nodes than available
-	sampled := algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
+	sampled := algo.sample(nodes, config, excludedNodes, CPURequirement{}, false, nil)
 	assert.LessOrEqual(t, len(sampled), 3)
 
 	// Check all sampled nodes are unique
@@ -334,7 +352,7 @@ func TestBestOfK_Sample(t *testing.T) {
 	// Test sampling with exclusions
 	excludedNodes["a"] = struct{}{}
 	excludedNodes["b"] = struct{}{}
-	sampled = algo.sample(nodes, config, excludedNodes, machineinfo.MachineInfo{}, false, nil)
+	sampled = algo.sample(nodes, config, excludedNodes, CPURequirement{}, false, nil)
 
 	for _, n := range sampled {
 		assert.NotEqual(t, "a", n.ID)
@@ -369,7 +387,7 @@ func TestBestOfK_PowerOfKChoices(t *testing.T) {
 	selectedCounts := make(map[string]int)
 	successCount := 0
 	for range 100 {
-		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, machineinfo.MachineInfo{}, false, nil)
+		selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, CPURequirement{}, false, nil)
 		if err == nil && selected != nil {
 			selectedCounts[selected.ID]++
 			successCount++

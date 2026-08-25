@@ -228,6 +228,13 @@ func setMemoryOverrideOutcome(c *gin.Context, memory *bool, createErr *api.APIEr
 	c.Set(metricMemoryOverride, outcome)
 }
 
+// snapshotIsFilesystemOnly reports whether the stored snapshot persists only
+// the rootfs. Rows written before the kind was recorded have a nil config and
+// are memory snapshots.
+func snapshotIsFilesystemOnly(snap queries.Snapshot) bool {
+	return snap.Config != nil && snap.Config.FilesystemOnly
+}
+
 // demandsFilesystemBoot reports whether the request explicitly demands a cold
 // boot that an in-flight start might not honor: memory:false on a snapshot not
 // already filesystem-only (an fs-only snapshot cold-boots on any start, so a
@@ -237,7 +244,7 @@ func demandsFilesystemBoot(memory *bool, snap queries.Snapshot) bool {
 		return false
 	}
 
-	return snap.Config == nil || !snap.Config.FilesystemOnly
+	return !snapshotIsFilesystemOnly(snap)
 }
 
 // resolveFilesystemBoot maps the request's optional memory field (default
@@ -249,7 +256,7 @@ func resolveFilesystemBoot(ctx context.Context, flags featureFlagsClient, memory
 		return false, nil
 	}
 
-	if snap.Config != nil && snap.Config.FilesystemOnly {
+	if snapshotIsFilesystemOnly(snap) {
 		return false, nil
 	}
 
@@ -353,6 +360,7 @@ func (a *APIStore) buildResumeSandboxDataFromSnapshot(snapshotSandboxID, sandbox
 			NodeID:                  &nodeID,
 			SnapshotSandboxID:       snapshotSandboxID,
 			FilesystemBoot:          filesystemBoot,
+			FilesystemOnlySnapshot:  snapshotIsFilesystemOnly(snap),
 		}, nil
 	}
 }

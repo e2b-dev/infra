@@ -16,15 +16,14 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 type mockAlgorithm struct {
 	mock.Mock
 }
 
-func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, buildCPUInfo machineinfo.MachineInfo, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error) {
-	args := m.Called(ctx, nodes, nodesExcluded, requested, buildCPUInfo, filterByLabels, requiredLabels)
+func (m *mockAlgorithm) chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, cpu CPURequirement, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error) {
+	args := m.Called(ctx, nodes, nodesExcluded, requested, cpu, filterByLabels, requiredLabels)
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
@@ -55,7 +54,7 @@ func TestPlaceSandbox_SuccessfulPlacement(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, CPURequirement{}, false, nil)
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode.Node)
@@ -86,14 +85,14 @@ func TestPlaceSandbox_WithPreferredNode(t *testing.T) {
 	algorithm.On("chooseNode", mock.Anything, nodes, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Return(node1, nil).Once()
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, CPURequirement{}, false, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode.Node)
 	assert.Equal(t, node1, resultNode.Node)
 	algorithm.AssertExpectations(t)
 
 	// Test with preferred node - should use the preferred node directly without calling algorithm
-	resultNode, err = PlaceSandbox(ctx, algorithm, nodes, node2, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	resultNode, err = PlaceSandbox(ctx, algorithm, nodes, node2, sbxRequest, CPURequirement{}, false, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode.Node)
 	assert.Equal(t, node2, resultNode.Node)
@@ -124,7 +123,7 @@ func TestPlaceSandbox_ContextTimeout(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{
 		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
-	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	}, nil, sbxRequest, CPURequirement{}, false, nil)
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode.Node)
@@ -145,7 +144,7 @@ func TestPlaceSandbox_NoNodes(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{}, nil, sbxRequest, CPURequirement{}, false, nil)
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode.Node)
@@ -170,7 +169,7 @@ func TestPlaceSandbox_AllNodesExcluded(t *testing.T) {
 
 	resultNode, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{
 		nodemanager.NewTestNode("node1", api.NodeStatusReady, 3, 4),
-	}, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	}, nil, sbxRequest, CPURequirement{}, false, nil)
 
 	require.Error(t, err)
 	assert.Nil(t, resultNode.Node)
@@ -203,7 +202,7 @@ func TestPlaceSandbox_ResourceExhausted(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, CPURequirement{}, false, nil)
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode.Node)
@@ -238,7 +237,7 @@ func TestPlaceSandbox_TriggersOptimisticUpdate(t *testing.T) {
 		},
 	}
 
-	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, machineinfo.MachineInfo{}, false, nil)
+	resultNode, err := PlaceSandbox(ctx, algorithm, nodes, nil, sbxRequest, CPURequirement{}, false, nil)
 
 	require.NoError(t, err)
 	assert.NotNil(t, resultNode.Node)

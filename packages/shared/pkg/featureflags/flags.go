@@ -684,9 +684,21 @@ var (
 	// fallback is env-overridable (ENVD_OFFLINE_UPGRADE_TARGET) for dev, where there
 	// is no LD. Default off.
 	EnvdOfflineUpgradeTargetFlag = NewStringFlag("envd-offline-upgrade-target", env.GetEnv("ENVD_OFFLINE_UPGRADE_TARGET", "off"))
-	DefaultPersistentVolumeType  = NewStringFlag("default-persistent-volume-type", "")
-	BuildNodeInfo                = NewJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions          = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	// FsOnlyResumeCPUModelFlag restricts where a filesystem-only snapshot may be
+	// resumed: placement keeps only nodes reporting this CPU model, on top of the
+	// build-compatibility rule every sandbox is already subject to. The value is
+	// a bare CPU model as /proc/cpuinfo reports it — machineinfo.IceLakeModel is
+	// "106" (n2), machineinfo.EmeraldRapidsModel is "207" (n4).
+	//
+	// Empty (the default) turns the restriction off, leaving filesystem-only
+	// snapshots on the cross-generation rule a memory restore uses. A deployment
+	// with no LaunchDarkly therefore keeps placing them exactly as before, rather
+	// than needing an LD rule to unpin itself. Memory snapshots never read it.
+	FsOnlyResumeCPUModelFlag = NewStringFlag("fs-only-resume-cpu-model", "")
+
+	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
+	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
+	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
 
 	// ClickhouseReadEndpointFlag selects which ClickHouse DSN to use for reads.
 	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).

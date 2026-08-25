@@ -12,7 +12,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
-	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 )
 
 func TestPlaceSandbox_TimeoutReturnsTypedError(t *testing.T) {
@@ -23,7 +22,7 @@ func TestPlaceSandbox_TimeoutReturnsTypedError(t *testing.T) {
 
 	nodes := []*nodemanager.Node{nodemanager.NewTestNode("node1", api.NodeStatusReady, 0, 4)}
 
-	_, err := PlaceSandbox(ctx, failIfCalled(t), nodes, nil, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	_, err := PlaceSandbox(ctx, failIfCalled(t), nodes, nil, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var timeoutErr PlacementTimeoutError
 	require.ErrorAs(t, err, &timeoutErr)
@@ -53,7 +52,7 @@ func TestPlaceSandbox_DeadlineDuringFinalAttemptReturnsTimeout(t *testing.T) {
 		return nil, errors.New("all nodes excluded")
 	}}
 
-	result, err := PlaceSandbox(ctx, algorithm, nodes, nil, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	result, err := PlaceSandbox(ctx, algorithm, nodes, nil, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var timeoutErr PlacementTimeoutError
 	require.ErrorAs(t, err, &timeoutErr)
@@ -64,7 +63,7 @@ func TestPlaceSandbox_DeadlineDuringFinalAttemptReturnsTimeout(t *testing.T) {
 func TestPlaceSandbox_NoNodesReturnsTypedError(t *testing.T) {
 	t.Parallel()
 
-	_, err := PlaceSandbox(t.Context(), failIfCalled(t), nil, nil, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	_, err := PlaceSandbox(t.Context(), failIfCalled(t), nil, nil, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var noNodesErr NoNodesAvailableError
 	require.ErrorAs(t, err, &noNodesErr)
@@ -79,7 +78,7 @@ func TestPlaceSandbox_CapacitySpikeToDeadlineClassifiedAsCapacity(t *testing.T) 
 	node := nodemanager.NewTestNode("node1", api.NodeStatusReady, 0, 4)
 	node.SetSandboxClient(erroringClient(cancel, status.Error(codes.ResourceExhausted, "no capacity")))
 
-	result, err := PlaceSandbox(ctx, failIfCalled(t), []*nodemanager.Node{node}, node, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	result, err := PlaceSandbox(ctx, failIfCalled(t), []*nodemanager.Node{node}, node, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var noNodesErr NoNodesAvailableError
 	require.ErrorAs(t, err, &noNodesErr)
@@ -100,7 +99,7 @@ func TestPlaceSandbox_HardFailureThenRefusalsToDeadlineStaysTimeout(t *testing.T
 		return exhausted, nil
 	}}
 
-	_, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{hard, exhausted}, hard, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	_, err := PlaceSandbox(ctx, algorithm, []*nodemanager.Node{hard, exhausted}, hard, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var timeoutErr PlacementTimeoutError
 	require.ErrorAs(t, err, &timeoutErr)
@@ -124,7 +123,7 @@ func TestPlaceSandbox_AllExcludedForwardsLastCreateError(t *testing.T) {
 		return nil, errors.New("all nodes excluded")
 	}}
 
-	_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var createErr SandboxCreateError
 	require.ErrorAs(t, err, &createErr)
@@ -141,7 +140,7 @@ func TestPlaceSandbox_NoEligibleNodeReturnsTypedError(t *testing.T) {
 		return nil, FailedToPlaceSandboxError{}
 	}}
 
-	_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var noEligibleErr FailedToPlaceSandboxError
 	require.ErrorAs(t, err, &noEligibleErr)
@@ -166,7 +165,7 @@ func TestPlaceSandbox_RetriesExhaustedKeepsLastError(t *testing.T) {
 		return nil, errors.New("all nodes excluded")
 	}}
 
-	_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), machineinfo.MachineInfo{}, false, nil)
+	_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
 
 	var createErr SandboxCreateError
 	require.ErrorAs(t, err, &createErr)
@@ -190,7 +189,7 @@ func TestPlaceSandbox_ChooseFailureAfterCreateAttemptForwardsCreateError(t *test
 		return nil, FailedToPlaceSandboxError{}
 	}}
 
-	_, err := PlaceSandbox(t.Context(), algorithm, []*nodemanager.Node{failing, notReady}, nil, testSbxRequest("sbx-1"), machineinfo.MachineInfo{}, false, nil)
+	_, err := PlaceSandbox(t.Context(), algorithm, []*nodemanager.Node{failing, notReady}, nil, testSbxRequest("sbx-1"), CPURequirement{}, false, nil)
 
 	var createErr SandboxCreateError
 	require.ErrorAs(t, err, &createErr)
