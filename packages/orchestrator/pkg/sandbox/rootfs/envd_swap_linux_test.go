@@ -85,10 +85,19 @@ func TestParseEnvdSize(t *testing.T) {
 	assert.LessOrEqual(t, small, int64(maxEnvdSize), "a real envd must pass the gate")
 
 	_, err = parseEnvdSize("Inode: 12   Type: regular    Mode:  0755\n")
-	require.Error(t, err, "a stat with no Size must fail rather than read as 0")
+	require.ErrorIs(t, err, ErrStatUnparseable, "a stat with no Size must fail rather than read as 0")
 
 	_, err = parseEnvdSize("")
-	require.Error(t, err, "empty stat output must fail rather than read as 0")
+	require.ErrorIs(t, err, ErrStatUnparseable, "empty stat output must fail rather than read as 0")
+
+	// A crafted i_size past MaxInt64 (ext4's field is 64-bit unsigned) matches the
+	// \d+ capture but overflows ParseInt — it must decline like any other
+	// unparseable stat, and the tenant-chosen digits must not ride the error out
+	// (strconv's own text quotes them too, so %w alone would leak them).
+	const overflow = "18446744073709551615"
+	_, err = parseEnvdSize("Type: regular   Mode: 0755   Size: " + overflow)
+	require.ErrorIs(t, err, ErrStatUnparseable, "an i_size past MaxInt64 must decline like any other unparseable stat")
+	assert.NotContains(t, err.Error(), overflow, "the tenant-chosen digits must not ride the error out")
 }
 
 // TestClassifyEnvdState walks EVERY cell of the decision table. The table is total

@@ -97,7 +97,7 @@ const (
 	// OUTCOME on the cold boot of a filesystem-only snapshot — not only the ones that
 	// reach the rootfs binary swap — by result and from_version/to_version:
 	//
-	//	success | swap_failed | unrecoverable | envd_too_large
+	//	success | swap_failed | unrecoverable | envd_too_large | envd_missing | stat_unparseable
 	//	    the swap ran, or the rootfs itself declined it (see rootfs.SwapEnvdBinary)
 	//	not_quiesced
 	//	    an upgrade was wanted, but the snapshot's rootfs was not frozen at pause,

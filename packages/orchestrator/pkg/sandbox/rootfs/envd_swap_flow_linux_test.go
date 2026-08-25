@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -291,6 +292,196 @@ func TestSwapFlowRollbackFailureIsUnrecoverable(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrOfflineSwapUnrecoverable)
 	assert.True(t, f.ran("rollback"))
+}
+
+// tenantMarker is a distinctive byte sequence standing in for tenant-influenced
+// debugfs output — a crafted volume label, filename, or filesystem-structure error a
+// hostile rootfs can make debugfs echo.
+const tenantMarker = "TENANT-CRAFTED-OUTPUT-marker-2f9c"
+
+// TestSwapFlowErrorsCarryNoTenantOutput pins the security property that debugfs output
+// never reaches a propagated error, and so never lands in shared telemetry via the
+// reboot logger's zap.Error. The swap parses that output locally for its decisions but
+// must strip it from every error it returns. Each case forces a distinct error site
+// with the marker in debugfs's output and asserts the marker is gone while the
+// operational cause survives.
+func TestSwapFlowErrorsCarryNoTenantOutput(t *testing.T) {
+	t.Parallel()
+
+	t.Run("size-stat failure", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = tenantMarker
+		f.errs["size-stat"] = errors.New("jail failed to start")
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), tenantMarker)
+		assert.Contains(t, err.Error(), "size-check original envd")
+	})
+
+	t.Run("backup dump failure", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = statFound("0755", 4096)
+		f.stdout["backup"] = tenantMarker
+		f.errs["backup"] = errors.New("device read error")
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), tenantMarker)
+		assert.Contains(t, err.Error(), "back up original envd")
+	})
+
+	t.Run("swap errored, original left intact", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = statFound("0755", 4096)
+		f.dumpBody["backup"] = "ORIGINAL-BINARY"
+		f.stdout["swap"] = tenantMarker
+		f.errs["swap"] = errors.New("context deadline exceeded")
+		f.stdout["state-stat"] = statFound("0755", 15)
+		f.dumpBody["state"] = "ORIGINAL-BINARY"
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.Error(t, err)
+		assert.NotContains(t, err.Error(), tenantMarker)
+		assert.Contains(t, err.Error(), "original left in place")
+	})
+
+	t.Run("state read indeterminate", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = statFound("0755", 4096)
+		f.dumpBody["backup"] = "ORIGINAL-BINARY"
+		f.stdout["state-stat"] = tenantMarker
+		f.errs["state-stat"] = errors.New("jail died")
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.ErrorIs(t, err, ErrOfflineSwapUnrecoverable)
+		assert.NotContains(t, err.Error(), tenantMarker)
+	})
+
+	t.Run("damaged with failed rollback", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = statFound("0755", 4096)
+		f.dumpBody["backup"] = "ORIGINAL-BINARY"
+		f.stdout["state-stat"] = statNotFound // envd gone -> rollback
+		f.stdout["rollback"] = tenantMarker
+		f.errs["rollback"] = errors.New("write failed")
+		f.stdout["rollback-verify-stat"] = statNotFound // restore did not take
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.ErrorIs(t, err, ErrOfflineSwapUnrecoverable)
+		assert.NotContains(t, err.Error(), tenantMarker)
+	})
+
+	// The one site reachable while debugfs exits 0 (no error branch guards it): a
+	// crafted rootfs prints a diagnostic naming its own bytes and exits 0 with no
+	// Size: line. statEnvdSize returns early on a run error, so only an exit-0
+	// unparseable stat reaches parseEnvdSize.
+	t.Run("size stat unparseable", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = tenantMarker // exits 0, no Size: line, not "not found"
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.ErrorIs(t, err, ErrStatUnparseable)
+		assert.NotContains(t, err.Error(), tenantMarker)
+	})
+
+	t.Run("envd missing at size check", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		// debugfs exits 0 with a "File not found" diagnostic naming the path.
+		f.stdout["size-stat"] = "/usr/bin/envd: File not found by ext2_lookup " + tenantMarker
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.ErrorIs(t, err, ErrEnvdMissing)
+		assert.NotContains(t, err.Error(), tenantMarker)
+	})
+
+	t.Run("state dump failure", func(t *testing.T) {
+		t.Parallel()
+
+		f, dbg, src := newSwapFixture(t, "NEW-BINARY")
+		f.stdout["size-stat"] = statFound("0755", 4096)
+		f.dumpBody["backup"] = "ORIGINAL-BINARY"
+		f.stdout["state-stat"] = statFound("0755", 15) // present -> dump runs
+		f.stdout["state"] = tenantMarker
+		f.errs["state"] = errors.New("jail died mid-dump")
+
+		_, err := swapEnvd(t.Context(), dbg, src)
+
+		require.ErrorIs(t, err, ErrOfflineSwapUnrecoverable)
+		assert.NotContains(t, err.Error(), tenantMarker)
+	})
+}
+
+// TestDebugfsRunError pins the structural, tenant-free shape of the error runDebugfs
+// returns on a failed run: phase and exit code (or the host-generated cause when the
+// process did not exit normally), and only a byte COUNT of the withheld output —
+// never the output itself. This is what lets callers propagate it without appending
+// the raw bytes.
+func TestDebugfsRunError(t *testing.T) {
+	t.Parallel()
+
+	exited := &debugfsRunError{phase: "state", exitCode: 8, outputLen: 4096}
+	assert.Contains(t, exited.Error(), "state")
+	assert.Contains(t, exited.Error(), "8")
+	assert.Contains(t, exited.Error(), "4096")
+	assert.Contains(t, exited.Error(), "withheld")
+
+	cause := errors.New("context deadline exceeded")
+	crashed := &debugfsRunError{phase: "backup", exitCode: -1, cause: cause}
+	assert.Contains(t, crashed.Error(), "backup")
+	require.ErrorIs(t, crashed, cause, "the host-generated cause is unwrappable")
+
+	// A signal kill yields exitCode -1; if the cause were ever dropped, Error()
+	// must still not render a bare <nil>.
+	killed := &debugfsRunError{phase: "state", exitCode: -1}
+	assert.Contains(t, killed.Error(), "state")
+	assert.NotContains(t, killed.Error(), "<nil>")
+}
+
+// TestNewDebugfsRunError exercises the err → (exitCode, cause) mapping — the block
+// runDebugfs actually runs, which the swapIO fake bypasses — on real os/exec errors:
+// a non-zero exit, a signal kill (the ctx/budget SIGKILL path, ExitCode -1), and a
+// start failure. It pins that the exit code lands, a kill keeps an unwrappable cause
+// (not a bare -1), and the rendered error carries neither output bytes nor <nil>.
+func TestNewDebugfsRunError(t *testing.T) {
+	t.Parallel()
+
+	nonzero := exec.CommandContext(t.Context(), "sh", "-c", "exit 8").Run()
+	re := newDebugfsRunError("state", nonzero, 128)
+	assert.Equal(t, 8, re.exitCode)
+	require.NoError(t, re.cause, "a clean non-zero exit has no separate cause")
+	assert.Contains(t, re.Error(), "exited 8")
+
+	killed := exec.CommandContext(t.Context(), "sh", "-c", "kill -KILL $$").Run()
+	re = newDebugfsRunError("backup", killed, 0)
+	assert.Equal(t, -1, re.exitCode, "a signal kill is not a real exit code")
+	require.Error(t, re.cause, "the kill reason must be carried, not dropped")
+	assert.Contains(t, re.Error(), "did not complete")
+	assert.NotContains(t, re.Error(), "<nil>")
+
+	start := newDebugfsRunError("swap", errors.New("exec: not started"), 0)
+	require.ErrorContains(t, start, "not started")
 }
 
 // TestSwapFlowRefusalsHappenBeforeMutating pins the guards that must fire before the

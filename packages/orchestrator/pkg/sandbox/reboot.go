@@ -378,6 +378,30 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 				zap.String("built_with", from),
 				zap.Error(err),
 			)
+		case errors.Is(err, rootfs.ErrEnvdMissing):
+			// Declined at the pre-swap check: the rootfs has no envd to upgrade.
+			// Nothing touched, so the guest boots its own envd. A rootfs property,
+			// not a malfunction — its own result value, like envd_too_large.
+			result = "envd_missing"
+			logger.L().Warn(ctx, "skipping offline envd upgrade: rootfs has no envd to swap",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("target", path),
+				zap.String("built_with", from),
+				zap.Error(err),
+			)
+		case errors.Is(err, rootfs.ErrStatUnparseable):
+			// The pre-swap stat could not be read (e.g. a filesystem debugfs could
+			// not open, which exits 0). Nothing touched; boot the original. A rootfs
+			// property, not swap breakage.
+			result = "stat_unparseable"
+			logger.L().Warn(ctx, "skipping offline envd upgrade: rootfs envd stat was unreadable",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("target", path),
+				zap.String("built_with", from),
+				zap.Error(err),
+			)
 		case unrecoverable:
 			result = "unrecoverable"
 			logger.L().Error(ctx, "offline envd swap left the rootfs without a usable envd; failing boot to discard the overlay",
