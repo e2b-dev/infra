@@ -66,6 +66,103 @@ func newInClusterKubeClient() (kubernetes.Interface, error) {
 	return c, nil
 }
 
+// kubeClientFactory builds the client the Kubernetes discovery backends list
+// pods with. Injected so the provider wiring is testable without a cluster.
+type kubeClientFactory func() (kubernetes.Interface, error)
+
+// serviceDiscovery is the pair of discovery backends the API runs on: the node
+// plane (orchestrators) and the template-builder plane.
+type serviceDiscovery struct {
+	nodes            nodediscovery.Discovery
+	templateBuilders clustersdiscovery.Discovery
+}
+
+// newServiceDiscovery builds both discovery planes for
+// cfg.ServiceDiscoveryProvider:
+//
+//	nomad      - both go through the local Nomad agent
+//	kubernetes - both list pods via the K8s API
+//	local      - both point at one statically configured address
+func newServiceDiscovery(config cfg.Config, newKube kubeClientFactory) (serviceDiscovery, error) {
+	switch config.ServiceDiscoveryProvider {
+	case cfg.ServiceDiscoveryProviderKubernetes:
+		return newKubernetesServiceDiscovery(config, newKube)
+	case cfg.ServiceDiscoveryProviderLocal:
+		return newLocalServiceDiscovery(config)
+	default: // ServiceDiscoveryProviderNomad
+		return newNomadServiceDiscovery(config)
+	}
+}
+
+func newKubernetesServiceDiscovery(config cfg.Config, newKube kubeClientFactory) (serviceDiscovery, error) {
+	client, err := newKube()
+	if err != nil {
+		return serviceDiscovery{}, fmt.Errorf("kubernetes client: %w", err)
+	}
+
+	return serviceDiscovery{
+		nodes: nodediscovery.NewKubernetes(
+			client,
+			config.K8sNamespace,
+			config.K8sOrchestratorPodLabelSelector,
+		),
+		templateBuilders: clustersdiscovery.NewKubernetesDiscovery(
+			consts.LocalClusterID,
+			client,
+			config.K8sNamespace,
+			config.K8sTemplateManagerPodLabelSelector,
+		),
+	}, nil
+}
+
+func newLocalServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
+	nodes, err := nodediscovery.NewLocal(config.LocalOrchestratorAddress)
+	if err != nil {
+		return serviceDiscovery{}, fmt.Errorf("local orchestrator discovery: %w", err)
+	}
+
+	// The local orchestrator doubles as the template builder when it is
+	// started with ORCHESTRATOR_SERVICES=orchestrator,template-manager, so
+	// point builder discovery at the same address. Instances that do not
+	// report the TemplateBuilder role (the darwin dummy orchestrator) are
+	// registered with IsBuilder=false and never selected for builds, which
+	// keeps the dummy setup behaving as before.
+	templateBuilders, err := clustersdiscovery.NewStaticFromAddress(config.LocalOrchestratorAddress)
+	if err != nil {
+		return serviceDiscovery{}, fmt.Errorf("local template builder discovery: %w", err)
+	}
+
+	return serviceDiscovery{nodes: nodes, templateBuilders: templateBuilders}, nil
+}
+
+func newNomadServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
+	client, err := nomadapi.NewClient(&nomadapi.Config{
+		Address:  config.NomadAddress,
+		SecretID: config.NomadToken,
+	})
+	if err != nil {
+		return serviceDiscovery{}, fmt.Errorf("nomad client: %w", err)
+	}
+
+	nodes := nodediscovery.NewNomad(client, config.NomadOrchestratorServiceNames)
+	// Migration fallback: orchestrator jobs deployed from jobspecs that
+	// predate the service port-label fix register their service with an
+	// empty Address, so service discovery alone would miss them until
+	// they are redeployed. Union in the legacy node-pool listing (service
+	// entries win on conflict) so the API flip has no rollout ordering
+	// constraint. Disable via NOMAD_ORCHESTRATOR_LEGACY_DISCOVERY_ENABLED
+	// once no legacy jobs remain. The pool is hardcoded: legacy jobs only
+	// ever ran on the "default" pool.
+	if config.NomadOrchestratorLegacyDiscoveryEnabled {
+		nodes = nodediscovery.NewMerged(nodes, nodediscovery.NewNomadNodePool(client, "default"))
+	}
+
+	return serviceDiscovery{
+		nodes:            nodes,
+		templateBuilders: clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, client),
+	}, nil
+}
+
 var _ api.ServerInterface = (*APIStore)(nil)
 
 type teamRunningSandboxCounter interface {
@@ -162,71 +259,9 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Posthog client", zap.Error(posthogErr))
 	}
 
-	// Build the orchestrator-discovery and template-builder-discovery backends
-	// based on cfg.ServiceDiscoveryProvider:
-	//   nomad      - both go through the local Nomad agent
-	//   kubernetes - both list pods via the in-cluster K8s API
-	var (
-		nodeDiscovery            nodediscovery.Discovery
-		templateBuilderDiscovery clustersdiscovery.Discovery
-	)
-	switch config.ServiceDiscoveryProvider {
-	case cfg.ServiceDiscoveryProviderKubernetes:
-		k8sClient, k8sErr := newInClusterKubeClient()
-		if k8sErr != nil {
-			logger.L().Fatal(ctx, "Initializing in-cluster Kubernetes client", zap.Error(k8sErr))
-		}
-		nodeDiscovery = nodediscovery.NewKubernetes(
-			k8sClient,
-			config.K8sNamespace,
-			config.K8sOrchestratorPodLabelSelector,
-		)
-		templateBuilderDiscovery = clustersdiscovery.NewKubernetesDiscovery(
-			consts.LocalClusterID,
-			k8sClient,
-			config.K8sNamespace,
-			config.K8sTemplateManagerPodLabelSelector,
-		)
-	case cfg.ServiceDiscoveryProviderLocal:
-		localND, localErr := nodediscovery.NewLocal(config.LocalOrchestratorAddress)
-		if localErr != nil {
-			logger.L().Fatal(ctx, "Initializing local orchestrator discovery", zap.Error(localErr))
-		}
-		nodeDiscovery = localND
-		// The local orchestrator doubles as the template builder when it is
-		// started with ORCHESTRATOR_SERVICES=orchestrator,template-manager, so
-		// point builder discovery at the same address. Instances that do not
-		// report the TemplateBuilder role (the darwin dummy orchestrator) are
-		// registered with IsBuilder=false and never selected for builds, which
-		// keeps the dummy setup behaving as before.
-		templateBuilderDiscovery, err = clustersdiscovery.NewStaticFromAddress(config.LocalOrchestratorAddress)
-		if err != nil {
-			logger.L().Fatal(ctx, "Initializing local template builder discovery", zap.Error(err))
-		}
-	default: // ServiceDiscoveryProviderNomad
-		nomadClient, nomadErr := nomadapi.NewClient(&nomadapi.Config{
-			Address:  config.NomadAddress,
-			SecretID: config.NomadToken,
-		})
-		if nomadErr != nil {
-			logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(nomadErr))
-		}
-		nodeDiscovery = nodediscovery.NewNomad(nomadClient, config.NomadOrchestratorServiceNames)
-		// Migration fallback: orchestrator jobs deployed from jobspecs that
-		// predate the service port-label fix register their service with an
-		// empty Address, so service discovery alone would miss them until
-		// they are redeployed. Union in the legacy node-pool listing (service
-		// entries win on conflict) so the API flip has no rollout ordering
-		// constraint. Disable via NOMAD_ORCHESTRATOR_LEGACY_DISCOVERY_ENABLED
-		// once no legacy jobs remain. The pool is hardcoded: legacy jobs only
-		// ever ran on the "default" pool.
-		if config.NomadOrchestratorLegacyDiscoveryEnabled {
-			nodeDiscovery = nodediscovery.NewMerged(
-				nodeDiscovery,
-				nodediscovery.NewNomadNodePool(nomadClient, "default"),
-			)
-		}
-		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)
+	sd, err := newServiceDiscovery(config, newInClusterKubeClient)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing service discovery", zap.Error(err))
 	}
 
 	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
@@ -234,7 +269,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
 	}
 
-	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, templateBuilderDiscovery, clickhouseStore, queryLogsProvider, clusterLogsReader, featureFlags, config)
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, sd.templateBuilders, clickhouseStore, queryLogsProvider, clusterLogsReader, featureFlags, config)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -261,7 +296,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "failed to create snapshot build query semaphore", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, nodeDiscovery, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
+	orch, err := orchestrator.New(ctx, config, tel, sd.nodes, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
