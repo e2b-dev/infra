@@ -33,12 +33,14 @@ import (
 // The callback is critical: it deletes the transition key
 // and sets the result value with short TTL to notify waiters of the outcome.
 func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandboxtypes.RemoveOpts) (sandboxtypes.Sandbox, bool, func(context.Context, error), error) {
+	transitionStart := time.Now()
+
 	key := getSandboxKey(teamID.String(), sandboxID)
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
 	lockKey := redis_utils.GetLockKey(key)
 
 	// Acquire distributed lock
-	lock, err := s.locker.Obtain(ctx, lockKey, lockTimeout)
+	lock, err := s.obtainLock(ctx, lockKey, lockTimeout)
 	if err != nil {
 		return sandboxtypes.Sandbox{}, false, nil, fmt.Errorf("failed to obtain lock: %w", err)
 	}
@@ -79,6 +81,8 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	// The authority is the equivalent check inside startTransitionScript, which
 	// is atomic with that write.
 	if opts.ExpectExecutionID != "" && sbx.ExecutionID != opts.ExpectExecutionID {
+		s.transitionMet.mismatches.Add(ctx, 1)
+
 		return sbx, false, nil, fmt.Errorf(
 			"sandbox %q is execution %q, expected %q: %w",
 			sandboxID, sbx.ExecutionID, opts.ExpectExecutionID, sandboxtypes.ErrExecutionMismatch,
@@ -162,6 +166,8 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 		// The pin no longer holds. Add is lockless, so the incarnation can have
 		// been replaced since the check above; the script refused rather than
 		// overwrite whatever is there now, and nothing has been written.
+		s.transitionMet.mismatches.Add(ctx, 1)
+
 		return sbx, false, nil, fmt.Errorf(
 			"sandbox %q is no longer execution %q: %w",
 			sandboxID, opts.ExpectExecutionID, sandboxtypes.ErrExecutionMismatch,
@@ -170,15 +176,17 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 
 	logger.L().Debug(ctx, "Started state transition", logger.WithSandboxID(sandboxID), zap.String("state", string(newState)), zap.String("transitionID", transitionID))
 
-	return updated, false, s.createCallback(teamID, sandboxID, transitionKey, resultKey, transitionID, opts.Action), nil
+	return updated, false, s.createCallback(teamID, sandboxID, transitionKey, resultKey, transitionID, opts.Action, transitionStart), nil
 }
 
 // createCallback returns a callback function for completing a transition.
 // For transient actions, it first restores the sandbox state to Running.
 // On success, the callback deletes the transition key and sets empty result.
 // On error, the callback deletes the transition key and sets error message in result.
-func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, resultKey, transitionID string, stateAction sandboxtypes.StateAction) func(context.Context, error) {
+func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, resultKey, transitionID string, stateAction sandboxtypes.StateAction, start time.Time) func(context.Context, error) {
 	return func(cbCtx context.Context, cbErr error) {
+		s.transitionMet.duration.Record(cbCtx, time.Since(start).Milliseconds())
+
 		logger.L().Debug(cbCtx, "Transition complete", logger.WithSandboxID(sandboxID), zap.String("state", string(stateAction.TargetState)), zap.String("transitionID", transitionID), zap.Error(cbErr))
 
 		var restoreErr error
@@ -187,9 +195,10 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		}
 
 		lockKey := redis_utils.GetLockKey(transitionKey)
-		lock, err := s.locker.Obtain(cbCtx, lockKey, lockTimeout)
+		lock, err := s.obtainLock(cbCtx, lockKey, lockTimeout)
 		if err != nil {
 			logger.L().Warn(cbCtx, "Failed to obtain lock in callback", logger.WithSandboxID(sandboxID), zap.String("transitionID", transitionID), zap.Error(err))
+			s.transitionMet.callbackFailures.Add(context.WithoutCancel(cbCtx), 1)
 
 			return
 		}
@@ -300,6 +309,8 @@ func (s *Storage) waitForTransition(
 		case <-ch:
 			return s.checkTransitionResult(ctx, resultKey)
 		case <-ticker.C:
+			s.transitionMet.fallbackPolls.Add(ctx, 1)
+
 			// Fallback poll: check whether the transition key is still present.
 			currentID, err := s.redisClient.Get(ctx, transitionKey).Result()
 			if errors.Is(err, redis.Nil) || currentID != transitionID {
@@ -354,6 +365,7 @@ func (s *Storage) handleExistingTransition(
 		// The caller inherits the in-flight transition's result without
 		// doing the work itself: this is a joiner.
 		joined.Mark(ctx)
+		s.transitionMet.joined.Add(ctx, 1)
 
 		logger.L().Debug(ctx, "State transition already in progress to the same state, waiting",
 			logger.WithSandboxID(sbx.SandboxID),

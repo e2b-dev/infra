@@ -9,7 +9,6 @@ import (
 	"github.com/bsm/redislock"
 	"github.com/redis/go-redis/v9"
 )
-
 type storageLocker struct {
 	redisClient redis.UniversalClient
 	client      *redislock.Client
@@ -99,4 +98,24 @@ func jitterBackoff(backoff time.Duration) time.Duration {
 	factor := 1 + lockRetryJitter*(2*rand.Float64()-1)
 
 	return time.Duration(float64(backoff) * factor)
+}
+
+// obtainLock wraps storageLocker.Obtain with wait-duration and timeout metrics.
+// On success it records the total wait time; on context expiry it increments the
+// timeout counter. All other errors pass through unrecorded.
+func (s *Storage) obtainLock(ctx context.Context, lockKey string, timeout time.Duration) (*storageLock, error) {
+	start := time.Now()
+
+	lock, err := s.locker.Obtain(ctx, lockKey, timeout)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			s.lockMet.timeouts.Add(context.WithoutCancel(ctx), 1)
+		}
+
+		return nil, err
+	}
+
+	s.lockMet.waitDuration.Record(ctx, time.Since(start).Milliseconds())
+
+	return lock, nil
 }

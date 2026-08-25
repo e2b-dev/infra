@@ -42,6 +42,7 @@ func (s *Storage) forEachSandboxBatch(ctx context.Context, fn func(teamID string
 				zap.Error(err),
 				logger.WithTeamID(teamID),
 			)
+			s.scanMet.teamsSkipped.Add(ctx, 1)
 
 			continue
 		}
@@ -115,6 +116,7 @@ func (s *Storage) fetchSandboxBatch(ctx context.Context, teamID string, sandboxI
 				zap.Error(err),
 				logger.WithTeamID(teamID),
 			)
+			s.scanMet.corruptRecords.Add(ctx, 1)
 
 			continue
 		}

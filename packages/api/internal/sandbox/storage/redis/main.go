@@ -40,7 +40,10 @@ type Storage struct {
 	publisher    *publisher
 	featureFlags *featureflags.Client
 
-	metrics expirationIndexMetrics
+	metrics       expirationIndexMetrics
+	lockMet       lockMetrics
+	transitionMet transitionMetrics
+	scanMet       scanMetrics
 }
 
 // expirationIndexMetrics observes global expiration index consistency.
@@ -53,6 +56,31 @@ type expirationIndexMetrics struct {
 	sweptOrphan        metric.MeasurementOption
 	sweptDeadExecution metric.MeasurementOption
 	sweptInvalid       metric.MeasurementOption
+
+	// teamIndexSize records each team's sandbox index SET cardinality once per heal pass.
+	teamIndexSize metric.Int64Histogram
+	// indexSize records the global expiration ZSET cardinality once per heal pass.
+	indexSize metric.Int64Histogram
+	// sweepDuration records wall-clock time of each ExpiredItems call.
+	sweepDuration metric.Int64Histogram
+}
+
+type lockMetrics struct {
+	waitDuration metric.Int64Histogram
+	timeouts     metric.Int64Counter
+}
+
+type transitionMetrics struct {
+	callbackFailures metric.Int64Counter
+	duration         metric.Int64Histogram
+	joined           metric.Int64Counter
+	fallbackPolls    metric.Int64Counter
+	mismatches       metric.Int64Counter
+}
+
+type scanMetrics struct {
+	teamsSkipped   metric.Int64Counter
+	corruptRecords metric.Int64Counter
 }
 
 const sweptReasonAttr = "reason"
@@ -73,6 +101,21 @@ func newExpirationIndexMetrics(meter metric.Meter) (expirationIndexMetrics, erro
 		return expirationIndexMetrics{}, fmt.Errorf("expiration index swept counter: %w", err)
 	}
 
+	teamIndexSize, err := telemetry.GetHistogram(meter, telemetry.ApiRedisStorageTeamIndexSize)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("team index size histogram: %w", err)
+	}
+
+	indexSize, err := telemetry.GetHistogram(meter, telemetry.ApiRedisStorageExpirationIndexSize)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index size histogram: %w", err)
+	}
+
+	sweepDuration, err := telemetry.GetHistogram(meter, telemetry.ApiRedisStorageExpirationIndexSweepDuration)
+	if err != nil {
+		return expirationIndexMetrics{}, fmt.Errorf("expiration index sweep duration histogram: %w", err)
+	}
+
 	return expirationIndexMetrics{
 		indexHealed:        healed,
 		indexRescored:      rescored,
@@ -80,10 +123,76 @@ func newExpirationIndexMetrics(meter metric.Meter) (expirationIndexMetrics, erro
 		sweptOrphan:        metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "orphan"))),
 		sweptDeadExecution: metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "dead_execution"))),
 		sweptInvalid:       metric.WithAttributeSet(attribute.NewSet(attribute.String(sweptReasonAttr, "invalid"))),
+		teamIndexSize:      teamIndexSize,
+		indexSize:          indexSize,
+		sweepDuration:      sweepDuration,
 	}, nil
 }
 
 const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
+
+func newLockMetrics(meter metric.Meter) (lockMetrics, error) {
+	waitDur, err := telemetry.GetHistogram(meter, telemetry.ApiRedisStorageLockWaitDuration)
+	if err != nil {
+		return lockMetrics{}, fmt.Errorf("lock wait duration histogram: %w", err)
+	}
+
+	timeouts, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageLockTimeouts)
+	if err != nil {
+		return lockMetrics{}, fmt.Errorf("lock timeouts counter: %w", err)
+	}
+
+	return lockMetrics{waitDuration: waitDur, timeouts: timeouts}, nil
+}
+
+func newTransitionMetrics(meter metric.Meter) (transitionMetrics, error) {
+	cbFails, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageTransitionCallbackFailures)
+	if err != nil {
+		return transitionMetrics{}, fmt.Errorf("transition callback failures counter: %w", err)
+	}
+
+	dur, err := telemetry.GetHistogram(meter, telemetry.ApiRedisStorageTransitionDuration)
+	if err != nil {
+		return transitionMetrics{}, fmt.Errorf("transition duration histogram: %w", err)
+	}
+
+	joined, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageTransitionJoined)
+	if err != nil {
+		return transitionMetrics{}, fmt.Errorf("transition joined counter: %w", err)
+	}
+
+	fallbacks, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageTransitionFallbackPolls)
+	if err != nil {
+		return transitionMetrics{}, fmt.Errorf("transition fallback polls counter: %w", err)
+	}
+
+	mismatches, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageTransitionExecutionMismatches)
+	if err != nil {
+		return transitionMetrics{}, fmt.Errorf("transition execution mismatches counter: %w", err)
+	}
+
+	return transitionMetrics{
+		callbackFailures: cbFails,
+		duration:         dur,
+		joined:           joined,
+		fallbackPolls:    fallbacks,
+		mismatches:       mismatches,
+	}, nil
+}
+
+func newScanMetrics(meter metric.Meter) (scanMetrics, error) {
+	skipped, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageScanTeamsSkipped)
+	if err != nil {
+		return scanMetrics{}, fmt.Errorf("scan teams skipped counter: %w", err)
+	}
+
+	corrupt, err := telemetry.GetCounter(meter, telemetry.ApiRedisStorageScanCorruptRecords)
+	if err != nil {
+		return scanMetrics{}, fmt.Errorf("scan corrupt records counter: %w", err)
+	}
+
+	return scanMetrics{teamsSkipped: skipped, corruptRecords: corrupt}, nil
+}
 
 func NewStorage(
 	redisClient redis.UniversalClient,
@@ -103,13 +212,31 @@ func NewStorage(
 		return nil, fmt.Errorf("failed to create expiration index metrics: %w", err)
 	}
 
+	lockMet, err := newLockMetrics(meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create lock metrics: %w", err)
+	}
+
+	transitionMet, err := newTransitionMetrics(meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create transition metrics: %w", err)
+	}
+
+	scanMet, err := newScanMetrics(meter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create scan metrics: %w", err)
+	}
+
 	return &Storage{
-		redisClient:  redisClient,
-		locker:       newStorageLocker(redisClient, subManager, pub),
-		subManager:   subManager,
-		publisher:    pub,
-		featureFlags: featureFlags,
-		metrics:      metrics,
+		redisClient:   redisClient,
+		locker:        newStorageLocker(redisClient, subManager, pub),
+		subManager:    subManager,
+		publisher:     pub,
+		featureFlags:  featureFlags,
+		metrics:       metrics,
+		lockMet:       lockMet,
+		transitionMet: transitionMet,
+		scanMet:       scanMet,
 	}, nil
 }
 
