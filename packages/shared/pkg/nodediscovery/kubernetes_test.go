@@ -1,4 +1,4 @@
-package discovery
+package nodediscovery
 
 import (
 	"net"
@@ -46,7 +46,7 @@ func newOrchestratorPod(name, hostIP string, ready bool) *corev1.Pod {
 
 // TestKubernetesDiscovery_PodsWithSharedPrefix verifies that two pods sharing
 // a long common prefix (the typical DaemonSet/Deployment pod-name shape) are
-// returned with distinct ShortIDs. Truncating to consts.NodeIDLength would
+// returned with distinct IDs. Truncating to consts.NodeIDLength would
 // collide them into a single discovery key and silently drop one of the
 // orchestrators; this test guards against that regression.
 func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
@@ -58,29 +58,29 @@ func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 	client := fake.NewSimpleClientset(pod1, pod2)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
 	// Both pods share the first 8+ characters; without the fix the truncated
 	// IDs would be equal.
-	assert.NotEqual(t, nodes[0].ShortID, nodes[1].ShortID,
-		"pods with a shared prefix must produce distinct ShortIDs")
+	assert.NotEqual(t, nodes[0].ID, nodes[1].ID,
+		"pods with a shared prefix must produce distinct IDs")
 
-	// ShortID must equal the full pod name on the K8s backend.
-	byShortID := map[string]Node{}
+	// ID must equal the full pod name on the K8s backend.
+	byID := map[string]Instance{}
 	for _, n := range nodes {
-		byShortID[n.ShortID] = n
+		byID[n.ID] = n
 	}
 
-	require.Contains(t, byShortID, pod1.Name)
-	require.Contains(t, byShortID, pod2.Name)
+	require.Contains(t, byID, pod1.Name)
+	require.Contains(t, byID, pod2.Name)
 
 	port := strconv.Itoa(int(consts.OrchestratorAPIPort))
-	assert.Equal(t, "10.0.0.1", byShortID[pod1.Name].IPAddress)
-	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), byShortID[pod1.Name].OrchestratorAddress)
-	assert.Equal(t, "10.0.0.2", byShortID[pod2.Name].IPAddress)
-	assert.Equal(t, net.JoinHostPort("10.0.0.2", port), byShortID[pod2.Name].OrchestratorAddress)
+	assert.Equal(t, "10.0.0.1", byID[pod1.Name].IPAddress)
+	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), byID[pod1.Name].Address())
+	assert.Equal(t, "10.0.0.2", byID[pod2.Name].IPAddress)
+	assert.Equal(t, net.JoinHostPort("10.0.0.2", port), byID[pod2.Name].Address())
 }
 
 // TestKubernetesDiscovery_FiltersNotReady ensures that pods which are not
@@ -95,10 +95,10 @@ func TestKubernetesDiscovery_FiltersNotReady(t *testing.T) {
 	client := fake.NewSimpleClientset(ready, notReady)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
-	assert.Equal(t, ready.Name, nodes[0].ShortID)
+	assert.Equal(t, ready.Name, nodes[0].ID)
 }
 
 // TestKubernetesDiscovery_FiltersPending ensures pods that are not in the
@@ -121,7 +121,7 @@ func TestKubernetesDiscovery_FiltersPending(t *testing.T) {
 	client := fake.NewSimpleClientset(pending)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }
@@ -148,7 +148,7 @@ func TestKubernetesDiscovery_FiltersMissingIP(t *testing.T) {
 	client := fake.NewSimpleClientset(noIP)
 	d := NewKubernetes(client, testNamespace, testLabelSelector)
 
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }

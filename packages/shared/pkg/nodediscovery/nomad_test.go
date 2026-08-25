@@ -1,4 +1,4 @@
-package discovery
+package nodediscovery
 
 import (
 	"encoding/json"
@@ -56,9 +56,9 @@ func newNomadServiceMock(t *testing.T, regs []*nomadapi.ServiceRegistration) *no
 	return newNomadServicesMock(t, map[string][]*nomadapi.ServiceRegistration{testServiceName: regs})
 }
 
-// TestNomadDiscovery_MapsRegistrations verifies field mapping: ShortID is the
+// TestNomadDiscovery_MapsRegistrations verifies field mapping: ID is the
 // truncated Nomad node ID (stable across the node-listing -> service-listing
-// backend switch) and OrchestratorAddress uses the registration's bound port.
+// backend switch) and Address() reports the registration's bound port.
 func TestNomadDiscovery_MapsRegistrations(t *testing.T) {
 	t.Parallel()
 
@@ -74,19 +74,19 @@ func TestNomadDiscovery_MapsRegistrations(t *testing.T) {
 	})
 
 	d := NewNomad(client, []string{testServiceName})
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 
-	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].ShortID)
+	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].ID)
 	assert.Equal(t, "10.0.0.1", nodes[0].IPAddress)
-	assert.Equal(t, net.JoinHostPort("10.0.0.1", "5008"), nodes[0].OrchestratorAddress)
+	assert.Equal(t, net.JoinHostPort("10.0.0.1", "5008"), nodes[0].Address())
 }
 
 // TestNomadDiscovery_DeduplicatesByNode ensures that two registrations on the
 // same node (a transient state, e.g. a stopping allocation whose registration
 // has not been reaped yet) collapse into a single discovered node, keeping
-// ShortIDs unique for callers that key on them.
+// IDs unique for callers that key on them.
 func TestNomadDiscovery_DeduplicatesByNode(t *testing.T) {
 	t.Parallel()
 
@@ -98,10 +98,10 @@ func TestNomadDiscovery_DeduplicatesByNode(t *testing.T) {
 	})
 
 	d := NewNomad(client, []string{testServiceName})
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
-	assert.NotEqual(t, nodes[0].ShortID, nodes[1].ShortID)
+	assert.NotEqual(t, nodes[0].ID, nodes[1].ID)
 }
 
 // TestNomadDiscovery_UnionsServices ensures registrations from multiple
@@ -124,12 +124,12 @@ func TestNomadDiscovery_UnionsServices(t *testing.T) {
 	})
 
 	d := NewNomad(client, []string{testServiceName, "orchestrator-canary"})
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
 
-	assert.Equal(t, net.JoinHostPort("10.0.0.1", "5008"), nodes[0].OrchestratorAddress)
-	assert.Equal(t, net.JoinHostPort("10.0.0.2", "5008"), nodes[1].OrchestratorAddress)
+	assert.Equal(t, net.JoinHostPort("10.0.0.1", "5008"), nodes[0].Address())
+	assert.Equal(t, net.JoinHostPort("10.0.0.2", "5008"), nodes[1].Address())
 }
 
 // TestNomadDiscovery_SkipsMissingAddress ensures registrations without an
@@ -142,7 +142,7 @@ func TestNomadDiscovery_SkipsMissingAddress(t *testing.T) {
 	})
 
 	d := NewNomad(client, []string{testServiceName})
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }
@@ -156,7 +156,7 @@ func TestNomadDiscovery_EmptyService(t *testing.T) {
 	client := newNomadServiceMock(t, nil)
 
 	d := NewNomad(client, []string{testServiceName})
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 }

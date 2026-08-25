@@ -1,4 +1,4 @@
-package discovery
+package nodediscovery
 
 import (
 	"encoding/json"
@@ -46,10 +46,10 @@ func newNomadNodesMock(t *testing.T, stubs []*nomadapi.NodeListStub, gotFilter *
 	return client
 }
 
-// TestNomadNodePoolDiscovery_MapsNodes verifies field mapping: ShortID is the
+// TestNomadNodePoolDiscovery_MapsNodes verifies field mapping: ID is the
 // truncated Nomad node ID (identical to what the service-based backend
 // produces for the same node, so the merged union cannot create duplicate
-// identities) and OrchestratorAddress uses the well-known orchestrator port.
+// identities) and Address() reports the well-known orchestrator port.
 func TestNomadNodePoolDiscovery_MapsNodes(t *testing.T) {
 	t.Parallel()
 
@@ -59,14 +59,14 @@ func TestNomadNodePoolDiscovery_MapsNodes(t *testing.T) {
 	}, nil)
 
 	d := NewNomadNodePool(client, "default")
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 
 	port := strconv.Itoa(int(consts.OrchestratorAPIPort))
-	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].ShortID)
+	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].ID)
 	assert.Equal(t, "10.0.0.1", nodes[0].IPAddress)
-	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), nodes[0].OrchestratorAddress)
+	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), nodes[0].Address())
 }
 
 // TestNomadNodePoolDiscovery_FiltersByStatusAndPool verifies the server-side
@@ -79,7 +79,7 @@ func TestNomadNodePoolDiscovery_FiltersByStatusAndPool(t *testing.T) {
 	client := newNomadNodesMock(t, nil, &gotFilter)
 
 	d := NewNomadNodePool(client, "orchestrator-pool")
-	nodes, err := d.ListNodes(t.Context())
+	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
 	assert.Equal(t, `Status == "ready" and NodePool == "orchestrator-pool"`, gotFilter)

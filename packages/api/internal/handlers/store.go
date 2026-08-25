@@ -28,7 +28,6 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	clustersdiscovery "github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
-	orchdiscovery "github.com/e2b-dev/infra/packages/api/internal/orchestrator/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	managementv1 "github.com/e2b-dev/infra/packages/api/internal/secretsstore/management/v1"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
@@ -46,6 +45,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
+	"github.com/e2b-dev/infra/packages/shared/pkg/nodediscovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -167,7 +167,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	//   nomad      - both go through the local Nomad agent
 	//   kubernetes - both list pods via the in-cluster K8s API
 	var (
-		nodeDiscovery            orchdiscovery.Discovery
+		nodeDiscovery            nodediscovery.Discovery
 		templateBuilderDiscovery clustersdiscovery.Discovery
 	)
 	switch config.ServiceDiscoveryProvider {
@@ -176,7 +176,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		if k8sErr != nil {
 			logger.L().Fatal(ctx, "Initializing in-cluster Kubernetes client", zap.Error(k8sErr))
 		}
-		nodeDiscovery = orchdiscovery.NewKubernetes(
+		nodeDiscovery = nodediscovery.NewKubernetes(
 			k8sClient,
 			config.K8sNamespace,
 			config.K8sOrchestratorPodLabelSelector,
@@ -188,7 +188,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 			config.K8sTemplateManagerPodLabelSelector,
 		)
 	case cfg.ServiceDiscoveryProviderLocal:
-		localND, localErr := orchdiscovery.NewLocal(config.LocalOrchestratorAddress)
+		localND, localErr := nodediscovery.NewLocal(config.LocalOrchestratorAddress)
 		if localErr != nil {
 			logger.L().Fatal(ctx, "Initializing local orchestrator discovery", zap.Error(localErr))
 		}
@@ -211,7 +211,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		if nomadErr != nil {
 			logger.L().Fatal(ctx, "Initializing Nomad client", zap.Error(nomadErr))
 		}
-		nodeDiscovery = orchdiscovery.NewNomad(nomadClient, config.NomadOrchestratorServiceNames)
+		nodeDiscovery = nodediscovery.NewNomad(nomadClient, config.NomadOrchestratorServiceNames)
 		// Migration fallback: orchestrator jobs deployed from jobspecs that
 		// predate the service port-label fix register their service with an
 		// empty Address, so service discovery alone would miss them until
@@ -221,9 +221,9 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		// once no legacy jobs remain. The pool is hardcoded: legacy jobs only
 		// ever ran on the "default" pool.
 		if config.NomadOrchestratorLegacyDiscoveryEnabled {
-			nodeDiscovery = orchdiscovery.NewMerged(
+			nodeDiscovery = nodediscovery.NewMerged(
 				nodeDiscovery,
-				orchdiscovery.NewNomadNodePool(nomadClient, "default"),
+				nodediscovery.NewNomadNodePool(nomadClient, "default"),
 			)
 		}
 		templateBuilderDiscovery = clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, nomadClient)

@@ -24,8 +24,9 @@ func NewStaticDiscovery(items []Item) Discovery {
 
 // NewStaticFromAddress returns a Discovery holding a single instance reachable
 // at addr, which may be "host:port" or just "host" (defaulting to
-// consts.OrchestratorAPIPort). It mirrors the orchestrator-side
-// orchestrator/discovery.NewLocal.
+// consts.OrchestratorAPIPort). It mirrors the shared
+// nodediscovery.NewLocal — the two are a hand-maintained duplicate address
+// parser fed by the same config value from the store's provider switch.
 //
 // A local orchestrator can serve the template-builder role as well
 // (ORCHESTRATOR_SERVICES=orchestrator,template-manager). Whether it actually

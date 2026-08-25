@@ -124,17 +124,17 @@ func (o *Orchestrator) scopedNodeID(clusterID uuid.UUID, nodeID string) string {
 //
 // (Name kept for blast-radius reasons; renaming touches >20 sites.)
 func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NomadServiceDiscovery, error) {
-	nodes, err := o.nodeDiscovery.ListNodes(ctx)
+	instances, err := o.nodeDiscovery.ListInstances(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]nodemanager.NomadServiceDiscovery, 0, len(nodes))
-	for _, n := range nodes {
+	result := make([]nodemanager.NomadServiceDiscovery, 0, len(instances))
+	for _, i := range instances {
 		result = append(result, nodemanager.NomadServiceDiscovery{
-			NomadNodeShortID:    n.ShortID,
-			OrchestratorAddress: n.OrchestratorAddress,
-			IPAddress:           n.IPAddress,
+			NomadNodeShortID:    i.ID,
+			OrchestratorAddress: i.Address(),
+			IPAddress:           i.IPAddress,
 		})
 	}
 
