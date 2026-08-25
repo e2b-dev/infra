@@ -24,7 +24,7 @@ func TestAccessingHyperloopServerViaIP(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://192.0.2.1/me")
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl --connect-timeout 3 --max-time 10 -o output.txt http://192.0.2.1/me")
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
@@ -49,7 +49,7 @@ func TestAccessingHyperloopServerViaDomain(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://events.e2b.local/me")
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl --connect-timeout 3 --max-time 10 -o output.txt http://events.e2b.local/me")
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"
@@ -74,7 +74,7 @@ func TestAccessingHyperloopServerViaIPWithBlockedInternet(t *testing.T) {
 
 	envdClient := setup.GetEnvdClient(t, ctx)
 
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl -o output.txt http://192.0.2.1/me")
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "/bin/bash", "-c", "curl --connect-timeout 3 --max-time 10 -o output.txt http://192.0.2.1/me")
 	require.NoError(t, err, "Should be able to contact hyperloop server")
 
 	readPath := "output.txt"

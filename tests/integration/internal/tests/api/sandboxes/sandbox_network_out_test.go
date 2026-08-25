@@ -23,6 +23,10 @@ var (
 	networkTestTemplateOnce sync.Once
 )
 
+// gpg has no connect timeout of its own, and keyserver.ubuntu.com round-robins
+// over addresses that black-hole packets. Keep this under the sandbox TTL.
+const gpgKeyserverTimeout = 25 * time.Second
+
 // ensureNetworkTestTemplate builds the custom template for network tests (called once)
 func ensureNetworkTestTemplate(t *testing.T) string {
 	t.Helper()
@@ -88,7 +92,7 @@ func assertSuccessfulDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbo
 // assertBlockedDNSQuery asserts that a DNS query to the given server is blocked
 func assertBlockedDNSQuery(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, dnsServer, domain string, msg string) {
 	t.Helper()
-	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", fmt.Sprintf("@%s", dnsServer), domain)
+	err := utils.ExecCommand(t, ctx, sbx, envdClient, "dig", "+short", "+timeout=3", "+tries=1", fmt.Sprintf("@%s", dnsServer), domain)
 	require.Error(t, err, msg)
 }
 
@@ -1000,7 +1004,10 @@ func TestGPGKeyserverWorks(t *testing.T) {
 		// 1. Non-standard TCP ports (11371) work correctly through the firewall
 		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
 		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com...")
-		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		gpgCtx, cancel := context.WithTimeout(ctx, gpgKeyserverTimeout)
+		defer cancel()
+
+		output, err := utils.ExecCommandWithOutput(t, gpgCtx, sbx, envdClient, nil, "user",
 			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
 			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
 		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
@@ -1030,7 +1037,10 @@ func TestGPGKeyserverWorks(t *testing.T) {
 		// 1. Non-standard TCP ports (11371) work correctly through the firewall when network config is active
 		// 2. TCP half-close is properly handled (GPG may FIN after request but expects response)
 		t.Log("Testing GPG keyserver connection to hkp://keyserver.ubuntu.com with network config defined...")
-		output, err := utils.ExecCommandWithOutput(t, ctx, sbx, envdClient, nil, "user",
+		gpgCtx, cancel := context.WithTimeout(ctx, gpgKeyserverTimeout)
+		defer cancel()
+
+		output, err := utils.ExecCommandWithOutput(t, gpgCtx, sbx, envdClient, nil, "user",
 			"gpg", "--keyserver", "hkp://keyserver.ubuntu.com",
 			"--recv-key", "95C0FAF38DB3CCAD0C080A7BDC78B2DDEABC47B7")
 		require.NoError(t, err, "Expected GPG keyserver command to succeed, got error: %v, output: %s", err, output)
