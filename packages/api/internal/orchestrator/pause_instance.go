@@ -55,13 +55,16 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	)
 
 	err = snapshotInstance(ctx, node, sbx, result.TemplateID, result.BuildID.String(), filesystemOnly)
-	if errors.Is(err, PauseQueueExhaustedError{}) {
-		telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
+	if err != nil {
+		// The build is already committed, and nothing reaps one left non-terminal.
+		o.failSnapshotBuild(ctx, result.BuildID, err)
 
-		return PauseQueueExhaustedError{}
-	}
+		if errors.Is(err, PauseQueueExhaustedError{}) {
+			telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
 
-	if err != nil && !errors.Is(err, PauseQueueExhaustedError{}) {
+			return PauseQueueExhaustedError{}
+		}
+
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
 		return fmt.Errorf("error pausing sandbox: %w", err)
