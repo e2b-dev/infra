@@ -622,19 +622,30 @@ const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
 )
 
-// The Firecracker version the last tag + the short SHA (so we can build our dev previews)
+// The Firecracker version per release line: legacy lines pin
+// last-tag_short-SHA dev builds; e2b lines (vX.Y-<e2b-major>) pin releases
+// published by the Publish fc-versions workflow.
 // TODO: The short tag here has only 7 characters — the one from our build pipeline will likely have exactly 8 so this will break.
 const (
 	DefaultFirecrackerV1_10Version = "v1.10.1_30cbb07"
 	DefaultFirecrackerV1_12Version = "v1.12.1_210cbac"
 	DefaultFirecrackerV1_14Version = "v1.14.1_431f1fc"
-	DefaultFirecrackerVersion      = DefaultFirecrackerV1_14Version
+	// The v1.14-0 release line. 0.2.0 introduces the in-place checkpoint's
+	// balloon reporting-pause API; filesystem-only snapshots ship with every
+	// e2b release from 0.1.0 — the per-feature floors live in fcversion.
+	DefaultFirecrackerV1_14_0Version = "v1.14-0.2.0"
+	// New template builds get the current release; existing builds keep
+	// resolving within their own line below (cross-line upgrades are an
+	// operator decision via the firecracker-versions flag, never a baked
+	// default — the map invariant key == LDKey(value) enforces it).
+	DefaultFirecrackerVersion = DefaultFirecrackerV1_14_0Version
 )
 
 var FirecrackerVersionMap = map[string]string{
-	"v1.10": DefaultFirecrackerV1_10Version,
-	"v1.12": DefaultFirecrackerV1_12Version,
-	"v1.14": DefaultFirecrackerV1_14Version,
+	"v1.10":   DefaultFirecrackerV1_10Version,
+	"v1.12":   DefaultFirecrackerV1_12Version,
+	"v1.14":   DefaultFirecrackerV1_14Version,
+	"v1.14-0": DefaultFirecrackerV1_14_0Version,
 }
 
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.

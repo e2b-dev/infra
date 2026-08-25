@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/api/internal/fcgate"
 	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -28,6 +30,8 @@ type Evictor struct {
 	store         *sandbox.Store
 	removeSandbox func(ctx context.Context, teamID uuid.UUID, sandboxID string, opts sandbox.RemoveOpts) error
 	featureFlags  *featureflags.Client
+
+	fsOnlyAutoPauseCounter metric.Int64Counter
 
 	concurrencyLimiter *utils.AdjustableSemaphore
 
@@ -53,11 +57,17 @@ func New(
 		return nil, fmt.Errorf("failed to create eviction concurrency semaphore: %w", err)
 	}
 
+	fsOnlyAutoPauseCounter, err := telemetry.GetCounter(meter, telemetry.ApiEvictorFsOnlyAutoPause)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create fs-only auto-pause counter: %w", err)
+	}
+
 	e := &Evictor{
-		store:              store,
-		removeSandbox:      removeSandbox,
-		featureFlags:       featureFlags,
-		concurrencyLimiter: concurrencyLimiter,
+		store:                  store,
+		removeSandbox:          removeSandbox,
+		featureFlags:           featureFlags,
+		concurrencyLimiter:     concurrencyLimiter,
+		fsOnlyAutoPauseCounter: fsOnlyAutoPauseCounter,
 	}
 
 	if _, err := telemetry.GetObservableUpDownCounter(meter, telemetry.EvictionsRunningCounterName,
@@ -152,7 +162,7 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	action := sandbox.StateActionKill
 	if sbx.AutoPause {
 		action = sandbox.StateActionPause
-		pause.LogInitiated(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout)
+		pause.LogInitiated(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, sbx.AutoPauseFilesystemOnly)
 	}
 
 	opts := sandbox.RemoveOpts{Action: action, Eviction: true}
@@ -163,17 +173,43 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 		// Honor the sandbox's auto-pause snapshot kind: filesystem-only drops
 		// memory (cold-boots on resume); otherwise a full memory snapshot.
 		opts.FilesystemOnly = sbx.AutoPauseFilesystemOnly
+		// Degrade rather than refuse when the RUNNING Firecracker's release
+		// predates filesystem-only snapshots (sticky policies from resumed
+		// snapshots can carry it onto any FC): there is no user here to
+		// retry, a refusal would leave the sandbox timing out forever, and
+		// the pause chain tears down routing before the orchestrator's own
+		// gate could answer — stranding a live VM for the orphan reconciler.
+		// A memory snapshot preserves strictly more than the policy asked
+		// for. Unparsable versions degrade too (fail closed on the feature,
+		// fail open on preserving the sandbox). The check is EXACT — no flag
+		// re-resolution, which with a live VM could only turn this safe
+		// degrade into the orchestrator's post-teardown refusal; fcgate's
+		// doc bounds the residual for records predating the resolved flag.
+		// Both outcomes are counted: the total is the fs-only-policy
+		// eligibility denominator, and the degraded share is the silent
+		// half of the version gate.
+		if opts.FilesystemOnly {
+			outcome := "fs_only"
+			if !fcgate.SupportsFilesystemSnapshots(sbx.FirecrackerVersion) {
+				logger.L().Warn(ctx, "auto-pause degraded to a memory snapshot: firecracker release predates filesystem-only snapshots",
+					logger.WithSandboxID(sbx.SandboxID),
+					zap.String("firecracker_version", sbx.FirecrackerVersion))
+				opts.FilesystemOnly = false
+				outcome = "degraded"
+			}
+			e.fsOnlyAutoPauseCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+		}
 	}
 
 	if err := e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, opts); err != nil {
 		if action == sandbox.StateActionPause {
 			switch {
 			case isNotEvictableError(err):
-				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable)
+				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable, opts.FilesystemOnly)
 			case errors.Is(err, sandbox.ErrNotFound):
-				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound)
+				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound, opts.FilesystemOnly)
 			default:
-				pause.LogFailure(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, err)
+				pause.LogFailure(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, opts.FilesystemOnly, err)
 			}
 		} else if !isKnownEvictionError(err) {
 			logger.L().Debug(ctx, "Evicting sandbox failed",
@@ -186,7 +222,7 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 
 		return
 	} else if action == sandbox.StateActionPause {
-		pause.LogSuccess(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout)
+		pause.LogSuccess(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, opts.FilesystemOnly)
 	}
 
 	if action != sandbox.StateActionPause {

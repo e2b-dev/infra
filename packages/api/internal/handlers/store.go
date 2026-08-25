@@ -170,11 +170,15 @@ type teamRunningSandboxCounter interface {
 }
 
 type APIStore struct {
-	Healthy               atomic.Bool
-	config                cfg.Config
-	posthog               *analyticscollector.PosthogClient
-	Telemetry             *telemetry.Client
-	orchestrator          *orchestrator.Orchestrator
+	Healthy      atomic.Bool
+	config       cfg.Config
+	posthog      *analyticscollector.PosthogClient
+	Telemetry    *telemetry.Client
+	orchestrator *orchestrator.Orchestrator
+	// pauseBackendOverride, when non-nil, replaces the orchestrator for the
+	// pause handler's two calls — tests use it to assert the gate's wiring
+	// (refusal before RemoveSandbox) without a real orchestrator.
+	pauseBackendOverride  pauseOrchestrator
 	teamSandboxCounter    teamRunningSandboxCounter
 	templateManager       *template_manager.TemplateManager
 	sqlcDB                *sqlcdb.Client

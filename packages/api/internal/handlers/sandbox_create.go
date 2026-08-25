@@ -22,6 +22,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
+	"github.com/e2b-dev/infra/packages/api/internal/fcgate"
 	apiorch "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -181,6 +182,19 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	// auto-resume (it must be resumed explicitly), so the two are incompatible.
 	if autoPauseFilesystemOnly && autoResume != nil && autoResume.Policy == types.SandboxAutoResumeAny {
 		a.sendAPIStoreError(c, http.StatusBadRequest, "autoPauseMemory=false (filesystem-only auto-pause) cannot be combined with autoResume: a filesystem-only snapshot cannot be auto-resumed by traffic and must be resumed explicitly.")
+
+		return
+	}
+
+	// A filesystem-only auto-pause also needs the sandbox's Firecracker
+	// release to carry the feature. No record exists yet, so fcgate checks
+	// the declared build version and falls back to the same flag resolution
+	// the orchestrator will apply at start — refusing up front instead of
+	// storing a policy the timeout eviction would have to degrade later.
+	// (The evictor still degrades gracefully if resolution shifts between
+	// create and timeout.)
+	if autoPauseFilesystemOnly && !fcgate.SupportsFilesystemSnapshotsDeclared(ctx, a.featureFlags, build.FirecrackerVersion) {
+		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("autoPauseMemory=false requires a Firecracker release with filesystem-only snapshot support; this template's version is %q. Rebuild the template on a current release or omit autoPauseMemory.", build.FirecrackerVersion))
 
 		return
 	}

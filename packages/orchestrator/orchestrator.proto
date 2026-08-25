@@ -154,6 +154,15 @@ message SandboxCreateResponse {
   // caller that demanded a filesystem boot can detect an unhonored demand
   // instead of trusting deploy ordering.
   bool filesystem_boot_applied = 3;
+
+  // The Firecracker version the sandbox actually RUNS: the request's
+  // declared version resolved through the firecracker-versions flag at
+  // start, frozen for the sandbox's lifetime. Callers gating features on the
+  // FC version must read this rather than re-deriving it — a re-resolution
+  // can disagree with the frozen value whenever the flag changes or the
+  // evaluation contexts differ. Empty from orchestrators that predate the
+  // field.
+  string resolved_firecracker_version = 4;
 }
 
 message SandboxUpdateRequest {

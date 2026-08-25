@@ -31,6 +31,7 @@ import (
 	buildenvd "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/events"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -91,6 +92,30 @@ const (
 // memory restore of a snapshot that has none.
 func filesystemBoot(meta metadata.Template, req *orchestrator.SandboxCreateRequest) bool {
 	return meta.IsFilesystemOnly() || req.GetFilesystemBoot()
+}
+
+// firecrackerSupports reports whether the sandbox's RUNNING Firecracker
+// carries a version-gated feature, per the given fcversion predicate. The
+// version is fixed at resume, so the answer cannot change under a running
+// sandbox. An unparsable version fails closed — version-gated features must
+// never engage on a build outside the release contract.
+func firecrackerSupports(ctx context.Context, sbx *sandbox.Sandbox, feature string, has func(*fcversion.Info) bool) bool {
+	version := sbx.Config.FirecrackerConfig.FirecrackerVersion
+	info, err := fcversion.New(version)
+	if err != nil {
+		sbxlogger.I(sbx).Warn(ctx, "unparsable firecracker version; refusing version-gated feature",
+			zap.String("firecracker_version", version), zap.String("feature", feature), zap.Error(err))
+
+		return false
+	}
+	if !has(&info) {
+		sbxlogger.I(sbx).Info(ctx, "firecracker release predates version-gated feature",
+			zap.String("firecracker_version", version), zap.String("feature", feature))
+
+		return false
+	}
+
+	return true
 }
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
@@ -378,6 +403,11 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		ClientId:              s.info.ClientId,
 		SchedulingMetadata:    schedulingMetadata,
 		FilesystemBootApplied: filesystemBooted,
+		// The version the sandbox actually runs, frozen for its lifetime:
+		// version-gated callers (the API's fs-only pre-checks) must read
+		// this instead of re-resolving, which can disagree with the frozen
+		// value whenever the flag moves.
+		ResolvedFirecrackerVersion: resolvedFCVersion,
 	}, nil
 }
 
@@ -598,7 +628,7 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 
 		startedAt := sbx.GetStartedAt()
 		sandboxes = append(sandboxes, &orchestrator.RunningSandbox{
-			Config:      sbx.APIStoredConfig, //nolint:staticcheck // kept until every API instance reads the scalar fields below
+			Config:      sbx.APIStoredConfig,
 			ClientId:    s.info.ClientId,
 			StartTime:   timestamppb.New(startedAt),
 			EndTime:     timestamppb.New(sbx.GetEndAt()),
@@ -794,6 +824,18 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
 	)
 
+	// Version-gate filesystem-only snapshots BEFORE MarkStopping, while the
+	// sandbox is still fully live: producing one is part of the e2b release
+	// contract from 0.1.0, and silently taking a memory snapshot instead
+	// would betray an explicit memory:false. The API pre-checks this before
+	// committing its pause chain, so reaching here means a stale client or a
+	// direct gRPC caller; FailedPrecondition names the real cause either way.
+	if in.GetFilesystemOnly() && !firecrackerSupports(ctx, sbx, "filesystem-only snapshot", (*fcversion.Info).HasFilesystemSnapshots) {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"filesystem-only snapshots require an e2b firecracker release (>= 0.1.0); sandbox '%s' runs %q",
+			in.GetSandboxId(), sbx.Config.FirecrackerConfig.FirecrackerVersion)
+	}
+
 	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
 		telemetry.ReportCriticalError(ctx, "failed to mark sandbox as stopping", nil, telemetry.WithSandboxID(in.GetSandboxId()))
@@ -945,9 +987,15 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	// In-place checkpoint (pause, snapshot, resume the SAME FC process) is
 	// only honored for sandboxes resumed with use_sync_wp: it skips the
 	// snapshot re-load that re-arms write-protection, so dirty tracking
-	// across repeated checkpoints relies on the sync-WP serve loop. Everything
-	// else takes the resume-fresh flow.
-	inPlace := sbx.UseSyncWP() && s.featureFlags.BoolFlag(ctx, featureflags.InPlaceCheckpointFlag)
+	// across repeated checkpoints relies on the sync-WP serve loop. It also
+	// requires the running Firecracker's release contract to include the
+	// feature (e2b releases >= 0.2.0 — the CoW memory window drives the
+	// balloon free-page-reporting pause API). Everything else takes the
+	// resume-fresh flow, so an older FC degrades gracefully rather than
+	// erroring.
+	inPlace := sbx.UseSyncWP() &&
+		s.featureFlags.BoolFlag(ctx, featureflags.InPlaceCheckpointFlag) &&
+		firecrackerSupports(ctx, sbx, "in-place checkpoint", (*fcversion.Info).HasInPlaceCheckpoint)
 
 	var res *orchestrator.SandboxCheckpointResponse
 	var err error

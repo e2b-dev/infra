@@ -78,10 +78,20 @@ type mockSandboxClient struct {
 	orchestrator.SandboxServiceClient
 }
 
+// MockResolvedFirecrackerVersion is the resolved version the default mock
+// Create echoes — deliberately distinct from any declared build version in
+// the tests, so assertions can prove the record stores the ECHO rather than
+// silently keeping the declared value.
+const MockResolvedFirecrackerVersion = "v1.14-9.9.9"
+
 // Create is a mock implementation that always returns success, echoing the
-// filesystem-boot demand like a current orchestrator build.
+// filesystem-boot demand and the resolved Firecracker version like a current
+// orchestrator build.
 func (n *mockSandboxClient) Create(_ context.Context, req *orchestrator.SandboxCreateRequest, _ ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
-	return &orchestrator.SandboxCreateResponse{FilesystemBootApplied: req.GetFilesystemBoot()}, nil
+	return &orchestrator.SandboxCreateResponse{
+		FilesystemBootApplied:      req.GetFilesystemBoot(),
+		ResolvedFirecrackerVersion: MockResolvedFirecrackerVersion,
+	}, nil
 }
 
 // mockLegacySandboxClient mimics an orchestrator that predates the

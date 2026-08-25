@@ -299,6 +299,57 @@ func TestCreateSandbox_UnconfirmedFilesystemBootFailsLoud(t *testing.T) {
 	})
 }
 
+// TestCreateSandbox_StoresResolvedFirecrackerVersion pins the mechanism the
+// version gates are built on: when the orchestrator echoes the resolved
+// Firecracker version on the create response, the sandbox record must carry
+// THAT value (marked resolved) — a regression that silently kept the declared
+// build version would put the gates back to approximating. A node that
+// predates the echo keeps the declared version, unmarked.
+func TestCreateSandbox_StoresResolvedFirecrackerVersion(t *testing.T) {
+	t.Parallel()
+
+	fetcher := func(build queries.EnvBuild) SandboxDataFetcher {
+		return func(_ context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "base-tpl", Build: build}, nil
+		}
+	}
+
+	t.Run("echoing node: record carries the resolved version", func(t *testing.T) {
+		t.Parallel()
+
+		o := newCreateSandboxTestOrchestrator(t)
+		team := testTeam()
+		now := time.Now()
+		build := testBuild()
+
+		sbx, apiErr := o.CreateSandbox(t.Context(), "sbx-fcv-"+uuid.New().String()[:8], uuid.New().String(), team,
+			fetcher(build), now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+		require.Nil(t, apiErr)
+
+		assert.Equal(t, nodemanager.MockResolvedFirecrackerVersion, sbx.FirecrackerVersion,
+			"the record must store the orchestrator's echo, not the declared build version")
+		assert.NotEqual(t, build.FirecrackerVersion, sbx.FirecrackerVersion,
+			"the mock echo is deliberately distinct from the declared version")
+		assert.True(t, sbx.FirecrackerVersionResolved)
+	})
+
+	t.Run("legacy node without echo: declared version, unmarked", func(t *testing.T) {
+		t.Parallel()
+
+		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithLegacySandboxClient())
+		team := testTeam()
+		now := time.Now()
+		build := testBuild()
+
+		sbx, apiErr := o.CreateSandbox(t.Context(), "sbx-fcv-"+uuid.New().String()[:8], uuid.New().String(), team,
+			fetcher(build), now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+		require.Nil(t, apiErr)
+
+		assert.Equal(t, build.FirecrackerVersion, sbx.FirecrackerVersion)
+		assert.False(t, sbx.FirecrackerVersionResolved)
+	})
+}
+
 // buildOnCPU returns testBuild() recorded as having been built on cpuModel.
 func buildOnCPU(cpuModel string) queries.EnvBuild {
 	build := testBuild()

@@ -417,6 +417,18 @@ func (o *Orchestrator) CreateSandbox(
 	startTime = time.Now()
 	endTime = startTime.Add(timeout)
 
+	// The record carries the version the sandbox actually RUNS when the
+	// orchestrator echoes it: the declared build version resolved through the
+	// firecracker-versions flag at start and frozen for the sandbox's
+	// lifetime. Version-gated paths branch on resolvedFCVersion — a resolved
+	// version is exact, the declared fallback (old orchestrators) is only an
+	// approximation of the running binary.
+	recordFCVersion := placed.Response.GetResolvedFirecrackerVersion()
+	resolvedFCVersion := recordFCVersion != ""
+	if !resolvedFCVersion {
+		recordFCVersion = sbxData.Build.FirecrackerVersion
+	}
+
 	sbx = sandbox.NewSandbox(
 		sandboxID,
 		sbxData.TemplateID,
@@ -433,7 +445,7 @@ func (o *Orchestrator) CreateSandbox(
 		*sbxData.Build.TotalDiskSizeMb,
 		sbxData.Build.RamMb,
 		sbxData.Build.KernelVersion,
-		sbxData.Build.FirecrackerVersion,
+		recordFCVersion,
 		*sbxData.Build.EnvdVersion,
 		node.ID,
 		node.ClusterID,
@@ -449,6 +461,7 @@ func (o *Orchestrator) CreateSandbox(
 		nodemanager.ConvertOrchestratorMountsToDatabaseMounts(sbxData.VolumeMounts),
 		sbxData.Iam,
 	)
+	sbx.FirecrackerVersionResolved = resolvedFCVersion
 
 	// An orchestrator that predates the filesystem_boot field ignores it and
 	// memory-restores; only the echo proves the demand was honored. Kill the

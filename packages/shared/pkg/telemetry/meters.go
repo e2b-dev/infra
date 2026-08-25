@@ -21,7 +21,14 @@ type (
 const (
 	ApiOrchestratorCreatedSandboxes      CounterType = "api.orchestrator.created_sandboxes"
 	ApiOrchestratorResumeOriginNodeRemap CounterType = "api.orchestrator.resume_origin_node_remapped"
-	SandboxCreateMeterName               CounterType = "api.env.instance.started"
+	// ApiEvictorFsOnlyAutoPause counts timeout auto-pauses whose policy asked
+	// for a filesystem-only snapshot, labeled outcome=fs_only|degraded —
+	// degraded means the sandbox's Firecracker release predates fs-only
+	// support and the eviction fell back to a memory snapshot. The total is
+	// the eligibility denominator; the degraded share is the silent half of
+	// the version gate.
+	ApiEvictorFsOnlyAutoPause CounterType = "api.evictor.fs_only_auto_pause"
+	SandboxCreateMeterName    CounterType = "api.env.instance.started"
 
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
@@ -340,6 +347,7 @@ const (
 var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:                      "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes:             "Number of successfully created sandboxes",
+	ApiEvictorFsOnlyAutoPause:                   "Timeout auto-pauses with a filesystem-only policy, by outcome (fs_only or degraded-to-memory).",
 	ApiOrchestratorResumeOriginNodeRemap:        "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
 	BuildResultCounterName:                      "Number of template build results",
 	BuildCacheResultCounterName:                 "Number of build cache results",
@@ -384,6 +392,7 @@ var counterDesc = map[CounterType]string{
 var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName:                      "{sandbox}",
 	ApiOrchestratorCreatedSandboxes:             "{sandbox}",
+	ApiEvictorFsOnlyAutoPause:                   "{pause}",
 	ApiOrchestratorResumeOriginNodeRemap:        "{snapshot}",
 	BuildResultCounterName:                      "{build}",
 	BuildCacheResultCounterName:                 "{layer}",
