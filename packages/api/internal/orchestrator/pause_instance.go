@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
@@ -68,14 +67,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		return fmt.Errorf("error pausing sandbox: %w", err)
 	}
 
-	now := time.Now()
-	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     types.BuildStatusSuccess,
-		FinishedAt: &now,
-		Reason:     types.BuildReason{},
-		BuildID:    result.BuildID,
-	})
-	if err != nil {
+	if err := o.finishSnapshotBuild(ctx, result.BuildID, types.BuildStatusSuccess); err != nil {
 		telemetry.ReportCriticalError(ctx, "error pausing sandbox", err)
 
 		return fmt.Errorf("error pausing sandbox: %w", err)

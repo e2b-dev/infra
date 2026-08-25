@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
-	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -127,14 +125,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 		return fmt.Errorf("checkpoint failed: %w", err)
 	}
 
-	now := time.Now()
-	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     types.BuildStatusSuccess,
-		FinishedAt: &now,
-		Reason:     types.BuildReason{},
-		BuildID:    upsertResult.BuildID,
-	})
-	if err != nil {
+	if err := o.finishSnapshotBuild(ctx, upsertResult.BuildID, types.BuildStatusSuccess); err != nil {
 		return fmt.Errorf("error updating build status: %w", err)
 	}
 

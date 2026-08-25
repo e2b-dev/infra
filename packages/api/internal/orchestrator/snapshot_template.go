@@ -149,14 +149,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("checkpoint failed: %w", err)
 	}
 
-	now := time.Now()
-	err = o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
-		Status:     types.BuildStatusUploaded,
-		FinishedAt: &now,
-		Reason:     types.BuildReason{},
-		BuildID:    upsertResult.BuildID,
-	})
-	if err != nil {
+	if err := o.finishSnapshotBuild(ctx, upsertResult.BuildID, types.BuildStatusUploaded); err != nil {
 		return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
 	}
 
@@ -170,8 +163,37 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}, nil
 }
 
+// The pool sets no statement timeout, so a detached write blocked on a lock has
+// nothing else to stop it.
+const buildStatusWriteTimeout = 10 * time.Second
+
+func detachedBuildStatusCtx(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), buildStatusWriteTimeout)
+}
+
+// finishSnapshotBuild records a snapshot build's terminal status, detached from
+// the caller so a cancelled request cannot abandon the write.
+// ListTeamSnapshotTemplates returns only terminal-success builds, so a build
+// left non-terminal hides a durable snapshot for good.
+func (o *Orchestrator) finishSnapshotBuild(ctx context.Context, buildID uuid.UUID, status types.BuildStatus) error {
+	writeCtx, cancel := detachedBuildStatusCtx(ctx)
+	defer cancel()
+
+	return o.sqlcDB.UpdateEnvBuildStatus(writeCtx, queries.UpdateEnvBuildStatusParams{
+		Status:     status,
+		FinishedAt: new(time.Now()),
+		Reason:     types.BuildReason{},
+		BuildID:    buildID,
+	})
+}
+
+// failSnapshotBuild marks a snapshot build failed, detached for the same reason
+// as finishSnapshotBuild.
 func (o *Orchestrator) failSnapshotBuild(ctx context.Context, buildID uuid.UUID, cause error) {
-	err := o.sqlcDB.UpdateEnvBuildStatus(ctx, queries.UpdateEnvBuildStatusParams{
+	writeCtx, cancel := detachedBuildStatusCtx(ctx)
+	defer cancel()
+
+	err := o.sqlcDB.UpdateEnvBuildStatus(writeCtx, queries.UpdateEnvBuildStatusParams{
 		Status:     types.BuildStatusFailed,
 		FinishedAt: new(time.Now()),
 		Reason:     types.BuildReason{Message: cause.Error()},
