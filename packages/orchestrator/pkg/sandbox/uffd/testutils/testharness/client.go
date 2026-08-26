@@ -72,6 +72,17 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
+// FaultOffsets returns the memfile offsets of every fault event the child's
+// serve loop has dequeued so far, in dequeue order.
+func (c *Client) FaultOffsets() ([]int64, error) {
+	var reply FaultOffsetsReply
+	if err := c.rpc.Call("Paging.FaultOffsets", &Empty{}, &reply); err != nil {
+		return nil, err
+	}
+
+	return reply.Offsets, nil
+}
+
 // CoWBegin installs a CoW export window over the given page indices in the
 // serving child (real BeginCoWExport: arm + install through the live uffd).
 func (c *Client) CoWBegin(pages []uint64) error {

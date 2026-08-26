@@ -24,6 +24,9 @@ import (
 
 //nolint:containedctx // shutdown-aware ctx shared with RPC handlers; lifetime is the child process.
 type harnessState struct {
+	faultMu      sync.Mutex
+	faultOffsets []int64
+
 	uffdFd uintptr
 
 	mu     sync.Mutex
@@ -155,11 +158,25 @@ func (l *Lifecycle) Bootstrap(args *testharness.BootstrapArgs, _ *testharness.Bo
 	var br *testharness.Registry
 	if args.Barriers {
 		br = testharness.NewRegistry()
-		hook := br.Hook()
-		uffd.SetTestFaultHook(func(addr uintptr, p faultPhase) {
-			hook(addr, testharness.Point(p))
-		})
 	}
+
+	// Recorded unconditionally: a parent cannot tell from its own side whether
+	// a page faulted, and the gated race tests branch on that.
+	base := uintptr(args.MmapStart)
+	var brHook func(uintptr, testharness.Point)
+	if br != nil {
+		brHook = br.Hook()
+	}
+	uffd.SetTestFaultHook(func(addr uintptr, p faultPhase) {
+		if p == faultPhaseBeforeRLock {
+			l.state.faultMu.Lock()
+			l.state.faultOffsets = append(l.state.faultOffsets, int64(addr-base))
+			l.state.faultMu.Unlock()
+		}
+		if brHook != nil {
+			brHook(addr, testharness.Point(p))
+		}
+	})
 
 	l.state.mu.Lock()
 	defer l.state.mu.Unlock()
@@ -189,6 +206,17 @@ func (l *Lifecycle) Shutdown(_ *testharness.Empty, _ *testharness.Empty) error {
 
 type Paging struct {
 	state *harnessState
+}
+
+// FaultOffsets reports the memfile offsets of every fault event the serve
+// loop has dequeued (earliest hook phase), in dequeue order. Handler-side
+// ground truth for the gated-race discriminators.
+func (p *Paging) FaultOffsets(_ *testharness.Empty, reply *testharness.FaultOffsetsReply) error {
+	p.state.faultMu.Lock()
+	defer p.state.faultMu.Unlock()
+	reply.Offsets = append([]int64(nil), p.state.faultOffsets...)
+
+	return nil
 }
 
 func (p *Paging) States(_ *testharness.Empty, reply *testharness.PageStatesReply) error {

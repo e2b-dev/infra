@@ -42,6 +42,12 @@ type TokenArgs struct {
 	Token uint64
 }
 
+// FaultOffsetsReply carries the memfile offsets of dequeued fault events, in
+// dequeue order.
+type FaultOffsetsReply struct {
+	Offsets []int64
+}
+
 // CoWBeginArgs installs a CoW export window over the given page indices.
 type CoWBeginArgs struct {
 	Pages []uint64

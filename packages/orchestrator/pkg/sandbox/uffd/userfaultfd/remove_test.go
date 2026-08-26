@@ -4,10 +4,12 @@ package userfaultfd
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
@@ -243,11 +245,38 @@ func TestRemoveThenFault(t *testing.T) {
 	}
 }
 
-// TestRemoveThenWriteGated verifies that when the handler is stopped, the
-// kernel keeps the page mapped until REMOVE is acked. A concurrent write
-// succeeds without faulting because MADV_DONTNEED blocks (waiting for ack)
-// and doesn't unmap the page until the handler processes the event.
-// When the handler resumes, it only sees the REMOVE — no MISSING fault.
+// TestRemoveThenWriteGated pins the gated-remove race: with the serve loop
+// paused, MADV_DONTNEED queues a REMOVE and blocks the madviser in
+// userfaultfd_event_wait_completion(), so nothing is zapped until the resumed
+// loop read()s the event and a write issued inside that window hits the
+// still-mapped page.
+//
+// Both arms run under WP_ASYNC (syncWP unset), where the kernel auto-resolves
+// writes to the WP-armed page without delivering an event. The handler's fault
+// log is therefore an exact discriminator. No new page-0 event means the write
+// landed on the mapped page and the race ran — the only passing condition, and
+// the resumed handler must then record the REMOVE and nothing else (tracker
+// Removed, pagemap absent). A new page-0 event means the write ran after
+// resume+zap and the race did not run: that attempt is sanity-checked (the
+// re-served write must reinstall the page) and retried against the reinstalled
+// page, and the test skips loudly rather than reporting success if the race
+// never materializes. UFFDIO_COPY reinstalls the page present and WRITABLE,
+// so only the first attempt writes to the WP-armed page and exercises the
+// auto-resolve interaction the exactness argument above rests on; retries
+// exercise the primary invariant — nothing is zapped until the resumed loop
+// reads the event — against a plain mapped page, where the discriminator is
+// exact for the simpler reason that an unfaulted write produces no event at
+// all. The reinstall witnesses cannot tell a handler that read the REMOVE and
+// skipped the Removed transition from one that recorded it, so they are
+// consistency checks, not coverage.
+//
+// Exactness assumes WP_ASYNC auto-resolves hugetlb writes as well as 4k —
+// supported by the write-first outcomes observed on real hugepage CI runs, not
+// confirmed against the kernel source. A kernel delivering synchronous WP
+// events there would resurrect the fault-blocked case on that arm, and the
+// discriminator would then need REMOVE-batch membership: readEvents drains to
+// EAGAIN, so a fault queued while paused arrives in the REMOVE's batch and a
+// late one in a later batch.
 func TestRemoveThenWriteGated(t *testing.T) {
 	t.Parallel()
 
@@ -258,15 +287,6 @@ func TestRemoveThenWriteGated(t *testing.T) {
 			numberOfPages: 2,
 			gated:         true,
 			removeEnabled: true,
-			operations: []operation{
-				{offset: 0, mode: operationModeRead},
-				{mode: operationModeServePause},
-				{offset: 0, mode: operationModeRemove, async: true},
-				{mode: operationModeSleep},
-				{offset: 0, mode: operationModeWrite, async: true},
-				{mode: operationModeSleep},
-				{mode: operationModeServeResume},
-			},
 		},
 		{
 			name:          "hugepage gated remove with concurrent write",
@@ -274,32 +294,82 @@ func TestRemoveThenWriteGated(t *testing.T) {
 			numberOfPages: 2,
 			gated:         true,
 			removeEnabled: true,
-			operations: []operation{
-				{offset: 0, mode: operationModeRead},
-				{mode: operationModeServePause},
-				{offset: 0, mode: operationModeRemove, async: true},
-				{mode: operationModeSleep},
-				{offset: 0, mode: operationModeWrite, async: true},
-				{mode: operationModeSleep},
-				{mode: operationModeServeResume},
-			},
 		},
 	}
+
+	const gatedRaceAttempts = 5
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			h, err := configureCrossProcessTest(t.Context(), t, tt)
+			ctx := t.Context()
+			h, err := configureCrossProcessTest(ctx, t, tt)
 			require.NoError(t, err)
 
-			h.executeAll(t, tt.operations)
+			// A read installs page 0 present and WP-armed (Clean).
+			require.NoError(t, h.executeOperation(ctx, operation{offset: 0, mode: operationModeRead}))
 
-			states, err := h.pageStates()
-			require.NoError(t, err)
+			for attempt := 1; attempt <= gatedRaceAttempts; attempt++ {
+				// The install read and each retried attempt's re-served write
+				// add page-0 events, so the baseline is per-attempt.
+				baselineFaults, err := h.client.FaultOffsets()
+				require.NoError(t, err)
+				baselinePage0 := countOffset(baselineFaults, 0)
 
-			assert.ElementsMatch(t, []uint{0}, states.removed)
-			assert.Empty(t, states.faulted)
+				require.NoError(t, h.client.Pause())
+
+				removeCh := make(chan error, 1)
+				go func() {
+					removeCh <- h.executeOperation(ctx, operation{offset: 0, mode: operationModeRemove})
+				}()
+				time.Sleep(50 * time.Millisecond)
+
+				writeCh := make(chan error, 1)
+				go func() {
+					writeCh <- h.executeOperation(ctx, operation{offset: 0, mode: operationModeWrite})
+				}()
+				time.Sleep(50 * time.Millisecond)
+
+				require.NoError(t, h.client.Resume())
+
+				select {
+				case rerr := <-removeCh:
+					require.NoError(t, rerr, "gated remove")
+				case <-ctx.Done():
+					t.Fatal("timed out waiting for the gated remove")
+				}
+				select {
+				case werr := <-writeCh:
+					require.NoError(t, werr, "concurrent write")
+				case <-ctx.Done():
+					t.Fatal("timed out waiting for the concurrent write")
+				}
+
+				// The fault hook fires before the install, so the log is
+				// settled once both operations have drained.
+				finalFaults, err := h.client.FaultOffsets()
+				require.NoError(t, err)
+
+				if countOffset(finalFaults, 0) == baselinePage0 {
+					states, err := h.awaitPageState(ctx, 0, block.Removed)
+					require.NoError(t, err, "the resumed handler must record the REMOVE")
+					assert.Empty(t, states.faulted)
+					h.checkDirtiness(t, []operation{{offset: 0, mode: operationModeRemove}})
+
+					return
+				}
+
+				t.Logf("attempt %d/%d: the write ran after resume+zap, so the gated race did not run; retrying",
+					attempt, gatedRaceAttempts)
+
+				states, err := h.awaitPageState(ctx, 0, block.Dirty)
+				require.NoError(t, err, "the re-served write must reinstall the page")
+				require.Empty(t, states.removed)
+				h.checkDirtiness(t, []operation{{offset: 0, mode: operationModeWrite}})
+			}
+
+			t.Skipf("the gated race never materialized in %d attempts: the write goroutine consistently ran after resume on this runner", gatedRaceAttempts)
 		})
 	}
 }

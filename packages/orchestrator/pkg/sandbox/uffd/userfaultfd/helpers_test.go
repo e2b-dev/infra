@@ -161,6 +161,47 @@ func (h *testHandler) pageStates() (handlerPageStates, error) {
 	return states, nil
 }
 
+// awaitPageState polls the tracker until the page at offset reaches want. The
+// handler records a transition only after the syscall that released the caller
+// — the read() of a REMOVE, UFFDIO_COPY for a fault — so a state sampled the
+// instant an operation returns can predate the bookkeeping it should show.
+func (h *testHandler) awaitPageState(ctx context.Context, offset uint, want block.State) (handlerPageStates, error) {
+	deadline := time.Now().Add(2 * time.Second)
+
+	for {
+		states, err := h.pageStates()
+		if err != nil {
+			return handlerPageStates{}, err
+		}
+
+		var got []uint
+		switch want {
+		case block.Dirty:
+			got = states.faulted
+		case block.Zero:
+			got = states.zero
+		case block.Removed:
+			got = states.removed
+		case block.Clean:
+			got = states.clean
+		}
+
+		if slices.Contains(got, offset) {
+			return states, nil
+		}
+
+		if time.Now().After(deadline) {
+			return states, fmt.Errorf("page at offset %d never reached state %d: %+v", offset, want, states)
+		}
+
+		select {
+		case <-ctx.Done():
+			return states, ctx.Err()
+		case <-time.After(2 * time.Millisecond):
+		}
+	}
+}
+
 func (h *testHandler) installFaultBarrier(_ context.Context, addr uintptr, phase faultPhase) (uint64, error) {
 	return h.client.InstallBarrier(addr, testharness.Point(phase))
 }
@@ -356,6 +397,17 @@ func (h *testHandler) executeWrite(ctx context.Context, op operation) error {
 	}
 
 	return nil
+}
+
+func countOffset(offsets []int64, off int64) int {
+	n := 0
+	for _, o := range offsets {
+		if o == off {
+			n++
+		}
+	}
+
+	return n
 }
 
 func getOperationsOffsets(ops []operation, m operationMode) []uint {
