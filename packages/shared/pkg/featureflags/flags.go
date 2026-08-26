@@ -329,6 +329,8 @@ var (
 	// cannot reach LaunchDarkly keeps the routes dark.
 	CustomerSecretsFlag = NewBoolFlag("customer-secrets", false)
 
+	DisableLegacyTeamMutationsFlag = NewBoolFlag("disable-legacy-team-mutations", false)
+
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
 	// uploads. Independent of compress-config: it changes the header format,
 	// not whether data is compressed.

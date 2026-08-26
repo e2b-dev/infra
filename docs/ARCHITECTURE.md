@@ -221,8 +221,10 @@ the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparent
 ### Dashboard API (`packages/dashboard-api`)
 
 A separate REST service (port 3010, spec `spec/openapi-dashboard.yml`) consumed by the web
-dashboard, not the SDK: team management/provisioning, template tags, build listings, admin
-bootstrap. Team-scoped template and build read routes accept either dashboard user auth or
+dashboard, not the SDK: legacy team management/provisioning, template tags, build listings, admin
+bootstrap. The `disable-legacy-team-mutations` LaunchDarkly flag rejects legacy lifecycle writes
+with 412 after authentication; it leaves reads and the workspace API's management projection
+writes available. Team-scoped template and build read routes accept either dashboard user auth or
 team API key auth (`X-API-Key`). Its workspace-agnostic `/v1/management` operations are defined in the
 same dashboard OpenAPI contract and registered on the existing router. Their `AdminJWTAuth`
 OpenAPI security scheme accepts only short-lived service JWTs verified against the workspace-api

@@ -62,6 +62,18 @@ func TestResolveFirecrackerVersion_LegacyGoldens(t *testing.T) {
 	}
 }
 
+func TestDisableLegacyTeamMutationsFlagFallback(t *testing.T) {
+	t.Parallel()
+
+	client, err := NewClientWithDatasource(ldtestdata.DataSource())
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		require.NoError(t, client.Close(context.WithoutCancel(t.Context())))
+	})
+
+	assert.False(t, client.BoolFlag(t.Context(), DisableLegacyTeamMutationsFlag))
+}
+
 // Guards the default map shipped in this package: every entry's key must be
 // the LD key its value derives to, or the lookup silently never hits.
 func TestFirecrackerVersionMap_KeysMatchLDKeys(t *testing.T) {

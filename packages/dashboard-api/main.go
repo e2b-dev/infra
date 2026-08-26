@@ -270,7 +270,7 @@ func run() int {
 		nil,
 	)
 
-	s := newHTTPServer(config.Port, l, tel, swagger, authenticationFunc, apiStore)
+	s := newHTTPServer(config.Port, l, tel, swagger, authenticationFunc, featureFlags, apiStore)
 
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
@@ -311,6 +311,7 @@ func newHTTPServer(
 	tel *telemetry.Client,
 	swagger *openapi3.T,
 	authenticationFunc openapi3filter.AuthenticationFunc,
+	featureFlags *featureflags.Client,
 	store api.ServerInterface,
 ) *http.Server {
 	r := gin.New()
@@ -381,6 +382,7 @@ func newHTTPServer(
 			}),
 	)
 
+	r.Use(dashboardmiddleware.DisableLegacyTeamMutations(featureFlags))
 	r.Use(dashboardmiddleware.EnforceBlockedTeam())
 
 	api.RegisterHandlers(r, store)

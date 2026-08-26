@@ -303,6 +303,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "412":
+      description: Legacy team mutations are disabled
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     "500":
       description: Server error
       content:
@@ -1581,6 +1587,8 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "412":
+          $ref: "#/components/responses/412"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1607,6 +1615,8 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "412":
+          $ref: "#/components/responses/412"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1634,6 +1644,8 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "412":
+          $ref: "#/components/responses/412"
         "502":
           $ref: "#/components/responses/502"
         "500":
@@ -1738,6 +1750,8 @@ paths:
           $ref: "#/components/responses/404"
         "409":
           $ref: "#/components/responses/409"
+        "412":
+          $ref: "#/components/responses/412"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1762,6 +1776,8 @@ paths:
           $ref: "#/components/responses/404"
         "409":
           $ref: "#/components/responses/409"
+        "412":
+          $ref: "#/components/responses/412"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1859,6 +1875,8 @@ paths:
           $ref: "#/components/responses/404"
         "409":
           $ref: "#/components/responses/409"
+        "412":
+          $ref: "#/components/responses/412"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1915,6 +1933,8 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
+        "412":
+          $ref: "#/components/responses/412"
         "500":
           $ref: "#/components/responses/500"
 
@@ -1987,6 +2007,8 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
+        "412":
+          $ref: "#/components/responses/412"
         "404":
           $ref: "#/components/responses/404"
         "500":
@@ -2011,6 +2033,8 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
+        "412":
+          $ref: "#/components/responses/412"
         "500":
           $ref: "#/components/responses/500"
 
