@@ -142,6 +142,12 @@ var (
 	// request is rejected, never silently downgraded to a memory restore.
 	FsOnlyResumeAPIFlag = NewBoolFlag("fs-only-resume-api", false)
 
+	// PrebootFsRecoveryFlag runs a jailed filesystem recovery before every cold
+	// boot of a rootfs that was not frozen at pause (fs_quiesced absent/false).
+	// Separate from FsOnlyResumeAPIFlag because it also changes the behavior of
+	// existing filesystem-only cold boots whose pause fell back to sync.
+	PrebootFsRecoveryFlag = NewBoolFlag("preboot-fs-recovery", false)
+
 	// StorageSoftDeleteCheckFlag enables reading the storage-index soft-delete
 	// tombstone on header load (one extra GCS Attrs on cold load). Off = no overhead.
 	StorageSoftDeleteCheckFlag = NewBoolFlag("storage-soft-delete-check", false)

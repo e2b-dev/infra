@@ -121,6 +121,63 @@ const (
 	// absent on every other result, where nothing was compared.
 	OrchestratorEnvdOfflineUpgradeAttempts CounterType = "orchestrator.envd.offline_upgrade.attempts"
 
+	// OrchestratorFsRecoveryRuns counts every pre-boot filesystem-recovery
+	// decision on a cold boot, by result and trigger. Recovery is journal replay
+	// only (`e2fsck -p -E journal_only`), so the results are:
+	//
+	//	skipped_quiesced
+	//	    the rootfs was frozen at pause; nothing to replay
+	//	replayed
+	//	    the journal was replayed (or regenerated, or there was nothing to do);
+	//	    the fs is mountable and the boot proceeded — the expected outcome for
+	//	    the admitted population, NOT a corruption signal.
+	//	failed_operational
+	//	    the run did not complete a clean replay AND e2fsck may have opened the
+	//	    device (an e2fsck non-replay exit, or a timeout that could have killed it
+	//	    mid-write). Fail closed — the start failed — but always retryable on
+	//	    another node, never a permanent snapshot verdict (its exit codes cannot
+	//	    tell an unmountable filesystem apart from a transient fault).
+	//	failed_open
+	//	    recovery could not run AND e2fsck provably never opened the device (the
+	//	    jail could not launch it, or the host cannot exec e2fsck), so the disk is
+	//	    what a flag-off cold boot would mount and the guest kernel replays the
+	//	    journal itself. The boot proceeded. A host-image signal — a non-trivial
+	//	    rate means the recovery tooling is broken fleet-wide (roll back), even
+	//	    though sandboxes still boot.
+	//
+	// A bounded "reason" attribute sub-labels each result so a ramp can act on it
+	// from a dashboard instead of grepping create-failure logs:
+	//
+	//	replayed:         nothing_to_do (no replay needed) | journal_replayed
+	//	                  (journal applied) — the efficacy split
+	//	failed_operational: timeout (Go deadline fired mid-run) | killed (the unit was
+	//	                  signalled mid-run — exit -1 or 128+N; OOM, RuntimeMaxSec,
+	//	                  external stop; NOT a tooling failure) | e2fsck_4 | e2fsck_8 |
+	//	                  e2fsck_other (e2fsck's
+	//	                  own non-replay exits — an unreplayable snapshot, expected and
+	//	                  small) | no_sentinel (ran but lost its result, or the pre-launch
+	//	                  device guard)
+	//	failed_open:      launcher_failure (the unit failed to START — e2fsck never ran) |
+	//	                  exec_failure (126/127: the host could not exec e2fsck) —
+	//	                  both host-image regressions, roll back
+	//	skipped_quiesced: quiesced
+	//
+	// It never carries a raw exit code or any tenant-influenced bytes.
+	//
+	// trigger separates the two admitted populations: "rescue" (the request
+	// demanded a filesystem boot of a memory snapshot) vs "legacy_fs_only"
+	// (a filesystem-only snapshot whose pause fell back to sync).
+	OrchestratorFsRecoveryRuns CounterType = "orchestrator.sandbox.fs_recovery.runs"
+
+	// OrchestratorFsRecoveryToolingUnsupported fires once per orchestrator process
+	// when the host e2fsck does not accept `-E journal_only` (probed against a
+	// nonexistent device, so it reads no filesystem). Expected to be flat zero: node
+	// images ship an e2fsprogs that has supported the option for years. A non-zero
+	// fleet sum means some node's tooling silently no-ops recovery (the guest kernel
+	// still replays at mount, so boots are unaffected) — a signal to fix that image,
+	// not a per-sandbox failure.
+	OrchestratorFsRecoveryToolingUnsupported CounterType = "orchestrator.sandbox.fs_recovery.tooling_unsupported"
+
 	// TemplateBuildCmdlineArgs counts template builds by the guest kernel command line
 	// parameters they actually booted with, after parsing and validation. This is the
 	// engagement signal for the per-team cmdline-variant flag: a non-zero rate on a
@@ -214,6 +271,14 @@ const (
 	// pathological rewrites; the swap runs in the cold-boot PreBootFn, so it adds
 	// directly to resume latency.
 	OrchestratorEnvdOfflineUpgradeDurationName HistogramType = "orchestrator.envd.offline_upgrade.duration"
+
+	// OrchestratorFsRecoveryDurationName is the wall-time of the jailed pre-boot
+	// journal-replay run on a cold boot, recorded for every outcome the run reaches
+	// (replayed/failed_operational) — only skipped_quiesced,
+	// which never runs e2fsck, has no duration sample. Replay is journal-bounded, so
+	// this should stay sub-second even on large filesystems. Labeled like
+	// OrchestratorFsRecoveryRuns.
+	OrchestratorFsRecoveryDurationName HistogramType = "orchestrator.sandbox.fs_recovery.duration"
 
 	// Pre-pause envd heap collapse round-trip duration (the pause-path cost of
 	// POST /collapse: network plus envd's madvise work), recorded once per pause
@@ -363,6 +428,8 @@ var counterDesc = map[CounterType]string{
 	SandboxResumeWPModeCounterName:              "Sandbox resumes by write-protect tracking mode (sync|async)",
 	OrchestratorEnvdUpgradeAttempts:             "Resume-time envd live-upgrade attempts, by result and from/to version",
 	OrchestratorEnvdOfflineUpgradeAttempts:      "Cold-boot offline envd rootfs-swap attempts, by result and from/to version",
+	OrchestratorFsRecoveryRuns:                  "Pre-boot filesystem-recovery decisions on cold boots, by result and trigger",
+	OrchestratorFsRecoveryToolingUnsupported:    "Fires once per process when the host e2fsck rejects -E journal_only",
 	TemplateBuildCmdlineArgs:                    "Template builds by the guest kernel cmdline parameters applied",
 	OrchestratorEnvdUpgradeGated:                "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
 	OrchestratorEnvdUpgradeHandover:             "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
@@ -408,6 +475,8 @@ var counterUnits = map[CounterType]string{
 	SandboxResumeWPModeCounterName:              "{resume}",
 	OrchestratorEnvdUpgradeAttempts:             "{attempt}",
 	OrchestratorEnvdOfflineUpgradeAttempts:      "{attempt}",
+	OrchestratorFsRecoveryRuns:                  "{run}",
+	OrchestratorFsRecoveryToolingUnsupported:    "{probe}",
 	TemplateBuildCmdlineArgs:                    "{build}",
 	OrchestratorEnvdUpgradeGated:                "{sandbox}",
 	OrchestratorEnvdUpgradeHandover:             "{item}",
@@ -588,6 +657,7 @@ var histogramDesc = map[HistogramType]string{
 	SnapshotGuestFreezeDurationName:            "Wall time the guest is frozen during an in-place checkpoint, from the FC pause call to the in-place resume; success=false means the resume ran on the pause-failure cleanup path",
 	SnapshotMemorySealDurationName:             "Time for the background CoW-window memory capture (off the in-place resume critical path), labeled by success",
 	OrchestratorEnvdOfflineUpgradeDurationName: "Wall-time of the offline cold-boot envd rootfs swap (jailed debugfs)",
+	OrchestratorFsRecoveryDurationName:         "Wall-time of the jailed pre-boot e2fsck run on a cold boot",
 
 	PauseResumePrefetchHarvestDurationName:     "Time the pause-resume prefetch harvest held a start slot (throwaway resume, trace collection, reap)",
 	PauseResumePrefetchHarvestPagesName:        "Harvested resume-prefetch trace size in 2 MiB blocks, per successful harvest",
@@ -648,6 +718,7 @@ var histogramUnits = map[HistogramType]string{
 	OrchestratorSandboxExecutionDurationName:      "ms",
 	OrchestratorEnvdUpgradeDurationName:           "ms",
 	OrchestratorEnvdOfflineUpgradeDurationName:    "ms",
+	OrchestratorFsRecoveryDurationName:            "ms",
 	WaitForEnvdDurationHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:             "ms",
 	GuestSyncDurationHistogramName:                "ms",

@@ -405,6 +405,22 @@ sequenceDiagram
   The disk has crash-recovery semantics (unflushed pre-pause writes are lost), nothing durable
   is mutated (the memory snapshot survives untouched), and auto-resume never takes this path —
   traffic always memory-resumes.
+- **Pre-boot filesystem recovery**: every cold boot of a rootfs that was not frozen at pause
+  (`fs_quiesced` false/absent) runs a jailed `e2fsck -p -E journal_only` before the VM starts —
+  journal replay only, the same recovery the guest kernel would do at mount — so a `memory: false`
+  rescue and a legacy sync-fallback filesystem-only snapshot both mount a consistent disk. It
+  replays and exits without a full consistency scan, so the cost is bounded by journal content,
+  not filesystem size. Runs under the same confinement as the offline envd swap (unprivileged
+  transient unit, device access pinned to the sandbox's own NBD node). A clean replay boots;
+  anything else fails the start with the snapshot untouched but stays retryable. Journal replay
+  never condemns a snapshot: its exit codes cannot tell an unmountable filesystem apart from a
+  transient device fault, so every non-replayed outcome — an operational failure (timeout, I/O,
+  device error) or an e2fsck exit that is not a clean replay — is retryable, never a permanent
+  customer-facing verdict. In-file corruption that still mounts is likewise not condemned — replay
+  does not scan, so it boots. Whole-filesystem repair and condemning a rootfs are left to a
+  separate opt-in full-filesystem repair path. Gated by the `preboot-fs-recovery` flag, separate
+  from `fs-only-resume-api` because it also changes the behavior of existing filesystem-only cold
+  boots.
 - **Envd live-upgrade on resume**: the orchestrator can upgrade the sandbox's envd to a newer
   node-local build during resume (gated by the `envd-upgrade-target` flag in
   `packages/shared/pkg/featureflags`), via envd's `POST /upgrade` (see the envd section). It is

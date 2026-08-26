@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	buildenvd "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
@@ -119,7 +120,10 @@ func firecrackerSupports(ctx context.Context, sbx *sandbox.Sandbox, feature stri
 }
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
-	// set max request timeout for this request
+	// set max request timeout for this request. The pre-boot journal replay runs
+	// within this budget (a successful replay is fast; the cancel-immune worst case
+	// is bounded well under it), so the orchestrator still times out before the
+	// caller does and a recovery overrun surfaces as a retryable per-node error.
 	ctx, cancel := context.WithTimeoutCause(ctx, requestTimeout, errors.New("request timed out"))
 	defer cancel()
 
@@ -137,6 +141,10 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	// filesystemBooted is the dispatch outcome (the reboot path ran); echoed in
 	// the response so a demanding caller can verify the demand was honored.
 	var filesystemBooted bool
+	// Paired with success on the metric below so a replayed-then-hung start
+	// (fs_recovery=replayed, success=false) is countable; neither signal shows it
+	// alone. Stays "none" when no recovery ran (memory resume, flag off).
+	fsRecovery := rootfs.RecoverOutcomeNone
 	createStart := time.Now()
 	// Set by maybeUpgradeEnvd below; labels the resume-latency histogram so the
 	// treated (upgraded) vs untreated cohorts can be compared during the rollout.
@@ -149,6 +157,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 				attribute.Bool("fs_boot_requested", req.GetFilesystemBoot()),
 				attribute.Bool("success", createErr == nil),
 				attribute.Bool("envd.upgraded", envdUpgraded),
+				attribute.String("fs_recovery", string(fsRecovery)),
 			),
 		)
 	}()
@@ -298,6 +307,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			// auth window. Promoted below via markSandboxLive.
 			true,
 			req.GetFilesystemBoot(),
+			func(o rootfs.RecoverOutcome) { fsRecovery = o },
 		)
 	} else {
 		sbx, err = s.sandboxFactory.ResumeSandbox(

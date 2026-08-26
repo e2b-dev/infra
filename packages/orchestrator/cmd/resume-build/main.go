@@ -85,6 +85,7 @@ func main() {
 	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
 	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
 	collapseEnvdHeap := flag.Bool("collapse-envd-heap", false, "collapse envd's heap before pause (overrides the collapse-envd-heap flag)")
+	prebootFsRecovery := flag.Bool("preboot-fs-recovery", false, "run the jailed pre-boot filesystem recovery (journal replay) before a cold boot (overrides the preboot-fs-recovery flag; -reboot/-force-reboot on a non-quiesced snapshot)")
 
 	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
 	fphBenchDelay := flag.Duration("fph-bench-delay", 0, "wait this long between workload completion and pause (lets FPR settle)")
@@ -136,6 +137,10 @@ func main() {
 
 	if *collapseEnvdHeap {
 		featureflags.OverrideBoolFlag(featureflags.CollapseEnvdHeapFlag, true)
+	}
+
+	if *prebootFsRecovery {
+		featureflags.OverrideBoolFlag(featureflags.PrebootFsRecoveryFlag, true)
 	}
 
 	if *memfileDiffDedup {
@@ -433,7 +438,7 @@ func (r *runner) startSandbox(ctx context.Context, runtime sandbox.RuntimeMetada
 			})
 		}
 
-		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, false, r.forceReboot, procOpts...)
+		return r.factory.RebootSandbox(ctx, r.tmpl, r.sbxConfig, runtime, end, nil, false, r.forceReboot, nil, procOpts...)
 	}
 
 	return r.factory.ResumeSandbox(ctx, r.tmpl, r.sbxConfig, runtime, start, end, nil)

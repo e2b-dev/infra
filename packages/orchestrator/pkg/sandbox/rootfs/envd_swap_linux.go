@@ -717,59 +717,12 @@ func runDebugfs(ctx context.Context, devicePath, stageDir, phase, script string,
 
 	unit := "envd-swap-" + phase + "-" + filepath.Base(devicePath)
 
-	args := []string{
-		"--wait", "--pipe", "--collect", "--quiet",
-		"--unit=" + unit,
-		fmt.Sprintf("--property=RuntimeMaxSec=%d", int(EnvdSwapTimeout.Seconds())),
-		"--property=KillSignal=SIGKILL",
-		"--property=TimeoutStopSec=10s",
-		"--property=DynamicUser=yes",
-		"--property=SupplementaryGroups=disk",
-		"--property=ProtectProc=invisible",
-		"--property=ProcSubset=pid",
-		"--property=PrivateNetwork=yes",
-		"--property=PrivateIPC=yes",
-		"--property=ProtectHome=yes",
-		"--property=NoNewPrivileges=yes",
-		"--property=CapabilityBoundingSet=",
-		"--property=AmbientCapabilities=",
-		"--property=RestrictNamespaces=yes",
-		"--property=SystemCallFilter=@system-service",
-		// debugfs rewrites inode fields inside the image via libext2fs, not via
-		// host chown/setuid or resource syscalls, so subtract those from the
-		// @system-service allow-list rather than leave them reachable.
-		"--property=SystemCallFilter=~@privileged @resources",
-		"--property=SystemCallArchitectures=native",
-		"--property=RestrictAddressFamilies=AF_UNIX",
-		"--property=LockPersonality=yes",
-		"--property=ProtectClock=yes",
-		"--property=ProtectKernelTunables=yes",
-		"--property=ProtectKernelModules=yes",
-		"--property=ProtectKernelLogs=yes",
-		"--property=ProtectControlGroups=yes",
-		"--property=ProtectHostname=yes",
-		"--property=RestrictRealtime=yes",
-		// debugfs does not JIT; deny writable+executable mappings.
-		"--property=MemoryDenyWriteExecute=yes",
-		// PrivateNetwork already isolates the network; make the intent explicit.
-		"--property=IPAddressDeny=any",
-		"--property=Environment=",
-		// Empty root: loader, libraries, target device, and the staged directory
-		// (read-write, for dump outputs) are all that's visible.
-		"--property=TemporaryFileSystem=/",
-		"--property=BindReadOnlyPaths=/usr",
-		"--property=BindReadOnlyPaths=/usr/lib64:/lib64",
-		"--property=BindReadOnlyPaths=/usr/lib:/lib",
-		"--property=BindReadOnlyPaths=/usr/bin:/bin",
-		"--property=BindReadOnlyPaths=/usr/sbin:/sbin",
-		"--property=BindPaths=" + stageDir,
-		"--property=MountAPIVFS=yes",
-		"--property=PrivateDevices=yes",
-		fmt.Sprintf("--property=DeviceAllow=%s rw", devicePath),
-		"--property=BindPaths=" + devicePath,
+	// The staging directory is bind-mounted read-write so `write`/`-f` sources
+	// and `dump` targets resolve unchanged inside the empty jail root.
+	args := append(jailProperties(unit, EnvdSwapTimeout, devicePath, stageDir),
 		"--",
 		"/usr/sbin/debugfs",
-	}
+	)
 	if writable {
 		args = append(args, "-w")
 	}

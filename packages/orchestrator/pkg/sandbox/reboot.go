@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,7 +44,15 @@ var (
 	// Offline-upgrade rollout metrics (meter shared with sandbox.go).
 	envdOfflineUpgradeAttempts     = utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorEnvdOfflineUpgradeAttempts))
 	envdOfflineUpgradeDurationHist = utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorEnvdOfflineUpgradeDurationName))
+
+	// Pre-boot filesystem-recovery rollout metrics.
+	fsRecoveryRuns               = utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorFsRecoveryRuns))
+	fsRecoveryDurationHist       = utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorFsRecoveryDurationName))
+	fsRecoveryToolingUnsupported = utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorFsRecoveryToolingUnsupported))
 )
+
+// journalOnlyProbe fires the host e2fsck support probe once per process.
+var journalOnlyProbe sync.Once
 
 // rebootAllowed reports whether a snapshot may be cold-booted: it is marked
 // filesystem-only, or the request explicitly demanded a filesystem boot of its
@@ -70,10 +79,17 @@ func (f *Factory) RebootSandbox(
 	apiConfigToStore *orchestrator.SandboxConfig,
 	deferMarkRunning bool,
 	requestFilesystemBoot bool,
+	// recordRecovery reports the pre-boot recovery outcome (nil for callers that
+	// don't pair it with a create metric, e.g. the resume-build tool).
+	recordRecovery func(rootfs.RecoverOutcome),
 	procOpts ...func(*fc.ProcessOptions),
 ) (*Sandbox, error) {
 	ctx, span := tracer.Start(ctx, "reboot sandbox")
 	defer span.End()
+
+	if recordRecovery == nil {
+		recordRecovery = func(rootfs.RecoverOutcome) {}
+	}
 
 	buildID, err := uuid.Parse(t.Files().BuildID)
 	if err != nil {
@@ -177,7 +193,10 @@ func (f *Factory) RebootSandbox(
 		opt(&processOptions)
 	}
 
-	preBoot := f.envdOfflineUpgradePreBoot(ctx, config, runtime, meta.IsFsQuiesced(), buildID)
+	preBoot := chainPreBoot(
+		f.fsRecoverPreBoot(ctx, runtime, meta.IsFsQuiesced(), requestFilesystemBoot, buildID, recordRecovery),
+		f.envdOfflineUpgradePreBoot(ctx, config, runtime, meta.IsFsQuiesced(), buildID),
+	)
 
 	sbx, err := f.CreateSandbox(
 		ctx,
@@ -271,6 +290,138 @@ func decideOfflineSwap(resolverPath, reason string, fsQuiesced bool) offlineSwap
 	}
 
 	return offlineSwapDecision{swap: true}
+}
+
+// chainPreBoot composes pre-boot steps in order, skipping nils; the first
+// failure stops the chain. Nil when every step is nil, preserving the
+// no-callback fast path.
+func chainPreBoot(fns ...PreBootFn) PreBootFn {
+	steps := make([]PreBootFn, 0, len(fns))
+	for _, fn := range fns {
+		if fn != nil {
+			steps = append(steps, fn)
+		}
+	}
+	if len(steps) == 0 {
+		return nil
+	}
+
+	return func(ctx context.Context, rootfsPath string) error {
+		for _, fn := range steps {
+			if err := fn(ctx, rootfsPath); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
+}
+
+// fsRecoverPreBoot returns a PreBootFn that repairs the rootfs filesystem
+// before the cold boot, or nil when there is nothing to do: a quiesced
+// snapshot was frozen at pause and is consistent by construction, and with
+// the flag off cold boots keep today's behavior (the guest kernel replays
+// the journal at mount time). It is one step of the reboot pre-boot chain,
+// mutually exclusive in practice with the offline envd swap (that swaps only
+// quiesced snapshots, this runs only on non-quiesced ones).
+//
+// A clean journal replay proceeds to boot; anything else fails the start with
+// rootfs.ErrRecoveryFailed (snapshot untouched) instead of booting a possibly
+// torn filesystem. Journal replay never condemns a snapshot: its exit codes
+// cannot tell an unmountable filesystem apart from a transient device fault, so
+// every non-replayed outcome is retryable, not a permanent verdict.
+// record reports the recovery outcome to the caller (see Server.Create's
+// fs_recovery metric); left uncalled on the flag-off path so that population
+// stays "none".
+func (f *Factory) fsRecoverPreBoot(
+	ctx context.Context,
+	runtime RuntimeMetadata,
+	fsQuiesced bool,
+	requestFilesystemBoot bool,
+	buildID uuid.UUID,
+	record func(rootfs.RecoverOutcome),
+) PreBootFn {
+	// Flag gate first: with the flag off, behavior is exactly today's (no metric,
+	// no recovery) so nothing dilutes the ramp's result ratios. Every emission
+	// below is therefore within the flag-on population.
+	if !f.featureFlags.BoolFlag(ctx, featureflags.PrebootFsRecoveryFlag,
+		featureflags.SandboxContext(runtime.SandboxID),
+		featureflags.TemplateContext(runtime.TemplateID),
+	) {
+		return nil
+	}
+
+	// Once per process: flag a host whose e2fsck rejects -E journal_only, so an
+	// unsupported image is visible on a dashboard. Boots are unaffected either way
+	// (a rejected replay is a no-op the guest kernel redoes at mount); this only
+	// surfaces the silent-inert case a per-run exit code cannot tell from a real
+	// replay.
+	journalOnlyProbe.Do(func() {
+		if !rootfs.JournalOnlySupported(ctx) {
+			fsRecoveryToolingUnsupported.Add(ctx, 1)
+			logger.L().Warn(ctx, "host e2fsck rejects -E journal_only; pre-boot recovery is inert, boots fall back to the guest kernel's mount-time replay")
+		}
+	})
+
+	// trigger separates the two admitted populations on every emission: an
+	// explicit no-memory rescue vs a legacy sync-fallback fs-only snapshot.
+	trigger := "legacy_fs_only"
+	if requestFilesystemBoot {
+		trigger = "rescue"
+	}
+
+	if fsQuiesced {
+		record(rootfs.RecoverOutcomeSkippedQuiesced)
+		fsRecoveryRuns.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("result", string(rootfs.RecoverOutcomeSkippedQuiesced)),
+			attribute.String("reason", string(rootfs.RecoverReasonQuiesced)),
+			attribute.String("trigger", trigger),
+		))
+
+		return nil
+	}
+
+	return func(ctx context.Context, rootfsPath string) error {
+		start := time.Now()
+		outcome, reason, err := rootfs.RecoverFilesystem(ctx, rootfsPath)
+		record(outcome)
+		attrs := metric.WithAttributes(
+			attribute.String("result", string(outcome)),
+			attribute.String("reason", string(reason)),
+			attribute.String("trigger", trigger),
+		)
+		fsRecoveryRuns.Add(ctx, 1, attrs)
+		fsRecoveryDurationHist.Record(ctx, time.Since(start).Milliseconds(), attrs)
+		if err != nil {
+			// Fail closed. Return, don't log: the create path (Server.Create /
+			// CreateSandbox) reports this error once, and outcome+duration are already
+			// on the metric above.
+			return err
+		}
+
+		if outcome == rootfs.RecoverOutcomeFailedOpen {
+			// e2fsck never opened the device (the jail could not launch it, or the host
+			// cannot exec e2fsck), so the disk is what a flag-off cold boot would mount
+			// and the guest kernel replays the journal itself. Boot anyway — but at Warn:
+			// this is a host-image signal, not an expected per-sandbox outcome.
+			logger.L().Warn(ctx, "pre-boot filesystem recovery could not run; booting on the guest kernel's mount-time replay",
+				logger.WithSandboxID(runtime.SandboxID),
+				logger.WithBuildID(buildID.String()),
+				zap.String("reason", string(reason)),
+			)
+
+			return nil
+		}
+
+		logger.L().Info(ctx, "preboot filesystem recovery finished",
+			logger.WithSandboxID(runtime.SandboxID),
+			logger.WithBuildID(buildID.String()),
+			zap.String("outcome", string(outcome)),
+			zap.Duration("duration", time.Since(start)),
+		)
+
+		return nil
+	}
 }
 
 // envdOfflineUpgradePreBoot returns a PreBootFn that rewrites the rootfs envd
