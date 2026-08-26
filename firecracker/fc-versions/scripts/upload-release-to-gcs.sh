@@ -12,13 +12,13 @@
 #   --tag <tag>          Release tag / version name (e.g. v1.14-0.1.0).
 #   --deployment <name>  public, or a cluster name whose bucket root comes from
 #                        FC_CLUSTER_BUCKET_ROOT.
-#   --repo <repo>        GitHub repo (default: e2b-dev/fc-versions).
+#   --repo <repo>        GitHub repo holding the release (default: $GITHUB_REPOSITORY, else e2b-dev/fc-versions).
 #   --dry-run            Print what would be uploaded without writing.
 #   -h, --help           Show this help.
 
 set -euo pipefail
 
-REPO="e2b-dev/fc-versions"
+REPO="${GITHUB_REPOSITORY:-e2b-dev/fc-versions}"
 TAG=""
 DEPLOYMENT=""
 DRY_RUN=false
