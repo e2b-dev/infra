@@ -30,7 +30,7 @@ const (
 type Instance struct {
 	// Identifier that uniquely identifies the instance so it will not be registered multiple times.
 	// Depending on service discovery used, it can be combination of different parameters, what service discovery gives us.
-	uniqueIdentifier string
+	workloadID string
 
 	ClusterID uuid.UUID
 	NodeID    string
@@ -87,7 +87,7 @@ func newInstance(
 	// For case with local cluster we will not receive instance ID from service discovery, but its not needed for proxy routing,
 	// so it can be empty and will be filled after first sync.
 	i := &Instance{
-		uniqueIdentifier:  sd.UniqueIdentifier,
+		workloadID:        sd.UniqueIdentifier,
 		serviceInstanceID: sd.InstanceID,
 		NodeID:            sd.NodeID,
 		ClusterID:         clusterID,

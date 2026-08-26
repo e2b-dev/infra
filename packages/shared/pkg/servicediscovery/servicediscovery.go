@@ -5,7 +5,7 @@
 // differently. Query adapters (NewNomad, NewNomadNodePool, NewKubernetes,
 // NewLocal) hit their source on every call and return its error, so the caller
 // skips the cycle and keeps its last known set; NewMerged propagates either
-// side's error for the same reason. Cached adapters (NewNomadServiceDiscovery,
+// side's error for the same reason. Cached adapters (NewNodePlaneInstance,
 // NewK8sServiceDiscovery) serve a set that a background loop refreshes, and a
 // failed refresh is logged without clearing entries, so a dead source reads as
 // an indefinitely stale one and ListInstances still returns a nil error.
@@ -27,11 +27,12 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/servicedi
 
 // Instance is a single discovered instance.
 type Instance struct {
-	// ID identifies the instance at the discovery layer: the truncated Nomad
-	// node ID for the Nomad backends, the pod name for the Kubernetes one,
-	// "<ip>:<port>" for the cached adapters, which carry no other identity.
-	// Consumers compare it as an opaque string of no assumed width.
-	ID string
+	// WorkloadID identifies the scheduled unit the instance runs as, and is
+	// unique within its source: the truncated Nomad node ID for the Nomad
+	// backends, the pod name for the Kubernetes one, "<ip>:<port>" for the
+	// address-based ones, which carry no other identity. Consumers compare it
+	// as an opaque string of no assumed width.
+	WorkloadID string
 
 	// IPAddress is the host the instance's gRPC server listens on: the Nomad
 	// node IP, or the pod IP of a host-networked pod.

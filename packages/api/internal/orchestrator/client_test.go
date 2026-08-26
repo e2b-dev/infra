@@ -223,7 +223,7 @@ func TestGetOrConnectNode_ConcurrentCacheMiss_SharesDiscovery(t *testing.T) {
 }
 
 // TestConnectToNode_SingleflightDedup verifies that concurrent connectToNode
-// calls for the same NomadNodeShortID share a single connection attempt
+// calls for the same WorkloadID share a single connection attempt
 func TestConnectToNode_SingleflightDedup(t *testing.T) {
 	t.Parallel()
 
@@ -231,8 +231,8 @@ func TestConnectToNode_SingleflightDedup(t *testing.T) {
 
 	// grpc.NewClient is lazy — it returns immediately — and nodemanager.New
 	// then fails at the ServiceInfo RPC call
-	discovery := nodemanager.NomadServiceDiscovery{
-		NomadNodeShortID:    "abcdef12",
+	discovery := nodemanager.NodePlaneInstance{
+		WorkloadID:          "abcdef12",
 		OrchestratorAddress: "127.0.0.1:1",
 		IPAddress:           "127.0.0.1",
 	}
@@ -305,7 +305,7 @@ func TestGetOrConnectNode_CacheMiss_DiscoversAndConnects(t *testing.T) {
 	node := o.getOrConnectNode(t.Context(), consts.LocalClusterID, orchestratorNodeID)
 	require.NotNil(t, node, "getOrConnectNode must discover and connect the node via Nomad")
 	assert.Equal(t, orchestratorNodeID, node.ID)
-	assert.Equal(t, nomadFullID[:consts.NodeIDLength], node.NomadNodeShortID)
+	assert.Equal(t, nomadFullID[:consts.NodeIDLength], node.WorkloadID)
 }
 
 // TestRegisterNode_NoDuplicates verifies that registerNode is idempotent

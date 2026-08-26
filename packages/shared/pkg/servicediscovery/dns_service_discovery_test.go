@@ -17,7 +17,7 @@ func TestDnsServiceDiscovery_FailedSyncClearsTheSet(t *testing.T) {
 	t.Parallel()
 
 	sd := NewDnsServiceDiscovery(logger.NewNopLogger(), []string{"example.invalid."}, "127.0.0.1:1", cachedPort)
-	sd.entries.Insert("10.0.0.1:5008", Instance{ID: "10.0.0.1:5008", IPAddress: "10.0.0.1", Port: cachedPort})
+	sd.entries.Insert("10.0.0.1:5008", Instance{WorkloadID: "10.0.0.1:5008", IPAddress: "10.0.0.1", Port: cachedPort})
 
 	sd.sync(t.Context())
 

@@ -33,7 +33,7 @@ func (d instancesSyncStore) SourceList(ctx context.Context) ([]discovery.Item, e
 func (d instancesSyncStore) SourceExists(_ context.Context, s []discovery.Item, p *Instance) bool {
 	for _, item := range s {
 		// With comparing unique identifier that should ensure we are not re-adding same instance again
-		if item.UniqueIdentifier == p.uniqueIdentifier {
+		if item.UniqueIdentifier == p.workloadID {
 			return true
 		}
 	}

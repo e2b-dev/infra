@@ -69,9 +69,9 @@ func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
 		// Nomad backends' 8-char width is therefore not an invariant of
 		// Instance.ID.
 		out = append(out, Instance{
-			ID:        p.Name,
-			IPAddress: ip,
-			Port:      consts.OrchestratorAPIPort,
+			WorkloadID: p.Name,
+			IPAddress:  ip,
+			Port:       consts.OrchestratorAPIPort,
 		})
 	}
 

@@ -114,9 +114,9 @@ func (sd *K8sServiceDiscovery) sync(ctx context.Context) {
 
 		key := fmt.Sprintf("%s:%d", ip, sd.port)
 		item := Instance{
-			ID:        key,
-			IPAddress: ip,
-			Port:      sd.port,
+			WorkloadID: key,
+			IPAddress:  ip,
+			Port:       sd.port,
 		}
 
 		sd.entries.Insert(key, item)

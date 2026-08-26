@@ -83,7 +83,7 @@ type Orchestrator struct {
 	localClusterOwnsOrchestrators bool
 
 	// connectGroup deduplicates concurrent dial+register attempts for the same
-	// physical node. It is keyed by NomadNodeShortID (Nomad-managed nodes) or
+	// physical node. It is keyed by WorkloadID (Nomad-managed nodes) or
 	// scopedNodeID(clusterID, instanceNodeID) (cluster nodes) and is held inside
 	// connectToNode / connectToClusterNode, so it guards every connection path
 	// regardless of what triggered the attempt.

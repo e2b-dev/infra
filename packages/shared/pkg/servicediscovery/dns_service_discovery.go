@@ -129,7 +129,7 @@ func (sd *DnsServiceDiscovery) sync(ctx context.Context) {
 	for ip := range ips {
 		key := fmt.Sprintf("%s:%d", ip, sd.servicePort)
 		sd.entries.Insert(
-			key, Instance{ID: key, IPAddress: ip, Port: sd.servicePort},
+			key, Instance{WorkloadID: key, IPAddress: ip, Port: sd.servicePort},
 		)
 	}
 

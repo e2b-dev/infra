@@ -64,7 +64,7 @@ func TestNomadNodePoolDiscovery_MapsNodes(t *testing.T) {
 	require.Len(t, nodes, 1)
 
 	port := strconv.Itoa(int(consts.OrchestratorAPIPort))
-	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].ID)
+	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].WorkloadID)
 	assert.Equal(t, "10.0.0.1", nodes[0].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), nodes[0].Address())
 }

@@ -102,7 +102,7 @@ func createNomadProvider(config Config, logger logger.Logger) (Discoverer, error
 		return nil, ErrMissingNomadToken
 	}
 
-	return NewNomadServiceDiscovery(logger, config.OrchestratorPort, nomadEndpoint, nomadToken)
+	return NewNodePlaneInstance(logger, config.OrchestratorPort, nomadEndpoint, nomadToken)
 }
 
 var ErrMissingStaticEndpoints = errors.New("missing static endpoints")

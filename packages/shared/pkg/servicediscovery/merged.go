@@ -48,7 +48,7 @@ func (d *mergedDiscovery) ListInstances(ctx context.Context) ([]Instance, error)
 	// UniqBy keeps the first occurrence per key, so primary entries shadow
 	// fallback entries with the same ID.
 	return lo.UniqBy(slices.Concat(primaryInstances, fallbackInstances), func(i Instance) string {
-		return i.ID
+		return i.WorkloadID
 	}), nil
 }
 

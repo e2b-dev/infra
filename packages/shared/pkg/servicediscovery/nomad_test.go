@@ -78,7 +78,7 @@ func TestNomadDiscovery_MapsRegistrations(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
 
-	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].ID)
+	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].WorkloadID)
 	assert.Equal(t, "10.0.0.1", nodes[0].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.1", "5008"), nodes[0].Address())
 }
@@ -101,7 +101,7 @@ func TestNomadDiscovery_DeduplicatesByNode(t *testing.T) {
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
-	assert.NotEqual(t, nodes[0].ID, nodes[1].ID)
+	assert.NotEqual(t, nodes[0].WorkloadID, nodes[1].WorkloadID)
 }
 
 // TestNomadDiscovery_UnionsServices ensures registrations from multiple

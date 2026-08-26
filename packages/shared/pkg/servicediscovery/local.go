@@ -38,9 +38,9 @@ func NewLocal(addr string) (Discoverer, error) {
 
 	return &localDiscovery{
 		instance: Instance{
-			ID:        "local",
-			IPAddress: host,
-			Port:      uint16(port),
+			WorkloadID: "local",
+			IPAddress:  host,
+			Port:       uint16(port),
 		},
 	}, nil
 }

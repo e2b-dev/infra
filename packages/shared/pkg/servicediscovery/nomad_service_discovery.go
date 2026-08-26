@@ -17,7 +17,7 @@ const (
 	nomadQueryRefreshInterval = 10 * time.Second
 )
 
-type NomadServiceDiscovery struct {
+type NodePlaneInstance struct {
 	logger  logger.Logger
 	entries *smap.Map[Instance]
 	client  *nomadapi.Client
@@ -26,14 +26,14 @@ type NomadServiceDiscovery struct {
 	port uint16
 }
 
-func NewNomadServiceDiscovery(logger logger.Logger, port uint16, nomadEndpoint string, nomadToken string) (*NomadServiceDiscovery, error) {
+func NewNodePlaneInstance(logger logger.Logger, port uint16, nomadEndpoint string, nomadToken string) (*NodePlaneInstance, error) {
 	config := &nomadapi.Config{Address: nomadEndpoint, SecretID: nomadToken}
 	client, err := nomadapi.NewClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Nomad client: %w", err)
 	}
 
-	sd := &NomadServiceDiscovery{
+	sd := &NodePlaneInstance{
 		logger:  logger,
 		client:  client,
 		port:    port,
@@ -44,17 +44,17 @@ func NewNomadServiceDiscovery(logger logger.Logger, port uint16, nomadEndpoint s
 	return sd, nil
 }
 
-func (sd *NomadServiceDiscovery) Start(ctx context.Context) {
+func (sd *NodePlaneInstance) Start(ctx context.Context) {
 	ctx, sd.cancel = context.WithCancel(ctx)
 
 	go sd.keepInSync(ctx)
 }
 
-func (sd *NomadServiceDiscovery) Stop(_ context.Context) {
+func (sd *NodePlaneInstance) Stop(_ context.Context) {
 	sd.cancel()
 }
 
-func (sd *NomadServiceDiscovery) ListInstances(_ context.Context) ([]Instance, error) {
+func (sd *NodePlaneInstance) ListInstances(_ context.Context) ([]Instance, error) {
 	entries := sd.entries.Items()
 	items := make([]Instance, 0)
 
@@ -65,7 +65,7 @@ func (sd *NomadServiceDiscovery) ListInstances(_ context.Context) ([]Instance, e
 	return items, nil
 }
 
-func (sd *NomadServiceDiscovery) keepInSync(ctx context.Context) {
+func (sd *NodePlaneInstance) keepInSync(ctx context.Context) {
 	// Run the first sync immediately
 	sd.sync(ctx)
 
@@ -84,7 +84,7 @@ func (sd *NomadServiceDiscovery) keepInSync(ctx context.Context) {
 	}
 }
 
-func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
+func (sd *NodePlaneInstance) sync(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, nomadQueryRefreshInterval)
 	defer cancel()
 
@@ -99,9 +99,9 @@ func (sd *NomadServiceDiscovery) sync(ctx context.Context) {
 	for _, v := range alloc {
 		key := fmt.Sprintf("%s:%d", v.AllocationIP, sd.port)
 		item := Instance{
-			ID:        key,
-			IPAddress: v.AllocationIP,
-			Port:      sd.port,
+			WorkloadID: key,
+			IPAddress:  v.AllocationIP,
+			Port:       sd.port,
 		}
 
 		sd.entries.Insert(key, item)

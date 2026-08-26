@@ -64,13 +64,13 @@ func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 
 	// Both pods share the first 8+ characters; without the fix the truncated
 	// IDs would be equal.
-	assert.NotEqual(t, nodes[0].ID, nodes[1].ID,
+	assert.NotEqual(t, nodes[0].WorkloadID, nodes[1].WorkloadID,
 		"pods with a shared prefix must produce distinct IDs")
 
 	// ID must equal the full pod name on the K8s backend.
 	byID := map[string]Instance{}
 	for _, n := range nodes {
-		byID[n.ID] = n
+		byID[n.WorkloadID] = n
 	}
 
 	require.Contains(t, byID, pod1.Name)
@@ -98,7 +98,7 @@ func TestKubernetesDiscovery_FiltersNotReady(t *testing.T) {
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
-	assert.Equal(t, ready.Name, nodes[0].ID)
+	assert.Equal(t, ready.Name, nodes[0].WorkloadID)
 }
 
 // TestKubernetesDiscovery_FiltersPending ensures pods that are not in the

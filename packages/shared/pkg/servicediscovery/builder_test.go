@@ -26,7 +26,7 @@ func TestFromConfig_SelectsTheAdapterCaseInsensitively(t *testing.T) {
 		},
 		"NOMAD": {
 			config: Config{Provider: "NOMAD", OrchestratorPort: cachedPort, NomadEndpoint: "http://127.0.0.1:4646", NomadToken: "token"},
-			want:   &NomadServiceDiscovery{},
+			want:   &NodePlaneInstance{},
 		},
 		"STATIC": {
 			config: Config{Provider: "STATIC", OrchestratorPort: cachedPort, StaticEndpoints: []string{"10.0.0.1"}},

@@ -90,7 +90,7 @@ func newServiceDiscovery(config cfg.Config, newKube kubeClientFactory) (serviceD
 	case cfg.ServiceDiscoveryProviderLocal:
 		return newLocalServiceDiscovery(config)
 	default: // ServiceDiscoveryProviderNomad
-		return newNomadServiceDiscovery(config)
+		return newNodePlaneInstance(config)
 	}
 }
 
@@ -135,7 +135,7 @@ func newLocalServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
 	return serviceDiscovery{nodes: nodes, templateBuilders: templateBuilders}, nil
 }
 
-func newNomadServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
+func newNodePlaneInstance(config cfg.Config) (serviceDiscovery, error) {
 	client, err := nomadapi.NewClient(&nomadapi.Config{
 		Address:  config.NomadAddress,
 		SecretID: config.NomadToken,

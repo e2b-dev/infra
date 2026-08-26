@@ -78,9 +78,9 @@ func (d *nomadDiscovery) ListInstances(ctx context.Context) ([]Instance, error) 
 			}
 
 			out = append(out, Instance{
-				ID:        shortID,
-				IPAddress: reg.Address,
-				Port:      uint16(reg.Port),
+				WorkloadID: shortID,
+				IPAddress:  reg.Address,
+				Port:       uint16(reg.Port),
 			})
 		}
 	}

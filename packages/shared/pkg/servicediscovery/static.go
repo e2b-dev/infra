@@ -14,7 +14,7 @@ type staticDiscovery struct {
 func NewStatic(results []string, port uint16) Discoverer {
 	items := make([]Instance, len(results))
 	for i, result := range results {
-		items[i] = Instance{ID: fmt.Sprintf("%s:%d", result, port), IPAddress: result, Port: port}
+		items[i] = Instance{WorkloadID: fmt.Sprintf("%s:%d", result, port), IPAddress: result, Port: port}
 	}
 
 	return &staticDiscovery{items: items}
