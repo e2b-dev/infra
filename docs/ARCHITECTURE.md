@@ -132,6 +132,16 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   a marker to a value at sandbox egress, never here. Without a configured address, or with the flag
   off, the routes stay registered and answer 403. Responses are `Cache-Control: no-store`, request bodies are capped at 512 KiB, and values
   at 64 KiB.
+- **Rig passthrough**: admin endpoints under `/clusters/{clusterID}/rigs` manage a cluster's
+  orchestrator node pools ("rigs"). They list rigs, change rig capacity, list and terminate
+  instances, and read recent scaling errors. Every handler delegates to the cluster's edge service
+  (`/v1/rigs/...`) through the per-cluster HTTP client that the cluster sync keeps fresh. The API
+  holds no cloud credentials and makes no scaling decisions. The caller authenticates with the
+  admin token and never holds the cluster's edge secret. Edge status codes pass through unchanged
+  (400, 404, 409, 501). An edge 401 becomes a 500: it means the API is misconfigured against the
+  cluster, not that the caller's token is invalid. A cluster with no rig management configured
+  returns an empty list. The local cluster has no edge deployment and answers 501 for every rig
+  operation.
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to

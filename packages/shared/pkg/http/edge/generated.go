@@ -4,6 +4,7 @@
 package edge
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -201,6 +202,79 @@ type Error struct {
 // LogLevel State of the sandbox
 type LogLevel string
 
+// Rig An orchestrator node pool backed by one cloud scaling group
+type Rig struct {
+	// CapacityCurrent Number of instances currently attached to the rig
+	CapacityCurrent int32 `json:"capacityCurrent"`
+
+	// CapacityDesired Desired number of instances in the rig
+	CapacityDesired int32 `json:"capacityDesired"`
+
+	// CapacityMax Maximum capacity enforced on the rig's scaling group. Omitted when nothing enforces bounds (GCP MIG without an active autoscaler).
+	CapacityMax *int32 `json:"capacityMax,omitempty"`
+
+	// CapacityMin Minimum capacity enforced on the rig's scaling group. Omitted when nothing enforces bounds (GCP MIG without an active autoscaler).
+	CapacityMin *int32 `json:"capacityMin,omitempty"`
+
+	// Id Rig identifier (e.g. "default")
+	Id string `json:"id"`
+
+	// Provider Cloud provider backing the rig ("aws" or "gcp")
+	Provider string `json:"provider"`
+
+	// ResourceId Canonical cloud resource ID of the scaling group backing the rig (ARN on AWS, self-link on GCP)
+	ResourceId string `json:"resourceId"`
+}
+
+// RigCapacityRequest Desired capacity to set on the rig's scaling group
+type RigCapacityRequest struct {
+	// Desired Absolute desired number of instances in the rig
+	Desired int32 `json:"desired"`
+}
+
+// RigError Scaling error on the rig's scaling group, e.g. a failed instance creation due to resource exhaustion
+type RigError struct {
+	// Action Action being performed when the error occurred (e.g. CREATING)
+	Action *string `json:"action,omitempty"`
+
+	// Code Provider-specific error code (e.g. ZONE_RESOURCE_POOL_EXHAUSTED, Failed)
+	Code string `json:"code"`
+
+	// Instance Instance the error relates to, if any
+	Instance *string `json:"instance,omitempty"`
+
+	// Message Human-readable error message
+	Message string `json:"message"`
+
+	// Timestamp When the error occurred
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// RigInstance An instance attached to a rig's scaling group
+type RigInstance struct {
+	// CreatedAt When the provider created the instance. Null while the instance is transitioning.
+	CreatedAt *time.Time `json:"createdAt"`
+
+	// Id Provider instance ID (EC2 instance ID on AWS, instance name on GCP), also the node ID the orchestrator reports
+	Id string `json:"id"`
+
+	// Terminating The instance is on its way out of the group and can never become healthy again
+	Terminating bool `json:"terminating"`
+
+	// Transitioning The provider is creating, deleting, recreating or otherwise mutating the instance
+	Transitioning bool `json:"transitioning"`
+}
+
+// RigInstancesResponse Instances attached to a rig's scaling group. Wrapped in an object so the endpoint can grow additional fields without breaking clients.
+type RigInstancesResponse struct {
+	Items []RigInstance `json:"items"`
+}
+
+// RigsResponse Rigs managed by this cluster. Wrapped in an object so the endpoint can grow additional fields without breaking clients.
+type RigsResponse struct {
+	Items []Rig `json:"items"`
+}
+
 // SandboxLog Log entry with timestamp and line
 type SandboxLog struct {
 	// Line Log line content
@@ -281,8 +355,29 @@ type N400 = Error
 // N401 defines model for 401.
 type N401 = Error
 
+// N404 defines model for 404.
+type N404 = Error
+
+// N409 defines model for 409.
+type N409 = Error
+
 // N500 defines model for 500.
 type N500 = Error
+
+// N501 defines model for 501.
+type N501 = Error
+
+// V1RigsInstancesInstanceIDParams defines parameters for V1RigsInstancesInstanceID.
+type V1RigsInstancesInstanceIDParams struct {
+	// DecrementDesired When true, desired capacity is decremented (rig shrinks); when false, the scaling group launches a replacement instance
+	DecrementDesired bool `form:"decrementDesired" json:"decrementDesired"`
+}
+
+// V1RigsRigIDErrorsParams defines parameters for V1RigsRigIDErrors.
+type V1RigsRigIDErrorsParams struct {
+	// Limit Maximum number of errors to return
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // V1SandboxesMetricsParams defines parameters for V1SandboxesMetrics.
 type V1SandboxesMetricsParams struct {
@@ -354,6 +449,9 @@ type V1TemplateBuildLogsParams struct {
 
 // V1TemplateBuildLogsParamsDirection defines parameters for V1TemplateBuildLogs.
 type V1TemplateBuildLogsParamsDirection string
+
+// V1RigsRigIDCapacityJSONRequestBody defines body for V1RigsRigIDCapacity for application/json ContentType.
+type V1RigsRigIDCapacityJSONRequestBody = RigCapacityRequest
 
 // RequestEditorFn is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -448,6 +546,52 @@ type ClientInterface interface {
 	// Corresponds with GET /v1/info (the `V1Info` operationId).
 	V1Info(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// V1Rigs List rigs (orchestrator node pools)
+	//
+	// List the rigs managed by this cluster with a snapshot of their scaling groups. Clusters without rig management configured return an empty list.
+	//
+	// Corresponds with GET /v1/rigs (the `V1Rigs` operationId).
+	V1Rigs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// V1RigsInstancesInstanceID Terminate an instance in a rig
+	//
+	// Terminate a specific instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+	//
+	// Corresponds with DELETE /v1/rigs/instances/{instanceID} (the `V1RigsInstancesInstanceID` operationId).
+	V1RigsInstancesInstanceID(ctx context.Context, instanceID string, params *V1RigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// V1RigsRigIDCapacityWithBody Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+	V1RigsRigIDCapacityWithBody(ctx context.Context, rigID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// V1RigsRigIDCapacity Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+	V1RigsRigIDCapacity(ctx context.Context, rigID string, body V1RigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// V1RigsRigIDErrors List recent scaling errors of a rig
+	//
+	// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first
+	//
+	// Corresponds with GET /v1/rigs/{rigID}/errors (the `V1RigsRigIDErrors` operationId).
+	V1RigsRigIDErrors(ctx context.Context, rigID string, params *V1RigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// V1RigsRigIDInstances List the instances attached to a rig
+	//
+	// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+	//
+	// Corresponds with GET /v1/rigs/{rigID}/instances (the `V1RigsRigIDInstances` operationId).
+	V1RigsRigIDInstances(ctx context.Context, rigID string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// V1SandboxesMetrics Latest metrics for multiple sandboxes (v1)
 	//
 	// Corresponds with GET /v1/sandboxes/metrics (the `V1SandboxesMetrics` operationId).
@@ -522,6 +666,112 @@ func (c *Client) HealthCheckMachine(ctx context.Context, reqEditors ...RequestEd
 // Corresponds with GET /v1/info (the `V1Info` operationId).
 func (c *Client) V1Info(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewV1InfoRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// V1Rigs List rigs (orchestrator node pools)
+//
+// List the rigs managed by this cluster with a snapshot of their scaling groups. Clusters without rig management configured return an empty list.
+//
+// Corresponds with GET /v1/rigs (the `V1Rigs` operationId).
+func (c *Client) V1Rigs(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1RigsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// V1RigsInstancesInstanceID Terminate an instance in a rig
+//
+// Terminate a specific instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+//
+// Corresponds with DELETE /v1/rigs/instances/{instanceID} (the `V1RigsInstancesInstanceID` operationId).
+func (c *Client) V1RigsInstancesInstanceID(ctx context.Context, instanceID string, params *V1RigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1RigsInstancesInstanceIDRequest(c.Server, instanceID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// V1RigsRigIDCapacityWithBody Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+func (c *Client) V1RigsRigIDCapacityWithBody(ctx context.Context, rigID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1RigsRigIDCapacityRequestWithBody(c.Server, rigID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// V1RigsRigIDCapacity Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+func (c *Client) V1RigsRigIDCapacity(ctx context.Context, rigID string, body V1RigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1RigsRigIDCapacityRequest(c.Server, rigID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// V1RigsRigIDErrors List recent scaling errors of a rig
+//
+// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first
+//
+// Corresponds with GET /v1/rigs/{rigID}/errors (the `V1RigsRigIDErrors` operationId).
+func (c *Client) V1RigsRigIDErrors(ctx context.Context, rigID string, params *V1RigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1RigsRigIDErrorsRequest(c.Server, rigID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// V1RigsRigIDInstances List the instances attached to a rig
+//
+// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+//
+// Corresponds with GET /v1/rigs/{rigID}/instances (the `V1RigsRigIDInstances` operationId).
+func (c *Client) V1RigsRigIDInstances(ctx context.Context, rigID string, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewV1RigsRigIDInstancesRequest(c.Server, rigID)
 	if err != nil {
 		return nil, err
 	}
@@ -689,6 +939,232 @@ func NewV1InfoRequest(server string) (*http.Request, error) {
 	}
 
 	operationPath := fmt.Sprintf("/v1/info")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewV1RigsRequest constructs an http.Request for the V1Rigs method
+func NewV1RigsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rigs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewV1RigsInstancesInstanceIDRequest constructs an http.Request for the V1RigsInstancesInstanceID method
+func NewV1RigsInstancesInstanceIDRequest(server string, instanceID string, params *V1RigsInstancesInstanceIDParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "instanceID", instanceID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rigs/instances/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "decrementDesired", params.DecrementDesired, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewV1RigsRigIDCapacityRequest calls the generic V1RigsRigIDCapacity builder with application/json body
+func NewV1RigsRigIDCapacityRequest(server string, rigID string, body V1RigsRigIDCapacityJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewV1RigsRigIDCapacityRequestWithBody(server, rigID, "application/json", bodyReader)
+}
+
+// NewV1RigsRigIDCapacityRequestWithBody constructs an http.Request for the V1RigsRigIDCapacity method, with any body, and a specified content type
+func NewV1RigsRigIDCapacityRequestWithBody(server string, rigID string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "rigID", rigID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rigs/%s/capacity", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewV1RigsRigIDErrorsRequest constructs an http.Request for the V1RigsRigIDErrors method
+func NewV1RigsRigIDErrorsRequest(server string, rigID string, params *V1RigsRigIDErrorsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "rigID", rigID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rigs/%s/errors", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewV1RigsRigIDInstancesRequest constructs an http.Request for the V1RigsRigIDInstances method
+func NewV1RigsRigIDInstancesRequest(server string, rigID string) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "rigID", rigID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/rigs/%s/instances", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1242,6 +1718,60 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /v1/info (the `V1Info` operationId).
 	V1InfoWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1InfoResponse, error)
 
+	// V1RigsWithResponse List rigs (orchestrator node pools)
+	//
+	// List the rigs managed by this cluster with a snapshot of their scaling groups. Clusters without rig management configured return an empty list.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/rigs (the `V1Rigs` operationId).
+	V1RigsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1RigsResponse, error)
+
+	// V1RigsInstancesInstanceIDWithResponse Terminate an instance in a rig
+	//
+	// Terminate a specific instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /v1/rigs/instances/{instanceID} (the `V1RigsInstancesInstanceID` operationId).
+	V1RigsInstancesInstanceIDWithResponse(ctx context.Context, instanceID string, params *V1RigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*V1RigsInstancesInstanceIDResponse, error)
+
+	// V1RigsRigIDCapacityWithBodyWithResponse Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+	V1RigsRigIDCapacityWithBodyWithResponse(ctx context.Context, rigID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*V1RigsRigIDCapacityResponse, error)
+
+	// V1RigsRigIDCapacityWithResponse Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+	V1RigsRigIDCapacityWithResponse(ctx context.Context, rigID string, body V1RigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*V1RigsRigIDCapacityResponse, error)
+
+	// V1RigsRigIDErrorsWithResponse List recent scaling errors of a rig
+	//
+	// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/rigs/{rigID}/errors (the `V1RigsRigIDErrors` operationId).
+	V1RigsRigIDErrorsWithResponse(ctx context.Context, rigID string, params *V1RigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*V1RigsRigIDErrorsResponse, error)
+
+	// V1RigsRigIDInstancesWithResponse List the instances attached to a rig
+	//
+	// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /v1/rigs/{rigID}/instances (the `V1RigsRigIDInstances` operationId).
+	V1RigsRigIDInstancesWithResponse(ctx context.Context, rigID string, reqEditors ...RequestEditorFn) (*V1RigsRigIDInstancesResponse, error)
+
 	// V1SandboxesMetricsWithResponse Latest metrics for multiple sandboxes (v1)
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -1406,6 +1936,365 @@ func (r V1InfoResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r V1InfoResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type V1RigsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RigsResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r V1RigsResponse) GetJSON200() *RigsResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r V1RigsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r V1RigsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r V1RigsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r V1RigsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V1RigsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r V1RigsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type V1RigsInstancesInstanceIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r V1RigsInstancesInstanceIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r V1RigsInstancesInstanceIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r V1RigsInstancesInstanceIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r V1RigsInstancesInstanceIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r V1RigsInstancesInstanceIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r V1RigsInstancesInstanceIDResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r V1RigsInstancesInstanceIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r V1RigsInstancesInstanceIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V1RigsInstancesInstanceIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r V1RigsInstancesInstanceIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type V1RigsRigIDCapacityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r V1RigsRigIDCapacityResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r V1RigsRigIDCapacityResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r V1RigsRigIDCapacityResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r V1RigsRigIDCapacityResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r V1RigsRigIDCapacityResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r V1RigsRigIDCapacityResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r V1RigsRigIDCapacityResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r V1RigsRigIDCapacityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V1RigsRigIDCapacityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r V1RigsRigIDCapacityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type V1RigsRigIDErrorsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]RigError
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r V1RigsRigIDErrorsResponse) GetJSON200() *[]RigError {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r V1RigsRigIDErrorsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r V1RigsRigIDErrorsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r V1RigsRigIDErrorsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r V1RigsRigIDErrorsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r V1RigsRigIDErrorsResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r V1RigsRigIDErrorsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r V1RigsRigIDErrorsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V1RigsRigIDErrorsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r V1RigsRigIDErrorsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type V1RigsRigIDInstancesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *RigInstancesResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r V1RigsRigIDInstancesResponse) GetJSON200() *RigInstancesResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r V1RigsRigIDInstancesResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r V1RigsRigIDInstancesResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r V1RigsRigIDInstancesResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r V1RigsRigIDInstancesResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r V1RigsRigIDInstancesResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r V1RigsRigIDInstancesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r V1RigsRigIDInstancesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r V1RigsRigIDInstancesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r V1RigsRigIDInstancesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -1813,6 +2702,96 @@ func (c *ClientWithResponses) V1InfoWithResponse(ctx context.Context, reqEditors
 	return ParseV1InfoResponse(rsp)
 }
 
+// V1RigsWithResponse List rigs (orchestrator node pools)
+//
+// List the rigs managed by this cluster with a snapshot of their scaling groups. Clusters without rig management configured return an empty list.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/rigs (the `V1Rigs` operationId).
+func (c *ClientWithResponses) V1RigsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*V1RigsResponse, error) {
+	rsp, err := c.V1Rigs(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1RigsResponse(rsp)
+}
+
+// V1RigsInstancesInstanceIDWithResponse Terminate an instance in a rig
+//
+// Terminate a specific instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /v1/rigs/instances/{instanceID} (the `V1RigsInstancesInstanceID` operationId).
+func (c *ClientWithResponses) V1RigsInstancesInstanceIDWithResponse(ctx context.Context, instanceID string, params *V1RigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*V1RigsInstancesInstanceIDResponse, error) {
+	rsp, err := c.V1RigsInstancesInstanceID(ctx, instanceID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1RigsInstancesInstanceIDResponse(rsp)
+}
+
+// V1RigsRigIDCapacityWithBodyWithResponse Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+func (c *ClientWithResponses) V1RigsRigIDCapacityWithBodyWithResponse(ctx context.Context, rigID string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*V1RigsRigIDCapacityResponse, error) {
+	rsp, err := c.V1RigsRigIDCapacityWithBody(ctx, rigID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1RigsRigIDCapacityResponse(rsp)
+}
+
+// V1RigsRigIDCapacityWithResponse Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /v1/rigs/{rigID}/capacity (the `V1RigsRigIDCapacity` operationId).
+func (c *ClientWithResponses) V1RigsRigIDCapacityWithResponse(ctx context.Context, rigID string, body V1RigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*V1RigsRigIDCapacityResponse, error) {
+	rsp, err := c.V1RigsRigIDCapacity(ctx, rigID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1RigsRigIDCapacityResponse(rsp)
+}
+
+// V1RigsRigIDErrorsWithResponse List recent scaling errors of a rig
+//
+// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/rigs/{rigID}/errors (the `V1RigsRigIDErrors` operationId).
+func (c *ClientWithResponses) V1RigsRigIDErrorsWithResponse(ctx context.Context, rigID string, params *V1RigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*V1RigsRigIDErrorsResponse, error) {
+	rsp, err := c.V1RigsRigIDErrors(ctx, rigID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1RigsRigIDErrorsResponse(rsp)
+}
+
+// V1RigsRigIDInstancesWithResponse List the instances attached to a rig
+//
+// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /v1/rigs/{rigID}/instances (the `V1RigsRigIDInstances` operationId).
+func (c *ClientWithResponses) V1RigsRigIDInstancesWithResponse(ctx context.Context, rigID string, reqEditors ...RequestEditorFn) (*V1RigsRigIDInstancesResponse, error) {
+	rsp, err := c.V1RigsRigIDInstances(ctx, rigID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseV1RigsRigIDInstancesResponse(rsp)
+}
+
 // V1SandboxesMetricsWithResponse Latest metrics for multiple sandboxes (v1)
 //
 // Returns a wrapper object for the known response body format(s).
@@ -1961,6 +2940,296 @@ func ParseV1InfoResponse(rsp *http.Response) (*V1InfoResponse, error) {
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseV1RigsResponse parses an HTTP response from a V1RigsWithResponse call
+func ParseV1RigsResponse(rsp *http.Response) (*V1RigsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V1RigsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RigsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseV1RigsInstancesInstanceIDResponse parses an HTTP response from a V1RigsInstancesInstanceIDWithResponse call
+func ParseV1RigsInstancesInstanceIDResponse(rsp *http.Response) (*V1RigsInstancesInstanceIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V1RigsInstancesInstanceIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseV1RigsRigIDCapacityResponse parses an HTTP response from a V1RigsRigIDCapacityWithResponse call
+func ParseV1RigsRigIDCapacityResponse(rsp *http.Response) (*V1RigsRigIDCapacityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V1RigsRigIDCapacityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseV1RigsRigIDErrorsResponse parses an HTTP response from a V1RigsRigIDErrorsWithResponse call
+func ParseV1RigsRigIDErrorsResponse(rsp *http.Response) (*V1RigsRigIDErrorsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V1RigsRigIDErrorsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []RigError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseV1RigsRigIDInstancesResponse parses an HTTP response from a V1RigsRigIDInstancesWithResponse call
+func ParseV1RigsRigIDInstancesResponse(rsp *http.Response) (*V1RigsRigIDInstancesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &V1RigsRigIDInstancesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest RigInstancesResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
 
 	}
 

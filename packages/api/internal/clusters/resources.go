@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -18,6 +19,14 @@ import (
 )
 
 type ClusterResource interface {
+	// A rig is a cloud scaling group behind an edge deployment, so only a
+	// remote cluster can serve these; the local one answers 501.
+	GetRigs(ctx context.Context) ([]api.Rig, *api.APIError)
+	SetRigCapacity(ctx context.Context, rigID string, desired int32) *api.APIError
+	GetRigInstances(ctx context.Context, rigID string) ([]api.RigInstance, *api.APIError)
+	GetRigErrors(ctx context.Context, rigID string, limit *int32) ([]api.RigError, *api.APIError)
+	TerminateRigInstance(ctx context.Context, instanceID string, decrementDesired bool) *api.APIError
+
 	GetSandboxMetrics(ctx context.Context, teamID string, sandboxID string, qStart *int64, qEnd *int64) ([]api.SandboxMetric, *api.APIError)
 	GetSandboxesMetrics(ctx context.Context, teamID string, sandboxIDs []string) (map[string]api.SandboxMetric, *api.APIError)
 	GetSandboxLogs(ctx context.Context, teamID string, sandboxID string, start *int64, end *int64, limit *int32, direction *api.LogsDirection, level *logs.LogLevel, search *string) (api.SandboxLogs, *api.APIError)
@@ -29,6 +38,16 @@ const (
 
 	defaultLogsLimit = 1000
 )
+
+// rigsUnsupported is a 501 rather than a 404: the cluster exists, the
+// capability does not.
+func rigsUnsupported() *api.APIError {
+	return &api.APIError{
+		Err:       errors.New("rig management is not available for this cluster"),
+		ClientMsg: "Rig management is not available for this cluster",
+		Code:      http.StatusNotImplemented,
+	}
+}
 
 func LogQueryWindow(cursor *time.Time, direction api.LogsDirection) (time.Time, time.Time) {
 	now := time.Now()

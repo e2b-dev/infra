@@ -303,3 +303,25 @@ func (l *LocalClusterResourceProvider) logsFromLocalLoki(ctx context.Context, te
 		return entries, nil
 	}
 }
+
+// The local cluster has no edge deployment and no scaling group behind it.
+
+func (l *LocalClusterResourceProvider) GetRigs(context.Context) ([]api.Rig, *api.APIError) {
+	return nil, rigsUnsupported()
+}
+
+func (l *LocalClusterResourceProvider) SetRigCapacity(context.Context, string, int32) *api.APIError {
+	return rigsUnsupported()
+}
+
+func (l *LocalClusterResourceProvider) GetRigInstances(context.Context, string) ([]api.RigInstance, *api.APIError) {
+	return nil, rigsUnsupported()
+}
+
+func (l *LocalClusterResourceProvider) GetRigErrors(context.Context, string, *int32) ([]api.RigError, *api.APIError) {
+	return nil, rigsUnsupported()
+}
+
+func (l *LocalClusterResourceProvider) TerminateRigInstance(context.Context, string, bool) *api.APIError {
+	return rigsUnsupported()
+}

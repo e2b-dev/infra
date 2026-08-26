@@ -754,6 +754,69 @@ type ResumedSandbox struct {
 	Timeout *int32 `json:"timeout,omitempty"`
 }
 
+// Rig An orchestrator node pool backed by one cloud scaling group
+type Rig struct {
+	// CapacityCurrent Number of instances currently attached to the rig
+	CapacityCurrent int32 `json:"capacityCurrent"`
+
+	// CapacityDesired Desired number of instances in the rig
+	CapacityDesired int32 `json:"capacityDesired"`
+
+	// CapacityMax Maximum capacity enforced on the rig's scaling group. Omitted when nothing enforces bounds (GCP MIG without an active autoscaler).
+	CapacityMax *int32 `json:"capacityMax,omitempty"`
+
+	// CapacityMin Minimum capacity enforced on the rig's scaling group. Omitted when nothing enforces bounds (GCP MIG without an active autoscaler).
+	CapacityMin *int32 `json:"capacityMin,omitempty"`
+
+	// Id Rig identifier (e.g. "default")
+	Id string `json:"id"`
+
+	// Provider Cloud provider backing the rig ("aws" or "gcp")
+	Provider string `json:"provider"`
+
+	// ResourceID Canonical cloud resource ID of the scaling group backing the rig (ARN on AWS, self-link on GCP)
+	ResourceID string `json:"resourceID"`
+}
+
+// RigCapacityChange Desired capacity to set on the rig's scaling group
+type RigCapacityChange struct {
+	// Desired Absolute desired number of instances in the rig
+	Desired int32 `json:"desired"`
+}
+
+// RigError Scaling error on the rig's scaling group, e.g. a failed instance creation due to resource exhaustion
+type RigError struct {
+	// Action Action being performed when the error occurred (e.g. CREATING)
+	Action *string `json:"action,omitempty"`
+
+	// Code Provider-specific error code (e.g. ZONE_RESOURCE_POOL_EXHAUSTED, Failed)
+	Code string `json:"code"`
+
+	// Instance Instance the error relates to, if any
+	Instance *string `json:"instance,omitempty"`
+
+	// Message Human-readable error message
+	Message string `json:"message"`
+
+	// Timestamp When the error occurred
+	Timestamp time.Time `json:"timestamp"`
+}
+
+// RigInstance An instance attached to a rig's scaling group
+type RigInstance struct {
+	// CreatedAt When the provider created the instance. Omitted while the instance is transitioning.
+	CreatedAt *time.Time `json:"createdAt,omitempty"`
+
+	// Id Provider instance ID (EC2 instance ID on AWS, instance name on GCP), also the node ID the orchestrator reports
+	Id string `json:"id"`
+
+	// Terminating The instance is on its way out of the group and can never become healthy again
+	Terminating bool `json:"terminating"`
+
+	// Transitioning The provider is creating, deleting, recreating or otherwise mutating the instance
+	Transitioning bool `json:"transitioning"`
+}
+
 // Sandbox defines model for Sandbox.
 type Sandbox struct {
 	// Alias Alias of the template
@@ -1549,6 +1612,9 @@ type ApiKeyID = string
 // BuildID defines model for buildID.
 type BuildID = string
 
+// ClusterID defines model for clusterID.
+type ClusterID = openapi_types.UUID
+
 // NodeID defines model for nodeID.
 type NodeID = string
 
@@ -1557,6 +1623,9 @@ type PaginationLimit = int32
 
 // PaginationNextToken defines model for paginationNextToken.
 type PaginationNextToken = string
+
+// RigID defines model for rigID.
+type RigID = string
 
 // SandboxID defines model for sandboxID.
 type SandboxID = string
@@ -1594,6 +1663,9 @@ type N429 = Error
 // N500 defines model for 500.
 type N500 = Error
 
+// N501 defines model for 501.
+type N501 = Error
+
 // N502 defines model for 502.
 type N502 = Error
 
@@ -1602,6 +1674,18 @@ type N503 = Error
 
 // N504 defines model for 504.
 type N504 = Error
+
+// DeleteClustersClusterIDRigsInstancesInstanceIDParams defines parameters for DeleteClustersClusterIDRigsInstancesInstanceID.
+type DeleteClustersClusterIDRigsInstancesInstanceIDParams struct {
+	// DecrementDesired When true, desired capacity is decremented (rig shrinks); when false, the scaling group launches a replacement instance
+	DecrementDesired bool `form:"decrementDesired" json:"decrementDesired"`
+}
+
+// GetClustersClusterIDRigsRigIDErrorsParams defines parameters for GetClustersClusterIDRigsRigIDErrors.
+type GetClustersClusterIDRigsRigIDErrorsParams struct {
+	// Limit Maximum number of errors to return
+	Limit *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // GetNodesParams defines parameters for GetNodes.
 type GetNodesParams struct {
@@ -1785,6 +1869,9 @@ type PostApiKeysJSONRequestBody = NewTeamAPIKey
 
 // PatchApiKeysApiKeyIDJSONRequestBody defines body for PatchApiKeysApiKeyID for application/json ContentType.
 type PatchApiKeysApiKeyIDJSONRequestBody = UpdateTeamAPIKey
+
+// PutClustersClusterIDRigsRigIDCapacityJSONRequestBody defines body for PutClustersClusterIDRigsRigIDCapacity for application/json ContentType.
+type PutClustersClusterIDRigsRigIDCapacityJSONRequestBody = RigCapacityChange
 
 // PostNodesNodeIDJSONRequestBody defines body for PostNodesNodeID for application/json ContentType.
 type PostNodesNodeIDJSONRequestBody = NodeStatusChange
@@ -2169,6 +2256,52 @@ type ClientInterface interface {
 	//
 	// Corresponds with PATCH /api-keys/{apiKeyID} (the `PatchApiKeysApiKeyID` operationId).
 	PatchApiKeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetClustersClusterIDRigs List rigs of a cluster
+	//
+	// List the orchestrator node pools ("rigs") of a cluster with a snapshot of their scaling groups. Forwarded to the cluster's edge service; a cluster with no rig management configured returns an empty list, and the local cluster answers 501.
+	//
+	// Corresponds with GET /clusters/{clusterID}/rigs (the `GetClustersClusterIDRigs` operationId).
+	GetClustersClusterIDRigs(ctx context.Context, clusterID ClusterID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteClustersClusterIDRigsInstancesInstanceID Terminate an instance of a rig
+	//
+	// Terminate an instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+	//
+	// Corresponds with DELETE /clusters/{clusterID}/rigs/instances/{instanceID} (the `DeleteClustersClusterIDRigsInstancesInstanceID` operationId).
+	DeleteClustersClusterIDRigsInstancesInstanceID(ctx context.Context, clusterID ClusterID, instanceID string, params *DeleteClustersClusterIDRigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutClustersClusterIDRigsRigIDCapacityWithBody Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+	PutClustersClusterIDRigsRigIDCapacityWithBody(ctx context.Context, clusterID ClusterID, rigID RigID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutClustersClusterIDRigsRigIDCapacity Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+	PutClustersClusterIDRigsRigIDCapacity(ctx context.Context, clusterID ClusterID, rigID RigID, body PutClustersClusterIDRigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetClustersClusterIDRigsRigIDErrors List recent scaling errors of a rig
+	//
+	// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first.
+	//
+	// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/errors (the `GetClustersClusterIDRigsRigIDErrors` operationId).
+	GetClustersClusterIDRigsRigIDErrors(ctx context.Context, clusterID ClusterID, rigID RigID, params *GetClustersClusterIDRigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetClustersClusterIDRigsRigIDInstances List the instances attached to a rig
+	//
+	// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+	//
+	// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/instances (the `GetClustersClusterIDRigsRigIDInstances` operationId).
+	GetClustersClusterIDRigsRigIDInstances(ctx context.Context, clusterID ClusterID, rigID RigID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHealth Health check
 	//
@@ -3013,6 +3146,112 @@ func (c *Client) PatchApiKeysApiKeyIDWithBody(ctx context.Context, apiKeyID ApiK
 // Corresponds with PATCH /api-keys/{apiKeyID} (the `PatchApiKeysApiKeyID` operationId).
 func (c *Client) PatchApiKeysApiKeyID(ctx context.Context, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPatchApiKeysApiKeyIDRequest(c.Server, apiKeyID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetClustersClusterIDRigs List rigs of a cluster
+//
+// List the orchestrator node pools ("rigs") of a cluster with a snapshot of their scaling groups. Forwarded to the cluster's edge service; a cluster with no rig management configured returns an empty list, and the local cluster answers 501.
+//
+// Corresponds with GET /clusters/{clusterID}/rigs (the `GetClustersClusterIDRigs` operationId).
+func (c *Client) GetClustersClusterIDRigs(ctx context.Context, clusterID ClusterID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetClustersClusterIDRigsRequest(c.Server, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// DeleteClustersClusterIDRigsInstancesInstanceID Terminate an instance of a rig
+//
+// Terminate an instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+//
+// Corresponds with DELETE /clusters/{clusterID}/rigs/instances/{instanceID} (the `DeleteClustersClusterIDRigsInstancesInstanceID` operationId).
+func (c *Client) DeleteClustersClusterIDRigsInstancesInstanceID(ctx context.Context, clusterID ClusterID, instanceID string, params *DeleteClustersClusterIDRigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteClustersClusterIDRigsInstancesInstanceIDRequest(c.Server, clusterID, instanceID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutClustersClusterIDRigsRigIDCapacityWithBody Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+func (c *Client) PutClustersClusterIDRigsRigIDCapacityWithBody(ctx context.Context, clusterID ClusterID, rigID RigID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutClustersClusterIDRigsRigIDCapacityRequestWithBody(c.Server, clusterID, rigID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutClustersClusterIDRigsRigIDCapacity Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+func (c *Client) PutClustersClusterIDRigsRigIDCapacity(ctx context.Context, clusterID ClusterID, rigID RigID, body PutClustersClusterIDRigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutClustersClusterIDRigsRigIDCapacityRequest(c.Server, clusterID, rigID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetClustersClusterIDRigsRigIDErrors List recent scaling errors of a rig
+//
+// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first.
+//
+// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/errors (the `GetClustersClusterIDRigsRigIDErrors` operationId).
+func (c *Client) GetClustersClusterIDRigsRigIDErrors(ctx context.Context, clusterID ClusterID, rigID RigID, params *GetClustersClusterIDRigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetClustersClusterIDRigsRigIDErrorsRequest(c.Server, clusterID, rigID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetClustersClusterIDRigsRigIDInstances List the instances attached to a rig
+//
+// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+//
+// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/instances (the `GetClustersClusterIDRigsRigIDInstances` operationId).
+func (c *Client) GetClustersClusterIDRigsRigIDInstances(ctx context.Context, clusterID ClusterID, rigID RigID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetClustersClusterIDRigsRigIDInstancesRequest(c.Server, clusterID, rigID)
 	if err != nil {
 		return nil, err
 	}
@@ -4721,6 +4960,267 @@ func NewPatchApiKeysApiKeyIDRequestWithBody(server string, apiKeyID ApiKeyID, co
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetClustersClusterIDRigsRequest constructs an http.Request for the GetClustersClusterIDRigs method
+func NewGetClustersClusterIDRigsRequest(server string, clusterID ClusterID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "clusterID", clusterID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/clusters/%s/rigs", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteClustersClusterIDRigsInstancesInstanceIDRequest constructs an http.Request for the DeleteClustersClusterIDRigsInstancesInstanceID method
+func NewDeleteClustersClusterIDRigsInstancesInstanceIDRequest(server string, clusterID ClusterID, instanceID string, params *DeleteClustersClusterIDRigsInstancesInstanceIDParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "clusterID", clusterID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "instanceID", instanceID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/clusters/%s/rigs/instances/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "decrementDesired", params.DecrementDesired, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutClustersClusterIDRigsRigIDCapacityRequest calls the generic PutClustersClusterIDRigsRigIDCapacity builder with application/json body
+func NewPutClustersClusterIDRigsRigIDCapacityRequest(server string, clusterID ClusterID, rigID RigID, body PutClustersClusterIDRigsRigIDCapacityJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutClustersClusterIDRigsRigIDCapacityRequestWithBody(server, clusterID, rigID, "application/json", bodyReader)
+}
+
+// NewPutClustersClusterIDRigsRigIDCapacityRequestWithBody constructs an http.Request for the PutClustersClusterIDRigsRigIDCapacity method, with any body, and a specified content type
+func NewPutClustersClusterIDRigsRigIDCapacityRequestWithBody(server string, clusterID ClusterID, rigID RigID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "clusterID", clusterID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "rigID", rigID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/clusters/%s/rigs/%s/capacity", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetClustersClusterIDRigsRigIDErrorsRequest constructs an http.Request for the GetClustersClusterIDRigsRigIDErrors method
+func NewGetClustersClusterIDRigsRigIDErrorsRequest(server string, clusterID ClusterID, rigID RigID, params *GetClustersClusterIDRigsRigIDErrorsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "clusterID", clusterID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "rigID", rigID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/clusters/%s/rigs/%s/errors", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetClustersClusterIDRigsRigIDInstancesRequest constructs an http.Request for the GetClustersClusterIDRigsRigIDInstances method
+func NewGetClustersClusterIDRigsRigIDInstancesRequest(server string, clusterID ClusterID, rigID RigID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "clusterID", clusterID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "rigID", rigID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/clusters/%s/rigs/%s/instances", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -7659,6 +8159,60 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with PATCH /api-keys/{apiKeyID} (the `PatchApiKeysApiKeyID` operationId).
 	PatchApiKeysApiKeyIDWithResponse(ctx context.Context, apiKeyID ApiKeyID, body PatchApiKeysApiKeyIDJSONRequestBody, reqEditors ...RequestEditorFn) (*PatchApiKeysApiKeyIDResponse, error)
 
+	// GetClustersClusterIDRigsWithResponse List rigs of a cluster
+	//
+	// List the orchestrator node pools ("rigs") of a cluster with a snapshot of their scaling groups. Forwarded to the cluster's edge service; a cluster with no rig management configured returns an empty list, and the local cluster answers 501.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /clusters/{clusterID}/rigs (the `GetClustersClusterIDRigs` operationId).
+	GetClustersClusterIDRigsWithResponse(ctx context.Context, clusterID ClusterID, reqEditors ...RequestEditorFn) (*GetClustersClusterIDRigsResponse, error)
+
+	// DeleteClustersClusterIDRigsInstancesInstanceIDWithResponse Terminate an instance of a rig
+	//
+	// Terminate an instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with DELETE /clusters/{clusterID}/rigs/instances/{instanceID} (the `DeleteClustersClusterIDRigsInstancesInstanceID` operationId).
+	DeleteClustersClusterIDRigsInstancesInstanceIDWithResponse(ctx context.Context, clusterID ClusterID, instanceID string, params *DeleteClustersClusterIDRigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*DeleteClustersClusterIDRigsInstancesInstanceIDResponse, error)
+
+	// PutClustersClusterIDRigsRigIDCapacityWithBodyWithResponse Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+	PutClustersClusterIDRigsRigIDCapacityWithBodyWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutClustersClusterIDRigsRigIDCapacityResponse, error)
+
+	// PutClustersClusterIDRigsRigIDCapacityWithResponse Set the capacity of a rig
+	//
+	// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+	PutClustersClusterIDRigsRigIDCapacityWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, body PutClustersClusterIDRigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*PutClustersClusterIDRigsRigIDCapacityResponse, error)
+
+	// GetClustersClusterIDRigsRigIDErrorsWithResponse List recent scaling errors of a rig
+	//
+	// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/errors (the `GetClustersClusterIDRigsRigIDErrors` operationId).
+	GetClustersClusterIDRigsRigIDErrorsWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, params *GetClustersClusterIDRigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*GetClustersClusterIDRigsRigIDErrorsResponse, error)
+
+	// GetClustersClusterIDRigsRigIDInstancesWithResponse List the instances attached to a rig
+	//
+	// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/instances (the `GetClustersClusterIDRigsRigIDInstances` operationId).
+	GetClustersClusterIDRigsRigIDInstancesWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, reqEditors ...RequestEditorFn) (*GetClustersClusterIDRigsRigIDInstancesResponse, error)
+
 	// GetHealthWithResponse Health check
 	//
 	// Returns a wrapper object for the known response body format(s).
@@ -8888,6 +9442,379 @@ func (r PatchApiKeysApiKeyIDResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r PatchApiKeysApiKeyIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetClustersClusterIDRigsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Rig
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetClustersClusterIDRigsResponse) GetJSON200() *[]Rig {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetClustersClusterIDRigsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetClustersClusterIDRigsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetClustersClusterIDRigsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r GetClustersClusterIDRigsResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r GetClustersClusterIDRigsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetClustersClusterIDRigsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetClustersClusterIDRigsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetClustersClusterIDRigsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type DeleteClustersClusterIDRigsInstancesInstanceIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteClustersClusterIDRigsInstancesInstanceIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type PutClustersClusterIDRigsRigIDCapacityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) GetJSON409() *N409 {
+	return r.JSON409
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutClustersClusterIDRigsRigIDCapacityResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetClustersClusterIDRigsRigIDErrorsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]RigError
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) GetJSON200() *[]RigError {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetClustersClusterIDRigsRigIDErrorsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetClustersClusterIDRigsRigIDInstancesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]RigInstance
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// JSON501 the response for an HTTP 501 `application/json` response
+	JSON501 *N501
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) GetJSON200() *[]RigInstance {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetJSON501 returns the response for an HTTP 501 `application/json` response
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) GetJSON501() *N501 {
+	return r.JSON501
+}
+
+// GetBody returns the raw response body bytes
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetClustersClusterIDRigsRigIDInstancesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -12607,6 +13534,96 @@ func (c *ClientWithResponses) PatchApiKeysApiKeyIDWithResponse(ctx context.Conte
 	return ParsePatchApiKeysApiKeyIDResponse(rsp)
 }
 
+// GetClustersClusterIDRigsWithResponse List rigs of a cluster
+//
+// List the orchestrator node pools ("rigs") of a cluster with a snapshot of their scaling groups. Forwarded to the cluster's edge service; a cluster with no rig management configured returns an empty list, and the local cluster answers 501.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /clusters/{clusterID}/rigs (the `GetClustersClusterIDRigs` operationId).
+func (c *ClientWithResponses) GetClustersClusterIDRigsWithResponse(ctx context.Context, clusterID ClusterID, reqEditors ...RequestEditorFn) (*GetClustersClusterIDRigsResponse, error) {
+	rsp, err := c.GetClustersClusterIDRigs(ctx, clusterID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetClustersClusterIDRigsResponse(rsp)
+}
+
+// DeleteClustersClusterIDRigsInstancesInstanceIDWithResponse Terminate an instance of a rig
+//
+// Terminate an instance in whichever rig's scaling group it belongs to. The caller chooses whether the rig shrinks or the instance is replaced.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with DELETE /clusters/{clusterID}/rigs/instances/{instanceID} (the `DeleteClustersClusterIDRigsInstancesInstanceID` operationId).
+func (c *ClientWithResponses) DeleteClustersClusterIDRigsInstancesInstanceIDWithResponse(ctx context.Context, clusterID ClusterID, instanceID string, params *DeleteClustersClusterIDRigsInstancesInstanceIDParams, reqEditors ...RequestEditorFn) (*DeleteClustersClusterIDRigsInstancesInstanceIDResponse, error) {
+	rsp, err := c.DeleteClustersClusterIDRigsInstancesInstanceID(ctx, clusterID, instanceID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteClustersClusterIDRigsInstancesInstanceIDResponse(rsp)
+}
+
+// PutClustersClusterIDRigsRigIDCapacityWithBodyWithResponse Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+func (c *ClientWithResponses) PutClustersClusterIDRigsRigIDCapacityWithBodyWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutClustersClusterIDRigsRigIDCapacityResponse, error) {
+	rsp, err := c.PutClustersClusterIDRigsRigIDCapacityWithBody(ctx, clusterID, rigID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutClustersClusterIDRigsRigIDCapacityResponse(rsp)
+}
+
+// PutClustersClusterIDRigsRigIDCapacityWithResponse Set the capacity of a rig
+//
+// Set the desired instance count on the rig's scaling group. The value is passed to the cloud provider unchanged; violations of the group's bounds or conflicting concurrent operations surface as errors.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /clusters/{clusterID}/rigs/{rigID}/capacity (the `PutClustersClusterIDRigsRigIDCapacity` operationId).
+func (c *ClientWithResponses) PutClustersClusterIDRigsRigIDCapacityWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, body PutClustersClusterIDRigsRigIDCapacityJSONRequestBody, reqEditors ...RequestEditorFn) (*PutClustersClusterIDRigsRigIDCapacityResponse, error) {
+	rsp, err := c.PutClustersClusterIDRigsRigIDCapacity(ctx, clusterID, rigID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutClustersClusterIDRigsRigIDCapacityResponse(rsp)
+}
+
+// GetClustersClusterIDRigsRigIDErrorsWithResponse List recent scaling errors of a rig
+//
+// List recent scaling errors on the rig's scaling group (e.g. failed instance creations due to resource exhaustion), newest first.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/errors (the `GetClustersClusterIDRigsRigIDErrors` operationId).
+func (c *ClientWithResponses) GetClustersClusterIDRigsRigIDErrorsWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, params *GetClustersClusterIDRigsRigIDErrorsParams, reqEditors ...RequestEditorFn) (*GetClustersClusterIDRigsRigIDErrorsResponse, error) {
+	rsp, err := c.GetClustersClusterIDRigsRigIDErrors(ctx, clusterID, rigID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetClustersClusterIDRigsRigIDErrorsResponse(rsp)
+}
+
+// GetClustersClusterIDRigsRigIDInstancesWithResponse List the instances attached to a rig
+//
+// List the instances attached to the rig's scaling group with their creation time and transition state, sorted by instance ID.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/instances (the `GetClustersClusterIDRigsRigIDInstances` operationId).
+func (c *ClientWithResponses) GetClustersClusterIDRigsRigIDInstancesWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, reqEditors ...RequestEditorFn) (*GetClustersClusterIDRigsRigIDInstancesResponse, error) {
+	rsp, err := c.GetClustersClusterIDRigsRigIDInstances(ctx, clusterID, rigID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetClustersClusterIDRigsRigIDInstancesResponse(rsp)
+}
+
 // GetHealthWithResponse Health check
 //
 // Returns a wrapper object for the known response body format(s).
@@ -14154,6 +15171,310 @@ func ParsePatchApiKeysApiKeyIDResponse(rsp *http.Response) (*PatchApiKeysApiKeyI
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetClustersClusterIDRigsResponse parses an HTTP response from a GetClustersClusterIDRigsWithResponse call
+func ParseGetClustersClusterIDRigsResponse(rsp *http.Response) (*GetClustersClusterIDRigsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetClustersClusterIDRigsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Rig
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteClustersClusterIDRigsInstancesInstanceIDResponse parses an HTTP response from a DeleteClustersClusterIDRigsInstancesInstanceIDWithResponse call
+func ParseDeleteClustersClusterIDRigsInstancesInstanceIDResponse(rsp *http.Response) (*DeleteClustersClusterIDRigsInstancesInstanceIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteClustersClusterIDRigsInstancesInstanceIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutClustersClusterIDRigsRigIDCapacityResponse parses an HTTP response from a PutClustersClusterIDRigsRigIDCapacityWithResponse call
+func ParsePutClustersClusterIDRigsRigIDCapacityResponse(rsp *http.Response) (*PutClustersClusterIDRigsRigIDCapacityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutClustersClusterIDRigsRigIDCapacityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case rsp.StatusCode == 202:
+		break // No content-type
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetClustersClusterIDRigsRigIDErrorsResponse parses an HTTP response from a GetClustersClusterIDRigsRigIDErrorsWithResponse call
+func ParseGetClustersClusterIDRigsRigIDErrorsResponse(rsp *http.Response) (*GetClustersClusterIDRigsRigIDErrorsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetClustersClusterIDRigsRigIDErrorsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []RigError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetClustersClusterIDRigsRigIDInstancesResponse parses an HTTP response from a GetClustersClusterIDRigsRigIDInstancesWithResponse call
+func ParseGetClustersClusterIDRigsRigIDInstancesResponse(rsp *http.Response) (*GetClustersClusterIDRigsRigIDInstancesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetClustersClusterIDRigsRigIDInstancesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []RigInstance
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest N501
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
 
 	}
 
@@ -17004,6 +18325,21 @@ type ServerInterface interface {
 	// PatchApiKeysApiKeyID Update team API key
 	// (PATCH /api-keys/{apiKeyID})
 	PatchApiKeysApiKeyID(c *gin.Context, apiKeyID ApiKeyID)
+	// GetClustersClusterIDRigs List rigs of a cluster
+	// (GET /clusters/{clusterID}/rigs)
+	GetClustersClusterIDRigs(c *gin.Context, clusterID ClusterID)
+	// DeleteClustersClusterIDRigsInstancesInstanceID Terminate an instance of a rig
+	// (DELETE /clusters/{clusterID}/rigs/instances/{instanceID})
+	DeleteClustersClusterIDRigsInstancesInstanceID(c *gin.Context, clusterID ClusterID, instanceID string, params DeleteClustersClusterIDRigsInstancesInstanceIDParams)
+	// PutClustersClusterIDRigsRigIDCapacity Set the capacity of a rig
+	// (PUT /clusters/{clusterID}/rigs/{rigID}/capacity)
+	PutClustersClusterIDRigsRigIDCapacity(c *gin.Context, clusterID ClusterID, rigID RigID)
+	// GetClustersClusterIDRigsRigIDErrors List recent scaling errors of a rig
+	// (GET /clusters/{clusterID}/rigs/{rigID}/errors)
+	GetClustersClusterIDRigsRigIDErrors(c *gin.Context, clusterID ClusterID, rigID RigID, params GetClustersClusterIDRigsRigIDErrorsParams)
+	// GetClustersClusterIDRigsRigIDInstances List the instances attached to a rig
+	// (GET /clusters/{clusterID}/rigs/{rigID}/instances)
+	GetClustersClusterIDRigsRigIDInstances(c *gin.Context, clusterID ClusterID, rigID RigID)
 	// GetHealth Health check
 	// (GET /health)
 	GetHealth(c *gin.Context)
@@ -17388,6 +18724,189 @@ func (siw *ServerInterfaceWrapper) PatchApiKeysApiKeyID(c *gin.Context) {
 	}
 
 	siw.Handler.PatchApiKeysApiKeyID(c, apiKeyID)
+}
+
+// GetClustersClusterIDRigs operation middleware
+func (siw *ServerInterfaceWrapper) GetClustersClusterIDRigs(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterID" -------------
+	var clusterID ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterID", c.Param("clusterID"), &clusterID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter clusterID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetClustersClusterIDRigs(c, clusterID)
+}
+
+// DeleteClustersClusterIDRigsInstancesInstanceID operation middleware
+func (siw *ServerInterfaceWrapper) DeleteClustersClusterIDRigsInstancesInstanceID(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterID" -------------
+	var clusterID ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterID", c.Param("clusterID"), &clusterID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter clusterID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "instanceID" -------------
+	var instanceID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "instanceID", c.Param("instanceID"), &instanceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter instanceID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteClustersClusterIDRigsInstancesInstanceIDParams
+
+	// ------------- Required query parameter "decrementDesired" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "decrementDesired", c.Request.URL.Query(), &params.DecrementDesired, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter decrementDesired: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteClustersClusterIDRigsInstancesInstanceID(c, clusterID, instanceID, params)
+}
+
+// PutClustersClusterIDRigsRigIDCapacity operation middleware
+func (siw *ServerInterfaceWrapper) PutClustersClusterIDRigsRigIDCapacity(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterID" -------------
+	var clusterID ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterID", c.Param("clusterID"), &clusterID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter clusterID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "rigID" -------------
+	var rigID RigID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rigID", c.Param("rigID"), &rigID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter rigID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PutClustersClusterIDRigsRigIDCapacity(c, clusterID, rigID)
+}
+
+// GetClustersClusterIDRigsRigIDErrors operation middleware
+func (siw *ServerInterfaceWrapper) GetClustersClusterIDRigsRigIDErrors(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterID" -------------
+	var clusterID ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterID", c.Param("clusterID"), &clusterID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter clusterID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "rigID" -------------
+	var rigID RigID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rigID", c.Param("rigID"), &rigID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter rigID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetClustersClusterIDRigsRigIDErrorsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", c.Request.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter limit: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetClustersClusterIDRigsRigIDErrors(c, clusterID, rigID, params)
+}
+
+// GetClustersClusterIDRigsRigIDInstances operation middleware
+func (siw *ServerInterfaceWrapper) GetClustersClusterIDRigsRigIDInstances(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "clusterID" -------------
+	var clusterID ClusterID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "clusterID", c.Param("clusterID"), &clusterID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter clusterID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Path parameter "rigID" -------------
+	var rigID RigID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rigID", c.Param("rigID"), &rigID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter rigID: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetClustersClusterIDRigsRigIDInstances(c, clusterID, rigID)
 }
 
 // GetHealth operation middleware
@@ -19056,6 +20575,11 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.DELETE(options.BaseURL+"/secrets/:secretID", wrapper.DeleteSecretsSecretID)
 	router.GET(options.BaseURL+"/secrets/:secretID", wrapper.GetSecretsSecretID)
 	router.POST(options.BaseURL+"/secrets/:secretID", wrapper.PostSecretsSecretID)
+	router.GET(options.BaseURL+"/clusters/:clusterID/rigs", wrapper.GetClustersClusterIDRigs)
+	router.PUT(options.BaseURL+"/clusters/:clusterID/rigs/:rigID/capacity", wrapper.PutClustersClusterIDRigsRigIDCapacity)
+	router.DELETE(options.BaseURL+"/clusters/:clusterID/rigs/instances/:instanceID", wrapper.DeleteClustersClusterIDRigsInstancesInstanceID)
+	router.GET(options.BaseURL+"/clusters/:clusterID/rigs/:rigID/instances", wrapper.GetClustersClusterIDRigsRigIDInstances)
+	router.GET(options.BaseURL+"/clusters/:clusterID/rigs/:rigID/errors", wrapper.GetClustersClusterIDRigsRigIDErrors)
 }
 
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
@@ -19063,234 +20587,258 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"xvvbL7f/LwAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

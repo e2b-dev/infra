@@ -41,6 +41,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    "501":
+      description: Not implemented by this deployment
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     ClusterNodeInfo:
@@ -305,9 +311,141 @@ components:
           description: Map of sandbox IDs to their latest metrics
           additionalProperties:
             $ref: "#/components/schemas/SandboxMetric"
+    Rig:
+      type: object
+      description: An orchestrator node pool backed by one cloud scaling group
+      required:
+        - id
+        - provider
+        - resourceId
+        - capacityDesired
+        - capacityCurrent
+      properties:
+        id:
+          type: string
+          description: Rig identifier (e.g. "default")
+        provider:
+          type: string
+          description: Cloud provider backing the rig ("aws" or "gcp")
+        resourceId:
+          type: string
+          description: Canonical cloud resource ID of the scaling group backing the rig (ARN on AWS, self-link on GCP)
+        capacityDesired:
+          type: integer
+          format: int32
+          description: Desired number of instances in the rig
+        capacityMin:
+          type: integer
+          format: int32
+          description: >
+            Minimum capacity enforced on the rig's scaling group. Omitted when
+            nothing enforces bounds (GCP MIG without an active autoscaler).
+        capacityMax:
+          type: integer
+          format: int32
+          description: >
+            Maximum capacity enforced on the rig's scaling group. Omitted when
+            nothing enforces bounds (GCP MIG without an active autoscaler).
+        capacityCurrent:
+          type: integer
+          format: int32
+          description: Number of instances currently attached to the rig
+
+    RigsResponse:
+      type: object
+      description: >
+        Rigs managed by this cluster. Wrapped in an object so the endpoint can
+        grow additional fields without breaking clients.
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Rig"
+
+    RigCapacityRequest:
+      type: object
+      description: Desired capacity to set on the rig's scaling group
+      required:
+        - desired
+      properties:
+        desired:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Absolute desired number of instances in the rig
+
+    RigError:
+      type: object
+      description: >
+        Scaling error on the rig's scaling group, e.g. a failed instance
+        creation due to resource exhaustion
+      required:
+        - timestamp
+        - code
+        - message
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: When the error occurred
+        code:
+          type: string
+          description: Provider-specific error code (e.g. ZONE_RESOURCE_POOL_EXHAUSTED, Failed)
+        message:
+          type: string
+          description: Human-readable error message
+        instance:
+          type: string
+          nullable: true
+          description: Instance the error relates to, if any
+        action:
+          type: string
+          nullable: true
+          description: Action being performed when the error occurred (e.g. CREATING)
+
+    RigInstance:
+      type: object
+      description: An instance attached to a rig's scaling group
+      required:
+        - id
+        - createdAt
+        - transitioning
+        - terminating
+      properties:
+        id:
+          type: string
+          description: Provider instance ID (EC2 instance ID on AWS, instance name on GCP), also the node ID the orchestrator reports
+        createdAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the provider created the instance. Null while the instance is transitioning.
+        transitioning:
+          type: boolean
+          description: The provider is creating, deleting, recreating or otherwise mutating the instance
+        terminating:
+          type: boolean
+          description: The instance is on its way out of the group and can never become healthy again
+
+    RigInstancesResponse:
+      type: object
+      description: >
+        Instances attached to a rig's scaling group. Wrapped in an object so the
+        endpoint can grow additional fields without breaking clients.
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RigInstance"
+
 tags:
   - name: service-discovery
   - name: sandboxes
+  - name: rigs
 
 paths:
   /health:
@@ -627,3 +765,188 @@ paths:
           $ref: "#/components/responses/401"
         "500":
           $ref: "#/components/responses/500"
+
+  /v1/rigs:
+    get:
+      operationId: v1Rigs
+      summary: List rigs (orchestrator node pools)
+      description: >
+        List the rigs managed by this cluster with a snapshot of their scaling
+        groups. Clusters without rig management configured return an empty list.
+      security:
+        - ApiKeyAuth: []
+      tags: [rigs]
+      responses:
+        "200":
+          description: Successfully returned rigs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RigsResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/rigs/{rigID}/capacity:
+    put:
+      operationId: v1RigsRigIDCapacity
+      summary: Set the capacity of a rig
+      description: >
+        Set the desired instance count on the rig's scaling group. The value is
+        passed to the cloud provider unchanged; violations of the group's bounds
+        or conflicting concurrent operations surface as errors.
+      security:
+        - ApiKeyAuth: []
+      tags: [rigs]
+      parameters:
+        - name: rigID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Rig identifier (e.g. "default")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RigCapacityRequest"
+      responses:
+        "202":
+          description: Capacity change accepted
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+
+  /v1/rigs/instances/{instanceID}:
+    delete:
+      operationId: v1RigsInstancesInstanceID
+      summary: Terminate an instance in a rig
+      description: >
+        Terminate a specific instance in whichever rig's scaling group it belongs to.
+        The caller chooses whether the rig shrinks or the instance is replaced.
+      security:
+        - ApiKeyAuth: []
+      tags: [rigs]
+      parameters:
+        - name: instanceID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Provider instance ID
+        - name: decrementDesired
+          in: query
+          required: true
+          schema:
+            type: boolean
+          description: >
+            When true, desired capacity is decremented (rig shrinks);
+            when false, the scaling group launches a replacement instance
+      responses:
+        "202":
+          description: Instance termination accepted
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+
+  /v1/rigs/{rigID}/instances:
+    get:
+      operationId: v1RigsRigIDInstances
+      summary: List the instances attached to a rig
+      description: >
+        List the instances attached to the rig's scaling group with their
+        creation time and transition state, sorted by instance ID.
+      security:
+        - ApiKeyAuth: []
+      tags: [rigs]
+      parameters:
+        - name: rigID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Rig identifier (e.g. "default")
+      responses:
+        "200":
+          description: Successfully returned rig instances
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RigInstancesResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
+
+  /v1/rigs/{rigID}/errors:
+    get:
+      operationId: v1RigsRigIDErrors
+      summary: List recent scaling errors of a rig
+      description: >
+        List recent scaling errors on the rig's scaling group (e.g. failed
+        instance creations due to resource exhaustion), newest first
+      security:
+        - ApiKeyAuth: []
+      tags: [rigs]
+      parameters:
+        - name: rigID
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Rig identifier (e.g. "default")
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 50
+            default: 20
+          description: Maximum number of errors to return
+      responses:
+        "200":
+          description: Successfully returned rig errors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/RigError"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+        "501":
+          $ref: "#/components/responses/501"
