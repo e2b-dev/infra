@@ -134,17 +134,17 @@ func ExecCommandWithOutput(tb testing.TB, ctx context.Context, sbx *api.Sandbox,
 
 // Killing a sandbox resets the envd connection mid-frame, so a TTL expiry
 // surfaces as a Connect framing error ("incomplete envelope: unexpected EOF")
-// that names neither the sandbox nor the timeout. Every branch wraps streamErr,
-// which callers match against context.Canceled.
+// that names neither the sandbox nor the timeout.
 func diagnoseStreamErr(ctx context.Context, sbx *api.Sandbox, command string, streamErr error) error {
-	base := fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, streamErr)
-
-	switch {
-	case errors.Is(streamErr, context.Canceled):
-		return base
-	case errors.Is(streamErr, context.DeadlineExceeded):
-		return fmt.Errorf("command %s in sandbox %s did not finish before its deadline: %w", command, sbx.SandboxID, streamErr)
+	if cause := asContextFailure(ctx, streamErr, context.Canceled, connect.CodeCanceled); cause != nil {
+		return fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, cause)
 	}
+
+	if cause := asContextFailure(ctx, streamErr, context.DeadlineExceeded, connect.CodeDeadlineExceeded); cause != nil {
+		return fmt.Errorf("command %s in sandbox %s did not finish before its deadline: %w", command, sbx.SandboxID, cause)
+	}
+
+	base := fmt.Errorf("failed to execute command %s in sandbox %s: %w", command, sbx.SandboxID, streamErr)
 
 	// The caller's context is usually spent by the time the stream breaks.
 	probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), sandboxStateProbeTimeout)
@@ -172,4 +172,18 @@ func diagnoseStreamErr(ctx context.Context, sbx *api.Sandbox, command string, st
 		command, sbx.SandboxID, detail.State,
 		detail.StartedAt.Format(time.RFC3339), detail.EndAt.Format(time.RFC3339),
 		streamErr)
+}
+
+// connect may report a context failure in the code alone, leaving the sentinel
+// out of the chain that callers match on. The code alone also covers a peer's
+// RST_STREAM CANCEL, so only ctx tells our own cancellation from the far side's.
+func asContextFailure(ctx context.Context, err error, sentinel error, code connect.Code) error {
+	switch {
+	case errors.Is(err, sentinel):
+		return err
+	case connect.CodeOf(err) == code && errors.Is(ctx.Err(), sentinel):
+		return fmt.Errorf("%w: %w", err, sentinel)
+	}
+
+	return nil
 }
