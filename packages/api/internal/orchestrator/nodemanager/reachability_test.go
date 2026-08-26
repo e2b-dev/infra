@@ -86,7 +86,7 @@ func TestSync_NodeThatAnsweredIsNotUnreachable(t *testing.T) {
 
 	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1, WithFailingSandboxList())
 
-	n.Sync(t.Context(), nil)
+	require.NoError(t, n.Sync(t.Context(), nil), "a transient sync failure is handled locally, not escalated")
 
 	_, unreachable := n.UnreachableSince()
 	assert.False(t, unreachable, "a node that answered every RPC must not be marked unreachable")
@@ -100,7 +100,7 @@ func TestSync_SilentNodeIsUnreachable(t *testing.T) {
 
 	n := NewTestNode("test-node", api.NodeStatusReady, 0, 1, WithSilentInfoClient())
 
-	n.Sync(t.Context(), nil)
+	require.NoError(t, n.Sync(t.Context(), nil), "an unreachable node is handled locally, not escalated")
 
 	since, unreachable := n.UnreachableSince()
 	require.True(t, unreachable, "a node that never answered must be marked unreachable")

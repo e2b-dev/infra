@@ -101,8 +101,9 @@ func (o *Orchestrator) syncNodes(ctx context.Context, store *sandbox.Store, skip
 				// In local mode there is no Nomad discovery list to validate
 				// membership against, so sync the statically-connected node
 				// directly instead of evicting it every cycle. node.Sync still
-				// marks the node unhealthy if the orchestrator is unreachable.
-				n.Sync(ctx, store)
+				// marks the node unhealthy if the orchestrator is unreachable,
+				// and only errors when the conn is shut down for good.
+				err = n.Sync(ctx, store)
 			default:
 				err = o.syncNode(ctx, n, nomadNodes, store)
 			}
@@ -188,9 +189,7 @@ func (o *Orchestrator) syncClusterNode(ctx context.Context, node *nodemanager.No
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, store)
-
-	return nil
+	return node.Sync(ctx, store)
 }
 
 func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, discovered []nodemanager.NomadServiceDiscovery, store *sandbox.Store) error {
@@ -212,7 +211,5 @@ func (o *Orchestrator) syncNode(ctx context.Context, node *nodemanager.Node, dis
 	}
 
 	// Unified call for syncing node state across different node types
-	node.Sync(ctx, store)
-
-	return nil
+	return node.Sync(ctx, store)
 }

@@ -2,9 +2,11 @@ package nodemanager
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
+	"google.golang.org/grpc/connectivity"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -14,7 +16,10 @@ import (
 
 const syncMaxRetries = 4
 
-func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
+// Sync refreshes the node's status and sandbox list. A non-nil error means the
+// gRPC connection is permanently gone and the caller must deregister the node;
+// all other failures are handled locally (retries, then unhealthy) and return nil.
+func (n *Node) Sync(ctx context.Context, store *sandbox.Store) error {
 	syncRetrySuccess := false
 
 	// Tracked separately from success because the two answer different
@@ -25,6 +30,14 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 
 	for range syncMaxRetries {
 		client, ctx := n.GetClient(ctx)
+
+		// A shut-down conn never recovers — e.g. the cluster Instance was
+		// dropped and re-added under the same instance ID, leaving this node
+		// on the dead conn. Escalate for deregistration instead of retrying.
+		if client.Connection.GetState() == connectivity.Shutdown {
+			return fmt.Errorf("grpc connection to node %s is shut down", n.ID)
+		}
+
 		nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
 			logger.L().Error(ctx, "Error getting node info", zap.Error(err), logger.WithNodeID(n.ID))
@@ -90,4 +103,6 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) {
 		// Local status change, the timestamp is the time of the first unhealthy observation.
 		n.markUnhealthyLocal(ctx)
 	}
+
+	return nil
 }
