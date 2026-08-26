@@ -70,24 +70,26 @@ modprobe nbd nbds_max=4096
 mkdir -p /fc-vm
 
 # Mount envd buckets
+# disable_noobj_cache: s3fs caches negative lookups for stat_cache_expire (900s
+# default), hiding freshly uploaded envd/kernel/FC versions until the entry expires.
 envd_dir="/fc-envd"
 mkdir -p $envd_dir
-s3fs "${FC_ENV_PIPELINE_BUCKET_NAME}" "$envd_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o enable_noobj_cache
+s3fs "${FC_ENV_PIPELINE_BUCKET_NAME}" "$envd_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o disable_noobj_cache
 
 # Mount kernels
 kernels_dir="/fc-kernels"
 mkdir -p $kernels_dir
-s3fs "${FC_KERNELS_BUCKET_NAME}" "$kernels_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o enable_noobj_cache
+s3fs "${FC_KERNELS_BUCKET_NAME}" "$kernels_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o disable_noobj_cache
 
 # Mount FC versions
 fc_versions_dir="/fc-versions"
 mkdir -p $fc_versions_dir
-s3fs "${FC_VERSIONS_BUCKET_NAME}" "$fc_versions_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o enable_noobj_cache
+s3fs "${FC_VERSIONS_BUCKET_NAME}" "$fc_versions_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o disable_noobj_cache
 
 # Mount busybox
 busybox_dir="/fc-busybox"
 mkdir -p $busybox_dir
-s3fs "${FC_BUSYBOX_BUCKET_NAME}" "$busybox_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o enable_noobj_cache
+s3fs "${FC_BUSYBOX_BUCKET_NAME}" "$busybox_dir" -o allow_other -o umask=000 -o nonempty -o iam_role -o disable_noobj_cache
 
 # These variables are passed in via Terraform template interpolation
 aws s3 cp "s3://${SCRIPTS_BUCKET}/run-consul-${RUN_CONSUL_FILE_HASH}.sh" /opt/consul/bin/run-consul.sh
