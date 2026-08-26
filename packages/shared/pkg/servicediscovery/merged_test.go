@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// stubDiscovery is a Discovery stub returning canned nodes or an error.
+// stubDiscovery is a Discoverer stub returning canned nodes or an error.
 type stubDiscovery struct {
 	nodes   []Instance
 	err     error

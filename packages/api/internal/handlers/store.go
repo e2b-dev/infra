@@ -45,7 +45,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
-	"github.com/e2b-dev/infra/packages/shared/pkg/nodediscovery"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -73,7 +73,7 @@ type kubeClientFactory func() (kubernetes.Interface, error)
 // serviceDiscovery is the pair of discovery backends the API runs on: the node
 // plane (orchestrators) and the template-builder plane.
 type serviceDiscovery struct {
-	nodes            nodediscovery.Discovery
+	nodes            servicediscovery.Discoverer
 	templateBuilders clustersdiscovery.Discovery
 }
 
@@ -101,7 +101,7 @@ func newKubernetesServiceDiscovery(config cfg.Config, newKube kubeClientFactory)
 	}
 
 	return serviceDiscovery{
-		nodes: nodediscovery.NewKubernetes(
+		nodes: servicediscovery.NewKubernetes(
 			client,
 			config.K8sNamespace,
 			config.K8sOrchestratorPodLabelSelector,
@@ -116,7 +116,7 @@ func newKubernetesServiceDiscovery(config cfg.Config, newKube kubeClientFactory)
 }
 
 func newLocalServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
-	nodes, err := nodediscovery.NewLocal(config.LocalOrchestratorAddress)
+	nodes, err := servicediscovery.NewLocal(config.LocalOrchestratorAddress)
 	if err != nil {
 		return serviceDiscovery{}, fmt.Errorf("local orchestrator discovery: %w", err)
 	}
@@ -144,7 +144,7 @@ func newNomadServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
 		return serviceDiscovery{}, fmt.Errorf("nomad client: %w", err)
 	}
 
-	nodes := nodediscovery.NewNomad(client, config.NomadOrchestratorServiceNames)
+	nodes := servicediscovery.NewNomad(client, config.NomadOrchestratorServiceNames)
 	// Migration fallback: orchestrator jobs deployed from jobspecs that
 	// predate the service port-label fix register their service with an
 	// empty Address, so service discovery alone would miss them until
@@ -154,7 +154,7 @@ func newNomadServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
 	// once no legacy jobs remain. The pool is hardcoded: legacy jobs only
 	// ever ran on the "default" pool.
 	if config.NomadOrchestratorLegacyDiscoveryEnabled {
-		nodes = nodediscovery.NewMerged(nodes, nodediscovery.NewNomadNodePool(client, "default"))
+		nodes = servicediscovery.NewMerged(nodes, servicediscovery.NewNomadNodePool(client, "default"))
 	}
 
 	return serviceDiscovery{

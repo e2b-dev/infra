@@ -1,7 +1,7 @@
-// Package nodediscovery enumerates the running orchestrator and
+// Package servicediscovery enumerates the running orchestrator and
 // template-builder instances that callers route sandbox and build traffic to.
 //
-// Two adapter families implement Discovery and they report a broken source
+// Two adapter families implement Discoverer and they report a broken source
 // differently. Query adapters (NewNomad, NewNomadNodePool, NewKubernetes,
 // NewLocal) hit their source on every call and return its error, so the caller
 // skips the cycle and keeps its last known set; NewMerged propagates either
@@ -13,7 +13,7 @@
 // refresh reconciles against the response even when every DNS exchange failed,
 // so a total failure empties the set instead of preserving it. Which of these
 // behaviours this layer should have is an open decision, not an oversight.
-package nodediscovery
+package servicediscovery
 
 import (
 	"context"
@@ -23,7 +23,7 @@ import (
 	"go.opentelemetry.io/otel"
 )
 
-var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/nodediscovery")
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery")
 
 // Instance is a single discovered instance.
 type Instance struct {
@@ -46,10 +46,10 @@ func (i Instance) Address() string {
 	return net.JoinHostPort(i.IPAddress, strconv.Itoa(int(i.Port)))
 }
 
-// Discovery enumerates currently running instances. Implementations are safe
+// Discoverer enumerates currently running instances. Implementations are safe
 // for concurrent use; callers list on a fixed interval plus on demand from the
 // request path.
-type Discovery interface {
+type Discoverer interface {
 	ListInstances(ctx context.Context) ([]Instance, error)
 
 	// Start begins the background refresh a cached adapter needs before its
@@ -61,7 +61,7 @@ type Discovery interface {
 }
 
 // noSync gives the query adapters, which hold nothing to refresh, the
-// lifecycle half of Discovery.
+// lifecycle half of Discoverer.
 type noSync struct{}
 
 func (noSync) Start(context.Context) {}

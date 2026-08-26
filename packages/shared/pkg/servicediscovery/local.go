@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"context"
@@ -18,10 +18,10 @@ type localDiscovery struct {
 	instance Instance
 }
 
-// NewLocal builds a Discovery that always returns one instance reachable at
+// NewLocal builds a Discoverer that always returns one instance reachable at
 // addr. addr may be "host:port" or just "host"; when the port is omitted,
 // consts.OrchestratorAPIPort is used.
-func NewLocal(addr string) (Discovery, error) {
+func NewLocal(addr string) (Discoverer, error) {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
 		// Allow plain "host" without a port.

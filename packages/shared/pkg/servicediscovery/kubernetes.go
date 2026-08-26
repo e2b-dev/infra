@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"context"
@@ -26,10 +26,10 @@ type k8sDiscovery struct {
 	labelSelector string
 }
 
-// NewKubernetes creates a Kubernetes-backed Discovery.
+// NewKubernetes creates a Kubernetes-backed Discoverer.
 //
 // labelSelector is a metav1 label selector string, e.g. "app.kubernetes.io/name=orchestrator".
-func NewKubernetes(client kubernetes.Interface, namespace, labelSelector string) Discovery {
+func NewKubernetes(client kubernetes.Interface, namespace, labelSelector string) Discoverer {
 	return &k8sDiscovery{
 		client:        client,
 		namespace:     namespace,

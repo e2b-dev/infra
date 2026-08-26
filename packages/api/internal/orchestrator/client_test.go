@@ -26,7 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/nodediscovery"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -43,7 +43,7 @@ func newTestOrchestrator(t *testing.T, nomad *nomadapi.Client) *Orchestrator {
 
 	return &Orchestrator{
 		nodes:         smap.New[*nodemanager.Node](),
-		nodeDiscovery: nodediscovery.NewNomad(nomad, []string{"orchestrator"}),
+		nodeDiscovery: servicediscovery.NewNomad(nomad, []string{"orchestrator"}),
 		tel:           telemetry.NewNoopClient(),
 	}
 }

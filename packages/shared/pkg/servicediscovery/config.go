@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 type Config struct {
 	Provider         string `env:"PROVIDER,required"`

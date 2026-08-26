@@ -26,8 +26,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/nodediscovery"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -44,7 +44,7 @@ type SnapshotCacheInvalidator interface {
 
 type Orchestrator struct {
 	httpClient                    *http.Client
-	nodeDiscovery                 nodediscovery.Discovery
+	nodeDiscovery                 servicediscovery.Discoverer
 	sandboxStore                  *sandbox.Store
 	nodes                         *smap.Map[*nodemanager.Node]
 	placementAlgorithm            *placement.BestOfK
@@ -102,7 +102,7 @@ func New(
 	ctx context.Context,
 	config cfg.Config,
 	tel *telemetry.Client,
-	nodeDiscovery nodediscovery.Discovery,
+	nodeDiscovery servicediscovery.Discoverer,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	sqlcDB *sqlcdb.Client,

@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/samber/lo"
 )
 
-// mergedDiscovery unions a primary and a fallback Discovery, deduplicated by
+// mergedDiscovery unions a primary and a fallback Discoverer, deduplicated by
 // ID with the primary entry winning on conflict. It bridges the migration from
 // node-pool-based to service-based discovery: the service registration carries
 // the real bound port, so it wins when both backends report the same node.
@@ -18,13 +18,13 @@ import (
 // A cached backend cannot fail this way (see the package doc), so beneath one
 // the same union degrades to stale entries instead.
 type mergedDiscovery struct {
-	primary  Discovery
-	fallback Discovery
+	primary  Discoverer
+	fallback Discoverer
 }
 
-// NewMerged creates a Discovery that unions primary's and fallback's
+// NewMerged creates a Discoverer that unions primary's and fallback's
 // instances, deduplicated by ID with primary taking precedence.
-func NewMerged(primary, fallback Discovery) Discovery {
+func NewMerged(primary, fallback Discoverer) Discoverer {
 	return &mergedDiscovery{
 		primary:  primary,
 		fallback: fallback,

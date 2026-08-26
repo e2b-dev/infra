@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"encoding/json"

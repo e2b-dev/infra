@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"context"
@@ -26,10 +26,10 @@ type nomadDiscovery struct {
 	serviceNames []string
 }
 
-// NewNomad creates a Nomad-backed Discovery that enumerates registrations of
+// NewNomad creates a Nomad-backed Discoverer that enumerates registrations of
 // the given Nomad-native service names (e.g. "orchestrator"), unioned and
 // deduplicated by node.
-func NewNomad(client *nomadapi.Client, serviceNames []string) Discovery {
+func NewNomad(client *nomadapi.Client, serviceNames []string) Discoverer {
 	return &nomadDiscovery{
 		client:       client,
 		serviceNames: serviceNames,

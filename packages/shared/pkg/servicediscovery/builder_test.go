@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"testing"
@@ -9,12 +9,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func TestBuildServiceDiscoveryProvider_SelectsTheAdapterCaseInsensitively(t *testing.T) {
+func TestFromConfig_SelectsTheAdapterCaseInsensitively(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
 		config Config
-		want   Discovery
+		want   Discoverer
 	}{
 		"DNS": {
 			config: Config{Provider: "DNS", OrchestratorPort: cachedPort, DNSQuery: []string{"orchestrator.service"}, DNSResolverAddress: "127.0.0.1:53"},
@@ -30,7 +30,7 @@ func TestBuildServiceDiscoveryProvider_SelectsTheAdapterCaseInsensitively(t *tes
 		},
 		"STATIC": {
 			config: Config{Provider: "STATIC", OrchestratorPort: cachedPort, StaticEndpoints: []string{"10.0.0.1"}},
-			want:   &StaticServiceDiscovery{},
+			want:   &staticDiscovery{},
 		},
 	}
 
@@ -38,14 +38,14 @@ func TestBuildServiceDiscoveryProvider_SelectsTheAdapterCaseInsensitively(t *tes
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := BuildServiceDiscoveryProvider(tt.config, logger.NewNopLogger())
+			got, err := FromConfig(tt.config, logger.NewNopLogger())
 			require.NoError(t, err)
 			assert.IsType(t, tt.want, got)
 		})
 	}
 }
 
-func TestBuildServiceDiscoveryProvider_RejectsIncompleteConfig(t *testing.T) {
+func TestFromConfig_RejectsIncompleteConfig(t *testing.T) {
 	t.Parallel()
 
 	tests := map[string]struct {
@@ -66,7 +66,7 @@ func TestBuildServiceDiscoveryProvider_RejectsIncompleteConfig(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := BuildServiceDiscoveryProvider(tt.config, logger.NewNopLogger())
+			got, err := FromConfig(tt.config, logger.NewNopLogger())
 			require.Error(t, err)
 			assert.Nil(t, got)
 			if tt.wantErr != nil {
@@ -76,10 +76,10 @@ func TestBuildServiceDiscoveryProvider_RejectsIncompleteConfig(t *testing.T) {
 	}
 }
 
-func TestStaticServiceDiscovery_MapsEveryEndpointToTheConfiguredPort(t *testing.T) {
+func TestStatic_MapsEveryEndpointToTheConfiguredPort(t *testing.T) {
 	t.Parallel()
 
-	sd := NewStaticServiceDiscovery([]string{"10.0.0.1", "10.0.0.2"}, cachedPort)
+	sd := NewStatic([]string{"10.0.0.1", "10.0.0.2"}, cachedPort)
 
 	items, err := sd.ListInstances(t.Context())
 	require.NoError(t, err)

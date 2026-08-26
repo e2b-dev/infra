@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"context"
@@ -30,9 +30,9 @@ type nomadNodePoolDiscovery struct {
 	nodePool string
 }
 
-// NewNomadNodePool creates a Nomad-backed Discovery that lists ready nodes in
+// NewNomadNodePool creates a Nomad-backed Discoverer that lists ready nodes in
 // the given node pool. See the nomadNodePoolDiscovery doc for why this exists.
-func NewNomadNodePool(client *nomadapi.Client, nodePool string) Discovery {
+func NewNomadNodePool(client *nomadapi.Client, nodePool string) Discoverer {
 	return &nomadNodePoolDiscovery{
 		client:   client,
 		nodePool: nodePool,

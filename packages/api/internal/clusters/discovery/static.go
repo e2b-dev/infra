@@ -9,23 +9,23 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
-// StaticServiceDiscovery returns a fixed (possibly empty) list of items on
+// staticDiscovery returns a fixed (possibly empty) list of items on
 // every Query. It is used for local development against the darwin dummy
 // orchestrator where no template-builder instances exist.
-type StaticServiceDiscovery struct {
+type staticDiscovery struct {
 	items []Item
 }
 
 // NewStaticDiscovery returns a Discovery that always responds with the given
 // items. Passing nil yields an empty-but-non-error discovery.
 func NewStaticDiscovery(items []Item) Discovery {
-	return &StaticServiceDiscovery{items: items}
+	return &staticDiscovery{items: items}
 }
 
 // NewStaticFromAddress returns a Discovery holding a single instance reachable
 // at addr, which may be "host:port" or just "host" (defaulting to
 // consts.OrchestratorAPIPort). It mirrors the shared
-// nodediscovery.NewLocal — the two are a hand-maintained duplicate address
+// servicediscovery.NewLocal — the two are a hand-maintained duplicate address
 // parser fed by the same config value from the store's provider switch.
 //
 // A local orchestrator can serve the template-builder role as well
@@ -62,7 +62,7 @@ func NewStaticFromAddress(addr string) (Discovery, error) {
 	}), nil
 }
 
-func (sd *StaticServiceDiscovery) Query(_ context.Context) ([]Item, error) {
+func (sd *staticDiscovery) Query(_ context.Context) ([]Item, error) {
 	if sd.items == nil {
 		return []Item{}, nil
 	}

@@ -1,4 +1,4 @@
-package nodediscovery
+package servicediscovery
 
 import (
 	"errors"
@@ -18,9 +18,9 @@ const (
 	K8sPodsProvider   = "K8S-PODS"
 )
 
-// BuildServiceDiscoveryProvider selects a cached adapter from configuration;
+// FromConfig selects a cached adapter from configuration;
 // the query adapters have no config shape and are constructed directly.
-func BuildServiceDiscoveryProvider(config Config, logger logger.Logger) (Discovery, error) {
+func FromConfig(config Config, logger logger.Logger) (Discoverer, error) {
 	switch strings.ToUpper(config.Provider) {
 	case DnsProviderKey:
 		return createDnsProvider(config, logger)
@@ -40,7 +40,7 @@ var (
 	ErrMissingDNSQuery    = errors.New("missing DNS query")
 )
 
-func createDnsProvider(config Config, logger logger.Logger) (Discovery, error) {
+func createDnsProvider(config Config, logger logger.Logger) (Discoverer, error) {
 	dnsResolverAddress := config.DNSResolverAddress
 	if dnsResolverAddress == "" {
 		return nil, ErrMissingDNSResolver
@@ -59,7 +59,7 @@ var (
 	ErrMissingPodLabels    = errors.New("missing pod labels")
 )
 
-func createK8sProvider(config Config, logger logger.Logger) (Discovery, error) {
+func createK8sProvider(config Config, logger logger.Logger) (Discoverer, error) {
 	podNamespace := config.PodNamespace
 	if podNamespace == "" {
 		return nil, ErrMissingPodNamespace
@@ -91,7 +91,7 @@ var (
 	ErrMissingNomadToken    = errors.New("missing nomad token")
 )
 
-func createNomadProvider(config Config, logger logger.Logger) (Discovery, error) {
+func createNomadProvider(config Config, logger logger.Logger) (Discoverer, error) {
 	nomadEndpoint := config.NomadEndpoint
 	if nomadEndpoint == "" {
 		return nil, ErrMissingNomadEndpoint
@@ -107,11 +107,11 @@ func createNomadProvider(config Config, logger logger.Logger) (Discovery, error)
 
 var ErrMissingStaticEndpoints = errors.New("missing static endpoints")
 
-func createStaticProvider(config Config) (Discovery, error) {
+func createStaticProvider(config Config) (Discoverer, error) {
 	static := config.StaticEndpoints
 	if len(static) == 0 {
 		return nil, ErrMissingStaticEndpoints
 	}
 
-	return NewStaticServiceDiscovery(static, config.OrchestratorPort), nil
+	return NewStatic(static, config.OrchestratorPort), nil
 }
