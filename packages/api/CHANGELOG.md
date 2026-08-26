@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.5.0 (2026-08-26)
+
+
+### Features
+
+* **api:** admin rig passthrough for remote clusters (6586f22)
+* **snapshots:** gate in-place checkpoint and fs-only snapshots on FC release &gt;= 0.2.0 (c7b5dff)
+
+
+### Bug Fixes
+
+* **api:** deregister node when its grpc connection is shut down (44d9dad)
+* **api:** fail the snapshot build when a pause is rejected (036a174)
+* **api:** finish snapshot builds on client disconnect (bd31fc4)
+
+
+### Code Refactoring
+
+* **api:** reuse the filesystem-only snapshot predicate (7829b43)
+* rename the discovery package for what it discovers (2c8ad0d)
+
 ## 0.4.0 (2026-08-25)
 
 
