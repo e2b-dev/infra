@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.0 (2026-08-27)
+
+
+### Features
+
+* **network:** accept wildcard transform domains (838ed57)
+
+
+### Bug Fixes
+
+* **api:** include template and build IDs in create errors (929b6b7)
+
 ## 0.5.1 (2026-08-27)
 
 
