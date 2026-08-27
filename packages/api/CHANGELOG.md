@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.6.2 (2026-08-27)
+
+
+### Bug Fixes
+
+* **api:** drop the evictor's fs-only version degrade (d765459)
+
+
+### Miscellaneous Chores
+
+* **api:** fix comment & linter (d0903da)
+
 ## 0.6.1 (2026-08-27)
 
 
