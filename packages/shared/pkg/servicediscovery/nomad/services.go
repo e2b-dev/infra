@@ -1,4 +1,4 @@
-package servicediscovery
+package nomad
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	nomadapi "github.com/hashicorp/nomad/api"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
 
 // nomadDiscovery lists registrations of the Nomad-native services (provider =
@@ -20,29 +21,29 @@ import (
 // is acceptable because callers health-gate every discovered instance through
 // the orchestrator's gRPC ServiceInfo probe after connecting.
 type nomadDiscovery struct {
-	noSync
+	servicediscovery.NoSync
 
 	client       *nomadapi.Client
 	serviceNames []string
 }
 
-// NewNomad creates a Nomad-backed Discoverer that enumerates registrations of
+// NewServices creates a Nomad-backed servicediscovery.Discoverer that enumerates registrations of
 // the given Nomad-native service names (e.g. "orchestrator"), unioned and
 // deduplicated by node.
-func NewNomad(client *nomadapi.Client, serviceNames []string) Discoverer {
+func NewServices(client *nomadapi.Client, serviceNames []string) servicediscovery.Discoverer {
 	return &nomadDiscovery{
 		client:       client,
 		serviceNames: serviceNames,
 	}
 }
 
-func (d *nomadDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
+func (d *nomadDiscovery) ListInstances(ctx context.Context) ([]servicediscovery.Instance, error) {
 	ctx, span := tracer.Start(ctx, "list-nomad-orchestrator-service")
 	defer span.End()
 
 	opts := (&nomadapi.QueryOptions{}).WithContext(ctx)
 
-	var out []Instance
+	var out []servicediscovery.Instance
 	seen := make(map[string]struct{})
 	for _, serviceName := range d.serviceNames {
 		// Fail if ANY service listing fails: silently degrading to a subset of
@@ -77,7 +78,7 @@ func (d *nomadDiscovery) ListInstances(ctx context.Context) ([]Instance, error) 
 				shortID = shortID[:consts.NodeIDLength]
 			}
 
-			out = append(out, Instance{
+			out = append(out, servicediscovery.Instance{
 				WorkloadID: shortID,
 				NodeID:     reg.NodeID,
 				IPAddress:  reg.Address,

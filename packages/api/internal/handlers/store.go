@@ -46,6 +46,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
 	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/kube"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/nomad"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -120,12 +122,12 @@ func newKubernetesServiceDiscovery(config cfg.Config, newKube kubeClientFactory)
 	}
 
 	return serviceDiscovery{
-		nodes: servicediscovery.NewKubernetes(
+		nodes: kube.NewPods(
 			client,
 			config.K8sNamespace,
 			config.K8sOrchestratorPodLabelSelector,
 		),
-		templateBuilders: servicediscovery.NewKubernetes(
+		templateBuilders: kube.NewPods(
 			client,
 			config.K8sNamespace,
 			config.K8sTemplateManagerPodLabelSelector,
@@ -156,7 +158,7 @@ func newNomadServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
 		return serviceDiscovery{}, fmt.Errorf("nomad client: %w", err)
 	}
 
-	nodes := servicediscovery.NewNomad(client, config.NomadOrchestratorServiceNames)
+	nodes := nomad.NewServices(client, config.NomadOrchestratorServiceNames)
 	// Migration fallback: orchestrator jobs deployed from jobspecs that
 	// predate the service port-label fix register their service with an
 	// empty Address, so service discovery alone would miss them until
@@ -166,12 +168,12 @@ func newNomadServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
 	// once no legacy jobs remain. The pool is hardcoded: legacy jobs only
 	// ever ran on the "default" pool.
 	if config.NomadOrchestratorLegacyDiscoveryEnabled {
-		nodes = servicediscovery.NewMerged(nodes, servicediscovery.NewNomadNodePool(client, "default"))
+		nodes = servicediscovery.NewMerged(nodes, nomad.NewNodePool(client, "default"))
 	}
 
 	return serviceDiscovery{
 		nodes:            nodes,
-		templateBuilders: servicediscovery.NewNomadAllocations(client, sharedclusters.FilterTemplateBuilders),
+		templateBuilders: nomad.NewAllocations(client, sharedclusters.FilterTemplateBuilders),
 	}, nil
 }
 

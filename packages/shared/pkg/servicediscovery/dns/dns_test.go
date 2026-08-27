@@ -1,4 +1,4 @@
-package servicediscovery
+package dns
 
 import (
 	"net"
@@ -46,7 +46,7 @@ func stubResolver(t *testing.T, rcode int, answers []string) string {
 func TestDNS_AFailureRcodeIsReportedAsAnError(t *testing.T) {
 	t.Parallel()
 
-	d := NewDNS([]string{"orchestrator.service"}, stubResolver(t, dns.RcodeServerFailure, nil), 5008)
+	d := New([]string{"orchestrator.service"}, stubResolver(t, dns.RcodeServerFailure, nil), 5008)
 
 	instances, err := d.ListInstances(t.Context())
 	require.Error(t, err, "a SERVFAIL must not read as an empty fleet")
@@ -59,7 +59,7 @@ func TestDNS_AFailureRcodeIsReportedAsAnError(t *testing.T) {
 func TestDNS_NoRecordsIsASuccessfulEmptySet(t *testing.T) {
 	t.Parallel()
 
-	d := NewDNS([]string{"orchestrator.service"}, stubResolver(t, dns.RcodeSuccess, nil), 5008)
+	d := New([]string{"orchestrator.service"}, stubResolver(t, dns.RcodeSuccess, nil), 5008)
 
 	instances, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
@@ -69,7 +69,7 @@ func TestDNS_NoRecordsIsASuccessfulEmptySet(t *testing.T) {
 func TestDNS_ResolvedAddressesBecomeInstances(t *testing.T) {
 	t.Parallel()
 
-	d := NewDNS([]string{"orchestrator.service"}, stubResolver(t, dns.RcodeSuccess, []string{"10.0.0.1"}), 5008)
+	d := New([]string{"orchestrator.service"}, stubResolver(t, dns.RcodeSuccess, []string{"10.0.0.1"}), 5008)
 
 	instances, err := d.ListInstances(t.Context())
 	require.NoError(t, err)

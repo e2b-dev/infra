@@ -17,7 +17,7 @@ const localInstanceID = "local"
 // development against the darwin dummy orchestrator where neither Nomad nor
 // Kubernetes is available.
 type localDiscovery struct {
-	noSync
+	NoSync
 
 	instance Instance
 }

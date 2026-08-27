@@ -1,4 +1,4 @@
-package servicediscovery
+package nomad
 
 import (
 	"encoding/json"
@@ -58,7 +58,7 @@ func TestNomadNodePoolDiscovery_MapsNodes(t *testing.T) {
 		{ID: fullNodeID, Address: "10.0.0.1", Status: "ready", NodePool: "default"},
 	}, nil)
 
-	d := NewNomadNodePool(client, "default")
+	d := NewNodePool(client, "default")
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
@@ -79,7 +79,7 @@ func TestNomadNodePoolDiscovery_FiltersByStatusAndPool(t *testing.T) {
 	var gotFilter string
 	client := newNomadNodesMock(t, nil, &gotFilter)
 
-	d := NewNomadNodePool(client, "orchestrator-pool")
+	d := NewNodePool(client, "orchestrator-pool")
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)

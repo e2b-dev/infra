@@ -1,4 +1,4 @@
-package servicediscovery
+package provider
 
 import (
 	"errors"
@@ -11,6 +11,10 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/dns"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/kube"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/nomad"
 )
 
 const (
@@ -20,9 +24,9 @@ const (
 	K8sPodsProvider   = "K8S-PODS"
 )
 
-// FromConfig selects a cached adapter from configuration;
+// New selects a cached backend from configuration;
 // the query adapters have no config shape and are constructed directly.
-func FromConfig(config Config, logger logger.Logger) (Discoverer, error) {
+func New(config servicediscovery.Config, logger logger.Logger) (servicediscovery.Discoverer, error) {
 	switch strings.ToUpper(config.Provider) {
 	case DnsProviderKey:
 		return createDnsProvider(config, logger)
@@ -42,7 +46,7 @@ var (
 	ErrMissingDNSQuery    = errors.New("missing DNS query")
 )
 
-func createDnsProvider(config Config, logger logger.Logger) (Discoverer, error) {
+func createDnsProvider(config servicediscovery.Config, logger logger.Logger) (servicediscovery.Discoverer, error) {
 	dnsResolverAddress := config.DNSResolverAddress
 	if dnsResolverAddress == "" {
 		return nil, ErrMissingDNSResolver
@@ -53,7 +57,7 @@ func createDnsProvider(config Config, logger logger.Logger) (Discoverer, error) 
 		return nil, ErrMissingDNSQuery
 	}
 
-	return Cached(NewDNS(dnsHosts, dnsResolverAddress, config.OrchestratorPort), logger), nil
+	return servicediscovery.Cached(dns.New(dnsHosts, dnsResolverAddress, config.OrchestratorPort), logger), nil
 }
 
 var (
@@ -61,7 +65,7 @@ var (
 	ErrMissingPodLabels    = errors.New("missing pod labels")
 )
 
-func createK8sProvider(config Config, logger logger.Logger) (Discoverer, error) {
+func createK8sProvider(config servicediscovery.Config, logger logger.Logger) (servicediscovery.Discoverer, error) {
 	podNamespace := config.PodNamespace
 	if podNamespace == "" {
 		return nil, ErrMissingPodNamespace
@@ -85,7 +89,7 @@ func createK8sProvider(config Config, logger logger.Logger) (Discoverer, error) 
 		return nil, fmt.Errorf("failed to build in-cluster client: %w", err)
 	}
 
-	return Cached(NewKubernetesOnPort(client, podNamespace, podLabels, config.OrchestratorPort, hostIP), logger), nil
+	return servicediscovery.Cached(kube.NewPodsOnPort(client, podNamespace, podLabels, config.OrchestratorPort, hostIP), logger), nil
 }
 
 var (
@@ -93,7 +97,7 @@ var (
 	ErrMissingNomadToken    = errors.New("missing nomad token")
 )
 
-func createNomadProvider(config Config, logger logger.Logger) (Discoverer, error) {
+func createNomadProvider(config servicediscovery.Config, logger logger.Logger) (servicediscovery.Discoverer, error) {
 	nomadEndpoint := config.NomadEndpoint
 	if nomadEndpoint == "" {
 		return nil, ErrMissingNomadEndpoint
@@ -109,16 +113,16 @@ func createNomadProvider(config Config, logger logger.Logger) (Discoverer, error
 		return nil, fmt.Errorf("creating nomad client: %w", err)
 	}
 
-	return Cached(NewNomadAllocationsOnPort(client, discovery.FilterTemplateBuildersAndOrchestrators, config.OrchestratorPort), logger), nil
+	return servicediscovery.Cached(nomad.NewAllocationsOnPort(client, discovery.FilterTemplateBuildersAndOrchestrators, config.OrchestratorPort), logger), nil
 }
 
 var ErrMissingStaticEndpoints = errors.New("missing static endpoints")
 
-func createStaticProvider(config Config) (Discoverer, error) {
+func createStaticProvider(config servicediscovery.Config) (servicediscovery.Discoverer, error) {
 	static := config.StaticEndpoints
 	if len(static) == 0 {
 		return nil, ErrMissingStaticEndpoints
 	}
 
-	return NewStatic(static, config.OrchestratorPort), nil
+	return servicediscovery.NewStatic(static, config.OrchestratorPort), nil
 }

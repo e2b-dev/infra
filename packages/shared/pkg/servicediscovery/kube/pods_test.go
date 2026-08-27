@@ -1,4 +1,4 @@
-package servicediscovery
+package kube
 
 import (
 	"net"
@@ -12,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
 
 const (
@@ -57,7 +58,7 @@ func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 	pod2 := newOrchestratorPod("orchestrator-abcde-klmno", "10.0.0.2", true)
 
 	client := fake.NewSimpleClientset(pod1, pod2)
-	d := NewKubernetes(client, testNamespace, testLabelSelector)
+	d := NewPods(client, testNamespace, testLabelSelector)
 
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
@@ -69,7 +70,7 @@ func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 		"pods with a shared prefix must produce distinct IDs")
 
 	// ID must equal the full pod name on the K8s backend.
-	byID := map[string]Instance{}
+	byID := map[string]servicediscovery.Instance{}
 	for _, n := range nodes {
 		byID[n.WorkloadID] = n
 	}
@@ -95,7 +96,7 @@ func TestKubernetesDiscovery_FiltersNotReady(t *testing.T) {
 	notReady := newOrchestratorPod("orchestrator-aaaaa-ccccc", "10.0.0.2", false)
 
 	client := fake.NewSimpleClientset(ready, notReady)
-	d := NewKubernetes(client, testNamespace, testLabelSelector)
+	d := NewPods(client, testNamespace, testLabelSelector)
 
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
@@ -121,7 +122,7 @@ func TestKubernetesDiscovery_FiltersPending(t *testing.T) {
 	}
 
 	client := fake.NewSimpleClientset(pending)
-	d := NewKubernetes(client, testNamespace, testLabelSelector)
+	d := NewPods(client, testNamespace, testLabelSelector)
 
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
@@ -148,7 +149,7 @@ func TestKubernetesDiscovery_FiltersMissingIP(t *testing.T) {
 	}
 
 	client := fake.NewSimpleClientset(noIP)
-	d := NewKubernetes(client, testNamespace, testLabelSelector)
+	d := NewPods(client, testNamespace, testLabelSelector)
 
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)

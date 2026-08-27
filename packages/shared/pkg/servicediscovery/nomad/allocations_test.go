@@ -1,4 +1,4 @@
-package servicediscovery
+package nomad
 
 import (
 	"encoding/json"
@@ -12,6 +12,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
 
 func newNomadAllocationsMock(t *testing.T, allocations []map[string]any) *nomadapi.Client {
@@ -59,11 +60,11 @@ func TestNomadAllocationDiscovery_IdentifiesTheAllocationAndTheMachineSeparately
 		nomadAllocation("alloc-2", "nomad-node-1", "10.1.0.2"),
 	})
 
-	instances, err := NewNomadAllocations(client, discovery.FilterTemplateBuilders).ListInstances(t.Context())
+	instances, err := NewAllocations(client, discovery.FilterTemplateBuilders).ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, instances, 2)
 
-	assert.Equal(t, []Instance{
+	assert.Equal(t, []servicediscovery.Instance{
 		{WorkloadID: "alloc-1", NodeID: "nomad-node-1", IPAddress: "10.1.0.1", Port: consts.OrchestratorAPIPort},
 		{WorkloadID: "alloc-2", NodeID: "nomad-node-1", IPAddress: "10.1.0.2", Port: consts.OrchestratorAPIPort},
 	}, instances, "same machine, two allocations, two instances")
@@ -80,6 +81,6 @@ func TestNomadAllocationDiscovery_PropagatesAListingFailure(t *testing.T) {
 	client, err := nomadapi.NewClient(&nomadapi.Config{Address: srv.URL})
 	require.NoError(t, err)
 
-	_, err = NewNomadAllocations(client, discovery.FilterTemplateBuilders).ListInstances(t.Context())
+	_, err = NewAllocations(client, discovery.FilterTemplateBuilders).ListInstances(t.Context())
 	require.Error(t, err, "a failed listing must not read as an empty fleet")
 }

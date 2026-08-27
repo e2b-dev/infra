@@ -1,4 +1,4 @@
-package servicediscovery
+package nomad
 
 import (
 	"encoding/json"
@@ -73,7 +73,7 @@ func TestNomadDiscovery_MapsRegistrations(t *testing.T) {
 		},
 	})
 
-	d := NewNomad(client, []string{testServiceName})
+	d := NewServices(client, []string{testServiceName})
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
@@ -98,7 +98,7 @@ func TestNomadDiscovery_DeduplicatesByNode(t *testing.T) {
 		{ID: "_nomad-task-other-orchestrator", ServiceName: testServiceName, NodeID: "eeff00112233445566778899aabbccddeeff0011", Address: "10.0.0.2", Port: 5008},
 	})
 
-	d := NewNomad(client, []string{testServiceName})
+	d := NewServices(client, []string{testServiceName})
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
@@ -124,7 +124,7 @@ func TestNomadDiscovery_UnionsServices(t *testing.T) {
 		},
 	})
 
-	d := NewNomad(client, []string{testServiceName, "orchestrator-canary"})
+	d := NewServices(client, []string{testServiceName, "orchestrator-canary"})
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 2)
@@ -142,7 +142,7 @@ func TestNomadDiscovery_SkipsMissingAddress(t *testing.T) {
 		{ID: "_nomad-task-a-orchestrator", ServiceName: testServiceName, NodeID: "aabbccdd11223344aabbccdd11223344aabbccdd", Port: 5008},
 	})
 
-	d := NewNomad(client, []string{testServiceName})
+	d := NewServices(client, []string{testServiceName})
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)
@@ -156,7 +156,7 @@ func TestNomadDiscovery_EmptyService(t *testing.T) {
 
 	client := newNomadServiceMock(t, nil)
 
-	d := NewNomad(client, []string{testServiceName})
+	d := NewServices(client, []string{testServiceName})
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	assert.Empty(t, nodes)

@@ -17,7 +17,7 @@ import (
 // scheduler: the service instance id is already per-run, so it is the ID
 // directly.
 type remoteDiscovery struct {
-	noSync
+	NoSync
 
 	client *api.ClientWithResponses
 }

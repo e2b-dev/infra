@@ -1,15 +1,19 @@
-package servicediscovery
+package kube
 
 import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/kube")
 
 // k8sDiscovery lists pods of the orchestrator DaemonSet via the K8s API
 // server.
@@ -19,7 +23,7 @@ import (
 // only return pods that are Running and have Ready=True, mirroring the Nomad
 // equivalent's "Status == ready" filter.
 type k8sDiscovery struct {
-	noSync
+	servicediscovery.NoSync
 
 	client        kubernetes.Interface
 	namespace     string
@@ -33,10 +37,10 @@ type k8sDiscovery struct {
 	preferPodIP bool
 }
 
-// NewKubernetes creates a Kubernetes-backed Discoverer.
+// NewPods creates a Kubernetes-backed servicediscovery.Discoverer.
 //
 // labelSelector is a metav1 label selector string, e.g. "app.kubernetes.io/name=orchestrator".
-func NewKubernetes(client kubernetes.Interface, namespace, labelSelector string) Discoverer {
+func NewPods(client kubernetes.Interface, namespace, labelSelector string) servicediscovery.Discoverer {
 	return &k8sDiscovery{
 		client:        client,
 		namespace:     namespace,
@@ -45,9 +49,9 @@ func NewKubernetes(client kubernetes.Interface, namespace, labelSelector string)
 	}
 }
 
-// NewKubernetesOnPort is NewKubernetes for a consumer that carries its own port
+// NewPodsOnPort is NewPods for a consumer that carries its own port
 // and, unless preferHostIP, addresses pods by their pod IP.
-func NewKubernetesOnPort(client kubernetes.Interface, namespace, labelSelector string, port uint16, preferHostIP bool) Discoverer {
+func NewPodsOnPort(client kubernetes.Interface, namespace, labelSelector string, port uint16, preferHostIP bool) servicediscovery.Discoverer {
 	return &k8sDiscovery{
 		client:        client,
 		namespace:     namespace,
@@ -57,7 +61,7 @@ func NewKubernetesOnPort(client kubernetes.Interface, namespace, labelSelector s
 	}
 }
 
-func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
+func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]servicediscovery.Instance, error) {
 	ctx, span := tracer.Start(ctx, "list-k8s-nodes")
 	defer span.End()
 
@@ -68,7 +72,7 @@ func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
 		return nil, fmt.Errorf("list orchestrator pods: %w", err)
 	}
 
-	out := make([]Instance, 0, len(pods.Items))
+	out := make([]servicediscovery.Instance, 0, len(pods.Items))
 	for _, p := range pods.Items {
 		if !podReady(&p) {
 			continue
@@ -84,8 +88,8 @@ func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
 		// so cutting to consts.NodeIDLength would collapse every orchestrator
 		// into a single discovery key and silently drop all but one. The
 		// Nomad backends' 8-char width is therefore not an invariant of
-		// Instance.ID.
-		out = append(out, Instance{
+		// servicediscovery.Instance.ID.
+		out = append(out, servicediscovery.Instance{
 			WorkloadID: p.Name,
 			NodeID:     p.Spec.NodeName,
 			IPAddress:  ip,

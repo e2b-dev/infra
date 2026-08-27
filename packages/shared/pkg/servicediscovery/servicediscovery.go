@@ -2,9 +2,10 @@
 // template-builder instances that callers route sandbox and build traffic to.
 //
 // Every backend reports a broken source the same way: the error reaches the
-// caller, which skips the cycle and keeps its last known set. The listers
-// (NewNomad, NewNomadNodePool, NewNomadAllocations, NewKubernetes, NewLocal,
-// NewRemote, NewStatic) hit their source per call; Cached wraps one in a
+// caller, which skips the cycle and keeps its last known set. The listers —
+// nomad.NewServices, nomad.NewNodePool, nomad.NewAllocations, kube.NewPods,
+// dns.New, NewLocal, NewRemote and NewStatic — hit their source per call, and
+// provider.New selects one from configuration; Cached wraps one in a
 // background refresh and serves the last good set alongside the last refresh
 // error, so a dead source is reported rather than read as an indefinitely
 // stale one. ErrNotYetSynced distinguishes a cache that has never completed a
@@ -78,10 +79,10 @@ type Discoverer interface {
 	Stop(ctx context.Context)
 }
 
-// noSync gives the query adapters, which hold nothing to refresh, the
+// NoSync gives the query adapters, which hold nothing to refresh, the
 // lifecycle half of Discoverer.
-type noSync struct{}
+type NoSync struct{}
 
-func (noSync) Start(context.Context) {}
+func (NoSync) Start(context.Context) {}
 
-func (noSync) Stop(context.Context) {}
+func (NoSync) Stop(context.Context) {}

@@ -1,4 +1,4 @@
-package servicediscovery
+package dns
 
 import (
 	"context"
@@ -7,7 +7,12 @@ import (
 	"time"
 
 	"github.com/miekg/dns"
+	"go.opentelemetry.io/otel"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
+
+var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/dns")
 
 const (
 	dnsMaxRetries = 3
@@ -21,25 +26,25 @@ var dnsClient = dns.Client{Net: "udp", Timeout: 2 * time.Second}
 // emptied the set and reported success, which read as a fleet with nothing on
 // it.
 type dnsDiscovery struct {
-	noSync
+	servicediscovery.NoSync
 
 	hosts       []string
 	resolver    string
 	servicePort uint16
 }
 
-// NewDNS creates a Discoverer over the A records of hosts, resolved through
-// resolver. Wrap it in Cached to serve it from a background refresh.
-func NewDNS(hosts []string, resolver string, servicePort uint16) Discoverer {
+// New creates a servicediscovery.Discoverer over the A records of hosts, resolved through
+// resolver. Wrap it in servicediscovery.Cached to serve it from a background refresh.
+func New(hosts []string, resolver string, servicePort uint16) servicediscovery.Discoverer {
 	return &dnsDiscovery{hosts: hosts, resolver: resolver, servicePort: servicePort}
 }
 
-func (d *dnsDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
+func (d *dnsDiscovery) ListInstances(ctx context.Context) ([]servicediscovery.Instance, error) {
 	ctx, span := tracer.Start(ctx, "list-dns-instances")
 	defer span.End()
 
 	seen := make(map[string]struct{})
-	out := make([]Instance, 0)
+	out := make([]servicediscovery.Instance, 0)
 
 	var errs []error
 	for _, host := range d.hosts {
@@ -56,7 +61,7 @@ func (d *dnsDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
 			}
 			seen[ip] = struct{}{}
 
-			out = append(out, Instance{WorkloadID: fmt.Sprintf("%s:%d", ip, d.servicePort), IPAddress: ip, Port: d.servicePort})
+			out = append(out, servicediscovery.Instance{WorkloadID: fmt.Sprintf("%s:%d", ip, d.servicePort), IPAddress: ip, Port: d.servicePort})
 		}
 	}
 

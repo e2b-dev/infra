@@ -6,7 +6,7 @@ import (
 )
 
 type staticDiscovery struct {
-	noSync
+	NoSync
 
 	items []Instance
 }

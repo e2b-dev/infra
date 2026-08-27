@@ -27,6 +27,7 @@ import (
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery/nomad"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -35,7 +36,7 @@ import (
 // needed for node lookup / discovery tests. Production fields (sandboxStore,
 // analytics, redis, etc.) are left nil because the code paths under test never
 // touch them.
-func newTestOrchestrator(t *testing.T, nomad *nomadapi.Client) *Orchestrator {
+func newTestOrchestrator(t *testing.T, nomadClient *nomadapi.Client) *Orchestrator {
 	t.Helper()
 
 	ctx := t.Context()
@@ -43,7 +44,7 @@ func newTestOrchestrator(t *testing.T, nomad *nomadapi.Client) *Orchestrator {
 
 	return &Orchestrator{
 		nodes:         smap.New[*nodemanager.Node](),
-		nodeDiscovery: servicediscovery.NewNomad(nomad, []string{"orchestrator"}),
+		nodeDiscovery: nomad.NewServices(nomadClient, []string{"orchestrator"}),
 		tel:           telemetry.NewNoopClient(),
 	}
 }
