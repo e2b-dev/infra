@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0 (2026-08-27)
+
+
+### Features
+
+* **orchestrator:** evaluate feature flags with an instance group context (cb05c1f)
+* **orchestrator:** let the sandbox proxy dial HTTPS backends (7434ff9)
+* **orchestrator:** manage the build-time envd via a build-envd-version flag, like kernel and firecracker (35f5a63)
+* **orchestrator:** pre-boot filesystem recovery for cold-boot resumes (e6b0067)
+* **snapshots:** gate in-place checkpoint and fs-only snapshots on FC release &gt;= 0.2.0 (c7b5dff)
+
+
+### Bug Fixes
+
+* **orchestrator:** drop raw debugfs output from offline-swap errors (621cdd9)
+* **orchestrator:** let release-please stamp the hard-coded version constant (7aa055b)
+* **orchestrator:** treat a failed or signalled e2fsck as a failed integrity check (6b03458)
+
 ## [0.2.0](https://github.com/e2b-dev/infra/compare/orchestrator-v0.1.0...orchestrator-v0.2.0) (2026-08-24)
 
 
