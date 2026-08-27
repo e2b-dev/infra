@@ -40,6 +40,13 @@ const (
 	reservedBlocksPercentage = int64(0)
 )
 
+// e2fsck exit statuses are a bitmask (e2fsck(8), "EXIT CODE"); bits not
+// named here are always failures.
+const (
+	e2fsckErrorsCorrected   = 1
+	e2fsckRebootRecommended = 2
+)
+
 func Make(ctx context.Context, rootfsPath string, sizeMb int64, blockSize int64) error {
 	ctx, tuneSpan := tracer.Start(ctx, "make-ext4")
 	defer tuneSpan.End()
@@ -245,24 +252,29 @@ func CheckIntegrity(ctx context.Context, rootfsPath string, fix bool) (out strin
 	}()
 
 	LogMetadata(ctx, rootfsPath)
-	accExitCode := 0
+	acceptedStatus := 0
 	args := "-nfv"
 	if fix {
-		// 0 - No errors
-		// 1 - File system errors corrected
-		// 2 - File system errors corrected, a system should be rebooted
-		accExitCode = 2
+		acceptedStatus = e2fsckErrorsCorrected | e2fsckRebootRecommended
 		args = "-pfv"
 	}
 	cmd := exec.CommandContext(ctx, "e2fsck", args, rootfsPath)
 	output, err := cmd.CombinedOutput()
-	if cmd.ProcessState != nil {
-		span.SetAttributes(attribute.Int("filesystem.e2fsck.exit_code", cmd.ProcessState.ExitCode()))
-	}
-	if err != nil {
-		exitCode := cmd.ProcessState.ExitCode()
 
-		if exitCode > accExitCode {
+	exitCode := -1
+	if cmd.ProcessState != nil {
+		exitCode = cmd.ProcessState.ExitCode()
+		span.SetAttributes(attribute.Int("filesystem.e2fsck.exit_code", exitCode))
+	}
+
+	if err != nil {
+		// Negative means e2fsck never ran to completion (failed to start or was
+		// signaled); an unchecked filesystem must not pass as healthy.
+		if exitCode < 0 {
+			return string(output), fmt.Errorf("error running e2fsck: %w\n%s", err, output)
+		}
+
+		if exitCode&^acceptedStatus != 0 {
 			return string(output), fmt.Errorf("error running e2fsck [exit %d]\n%s", exitCode, output)
 		}
 	}
