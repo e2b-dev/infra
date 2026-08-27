@@ -80,8 +80,7 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	// leave a live VM for the orphan reconciler to kill. Refused here, the
 	// sandbox keeps running untouched. The check is EXACT — no flag
 	// re-resolution — so for records carrying the orchestrator-resolved
-	// version it cannot disagree with the orchestrator's own gate; fcgate's
-	// doc bounds the residual for records that predate the resolved flag.
+	// version it cannot disagree with the orchestrator's own gate;
 	backend := a.pauseBackend()
 
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest, filesystemOnly)
