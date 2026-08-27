@@ -13,7 +13,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
-	"github.com/e2b-dev/infra/packages/api/internal/fcgate"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -85,20 +84,6 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	// doc bounds the residual for records that predate the resolved flag.
 	backend := a.pauseBackend()
 
-	if filesystemOnly {
-		if apiErr := fsOnlyPauseGate(ctx,
-			func(ctx context.Context) (sandbox.Sandbox, error) {
-				return backend.GetSandbox(ctx, teamID, sandboxID)
-			},
-			sandboxID,
-		); apiErr != nil {
-			telemetry.ReportError(ctx, "fs-only pause gate refused", apiErr.Err)
-			a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
-
-			return
-		}
-	}
-
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest, filesystemOnly)
 
 	err = backend.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, FilesystemOnly: filesystemOnly})
@@ -135,52 +120,6 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	}
 
 	c.Status(http.StatusNoContent)
-}
-
-// fsOnlyPauseGate decides whether a filesystem-only pause may proceed into
-// the pause chain: nil means proceed. The decision has to happen before
-// RemoveSandbox commits (routing and store state are torn down regardless of
-// the orchestrator RPC's outcome), so a refusal here is the only one that
-// leaves the sandbox running untouched.
-//
-//   - qualifying version → nil (proceed)
-//   - non-qualifying version → 409: the sandbox exists and runs an FC release
-//     without fs-only support; a retry without memory:false succeeds
-//   - lookup ErrNotFound → nil: RemoveSandbox owns the canonical not-found
-//     (and already-paused) error surface
-//   - any other lookup failure → 500: proceeding unchecked risks the
-//     orchestrator's post-teardown refusal — the orphan-kill this gate exists
-//     to prevent; the sandbox stays running and the client retries
-//
-// The version check is exact (fcgate.SupportsFilesystemSnapshots): with a VM
-// live, a flag re-resolution could only turn a safe refusal into a
-// post-teardown one.
-func fsOnlyPauseGate(
-	ctx context.Context,
-	lookup func(ctx context.Context) (sandbox.Sandbox, error),
-	sandboxID string,
-) *api.APIError {
-	sbx, err := lookup(ctx)
-	switch {
-	case err == nil:
-		if !fcgate.SupportsFilesystemSnapshots(sbx.FirecrackerVersion) {
-			return &api.APIError{
-				Code:      http.StatusConflict,
-				ClientMsg: "Filesystem-only pause (memory: false) is not supported by this sandbox's Firecracker version; pause without the memory field, or recreate the sandbox on a current release",
-				Err:       fmt.Errorf("fs-only pause refused: sandbox '%s' runs firecracker %q, which predates filesystem snapshots", sandboxID, sbx.FirecrackerVersion),
-			}
-		}
-
-		return nil
-	case errors.Is(err, sandbox.ErrNotFound):
-		return nil
-	default:
-		return &api.APIError{
-			Code:      http.StatusInternalServerError,
-			ClientMsg: "Error pausing sandbox",
-			Err:       fmt.Errorf("error looking up sandbox '%s' for the fs-only pause gate: %w", sandboxID, err),
-		}
-	}
 }
 
 func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID) api.APIError {
