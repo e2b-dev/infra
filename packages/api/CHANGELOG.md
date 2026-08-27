@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.5.1 (2026-08-27)
+
+
+### Code Refactoring
+
+* **api:** retire the api's second discovery mechanism (1360629)
+* name node identity for what it identifies (62af6f7)
+* **servicediscovery:** one package per backend (ae36dd9)
+
 ## 0.5.0 (2026-08-26)
 
 
