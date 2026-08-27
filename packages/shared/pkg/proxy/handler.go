@@ -244,6 +244,6 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 		r = r.WithContext(ctx)
 
 		proxy := p.Get(ctx, d)
-		proxy.ServeHTTP(w, r)
+		serveStream(w, r, proxy, fmt.Sprintf("the connection to sandbox %s ended before the stream completed", d.SandboxId))
 	}
 }
