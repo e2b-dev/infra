@@ -4,8 +4,8 @@ inputs:
   environment:
     description: "Target environment to promote envd in, e.g. staging"
     required: true
-  commit_sha:
-    description: "Commit SHA suffix of the versioned envd build to promote"
+  version:
+    description: "Release version of the envd build to promote (e.g. v0.7.0); legacy commit-SHA suffixes are accepted while envd.<sha> objects age out"
     required: true
   infisical_machine_identity_id:
     description: "Infisical machine identity ID for accessing secrets"
@@ -60,6 +60,6 @@ runs:
 
     - name: Promote envd
       env:
-        ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
+        ENVD_VERSION: ${{ inputs.version }}
       shell: bash
       run: make -C packages/envd promote

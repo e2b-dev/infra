@@ -19,13 +19,16 @@ func TestResolveEnvdUpgradePath(t *testing.T) {
 
 	dir := t.TempDir()
 	promoted := filepath.Join(dir, "envd")       // HOST_ENVD_PATH
-	shaBin := filepath.Join(dir, "envd.1f95888") // versioned binary
+	shaBin := filepath.Join(dir, "envd.1f95888") // legacy SHA-named binary
+	verBin := filepath.Join(dir, "envd.v0.7.1")  // version-named binary
 	require.NoError(t, os.WriteFile(promoted, []byte("x"), 0o755))
 	require.NoError(t, os.WriteFile(shaBin, []byte("x"), 0o755))
+	require.NoError(t, os.WriteFile(verBin, []byte("x"), 0o755))
 
-	// Version map: promoted binary is 0.6.12, the SHA binary is 0.7.0. An
-	// unknown path returns an error (unreadable binary).
-	versions := map[string]string{promoted: "0.6.12", shaBin: "0.7.0"}
+	// Version map: promoted binary is 0.6.12, the SHA binary is 0.7.0, the
+	// version-named binary is 0.7.1. An unknown path returns an error
+	// (unreadable binary).
+	versions := map[string]string{promoted: "0.6.12", shaBin: "0.7.0", verBin: "0.7.1"}
 	getVersion := func(_ context.Context, path string) (string, error) {
 		v, ok := versions[path]
 		if !ok {
@@ -50,6 +53,8 @@ func TestResolveEnvdUpgradePath(t *testing.T) {
 		{"sha, exists and newer -> sha path", "1f95888", "0.6.11", shaBin, "0.7.0", ""},
 		{"sha, same version -> empty", "1f95888", "0.7.0", "", "", "same_version"},
 		{"sha, missing binary -> not_staged", "deadbee", "0.6.11", "", "", "not_staged"},
+		{"version, exists and newer -> version path", "v0.7.1", "0.7.0", verBin, "0.7.1", ""},
+		{"version, missing binary -> not_staged", "v0.9.9", "0.6.11", "", "", "not_staged"},
 		// Upgrade-only: an older staged target must not trigger a downgrade.
 		{"sha, older target -> downgrade refused", "1f95888", "0.8.0", "", "", "downgrade"},
 		{"promoted, older target -> downgrade refused", "promoted", "0.7.0", "", "", "downgrade"},
@@ -57,7 +62,8 @@ func TestResolveEnvdUpgradePath(t *testing.T) {
 		// joined into a path (no traversal out of the staging dir / arbitrary exec).
 		{"target with .. -> invalid_target", "../../etc/passwd", "0.6.11", "", "", "invalid_target"},
 		{"target with slash -> invalid_target", "sub/envd", "0.6.11", "", "", "invalid_target"},
-		{"target with dot -> invalid_target", "1f95888.", "0.6.11", "", "", "invalid_target"},
+		{"target with dash -> invalid_target", "v0.7.0-rc1", "0.6.11", "", "", "invalid_target"},
+		{"target starting with dot -> invalid_target", ".v0.7.0", "0.6.11", "", "", "invalid_target"},
 	}
 
 	for _, tt := range tests {

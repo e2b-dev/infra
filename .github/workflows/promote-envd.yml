@@ -3,8 +3,8 @@ name: Promote envd
 on:
   workflow_dispatch:
     inputs:
-      commit_sha:
-        description: Commit SHA suffix to promote
+      version:
+        description: Release version to promote (e.g. v0.7.0); legacy commit-SHA suffixes are accepted while envd.<sha> objects age out
         required: true
         type: string
       staging:
@@ -39,12 +39,12 @@ jobs:
     outputs:
       environments: ${{ steps.environments.outputs.environments }}
     steps:
-      - name: Validate commit SHA
+      - name: Validate version
         env:
-          ENVD_COMMIT_SHA: ${{ inputs.commit_sha }}
+          ENVD_VERSION: ${{ inputs.version }}
         run: |
-          if [[ ! "$ENVD_COMMIT_SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
-            echo "commit_sha must be a lowercase hexadecimal Git SHA suffix."
+          if [[ ! "$ENVD_VERSION" =~ ^(v[0-9]+\.[0-9]+\.[0-9]+|[0-9a-f]{7,40})$ ]]; then
+            echo "version must be a release version like v0.7.0 (or a legacy lowercase hexadecimal Git SHA suffix)."
             exit 1
           fi
 
@@ -98,5 +98,5 @@ jobs:
         uses: ./.github/actions/promote-envd
         with:
           environment: ${{ matrix.environment }}
-          commit_sha: ${{ inputs.commit_sha }}
+          version: ${{ inputs.version }}
           infisical_machine_identity_id: ${{ vars.INFISICAL_MACHINE_IDENTITY_ID }}

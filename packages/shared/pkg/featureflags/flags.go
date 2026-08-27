@@ -689,7 +689,9 @@ var (
 	//   "promoted"   — track the node-local promoted envd (HOST_ENVD_PATH); upgrade
 	//                  whenever it differs from the sandbox's built-with version
 	//                  (no per-publish flag edits needed).
-	//   "<git-sha>"  — pin a specific versioned binary (/fc-envd/envd.<sha>).
+	//   "<version>"  — pin a specific staged binary (/fc-envd/envd.<version>,
+	//                  e.g. "v0.7.0"; legacy git-SHA suffixes keep resolving
+	//                  while the old envd.<sha> objects age out).
 	// The resume-site LD context carries envd-version/team/template, so %-ramp
 	// and cohort canaries come for free. The fallback is env-overridable
 	// (ENVD_UPGRADE_TARGET) so it can be exercised where there is no LD (dev),
@@ -699,7 +701,7 @@ var (
 	// filesystem-only snapshot: at cold-boot resume the rootfs binary is rewritten
 	// (jailed debugfs) before the guest boots, reaching envd too old to self-upgrade
 	// (< MinEnvdVersionForUpgrade). Same value grammar and resolver as
-	// EnvdUpgradeTargetFlag ("off" / "promoted" / "<git-sha>"); a SEPARATE flag so
+	// EnvdUpgradeTargetFlag ("off" / "promoted" / "<version>"); a SEPARATE flag so
 	// the newer/riskier offline mechanism ramps independently of the live path. The
 	// fallback is env-overridable (ENVD_OFFLINE_UPGRADE_TARGET) for dev, where there
 	// is no LD. Default off.
@@ -1085,7 +1087,8 @@ func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion str
 // ResolveFirecrackerVersion.
 //
 // hostEnvdPath is the promoted binary (cfg HostEnvdPath, e.g. /fc-envd/envd);
-// versioned binaries live beside it as envd.<sha>. getVersion resolves a
+// versioned binaries live beside it as envd.<version> (legacy uploads:
+// envd.<sha>). getVersion resolves a
 // binary's baked version (orchestrator's build/core/envd.GetEnvdVersion) — it is
 // injected so this shared package does not depend on the orchestrator.
 //
@@ -1131,11 +1134,12 @@ func ResolveEnvdOfflineUpgrade(
 // resolveEnvdUpgradePath is the pure decision, split out so it can be unit-tested
 // without a LaunchDarkly client (the flag value is passed directly). It returns
 // the target path and its baked version, or ("", "", <reason>) for no upgrade.
-// envdUpgradeTargetRe constrains a concrete-SHA EnvdUpgradeTargetFlag value to a
-// bare alphanumeric identifier (git SHAs are hex, but any staged-binary suffix
-// is safe) so it can't traverse out of the envd staging directory when joined
-// into the candidate path.
-var envdUpgradeTargetRe = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+// envdUpgradeTargetRe constrains a concrete EnvdUpgradeTargetFlag value (a
+// release version like "v0.7.0", or a legacy git-SHA suffix) to alphanumerics
+// and dots so it can't traverse out of the envd staging directory when joined
+// into the candidate path: "envd."+target then always stays a single path
+// component (no separators; ".." alone can't escape inside a component).
+var envdUpgradeTargetRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.]*$`)
 
 func resolveEnvdUpgradePath(
 	ctx context.Context,
@@ -1151,11 +1155,11 @@ func resolveEnvdUpgradePath(
 	case "promoted":
 		candidate = hostEnvdPath
 	default:
-		// A concrete git SHA -> the versioned binary next to the promoted one.
-		// The flag value becomes both a filesystem path and an exec target
-		// (version probing runs `<candidate> -version`), so reject anything that
-		// isn't a bare alphanumeric identifier: a value with path separators or
-		// ".." (e.g. "../../bin/sh") would otherwise escape the staging directory
+		// A concrete version (or legacy git SHA) -> the staged binary next to
+		// the promoted one. The flag value becomes both a filesystem path and an
+		// exec target (version probing runs `<candidate> -version`), so reject
+		// anything beyond alphanumerics and dots: a value with path separators
+		// (e.g. "../../bin/sh") would otherwise escape the staging directory
 		// and run an arbitrary host binary.
 		if !envdUpgradeTargetRe.MatchString(target) {
 			return "", "", "invalid_target"
