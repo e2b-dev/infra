@@ -21,6 +21,7 @@ import (
 	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
@@ -109,6 +110,20 @@ func testTeam() *teamtypes.Team {
 			MaxLengthHours:     24,
 		},
 	}
+}
+
+func TestBuildEgressConfigPreservesWildcardRuleKey(t *testing.T) {
+	t.Parallel()
+
+	const domain = "*.github.com"
+	config := buildEgressConfig(nil, nil, map[string][]dbtypes.SandboxNetworkRule{
+		domain: {{Transform: &dbtypes.SandboxNetworkTransform{Headers: map[string]string{"X-Test": "value"}}}},
+	})
+
+	rules, ok := config.GetRules()[domain]
+	require.True(t, ok)
+	require.Len(t, rules.GetRules(), 1)
+	assert.Equal(t, "value", rules.GetRules()[0].GetTransform().GetHeaders()["X-Test"])
 }
 
 // TestCreateSandbox_StaleDataAfterConcurrentPause exercises CreateSandbox with

@@ -882,6 +882,25 @@ func markerRun(from, count int) string {
 	return builder.String()
 }
 
+func TestAPIRulesToDBRulesNormalizesDomains(t *testing.T) {
+	t.Parallel()
+
+	rules := map[string][]api.SandboxNetworkRule{
+		"API.Example.COM": {simpleRule(map[string]string{"X-Exact": "value"})},
+		"*.GitHub.COM":    {simpleRule(map[string]string{"X-Test": "value"})},
+	}
+
+	dbRules := apiRulesToDBRules(&rules)
+	require.NotContains(t, dbRules, "API.Example.COM")
+	require.Contains(t, dbRules, "api.example.com")
+	require.Len(t, dbRules["api.example.com"], 1)
+	assert.Equal(t, "value", dbRules["api.example.com"][0].Transform.Headers["X-Exact"])
+	require.NotContains(t, dbRules, "*.GitHub.COM")
+	require.Contains(t, dbRules, "*.github.com")
+	require.Len(t, dbRules["*.github.com"], 1)
+	assert.Equal(t, "value", dbRules["*.github.com"][0].Transform.Headers["X-Test"])
+}
+
 func TestValidateNetworkRules(t *testing.T) {
 	t.Parallel()
 
@@ -999,20 +1018,143 @@ func TestValidateNetworkRules(t *testing.T) {
 			setupFF:     ffEnabled,
 		},
 		{
-			name:        "wildcard domain is rejected",
+			name:        "wildcard domain is accepted",
 			envdVersion: minEnvdVersionForNetworkRules,
-			rules:       new(map[string][]api.SandboxNetworkRule{"*.openai.com": {}}),
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.github.com": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "uppercase wildcard domain is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.GitHub.COM": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "exact and wildcard domains are accepted together",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.github.com": {},
+				"*.github.com":   {},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "top-level wildcard is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.com": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "country-code public suffix wildcard is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.co.uk": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "private public suffix wildcard is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.github.io": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "shared service wildcard is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.s3.amazonaws.com": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "internal wildcard is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.internal": {}}),
+			setupFF:     ffEnabled,
+		},
+		{
+			name:        "bare wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "not a valid domain name",
 		},
 		{
-			name:        "bare wildcard is rejected",
+			name:        "wildcard without a suffix is rejected",
 			envdVersion: minEnvdVersionForNetworkRules,
 			rules:       new(map[string][]api.SandboxNetworkRule{"*.": {}}),
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
 			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "embedded wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"api.*.example.com": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "repeated wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.*.example.com": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "non-ASCII wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.münich.example": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "trailing-dot wildcard is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules:       new(map[string][]api.SandboxNetworkRule{"*.github.com.": {}}),
+			setupFF:     ffEnabled,
+			wantCode:    http.StatusBadRequest,
+			wantMsg:     "not a valid domain name",
+		},
+		{
+			name:        "case-insensitive exact duplicates are rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"api.example.com": {},
+				"API.EXAMPLE.COM": {},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "unique ignoring case",
+		},
+		{
+			name:        "case-insensitive wildcard duplicates are rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"*.example.com": {},
+				"*.EXAMPLE.COM": {},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "unique ignoring case",
+		},
+		{
+			name:        "wildcard domain at full key limit is accepted",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"*." + strings.Repeat("a", 63) + "." + strings.Repeat("b", 58) + ".com": {},
+			}),
+			setupFF: ffEnabled,
+		},
+		{
+			name:        "wildcard domain over full key limit is rejected",
+			envdVersion: minEnvdVersionForNetworkRules,
+			rules: new(map[string][]api.SandboxNetworkRule{
+				"*." + strings.Repeat("a", 63) + "." + strings.Repeat("b", 59) + ".com": {},
+			}),
+			setupFF:  ffEnabled,
+			wantCode: http.StatusBadRequest,
+			wantMsg:  "maximum length",
 		},
 		// ── transform count ───────────────────────────────────────────────────────
 		{

@@ -695,7 +695,7 @@ func apiRulesToDBRules(apiRules *map[string][]api.SandboxNetworkRule) map[string
 			dbDomainRules = append(dbDomainRules, dbRule)
 		}
 
-		dbRules[domain] = dbDomainRules
+		dbRules[strings.ToLower(domain)] = dbDomainRules
 	}
 
 	return dbRules
@@ -822,6 +822,7 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 		}
 	}
 
+	seenDomains := make(map[string]struct{}, len(*rules))
 	for domain, domainRules := range *rules {
 		if len(domain) == 0 {
 			return &api.APIError{
@@ -839,13 +840,28 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 			}
 		}
 
-		if !govalidator.IsDNSName(domain) {
+		validDomain := govalidator.IsDNSName(domain)
+		if strings.HasPrefix(domain, "*.") {
+			validDomain = sandbox_network.IsValidWildcardDomainPattern(domain)
+		}
+
+		if !validDomain {
 			return &api.APIError{
 				Code:      http.StatusBadRequest,
 				Err:       fmt.Errorf("rule domain %q is not a valid domain", domain),
 				ClientMsg: fmt.Sprintf("Rule domain %q is not a valid domain name.", domain),
 			}
 		}
+
+		normalizedDomain := strings.ToLower(domain)
+		if _, ok := seenDomains[normalizedDomain]; ok {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       errors.New("network rule domain keys must be unique ignoring case"),
+				ClientMsg: "Network rule domain keys must be unique ignoring case.",
+			}
+		}
+		seenDomains[normalizedDomain] = struct{}{}
 
 		if len(domainRules) > maxNetworkRuleTransformsPerDomain {
 			return &api.APIError{
