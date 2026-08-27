@@ -23,7 +23,6 @@ import (
 	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
 	redisbackend "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	sqlcdb "github.com/e2b-dev/infra/packages/db/client"
-	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
@@ -103,6 +102,7 @@ func New(
 	config cfg.Config,
 	tel *telemetry.Client,
 	nodeDiscovery servicediscovery.Discoverer,
+	localRegistryOwnsOrchestrators bool,
 	posthogClient *analyticscollector.PosthogClient,
 	redisClient redis.UniversalClient,
 	sqlcDB *sqlcdb.Client,
@@ -149,9 +149,13 @@ func New(
 	}
 	go redisStorage.Start(ctx)
 
-	// For local development and testing, we skip the Nomad sync
-	// Local cluster is used for single-node setups instead
-	skipNomadSync := env.IsLocal()
+	// The local clusters registry is the only source of orchestrator nodes
+	// exactly when the discovery provider is the static local one: there both
+	// planes are the same single instance and the registry registers it. Under
+	// nomad or kubernetes the node plane lists orchestrators itself, local
+	// environment or not — deriving this from the environment instead of the
+	// resolved provider builds a node plane nothing ever consults.
+	skipNomadSync := localRegistryOwnsOrchestrators
 
 	o := Orchestrator{
 		httpClient:           httpClient,

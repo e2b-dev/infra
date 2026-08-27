@@ -46,11 +46,15 @@ type Config struct {
 	LokiURL      string `env:"LOKI_URL,required"`
 	LokiUser     string `env:"LOKI_USER"`
 
-	// ServiceDiscoveryProvider selects how the API discovers orchestrator and template-manager instances.
+	// ServiceDiscoveryProvider selects how the API discovers orchestrator and
+	// template-manager instances. Left unset it is nomad, except in a local
+	// environment, which has no Nomad agent — see serviceDiscoveryProvider. It
+	// carries no envDefault precisely so that "unset" stays distinguishable
+	// from "set to nomad", which an operator running a local Nomad agent needs.
 	// Allowed values:
 	//   "nomad"      (default) - query the local Nomad agent's HTTP API.
 	//   "kubernetes"           - list pods via the in-cluster K8s API.
-	ServiceDiscoveryProvider string `env:"SERVICE_DISCOVERY_PROVIDER" envDefault:"nomad"`
+	ServiceDiscoveryProvider string `env:"SERVICE_DISCOVERY_PROVIDER"`
 
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
 	NomadToken   string `env:"NOMAD_TOKEN"`
@@ -271,7 +275,7 @@ func Parse() (Config, error) {
 		config.AuthDBConnectionString = config.PostgresConnectionString
 	}
 
-	if !slices.Contains([]string{ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
+	if !slices.Contains([]string{"", ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
 		return config, newFailureError(
 			FailureConditionInvalidServiceDiscoveryProvider,
 			fmt.Sprintf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider),

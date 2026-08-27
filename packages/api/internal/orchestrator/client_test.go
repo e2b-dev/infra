@@ -397,3 +397,54 @@ func TestConnectToClusterNode_SkipsLocalCluster(t *testing.T) {
 
 	assert.Zero(t, o.nodes.Count())
 }
+
+// countingDiscovery records whether the node plane was consulted.
+type countingDiscovery struct {
+	calls atomic.Int64
+}
+
+func (d *countingDiscovery) ListInstances(context.Context) ([]servicediscovery.Instance, error) {
+	d.calls.Add(1)
+
+	return nil, nil
+}
+
+func (d *countingDiscovery) Start(context.Context) {}
+
+func (d *countingDiscovery) Stop(context.Context) {}
+
+// When the local clusters registry owns orchestrator nodes, the on-demand path
+// must not also discover them through the node plane. Both would register the
+// same process — once under the node ID it reports over gRPC, once under its
+// discovery item ID — and its capacity and sandboxes would count twice. The
+// periodic loop already honours this; the on-demand path used to be a no-op
+// only because the node plane happened to fail in a local environment.
+func TestGetOrConnectNode_LocalRegistryOwnershipSkipsTheNodePlane(t *testing.T) {
+	t.Parallel()
+
+	tests := map[string]struct {
+		registryOwns bool
+		wantCalls    int64
+	}{
+		"registry owns orchestrators: the node plane is not consulted": {registryOwns: true, wantCalls: 0},
+		"registry does not own them: the node plane is":                {registryOwns: false, wantCalls: 1},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			discovery := &countingDiscovery{}
+			o := &Orchestrator{
+				nodes:                         smap.New[*nodemanager.Node](),
+				nodeDiscovery:                 discovery,
+				clusters:                      clusters.NewTestPool(),
+				localClusterOwnsOrchestrators: tt.registryOwns,
+			}
+
+			o.getOrConnectNode(t.Context(), consts.LocalClusterID, "absent-node")
+
+			assert.Equal(t, tt.wantCalls, discovery.calls.Load())
+		})
+	}
+}

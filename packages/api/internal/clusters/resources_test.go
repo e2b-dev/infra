@@ -86,8 +86,12 @@ func TestGetBuildLogsWithSources_ParityBetweenTemporaryAndPersistent(t *testing.
 			}
 
 			instances := smap.New[*Instance]()
-			instances.Insert(nodeID, &Instance{
-				NodeID: nodeID,
+			// Keyed by workload, as the pool is: on Nomad and Kubernetes the
+			// key is an allocation ID or pod name, never the node name the
+			// build persisted, so the lookup cannot be a map hit on nodeID.
+			instances.Insert("alloc-1", &Instance{
+				workloadID: "alloc-1",
+				NodeID:     nodeID,
 				client: &GRPCClient{
 					Template: templateClient,
 				},

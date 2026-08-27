@@ -26,7 +26,6 @@ import (
 	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
-	clustersdiscovery "github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	managementv1 "github.com/e2b-dev/infra/packages/api/internal/secretsstore/management/v1"
@@ -41,7 +40,8 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/pkg/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	sharedclusters "github.com/e2b-dev/infra/packages/shared/pkg/clusters/discovery"
+	"github.com/e2b-dev/infra/packages/shared/pkg/env"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logs/loki"
@@ -72,9 +72,11 @@ type kubeClientFactory func() (kubernetes.Interface, error)
 
 // serviceDiscovery is the pair of discovery backends the API runs on: the node
 // plane (orchestrators) and the template-builder plane.
+// Both planes are the same interface over the same package now; they differ in
+// what they list, not in how.
 type serviceDiscovery struct {
 	nodes            servicediscovery.Discoverer
-	templateBuilders clustersdiscovery.Discovery
+	templateBuilders servicediscovery.Discoverer
 }
 
 // newServiceDiscovery builds both discovery planes for
@@ -83,15 +85,32 @@ type serviceDiscovery struct {
 //	nomad      - both go through the local Nomad agent
 //	kubernetes - both list pods via the K8s API
 //	local      - both point at one statically configured address
-func newServiceDiscovery(config cfg.Config, newKube kubeClientFactory) (serviceDiscovery, error) {
-	switch config.ServiceDiscoveryProvider {
+func newServiceDiscovery(config cfg.Config, newKube kubeClientFactory, provider string) (serviceDiscovery, error) {
+	switch provider {
 	case cfg.ServiceDiscoveryProviderKubernetes:
 		return newKubernetesServiceDiscovery(config, newKube)
 	case cfg.ServiceDiscoveryProviderLocal:
 		return newLocalServiceDiscovery(config)
 	default: // ServiceDiscoveryProviderNomad
-		return newNodePlaneInstance(config)
+		return newNomadServiceDiscovery(config)
 	}
+}
+
+// serviceDiscoveryProvider resolves which provider to build. A provider the
+// operator named always wins, including nomad: someone running a local Nomad
+// agent has to be able to say so. Only an unset provider defaults, and it
+// defaults to local in a local environment because no Nomad agent runs there
+// and the builder plane would otherwise dial nothing.
+func serviceDiscoveryProvider(config cfg.Config, localEnv bool) string {
+	if config.ServiceDiscoveryProvider != "" {
+		return config.ServiceDiscoveryProvider
+	}
+
+	if localEnv {
+		return cfg.ServiceDiscoveryProviderLocal
+	}
+
+	return cfg.ServiceDiscoveryProviderNomad
 }
 
 func newKubernetesServiceDiscovery(config cfg.Config, newKube kubeClientFactory) (serviceDiscovery, error) {
@@ -106,8 +125,7 @@ func newKubernetesServiceDiscovery(config cfg.Config, newKube kubeClientFactory)
 			config.K8sNamespace,
 			config.K8sOrchestratorPodLabelSelector,
 		),
-		templateBuilders: clustersdiscovery.NewKubernetesDiscovery(
-			consts.LocalClusterID,
+		templateBuilders: servicediscovery.NewKubernetes(
 			client,
 			config.K8sNamespace,
 			config.K8sTemplateManagerPodLabelSelector,
@@ -121,21 +139,15 @@ func newLocalServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
 		return serviceDiscovery{}, fmt.Errorf("local orchestrator discovery: %w", err)
 	}
 
-	// The local orchestrator doubles as the template builder when it is
-	// started with ORCHESTRATOR_SERVICES=orchestrator,template-manager, so
-	// point builder discovery at the same address. Instances that do not
-	// report the TemplateBuilder role (the darwin dummy orchestrator) are
-	// registered with IsBuilder=false and never selected for builds, which
-	// keeps the dummy setup behaving as before.
-	templateBuilders, err := clustersdiscovery.NewStaticFromAddress(config.LocalOrchestratorAddress)
-	if err != nil {
-		return serviceDiscovery{}, fmt.Errorf("local template builder discovery: %w", err)
-	}
-
-	return serviceDiscovery{nodes: nodes, templateBuilders: templateBuilders}, nil
+	// The local orchestrator doubles as the template builder when it is started
+	// with ORCHESTRATOR_SERVICES=orchestrator,template-manager, so both planes
+	// point at the same address — the same backend, now that there is only one.
+	// An instance that does not report the TemplateBuilder role (the darwin
+	// dummy) registers with IsBuilder=false and is never selected for builds.
+	return serviceDiscovery{nodes: nodes, templateBuilders: nodes}, nil
 }
 
-func newNodePlaneInstance(config cfg.Config) (serviceDiscovery, error) {
+func newNomadServiceDiscovery(config cfg.Config) (serviceDiscovery, error) {
 	client, err := nomadapi.NewClient(&nomadapi.Config{
 		Address:  config.NomadAddress,
 		SecretID: config.NomadToken,
@@ -159,7 +171,7 @@ func newNodePlaneInstance(config cfg.Config) (serviceDiscovery, error) {
 
 	return serviceDiscovery{
 		nodes:            nodes,
-		templateBuilders: clustersdiscovery.NewLocalDiscovery(consts.LocalClusterID, client),
+		templateBuilders: servicediscovery.NewNomadAllocations(client, sharedclusters.FilterTemplateBuilders),
 	}, nil
 }
 
@@ -263,7 +275,9 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Posthog client", zap.Error(posthogErr))
 	}
 
-	sd, err := newServiceDiscovery(config, newInClusterKubeClient)
+	provider := serviceDiscoveryProvider(config, env.IsLocal())
+
+	sd, err := newServiceDiscovery(config, newInClusterKubeClient, provider)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing service discovery", zap.Error(err))
 	}
@@ -300,7 +314,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "failed to create snapshot build query semaphore", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, sd.nodes, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
+	orch, err := orchestrator.New(ctx, config, tel, sd.nodes, provider == cfg.ServiceDiscoveryProviderLocal, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}

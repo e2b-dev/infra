@@ -222,7 +222,7 @@ func getBuildLogsWithSources(
 
 	// Handle temporary logs from builder instance
 	if nodeID != nil && logCheckSourceType(source, api.LogsSourceTemporary) {
-		instance, found := instances.Get(*nodeID)
+		instance, found := instanceOnNode(instances, *nodeID)
 		if found {
 			sourceCallback := logsFromBuilderInstance(ctx, instance, templateID, buildID, offset, limit, level, start, end, direction)
 			sources = append(sources, sourceCallback)

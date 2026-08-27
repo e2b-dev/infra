@@ -7,8 +7,8 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -16,13 +16,13 @@ import (
 type instancesSyncStore struct {
 	clusterID uuid.UUID
 
-	discovery        discovery.Discovery
+	discovery        servicediscovery.Discoverer
 	instances        *smap.Map[*Instance]
-	instanceCreation func(ctx context.Context, item discovery.Item) (*Instance, error)
+	instanceCreation func(ctx context.Context, item servicediscovery.Instance) (*Instance, error)
 }
 
-func (d instancesSyncStore) SourceList(ctx context.Context) ([]discovery.Item, error) {
-	items, err := d.discovery.Query(ctx)
+func (d instancesSyncStore) SourceList(ctx context.Context) ([]servicediscovery.Instance, error) {
+	items, err := d.discovery.ListInstances(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cluster instances from service discovery: %w", err)
 	}
@@ -30,10 +30,9 @@ func (d instancesSyncStore) SourceList(ctx context.Context) ([]discovery.Item, e
 	return items, nil
 }
 
-func (d instancesSyncStore) SourceExists(_ context.Context, s []discovery.Item, p *Instance) bool {
+func (d instancesSyncStore) SourceExists(_ context.Context, s []servicediscovery.Instance, p *Instance) bool {
 	for _, item := range s {
-		// With comparing unique identifier that should ensure we are not re-adding same instance again
-		if item.UniqueIdentifier == p.workloadID {
+		if item.WorkloadID == p.workloadID {
 			return true
 		}
 	}
@@ -50,17 +49,20 @@ func (d instancesSyncStore) PoolList(_ context.Context) []*Instance {
 	return mapped
 }
 
-func (d instancesSyncStore) PoolExists(_ context.Context, s discovery.Item) bool {
-	_, found := d.instances.Get(s.NodeID)
+// Keyed on the same identity SourceExists compares, so a process that restarts
+// on a machine already in the pool is replaced rather than skipped: keying the
+// map on the machine and the source check on the process is what made a
+// restarted builder disappear for a cycle.
+func (d instancesSyncStore) PoolExists(_ context.Context, s servicediscovery.Instance) bool {
+	_, found := d.instances.Get(s.WorkloadID)
 
 	return found
 }
 
-func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item) {
+func (d instancesSyncStore) PoolInsert(ctx context.Context, item servicediscovery.Instance) {
 	logger.L().Info(ctx, "Adding instance into cluster pool",
 		logger.WithClusterID(d.clusterID),
 		logger.WithNodeID(item.NodeID),
-		logger.WithServiceInstanceID(item.InstanceID),
 	)
 
 	// Instant is synced immediately after creation to ensure it's working before adding to the pool.
@@ -70,13 +72,12 @@ func (d instancesSyncStore) PoolInsert(ctx context.Context, item discovery.Item)
 			zap.Error(err),
 			logger.WithClusterID(d.clusterID),
 			logger.WithNodeID(item.NodeID),
-			logger.WithServiceInstanceID(item.InstanceID),
 		)
 
 		return
 	}
 
-	d.instances.Insert(item.NodeID, instance)
+	d.instances.Insert(item.WorkloadID, instance)
 }
 
 func (d instancesSyncStore) PoolUpdate(ctx context.Context, instance *Instance) {
@@ -94,7 +95,7 @@ func (d instancesSyncStore) PoolRemove(ctx context.Context, instance *Instance) 
 	// Try to gracefully close the instance
 	d.tryToCloseInstance(ctx, instance)
 
-	d.instances.Remove(instance.NodeID)
+	d.instances.Remove(instance.workloadID)
 }
 
 func (d instancesSyncStore) tryToCloseInstance(ctx context.Context, instance *Instance) {

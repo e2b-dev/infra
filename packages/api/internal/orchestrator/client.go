@@ -186,7 +186,12 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cacheSyncTime)
 		defer cancel()
 
-		if clusterID == consts.LocalClusterID {
+		// The periodic loop already treats the local clusters registry as the
+		// only source of orchestrator nodes when it owns them; this path has to
+		// agree, or the same process registers twice — once under the node ID
+		// it reports over gRPC and once under its discovery item ID — and has
+		// its capacity and sandboxes counted twice.
+		if clusterID == consts.LocalClusterID && !o.localClusterOwnsOrchestrators {
 			o.discoverNomadNodes(connectCtx)
 		} else {
 			o.discoverClusterNode(connectCtx, clusterID)
