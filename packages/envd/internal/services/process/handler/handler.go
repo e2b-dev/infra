@@ -299,7 +299,9 @@ func New(
 			Rows: uint16(req.GetPty().GetSize().GetRows()),
 		})
 		if err != nil {
-			return nil, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err))
+			startErr := fmt.Errorf("error starting pty with command '%s' in dir '%s' with '%d' cols and '%d' rows: %w", userCmd, cmd.Dir, req.GetPty().GetSize().GetCols(), req.GetPty().GetSize().GetRows(), err)
+
+			return nil, connect.NewError(StartErrorCode(startErr), startErr)
 		}
 
 		outWg.Go(func() {
