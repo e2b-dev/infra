@@ -18,17 +18,20 @@ func TestResolveEnvdUpgradePath(t *testing.T) {
 	t.Parallel()
 
 	dir := t.TempDir()
-	promoted := filepath.Join(dir, "envd")       // HOST_ENVD_PATH
-	shaBin := filepath.Join(dir, "envd.1f95888") // legacy SHA-named binary
-	verBin := filepath.Join(dir, "envd.v0.7.1")  // version-named binary
+	promoted := filepath.Join(dir, "envd")         // HOST_ENVD_PATH
+	shaBin := filepath.Join(dir, "envd.1f95888")   // legacy SHA-named binary, flat layout
+	verBin := filepath.Join(dir, "envd.v0.7.1")    // version-named binary, flat layout
+	nestedBin := filepath.Join(dir, "v0.8.0/envd") // versioned binary, release-bucket layout
 	require.NoError(t, os.WriteFile(promoted, []byte("x"), 0o755))
 	require.NoError(t, os.WriteFile(shaBin, []byte("x"), 0o755))
 	require.NoError(t, os.WriteFile(verBin, []byte("x"), 0o755))
+	require.NoError(t, os.MkdirAll(filepath.Dir(nestedBin), 0o755))
+	require.NoError(t, os.WriteFile(nestedBin, []byte("x"), 0o755))
 
 	// Version map: promoted binary is 0.6.12, the SHA binary is 0.7.0, the
-	// version-named binary is 0.7.1. An unknown path returns an error
-	// (unreadable binary).
-	versions := map[string]string{promoted: "0.6.12", shaBin: "0.7.0", verBin: "0.7.1"}
+	// flat version-named binary is 0.7.1, the nested release binary is 0.8.0.
+	// An unknown path returns an error (unreadable binary).
+	versions := map[string]string{promoted: "0.6.12", shaBin: "0.7.0", verBin: "0.7.1", nestedBin: "0.8.0"}
 	getVersion := func(_ context.Context, path string) (string, error) {
 		v, ok := versions[path]
 		if !ok {
@@ -62,8 +65,14 @@ func TestResolveEnvdUpgradePath(t *testing.T) {
 		// joined into a path (no traversal out of the staging dir / arbitrary exec).
 		{"target with .. -> invalid_target", "../../etc/passwd", "0.6.11", "", "", "invalid_target"},
 		{"target with slash -> invalid_target", "sub/envd", "0.6.11", "", "", "invalid_target"},
-		{"target with dash -> invalid_target", "v0.7.0-rc1", "0.6.11", "", "", "invalid_target"},
+		{"target with leading dot -> invalid_target", ".hidden", "0.6.11", "", "", "invalid_target"},
 		{"target starting with dot -> invalid_target", ".v0.7.0", "0.6.11", "", "", "invalid_target"},
+		// Dotted release names are valid targets; an unstaged one is not_staged.
+		{"release target, nested layout -> nested path", "v0.8.0", "0.6.11", nestedBin, "0.8.0", ""},
+		{"release target, not staged", "v9.9.9", "0.6.11", "", "", "not_staged"},
+		// Hyphens are admitted (prerelease names like v0.7.0-rc1), so a dashed
+		// target that isn't staged is not_staged, not invalid_target.
+		{"dashed release target, not staged", "v0.7.0-rc1", "0.6.11", "", "", "not_staged"},
 	}
 
 	for _, tt := range tests {

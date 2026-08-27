@@ -222,7 +222,20 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		}
 	}(context.WithoutCancel(ctx))
 
-	envdVersion, err := envd.GetEnvdVersion(ctx, b.config.HostEnvdPath)
+	// The envd baked into this build is selected per build by the
+	// build-envd-version flag (default: the node-local promoted binary),
+	// exactly like BuildKernelVersion / BuildFirecrackerVersion — a version
+	// roll is a flag change, never a process restart or node change. The ctx
+	// carries the template/team LD context, so cohort canaries work. The
+	// resolved path is threaded to every consumer through the BuildContext's
+	// BuilderConfig copy.
+	envdTarget := b.featureFlags.StringFlag(ctx, featureflags.BuildEnvdVersion)
+	hostEnvdPath, err := envd.ResolveBuildBinary(ctx, envdTarget, b.config.HostEnvdPath)
+	if err != nil {
+		return nil, fmt.Errorf("error resolving envd binary for build: %w", err)
+	}
+
+	envdVersion, err := envd.GetEnvdVersion(ctx, hostEnvdPath)
 	if err != nil {
 		return nil, fmt.Errorf("error getting envd version: %w", err)
 	}
@@ -257,8 +270,11 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		}
 	}()
 
+	builderConfig := b.config
+	builderConfig.HostEnvdPath = hostEnvdPath
+
 	buildContext := buildcontext.BuildContext{
-		BuilderConfig:  b.config,
+		BuilderConfig:  builderConfig,
 		Config:         cfg,
 		Template:       paths,
 		UploadErrGroup: uploadErrGroup,

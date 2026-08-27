@@ -629,6 +629,13 @@ func NewStringFlag(name string, fallback string) StringFlag {
 
 const (
 	DefaultKernelVersion = "vmlinux-6.1.158"
+
+	// DefaultEnvdVersion is the envd new template builds bake when neither the
+	// build-envd-version flag nor DEFAULT_ENVD_VERSION says otherwise:
+	// "promoted" selects the node-local promoted binary (HOST_ENVD_PATH), the
+	// behavior every build has always had, so deployments without
+	// LaunchDarkly (dev, self-host) are unaffected.
+	DefaultEnvdVersion = "promoted"
 )
 
 // The Firecracker version per release line: legacy lines pin
@@ -661,7 +668,19 @@ var FirecrackerVersionMap = map[string]string{
 var (
 	BuildFirecrackerVersion = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
 	BuildKernelVersion      = NewStringFlag("build-kernel-version", env.GetEnv("DEFAULT_KERNEL_VERSION", DefaultKernelVersion))
-	BuildIoEngine           = NewStringFlag("build-io-engine", "Sync")
+	// BuildEnvdVersion selects which staged envd binary a template build bakes
+	// into the rootfs — the envd counterpart of BuildKernelVersion /
+	// BuildFirecrackerVersion, same default mechanism. "promoted" (the
+	// fallback) is the node-local promoted binary; a concrete version id
+	// (e.g. v0.7.0, or a git SHA while those age out) selects a staged binary
+	// (the flat envd.<id> sibling or the release bucket's <id>/envd layout,
+	// see build/core/envd.ResolveBuildBinary). A pinned target that is not
+	// staged FAILS the build rather than silently baking a different envd —
+	// feature gates key on the baked version, so a silent substitute
+	// misgates. The build-site LD context carries template/team, so cohort
+	// canaries come for free.
+	BuildEnvdVersion = NewStringFlag("build-envd-version", env.GetEnv("DEFAULT_ENVD_VERSION", DefaultEnvdVersion))
+	BuildIoEngine    = NewStringFlag("build-io-engine", "Sync")
 
 	// BuildKernelCmdlineArgs supplies extra guest kernel command line parameters at
 	// template build time, keyed on team, as a command line fragment:
@@ -689,9 +708,12 @@ var (
 	//   "promoted"   — track the node-local promoted envd (HOST_ENVD_PATH); upgrade
 	//                  whenever it differs from the sandbox's built-with version
 	//                  (no per-publish flag edits needed).
-	//   "<version>"  — pin a specific staged binary (/fc-envd/envd.<version>,
-	//                  e.g. "v0.7.0"; legacy git-SHA suffixes keep resolving
-	//                  while the old envd.<sha> objects age out).
+	//   "<version>"  — pin a specific staged binary, in either layout beside the
+	//                  promoted one: the flat /fc-envd/envd.<version> sibling or
+	//                  the release bucket's /fc-envd/<version>/envd directory.
+	//                  Release names may carry dots and hyphens (v0.7.0,
+	//                  v0.8.0-rc1); legacy git-SHA suffixes keep resolving while
+	//                  the old envd.<sha> objects age out.
 	// The resume-site LD context carries envd-version/team/template, so %-ramp
 	// and cohort canaries come for free. The fallback is env-overridable
 	// (ENVD_UPGRADE_TARGET) so it can be exercised where there is no LD (dev),
@@ -1134,12 +1156,12 @@ func ResolveEnvdOfflineUpgrade(
 // resolveEnvdUpgradePath is the pure decision, split out so it can be unit-tested
 // without a LaunchDarkly client (the flag value is passed directly). It returns
 // the target path and its baked version, or ("", "", <reason>) for no upgrade.
-// envdUpgradeTargetRe constrains a concrete EnvdUpgradeTargetFlag value (a
-// release version like "v0.7.0", or a legacy git-SHA suffix) to alphanumerics
-// and dots so it can't traverse out of the envd staging directory when joined
-// into the candidate path: "envd."+target then always stays a single path
-// component (no separators; ".." alone can't escape inside a component).
-var envdUpgradeTargetRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.]*$`)
+// envdUpgradeTargetRe constrains a concrete EnvdUpgradeTargetFlag value to a
+// bare version-ish identifier — a git SHA or a release name like v0.7.0. Dots
+// and hyphens are admitted, but no path separators and no leading dot, so the
+// value can't traverse out of the envd staging directory when joined into the
+// candidate path.
+var envdUpgradeTargetRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*$`)
 
 func resolveEnvdUpgradePath(
 	ctx context.Context,
@@ -1155,21 +1177,36 @@ func resolveEnvdUpgradePath(
 	case "promoted":
 		candidate = hostEnvdPath
 	default:
-		// A concrete version (or legacy git SHA) -> the staged binary next to
-		// the promoted one. The flag value becomes both a filesystem path and an
-		// exec target (version probing runs `<candidate> -version`), so reject
-		// anything beyond alphanumerics and dots: a value with path separators
-		// (e.g. "../../bin/sh") would otherwise escape the staging directory
-		// and run an arbitrary host binary.
+		// A concrete version id -> the staged binary next to the promoted one,
+		// in either layout: the flat "envd.<id>" sibling or the release
+		// bucket's "<id>/envd" directory. The flag value becomes both a
+		// filesystem path and an exec target (version probing runs
+		// `<candidate> -version`), so reject anything that isn't a bare
+		// identifier: a value with path separators (e.g. "../../bin/sh") would
+		// otherwise escape the staging directory and run an arbitrary host
+		// binary.
 		if !envdUpgradeTargetRe.MatchString(target) {
 			return "", "", "invalid_target"
 		}
-		candidate = filepath.Join(filepath.Dir(hostEnvdPath), "envd."+target)
+		dir := filepath.Dir(hostEnvdPath)
+		for _, c := range []string{filepath.Join(dir, "envd."+target), filepath.Join(dir, target, "envd")} {
+			if _, err := os.Stat(c); err == nil {
+				candidate = c
+
+				break
+			}
+		}
+	}
+
+	if candidate == "" {
+		// Not staged on this node in either layout — e.g. a bad target /
+		// rubbish flag value, or a node that has not fetched the target yet.
+		return "", "", "not_staged"
 	}
 
 	if _, err := os.Stat(candidate); err != nil {
-		// Not staged on this node — e.g. a bad SHA / rubbish flag value, or a
-		// node that has not fetched the target yet.
+		// The promoted binary is absent (e.g. a version-free central mount
+		// with no unversioned object).
 		return "", "", "not_staged"
 	}
 
