@@ -34,6 +34,7 @@ const (
 	TeamKind             ldcontext.Kind = "team"
 	UserKind             ldcontext.Kind = "user"
 	ClusterKind          ldcontext.Kind = "cluster"
+	InstanceGroupKind    ldcontext.Kind = "instance-group"
 	deploymentKind       ldcontext.Kind = "deployment"
 	TierKind             ldcontext.Kind = "tier"
 	ServiceKind          ldcontext.Kind = "service"

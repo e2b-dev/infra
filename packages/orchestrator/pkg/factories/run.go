@@ -552,6 +552,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	featureFlags.SetDeploymentName(config.DomainName)
 	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
+	featureFlags.RegisterContextProvider(instanceGroupContextProvider(config.InstanceGroupName))
 
 	// External sandbox logger routes through LaunchDarkly (LogsWriteConfigFlag),
 	// falling back to the fixed collector address. Created here so it can use the

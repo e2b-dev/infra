@@ -123,6 +123,10 @@ func ClusterContext(clusterID uuid.UUID) ldcontext.Context {
 	return ldcontext.NewWithKind(ClusterKind, clusterID.String())
 }
 
+func InstanceGroupContext(instanceGroupName string) ldcontext.Context {
+	return ldcontext.NewWithKind(InstanceGroupKind, instanceGroupName)
+}
+
 func deploymentContext(deploymentName string) ldcontext.Context {
 	return ldcontext.NewWithKind(deploymentKind, deploymentName)
 }

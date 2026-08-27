@@ -179,3 +179,24 @@ func TestAdditionalClickhouseEndpoints(t *testing.T) {
 		assert.Equal(t, []string{"dsn1", "dsn2"}, dropped)
 	})
 }
+
+// TestParseInstanceGroupName pins the variable name rather than the field: it
+// is the contract with the deployment that supplies it, and an unset value
+// disables the instance group flag context silently.
+func TestParseInstanceGroupName(t *testing.T) {
+	t.Run("unset", func(t *testing.T) {
+		config, err := Parse()
+		require.NoError(t, err)
+
+		assert.Empty(t, config.InstanceGroupName)
+	})
+
+	t.Run("set", func(t *testing.T) {
+		t.Setenv("INSTANCE_GROUP_NAME", "orch-client-pool-region-rig")
+
+		config, err := Parse()
+		require.NoError(t, err)
+
+		assert.Equal(t, "orch-client-pool-region-rig", config.InstanceGroupName)
+	})
+}
