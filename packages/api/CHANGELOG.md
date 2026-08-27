@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 (2026-08-27)
+
+
+### Bug Fixes
+
+* **api:** don't check for fs-only pause support (15f5a24)
+
 ## 0.6.0 (2026-08-27)
 
 
