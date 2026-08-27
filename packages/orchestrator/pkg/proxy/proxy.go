@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -36,6 +37,22 @@ const (
 )
 
 var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
+
+// envd speaks plaintext, so its port stays HTTP even when the config lists it.
+// The API refuses it at create time; this covers direct gRPC callers.
+func schemeForPort(ingress *orchestrator.SandboxNetworkIngressConfig, port uint64) string {
+	if port == uint64(consts.DefaultEnvdServerPort) {
+		return "http"
+	}
+
+	for _, httpsPort := range ingress.GetHttpsPorts() {
+		if uint64(httpsPort) == port {
+			return "https"
+		}
+	}
+
+	return "http"
+}
 
 type SandboxProxy struct {
 	proxy   *reverseproxy.Proxy
@@ -101,7 +118,7 @@ func newDestinationResolver(sandboxes *sandbox.Map) func(r *http.Request) (*pool
 		}
 
 		url := &url.URL{
-			Scheme: "http",
+			Scheme: schemeForPort(ingress, port),
 			Host:   net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10)),
 		}
 
@@ -124,6 +141,10 @@ func newDestinationResolver(sandboxes *sandbox.Map) func(r *http.Request) (*pool
 			ConnectionKey:   sbx.LifecycleID,
 			RequestLogger:   logger,
 			MaskRequestHost: maskRequestHost,
+			// Guest certificates are self-signed, so verification cannot
+			// succeed. Safe to decide per destination because ingress is fixed
+			// for the lifecycle the pool keys its clients by.
+			InsecureSkipTLSVerify: len(ingress.GetHttpsPorts()) > 0,
 		}, nil
 	}
 }

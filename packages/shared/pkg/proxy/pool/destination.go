@@ -26,4 +26,8 @@ type Destination struct {
 	IncludeSandboxIdInProxyErrorLogger bool
 	// MaskRequestHost is used to mask the request host.
 	MaskRequestHost *string
+	// InsecureSkipTLSVerify is read once, when the pool builds the client for
+	// ConnectionKey; later destinations sharing that key inherit the first
+	// one's value. Keep it constant per ConnectionKey.
+	InsecureSkipTLSVerify bool
 }

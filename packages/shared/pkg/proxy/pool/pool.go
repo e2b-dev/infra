@@ -84,6 +84,7 @@ func (p *ProxyPool) Get(ctx context.Context, d *Destination) *ProxyClient {
 			&p.currentConnsCounter,
 			stdLogger,
 			p.disableKeepAlives,
+			d.InsecureSkipTLSVerify,
 		)
 	})
 }

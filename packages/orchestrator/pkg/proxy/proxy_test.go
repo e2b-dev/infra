@@ -13,6 +13,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 )
 
@@ -94,4 +95,54 @@ func TestResolveDestinationRefusesInternalRoutesBeforeSandboxLookup(t *testing.T
 
 	err = resolve(t, consts.DefaultEnvdServerPort, "/files")
 	assert.ErrorAs(t, err, &notFoundErr, "a public route on an absent sandbox still reports the sandbox missing")
+}
+
+func TestSchemeForPort(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		ingress *orchestrator.SandboxNetworkIngressConfig
+		port    uint64
+		want    string
+	}{
+		{
+			name:    "nil ingress defaults to http",
+			ingress: nil,
+			port:    8080,
+			want:    "http",
+		},
+		{
+			name:    "no HTTPS ports defaults to http",
+			ingress: &orchestrator.SandboxNetworkIngressConfig{},
+			port:    8080,
+			want:    "http",
+		},
+		{
+			name:    "port in HTTPS ports uses https",
+			ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: []uint32{443, 8443}},
+			port:    8443,
+			want:    "https",
+		},
+		{
+			name:    "port not in HTTPS ports uses http",
+			ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: []uint32{443, 8443}},
+			port:    8080,
+			want:    "http",
+		},
+		{
+			name:    "envd port stays http even when listed",
+			ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: []uint32{uint32(consts.DefaultEnvdServerPort)}},
+			port:    uint64(consts.DefaultEnvdServerPort),
+			want:    "http",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, schemeForPort(tt.ingress, tt.port))
+		})
+	}
 }
