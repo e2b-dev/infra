@@ -176,7 +176,7 @@ func PlaceSandbox(
 		default:
 			nodesExcluded[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
-			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
+			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()), logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
 			lastCreateErr = err
 			attempt++
 		}
