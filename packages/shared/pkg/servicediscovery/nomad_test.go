@@ -79,6 +79,7 @@ func TestNomadDiscovery_MapsRegistrations(t *testing.T) {
 	require.Len(t, nodes, 1)
 
 	assert.Equal(t, fullNodeID[:consts.NodeIDLength], nodes[0].WorkloadID)
+	assert.Equal(t, fullNodeID, nodes[0].NodeID, "the machine facet is the untruncated node")
 	assert.Equal(t, "10.0.0.1", nodes[0].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.1", "5008"), nodes[0].Address())
 }

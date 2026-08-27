@@ -33,6 +33,7 @@ func TestNewLocal_ResolvesTheAddress(t *testing.T) {
 			require.Len(t, instances, 1)
 
 			assert.Equal(t, "local", instances[0].WorkloadID)
+			assert.Equal(t, "local", instances[0].NodeID)
 			assert.Equal(t, tt.wantAddress, instances[0].Address())
 		})
 	}

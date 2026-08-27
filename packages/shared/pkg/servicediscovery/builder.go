@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	nomadapi "github.com/hashicorp/nomad/api"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/clusters/discovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -51,7 +53,7 @@ func createDnsProvider(config Config, logger logger.Logger) (Discoverer, error) 
 		return nil, ErrMissingDNSQuery
 	}
 
-	return NewDnsServiceDiscovery(logger, dnsHosts, dnsResolverAddress, config.OrchestratorPort), nil
+	return Cached(NewDNS(dnsHosts, dnsResolverAddress, config.OrchestratorPort), logger), nil
 }
 
 var (
@@ -83,7 +85,7 @@ func createK8sProvider(config Config, logger logger.Logger) (Discoverer, error) 
 		return nil, fmt.Errorf("failed to build in-cluster client: %w", err)
 	}
 
-	return NewK8sServiceDiscovery(logger, client, config.OrchestratorPort, podLabels, podNamespace, hostIP), nil
+	return Cached(NewKubernetesOnPort(client, podNamespace, podLabels, config.OrchestratorPort, hostIP), logger), nil
 }
 
 var (
@@ -102,7 +104,12 @@ func createNomadProvider(config Config, logger logger.Logger) (Discoverer, error
 		return nil, ErrMissingNomadToken
 	}
 
-	return NewNodePlaneInstance(logger, config.OrchestratorPort, nomadEndpoint, nomadToken)
+	client, err := nomadapi.NewClient(&nomadapi.Config{Address: nomadEndpoint, SecretID: nomadToken})
+	if err != nil {
+		return nil, fmt.Errorf("creating nomad client: %w", err)
+	}
+
+	return Cached(NewNomadAllocationsOnPort(client, discovery.FilterTemplateBuildersAndOrchestrators, config.OrchestratorPort), logger), nil
 }
 
 var ErrMissingStaticEndpoints = errors.New("missing static endpoints")

@@ -33,6 +33,7 @@ func newOrchestratorPod(name, hostIP string, ready bool) *corev1.Pod {
 				"app.kubernetes.io/name": "orchestrator",
 			},
 		},
+		Spec: corev1.PodSpec{NodeName: name + "-node"},
 		Status: corev1.PodStatus{
 			Phase:  corev1.PodRunning,
 			HostIP: hostIP,
@@ -77,6 +78,7 @@ func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 	require.Contains(t, byID, pod2.Name)
 
 	port := strconv.Itoa(int(consts.OrchestratorAPIPort))
+	assert.Equal(t, pod1.Spec.NodeName, byID[pod1.Name].NodeID, "the machine facet must survive")
 	assert.Equal(t, "10.0.0.1", byID[pod1.Name].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), byID[pod1.Name].Address())
 	assert.Equal(t, "10.0.0.2", byID[pod2.Name].IPAddress)

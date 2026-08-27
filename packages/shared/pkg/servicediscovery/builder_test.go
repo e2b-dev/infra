@@ -9,6 +9,8 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
+const cachedPort = 5008
+
 func TestFromConfig_SelectsTheAdapterCaseInsensitively(t *testing.T) {
 	t.Parallel()
 
@@ -18,15 +20,15 @@ func TestFromConfig_SelectsTheAdapterCaseInsensitively(t *testing.T) {
 	}{
 		"DNS": {
 			config: Config{Provider: "DNS", OrchestratorPort: cachedPort, DNSQuery: []string{"orchestrator.service"}, DNSResolverAddress: "127.0.0.1:53"},
-			want:   &DnsServiceDiscovery{},
+			want:   &cachedDiscovery{},
 		},
 		"lowercase dns": {
 			config: Config{Provider: "dns", OrchestratorPort: cachedPort, DNSQuery: []string{"orchestrator.service"}, DNSResolverAddress: "127.0.0.1:53"},
-			want:   &DnsServiceDiscovery{},
+			want:   &cachedDiscovery{},
 		},
 		"NOMAD": {
 			config: Config{Provider: "NOMAD", OrchestratorPort: cachedPort, NomadEndpoint: "http://127.0.0.1:4646", NomadToken: "token"},
-			want:   &NodePlaneInstance{},
+			want:   &cachedDiscovery{},
 		},
 		"STATIC": {
 			config: Config{Provider: "STATIC", OrchestratorPort: cachedPort, StaticEndpoints: []string{"10.0.0.1"}},

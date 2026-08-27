@@ -24,6 +24,13 @@ type k8sDiscovery struct {
 	client        kubernetes.Interface
 	namespace     string
 	labelSelector string
+
+	// port and preferPodIP exist because the two callers address these pods
+	// differently: the orchestrator plane dials the well-known port on the host
+	// network, while a configured consumer may carry its own port and read the
+	// pod IP. One lister, two wirings.
+	port        uint16
+	preferPodIP bool
 }
 
 // NewKubernetes creates a Kubernetes-backed Discoverer.
@@ -34,6 +41,19 @@ func NewKubernetes(client kubernetes.Interface, namespace, labelSelector string)
 		client:        client,
 		namespace:     namespace,
 		labelSelector: labelSelector,
+		port:          consts.OrchestratorAPIPort,
+	}
+}
+
+// NewKubernetesOnPort is NewKubernetes for a consumer that carries its own port
+// and, unless preferHostIP, addresses pods by their pod IP.
+func NewKubernetesOnPort(client kubernetes.Interface, namespace, labelSelector string, port uint16, preferHostIP bool) Discoverer {
+	return &k8sDiscovery{
+		client:        client,
+		namespace:     namespace,
+		labelSelector: labelSelector,
+		port:          port,
+		preferPodIP:   !preferHostIP,
 	}
 }
 
@@ -54,10 +74,7 @@ func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
 			continue
 		}
 
-		ip := p.Status.HostIP
-		if ip == "" {
-			ip = p.Status.PodIP
-		}
+		ip := d.addressOf(p)
 		if ip == "" {
 			continue
 		}
@@ -70,8 +87,9 @@ func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]Instance, error) {
 		// Instance.ID.
 		out = append(out, Instance{
 			WorkloadID: p.Name,
+			NodeID:     p.Spec.NodeName,
 			IPAddress:  ip,
-			Port:       consts.OrchestratorAPIPort,
+			Port:       d.port,
 		})
 	}
 
@@ -89,4 +107,16 @@ func podReady(p *corev1.Pod) bool {
 	}
 
 	return false
+}
+
+func (d *k8sDiscovery) addressOf(p corev1.Pod) string {
+	if d.preferPodIP {
+		return p.Status.PodIP
+	}
+
+	if p.Status.HostIP != "" {
+		return p.Status.HostIP
+	}
+
+	return p.Status.PodIP
 }

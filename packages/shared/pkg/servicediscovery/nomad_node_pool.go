@@ -62,6 +62,7 @@ func (d *nomadNodePoolDiscovery) ListInstances(ctx context.Context) ([]Instance,
 		}
 		out = append(out, Instance{
 			WorkloadID: shortID,
+			NodeID:     n.ID,
 			IPAddress:  n.Address,
 			Port:       consts.OrchestratorAPIPort,
 		})

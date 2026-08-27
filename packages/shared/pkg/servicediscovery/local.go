@@ -9,6 +9,10 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 )
 
+// localInstanceID is the identity the local backend reports on both facets:
+// one process on one notional machine.
+const localInstanceID = "local"
+
 // localDiscovery returns a single statically configured address, for local
 // development against the darwin dummy orchestrator where neither Nomad nor
 // Kubernetes is available.
@@ -38,7 +42,8 @@ func NewLocal(addr string) (Discoverer, error) {
 
 	return &localDiscovery{
 		instance: Instance{
-			WorkloadID: "local",
+			WorkloadID: localInstanceID,
+			NodeID:     localInstanceID,
 			IPAddress:  host,
 			Port:       uint16(port),
 		},
