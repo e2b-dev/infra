@@ -114,26 +114,24 @@ func TestEvictSandbox_ReasonByAction(t *testing.T) {
 		assert.True(t, got.FilesystemOnly)
 	})
 
-	// The degrade: an fs-only policy on an FC whose release predates
-	// filesystem-only snapshots (or whose version cannot be parsed) must
-	// still PAUSE — with memory — never refuse or kill; a refusal here would
-	// retry the eviction forever and any later refusal strands the VM for
-	// the orphan reconciler.
-	t.Run("filesystem-only auto-pause degrades to memory on a pre-0.2.0 release", func(t *testing.T) {
+	// No version gate: the fs-only policy is honored on every FC version,
+	// legacy and unparsable included — producing a filesystem-only snapshot
+	// needs no version-gated capability.
+	t.Run("filesystem-only auto-pause is honored on a legacy release", func(t *testing.T) {
 		t.Parallel()
 
 		got := runOn(true, true, "v1.14.1_431f1fc")
 
 		assert.Equal(t, sandbox.StateActionPause, got.Action)
-		assert.False(t, got.FilesystemOnly)
+		assert.True(t, got.FilesystemOnly)
 	})
 
-	t.Run("filesystem-only auto-pause degrades to memory on an unparsable version", func(t *testing.T) {
+	t.Run("filesystem-only auto-pause is honored on an unparsable version", func(t *testing.T) {
 		t.Parallel()
 
 		got := runOn(true, true, "")
 
 		assert.Equal(t, sandbox.StateActionPause, got.Action)
-		assert.False(t, got.FilesystemOnly)
+		assert.True(t, got.FilesystemOnly)
 	})
 }

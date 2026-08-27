@@ -8,11 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/api/internal/fcgate"
 	"github.com/e2b-dev/infra/packages/api/internal/pause"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -172,32 +170,12 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	case sandbox.StateActionPause:
 		// Honor the sandbox's auto-pause snapshot kind: filesystem-only drops
 		// memory (cold-boots on resume); otherwise a full memory snapshot.
+		// No version gate: producing a filesystem-only snapshot needs no
+		// version-gated FC capability, so the release-contract check is
+		// dropped fleet-wide.
 		opts.FilesystemOnly = sbx.AutoPauseFilesystemOnly
-		// Degrade rather than refuse when the RUNNING Firecracker's release
-		// predates filesystem-only snapshots (sticky policies from resumed
-		// snapshots can carry it onto any FC): there is no user here to
-		// retry, a refusal would leave the sandbox timing out forever, and
-		// the pause chain tears down routing before the orchestrator's own
-		// gate could answer — stranding a live VM for the orphan reconciler.
-		// A memory snapshot preserves strictly more than the policy asked
-		// for. Unparsable versions degrade too (fail closed on the feature,
-		// fail open on preserving the sandbox). The check is EXACT — no flag
-		// re-resolution, which with a live VM could only turn this safe
-		// degrade into the orchestrator's post-teardown refusal; fcgate's
-		// doc bounds the residual for records predating the resolved flag.
-		// Both outcomes are counted: the total is the fs-only-policy
-		// eligibility denominator, and the degraded share is the silent
-		// half of the version gate.
 		if opts.FilesystemOnly {
-			outcome := "fs_only"
-			if !fcgate.SupportsFilesystemSnapshots(sbx.FirecrackerVersion) {
-				logger.L().Warn(ctx, "auto-pause degraded to a memory snapshot: firecracker release predates filesystem-only snapshots",
-					logger.WithSandboxID(sbx.SandboxID),
-					zap.String("firecracker_version", sbx.FirecrackerVersion))
-				opts.FilesystemOnly = false
-				outcome = "degraded"
-			}
-			e.fsOnlyAutoPauseCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("outcome", outcome)))
+			e.fsOnlyAutoPauseCounter.Add(ctx, 1)
 		}
 	}
 
