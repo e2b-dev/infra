@@ -52,7 +52,7 @@ func TestTeamLimitsIsUnchangedWhileProjectLimitsIsEmpty(t *testing.T) {
 		) a ON true
 		WHERE (tl.max_length_hours, tl.concurrent_sandboxes, tl.concurrent_template_builds,
 		       tl.max_vcpu, tl.max_ram_mb, tl.disk_mb, tl.events_ttl_days,
-		       tl.default_free_disk_size_mb, tl.max_disk_size_mb)
+		       tl.default_free_disk_size_mb, tl.max_disk_size_mb, tl.max_free_disk_size_mb)
 		   IS DISTINCT FROM
 		      (tier.max_length_hours,
 		       tier.concurrent_instances + a.extra_concurrent_sandboxes,
@@ -62,6 +62,7 @@ func TestTeamLimitsIsUnchangedWhileProjectLimitsIsEmpty(t *testing.T) {
 		       tier.disk_mb + a.extra_disk_mb,
 		       tier.events_ttl_days + a.extra_events_ttl_days,
 		       (tier.default_free_disk_size_mb + a.extra_disk_mb)::bigint,
+		       (tier.max_disk_size_mb + a.extra_max_disk_size_mb)::bigint,
 		       (tier.max_disk_size_mb + a.extra_max_disk_size_mb)::bigint)
 	`).Scan(&mismatches)
 	require.NoError(t, err)
@@ -97,16 +98,16 @@ func TestProjectLimitsOverridesTierAndAddons(t *testing.T) {
 	`, teamID)
 	require.NoError(t, err)
 
-	var got [9]int64
+	var got [10]int64
 	err = sqlDB.QueryRowContext(ctx, `
 		SELECT max_length_hours, concurrent_sandboxes, concurrent_template_builds,
 		       max_vcpu, max_ram_mb, disk_mb, events_ttl_days,
-		       default_free_disk_size_mb, max_disk_size_mb
+		       default_free_disk_size_mb, max_disk_size_mb, max_free_disk_size_mb
 		FROM public.team_limits WHERE id = $1
-	`, teamID).Scan(&got[0], &got[1], &got[2], &got[3], &got[4], &got[5], &got[6], &got[7], &got[8])
+	`, teamID).Scan(&got[0], &got[1], &got[2], &got[3], &got[4], &got[5], &got[6], &got[7], &got[8], &got[9])
 	require.NoError(t, err)
 
-	require.Equal(t, [9]int64{111, 222, 333, 444, 555, 666, 777, 888, 999}, got)
+	require.Equal(t, [10]int64{111, 222, 333, 444, 555, 666, 777, 888, 999, 999}, got)
 }
 
 // tiers has always guaranteed that a team's free disk allowance sits at or
