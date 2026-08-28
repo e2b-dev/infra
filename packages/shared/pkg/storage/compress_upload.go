@@ -12,8 +12,10 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 )
 
@@ -170,7 +172,13 @@ func compressStream(ctx context.Context, in io.Reader, cfg CompressConfig, uploa
 	if err := uploader.Start(ctx); err != nil {
 		return nil, [32]byte{}, fmt.Errorf("start upload: %w", err)
 	}
-	defer uploader.Close()
+	// Close aborts the upload unless it was committed; the deferred error
+	// can't be returned, only logged.
+	defer func() {
+		if err := uploader.Close(); err != nil {
+			logger.L().Warn(ctx, "failed to abort multipart upload", zap.Error(err))
+		}
+	}()
 
 	// The read loop goroutine holds one slot for the duration of the stream;
 	// at least one additional slot is required for uploaders to make progress.

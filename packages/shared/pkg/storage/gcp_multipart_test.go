@@ -68,6 +68,7 @@ func TestMultipartUploader_PartUploaderContract(t *testing.T) {
 	t.Parallel()
 
 	testPartUploaderContract(t, partUploaderTestAdapter{
+		abortsOnClose: true,
 		new: func(t *testing.T, recorder *partUploaderRecorder) partUploader {
 			t.Helper()
 
@@ -93,6 +94,55 @@ func TestMultipartUploader_PartUploaderContract(t *testing.T) {
 			})
 		},
 	})
+}
+
+// abortRecordingUploader builds a test uploader whose part uploads always
+// fail, recording whether the failure path issued the abort DELETE.
+func abortRecordingUploader(t *testing.T, uploadID string, aborted *atomic.Bool) *MultipartUploader {
+	t.Helper()
+
+	return createTestMultipartUploader(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.RawQuery == uploadsPath:
+			xmlData, _ := xml.Marshal(InitiateMultipartUploadResult{Bucket: testBucketName, Key: testObjectName, UploadID: uploadID})
+			w.WriteHeader(http.StatusOK)
+			w.Write(xmlData)
+		case r.Method == http.MethodPut && strings.Contains(r.URL.RawQuery, "partNumber="):
+			w.WriteHeader(http.StatusInternalServerError)
+		case r.Method == http.MethodDelete && r.URL.RawQuery == "uploadId="+uploadID:
+			aborted.Store(true)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected GCP multipart request: %s %s", r.Method, r.URL.String())
+		}
+	}, fastRetryConfig())
+}
+
+func TestGCPCompressedStoreFileAbortsMultipartUploadOnFailure(t *testing.T) {
+	t.Parallel()
+
+	inputPath := writeTempFile(t, []byte(strings.Repeat("compressible-data", 1024)))
+	var aborted atomic.Bool
+	uploader := abortRecordingUploader(t, "compressed-abort-upload-id", &aborted)
+
+	_, _, err := storeFileCompressed(t.Context(), inputPath, testCompressConfig(), 4, PutOptions{},
+		func(ObjectMetadata) (partUploader, error) { return uploader, nil })
+	require.Error(t, err)
+	require.True(t, aborted.Load(), "failed compressed upload should abort the multipart upload")
+}
+
+// The uncompressed >=50MB path has no deferred Close from compressStream and
+// must abort on its own.
+func TestGCPUploadFileInParallelAbortsOnPartFailure(t *testing.T) {
+	t.Parallel()
+
+	inputPath := writeTempFile(t, []byte("parallel-upload-that-fails"))
+	var aborted atomic.Bool
+	uploader := abortRecordingUploader(t, "parallel-abort-upload-id", &aborted)
+
+	_, err := uploader.UploadFileInParallel(t.Context(), inputPath, 2, nil)
+	require.Error(t, err)
+	require.True(t, aborted.Load(), "failed parallel upload should abort the multipart upload")
 }
 
 func TestMultipartUploader_InitiateUpload_Success(t *testing.T) {
@@ -1317,6 +1367,26 @@ func TestGCSXMLPartUploaderContract(t *testing.T) {
 	got := anonymousGet(t, backend, key)
 	require.Equal(t, sha256.Sum256(want), sha256.Sum256(got),
 		"parts must reassemble in part-number order, not upload order")
+}
+
+// Mirrors TestS3PartUploaderAbortOnClose for the GCS XML uploader.
+func TestGCSXMLPartUploaderAbortOnClose(t *testing.T) {
+	t.Parallel()
+
+	backend := gcsXMLBackend(t)
+	key := testKey("gcs-part-abort")
+	up := gcsXMLUploader(t, backend, key, nil, nil)
+
+	require.NoError(t, up.Start(t.Context()))
+	require.NoError(t, up.UploadPart(t.Context(), 1, []byte("abandoned-part")))
+	require.NoError(t, up.Close())
+
+	list, err := backend.newClient(t, nil).ListMultipartUploads(t.Context(), &s3.ListMultipartUploadsInput{
+		Bucket: aws.String(backend.bucket),
+		Prefix: aws.String(key),
+	})
+	require.NoError(t, err)
+	require.Empty(t, list.Uploads, "abort must leave no orphaned multipart upload")
 }
 
 // TestGCSXMLCompressedRoundTrip runs the production compressed upload path
