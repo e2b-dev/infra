@@ -79,6 +79,12 @@ func (f *LocalDiffFile) CloseToDiff(
 	}
 
 	if size.Size() == 0 {
+		// NoDiff carries no path and nothing registers this file in the DiffStore,
+		// so this is the last chance to reclaim it.
+		if rmErr := os.Remove(f.cachePath); rmErr != nil && !os.IsNotExist(rmErr) {
+			return nil, fmt.Errorf("failed to remove empty diff file: %w", rmErr)
+		}
+
 		return &NoDiff{}, nil
 	}
 
