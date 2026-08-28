@@ -7,6 +7,8 @@ import (
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
 
 // stubResolver answers every query with the given rcode and answers.
@@ -75,4 +77,5 @@ func TestDNS_ResolvedAddressesBecomeInstances(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, instances, 1)
 	assert.Equal(t, "10.0.0.1:5008", instances[0].Address())
+	assert.Equal(t, servicediscovery.BackendDNS, instances[0].Backend)
 }

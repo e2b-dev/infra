@@ -1,13 +1,19 @@
 package nodemanager
 
 import (
+	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
 
 func TestNodeCanAcceptNewRequests(t *testing.T) {
@@ -96,4 +102,33 @@ func TestStatusMappersAreInverses(t *testing.T) {
 		_, ok := ApiNodeToOrchestratorStateMapper[api.NodeStatusConnecting]
 		assert.False(t, ok, "api.NodeStatusConnecting is derived locally and must not be sent to an orchestrator")
 	})
+}
+
+// The metric half of the tag is asserted in the orchestrator package. Both
+// emitters of this line need pinning: setStatus is the one the orchestrator's
+// own reported transitions go through, markUnhealthyLocal only the local
+// sync-failure path.
+//
+//nolint:paralleltest // ReplaceGlobals mutates process state
+func TestStatusChangeLogsTheDiscoveryBackend(t *testing.T) {
+	transitions := map[string]func(*Node, context.Context){
+		"reported by the orchestrator": func(n *Node, ctx context.Context) {
+			n.setStatus(ctx, api.NodeStatusDraining, time.Now())
+		},
+		"observed locally": func(n *Node, ctx context.Context) { n.markUnhealthyLocal(ctx) },
+	}
+
+	for name, transition := range transitions {
+		t.Run(name, func(t *testing.T) {
+			core, logs := observer.New(zapcore.InfoLevel)
+			t.Cleanup(logger.ReplaceGlobals(t.Context(), logger.NewTracedLoggerFromCore(core)))
+
+			node := &Node{ID: "node-1", Backend: servicediscovery.BackendKubernetes}
+			transition(node, t.Context())
+
+			entries := logs.FilterMessage("NodeID status changed").All()
+			require.Len(t, entries, 1)
+			assert.Equal(t, string(servicediscovery.BackendKubernetes), entries[0].ContextMap()["backend"])
+		})
+	}
 }

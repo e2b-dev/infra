@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
 
 const testServiceName = "orchestrator"
@@ -82,6 +83,7 @@ func TestNomadDiscovery_MapsRegistrations(t *testing.T) {
 	assert.Equal(t, fullNodeID, nodes[0].NodeID, "the machine facet is the untruncated node")
 	assert.Equal(t, "10.0.0.1", nodes[0].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.1", "5008"), nodes[0].Address())
+	assert.Equal(t, servicediscovery.BackendNomad, nodes[0].Backend)
 }
 
 // TestNomadDiscovery_DeduplicatesByNode ensures that two registrations on the

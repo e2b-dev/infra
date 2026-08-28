@@ -307,6 +307,7 @@ func TestGetOrConnectNode_CacheMiss_DiscoversAndConnects(t *testing.T) {
 	require.NotNil(t, node, "getOrConnectNode must discover and connect the node via Nomad")
 	assert.Equal(t, orchestratorNodeID, node.ID)
 	assert.Equal(t, nomadFullID[:consts.NodeIDLength], node.WorkloadID)
+	assert.Equal(t, servicediscovery.BackendNomad, node.Backend, "the discovering backend's platform must reach the node catalog")
 }
 
 // TestRegisterNode_NoDuplicates verifies that registerNode is idempotent
@@ -397,6 +398,54 @@ func TestConnectToClusterNode_SkipsLocalCluster(t *testing.T) {
 	o.connectToClusterNode(t.Context(), &clusters.Cluster{ID: consts.LocalClusterID}, nil)
 
 	assert.Zero(t, o.nodes.Count())
+}
+
+// fixedDiscovery returns a canned instance list, so a test can drive the node
+// plane with a backend value the Nomad listers cannot produce.
+type fixedDiscovery struct {
+	instances []servicediscovery.Instance
+}
+
+func (d *fixedDiscovery) ListInstances(context.Context) ([]servicediscovery.Instance, error) {
+	return d.instances, nil
+}
+
+func (d *fixedDiscovery) Start(context.Context) {}
+
+func (d *fixedDiscovery) Stop(context.Context) {}
+
+// Both hops of the tag — discovered instance to node-plane instance, and that
+// to the catalog node — are satisfied by a constant while the only test driving
+// them discovers through Nomad. Hardcoding "nomad" at either site was green.
+func TestGetOrConnectNode_CarriesTheDiscoveryBackendToTheCatalog(t *testing.T) {
+	t.Parallel()
+
+	for name, platform := range map[string]string{
+		"nomad":      servicediscovery.BackendNomad,
+		"kubernetes": servicediscovery.BackendKubernetes,
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			nodeID := "orch-" + name
+			port := startFakeOrchestratorGRPC(t, nodeID)
+
+			o := &Orchestrator{
+				nodes: smap.New[*nodemanager.Node](),
+				nodeDiscovery: &fixedDiscovery{instances: []servicediscovery.Instance{{
+					WorkloadID: "workload-" + name,
+					IPAddress:  "127.0.0.1",
+					Port:       uint16(port),
+					Backend:    platform,
+				}}},
+				tel: telemetry.NewNoopClient(),
+			}
+
+			node := o.getOrConnectNode(t.Context(), consts.LocalClusterID, nodeID)
+			require.NotNil(t, node)
+			assert.Equal(t, platform, node.Backend)
+		})
+	}
 }
 
 // countingDiscovery records whether the node plane was consulted.

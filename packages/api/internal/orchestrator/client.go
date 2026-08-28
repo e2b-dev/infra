@@ -135,6 +135,7 @@ func (o *Orchestrator) listNomadNodes(ctx context.Context) ([]nodemanager.NodePl
 			WorkloadID:          i.WorkloadID,
 			OrchestratorAddress: i.Address(),
 			IPAddress:           i.IPAddress,
+			Backend:             i.Backend,
 		})
 	}
 

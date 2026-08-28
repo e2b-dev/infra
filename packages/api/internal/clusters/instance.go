@@ -37,6 +37,10 @@ type Instance struct {
 
 	LocalIPAddress string
 
+	// Backend is the discovery lister the instance came from, carried through
+	// so a node built from this one can still say how it was found.
+	Backend string
+
 	serviceInstanceID    string
 	serviceVersion       string
 	serviceVersionCommit string
@@ -75,6 +79,7 @@ func instanceFrom(clusterID uuid.UUID, sd servicediscovery.Instance, client *GRP
 		NodeID:         sd.NodeID,
 		ClusterID:      clusterID,
 		LocalIPAddress: sd.IPAddress,
+		Backend:        sd.Backend,
 
 		client: client,
 	}

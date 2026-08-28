@@ -17,7 +17,6 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -52,25 +51,9 @@ import (
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// newInClusterKubeClient builds a Kubernetes API client using the pod's
-// in-cluster ServiceAccount token. The api Pod must be running in K8s with a
-// projected SA token (the default for any pod with a ServiceAccount).
-func newInClusterKubeClient() (kubernetes.Interface, error) {
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, fmt.Errorf("rest.InClusterConfig: %w", err)
-	}
-	c, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("kubernetes.NewForConfig: %w", err)
-	}
-
-	return c, nil
-}
-
 // kubeClientFactory builds the client the Kubernetes discovery backends list
 // pods with. Injected so the provider wiring is testable without a cluster.
-type kubeClientFactory func() (kubernetes.Interface, error)
+type kubeClientFactory func(ctx context.Context, endpoint string) (kubernetes.Interface, error)
 
 // serviceDiscovery is the pair of discovery backends the API runs on: the node
 // plane (orchestrators) and the template-builder plane.
@@ -84,18 +67,41 @@ type serviceDiscovery struct {
 // newServiceDiscovery builds both discovery planes for
 // cfg.ServiceDiscoveryProvider:
 //
-//	nomad      - both go through the local Nomad agent
-//	kubernetes - both list pods via the K8s API
-//	local      - both point at one statically configured address
-func newServiceDiscovery(config cfg.Config, newKube kubeClientFactory, provider string) (serviceDiscovery, error) {
+//	nomad            - both go through the local Nomad agent
+//	kubernetes       - both list pods via the K8s API
+//	nomad+kubernetes - both are the deduplicated union of the two above
+//	local            - both point at one statically configured address
+func newServiceDiscovery(ctx context.Context, config cfg.Config, newKube kubeClientFactory, provider string) (serviceDiscovery, error) {
 	switch provider {
 	case cfg.ServiceDiscoveryProviderKubernetes:
-		return newKubernetesServiceDiscovery(config, newKube)
+		return newKubernetesServiceDiscovery(ctx, config, newKube)
+	case cfg.ServiceDiscoveryProviderNomadKubernetes:
+		return newComposedServiceDiscovery(ctx, config, newKube)
 	case cfg.ServiceDiscoveryProviderLocal:
 		return newLocalServiceDiscovery(config)
 	default: // ServiceDiscoveryProviderNomad
 		return newNomadServiceDiscovery(config)
 	}
+}
+
+// newComposedServiceDiscovery unions the Nomad and Kubernetes backends on both
+// planes. Nomad is the primary, so its entries win a dedup conflict and its own
+// union over the legacy node listing stays nested intact inside this one.
+func newComposedServiceDiscovery(ctx context.Context, config cfg.Config, newKube kubeClientFactory) (serviceDiscovery, error) {
+	nomadPlanes, err := newNomadServiceDiscovery(config)
+	if err != nil {
+		return serviceDiscovery{}, err
+	}
+
+	kubePlanes, err := newKubernetesServiceDiscovery(ctx, config, newKube)
+	if err != nil {
+		return serviceDiscovery{}, err
+	}
+
+	return serviceDiscovery{
+		nodes:            servicediscovery.NewMerged(nomadPlanes.nodes, kubePlanes.nodes),
+		templateBuilders: servicediscovery.NewMerged(nomadPlanes.templateBuilders, kubePlanes.templateBuilders),
+	}, nil
 }
 
 // serviceDiscoveryProvider resolves which provider to build. A provider the
@@ -115,8 +121,8 @@ func serviceDiscoveryProvider(config cfg.Config, localEnv bool) string {
 	return cfg.ServiceDiscoveryProviderNomad
 }
 
-func newKubernetesServiceDiscovery(config cfg.Config, newKube kubeClientFactory) (serviceDiscovery, error) {
-	client, err := newKube()
+func newKubernetesServiceDiscovery(ctx context.Context, config cfg.Config, newKube kubeClientFactory) (serviceDiscovery, error) {
+	client, err := newKube(ctx, config.K8sAPIEndpoint)
 	if err != nil {
 		return serviceDiscovery{}, fmt.Errorf("kubernetes client: %w", err)
 	}
@@ -279,7 +285,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 
 	provider := serviceDiscoveryProvider(config, env.IsLocal())
 
-	sd, err := newServiceDiscovery(config, newInClusterKubeClient, provider)
+	sd, err := newServiceDiscovery(ctx, config, kube.NewClient, provider)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing service discovery", zap.Error(err))
 	}

@@ -51,8 +51,8 @@ func TestRemoteDiscovery_MapsTheEdgeResponseOntoBothFacets(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, []Instance{
-		{WorkloadID: "svc-aaa", NodeID: "remote-node-1", IPAddress: "10.9.0.1"},
-		{WorkloadID: "svc-bbb", NodeID: "remote-node-2", IPAddress: "10.9.0.2"},
+		{WorkloadID: "svc-aaa", NodeID: "remote-node-1", IPAddress: "10.9.0.1", Backend: BackendRemote},
+		{WorkloadID: "svc-bbb", NodeID: "remote-node-2", IPAddress: "10.9.0.2", Backend: BackendRemote},
 	}, instances)
 }
 

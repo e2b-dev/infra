@@ -61,7 +61,7 @@ func (d *dnsDiscovery) ListInstances(ctx context.Context) ([]servicediscovery.In
 			}
 			seen[ip] = struct{}{}
 
-			out = append(out, servicediscovery.Instance{WorkloadID: fmt.Sprintf("%s:%d", ip, d.servicePort), IPAddress: ip, Port: d.servicePort})
+			out = append(out, servicediscovery.Instance{WorkloadID: fmt.Sprintf("%s:%d", ip, d.servicePort), IPAddress: ip, Port: d.servicePort, Backend: servicediscovery.BackendDNS})
 		}
 	}
 

@@ -20,12 +20,7 @@ const (
 	testLabelSelector = "app.kubernetes.io/name=orchestrator"
 )
 
-func newOrchestratorPod(name, hostIP string, ready bool) *corev1.Pod {
-	condStatus := corev1.ConditionFalse
-	if ready {
-		condStatus = corev1.ConditionTrue
-	}
-
+func newOrchestratorPod(name, hostIP string, phase corev1.PodPhase) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -36,13 +31,33 @@ func newOrchestratorPod(name, hostIP string, ready bool) *corev1.Pod {
 		},
 		Spec: corev1.PodSpec{NodeName: name + "-node"},
 		Status: corev1.PodStatus{
-			Phase:  corev1.PodRunning,
+			Phase:  phase,
 			HostIP: hostIP,
 			PodIP:  hostIP,
-			Conditions: []corev1.PodCondition{
-				{Type: corev1.PodReady, Status: condStatus},
-			},
 		},
+	}
+}
+
+// podReadinessShapes covers the readiness states a Running pod is observed in.
+func podReadinessShapes() map[string]func(*corev1.Pod) {
+	terminating := func(p *corev1.Pod) {
+		p.DeletionTimestamp = new(metav1.Now())
+		p.Finalizers = []string{"e2b.dev/test"}
+	}
+	ready := func(status corev1.ConditionStatus) func(*corev1.Pod) {
+		return func(p *corev1.Pod) {
+			p.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: status}}
+		}
+	}
+
+	return map[string]func(*corev1.Pod){
+		"not probed yet":           func(*corev1.Pod) {},
+		"reports itself unhealthy": ready(corev1.ConditionFalse),
+		// Termination itself leaves Ready true — the kubelet exempts readiness
+		// from its graceful-shutdown probe stop. Ready goes false separately,
+		// when the control plane declares the node NotReady.
+		"terminating":               func(p *corev1.Pod) { terminating(p); ready(corev1.ConditionTrue)(p) },
+		"on a node marked NotReady": func(p *corev1.Pod) { terminating(p); ready(corev1.ConditionFalse)(p) },
 	}
 }
 
@@ -54,8 +69,8 @@ func newOrchestratorPod(name, hostIP string, ready bool) *corev1.Pod {
 func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 	t.Parallel()
 
-	pod1 := newOrchestratorPod("orchestrator-abcde-fghij", "10.0.0.1", true)
-	pod2 := newOrchestratorPod("orchestrator-abcde-klmno", "10.0.0.2", true)
+	pod1 := newOrchestratorPod("orchestrator-abcde-fghij", "10.0.0.1", corev1.PodRunning)
+	pod2 := newOrchestratorPod("orchestrator-abcde-klmno", "10.0.0.2", corev1.PodRunning)
 
 	client := fake.NewSimpleClientset(pod1, pod2)
 	d := NewPods(client, testNamespace, testLabelSelector)
@@ -80,46 +95,74 @@ func TestKubernetesDiscovery_PodsWithSharedPrefix(t *testing.T) {
 
 	port := strconv.Itoa(int(consts.OrchestratorAPIPort))
 	assert.Equal(t, pod1.Spec.NodeName, byID[pod1.Name].NodeID, "the machine facet must survive")
+	assert.Equal(t, servicediscovery.BackendKubernetes, byID[pod1.Name].Backend)
 	assert.Equal(t, "10.0.0.1", byID[pod1.Name].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), byID[pod1.Name].Address())
 	assert.Equal(t, "10.0.0.2", byID[pod2.Name].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.2", port), byID[pod2.Name].Address())
 }
 
-// TestKubernetesDiscovery_FiltersNotReady ensures that pods which are not
-// Ready=True are excluded, mirroring the Nomad backend's "Status == ready"
-// filter.
-func TestKubernetesDiscovery_FiltersNotReady(t *testing.T) {
+// An instance that reports itself unhealthy, or has not been probed yet, is
+// exactly what the operations targeting it need to reach. A terminating pod
+// most of all: it is drained through, not abandoned.
+func TestKubernetesDiscovery_IgnoresTheReadyCondition(t *testing.T) {
 	t.Parallel()
 
-	ready := newOrchestratorPod("orchestrator-aaaaa-bbbbb", "10.0.0.1", true)
-	notReady := newOrchestratorPod("orchestrator-aaaaa-ccccc", "10.0.0.2", false)
+	for name, shape := range podReadinessShapes() {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	client := fake.NewSimpleClientset(ready, notReady)
-	d := NewPods(client, testNamespace, testLabelSelector)
+			pod := newOrchestratorPod("orchestrator-aaaaa-bbbbb", "10.0.0.1", corev1.PodRunning)
+			shape(pod)
+
+			d := NewPods(fake.NewSimpleClientset(pod), testNamespace, testLabelSelector)
+
+			nodes, err := d.ListInstances(t.Context())
+			require.NoError(t, err)
+			require.Len(t, nodes, 1)
+			assert.Equal(t, pod.Name, nodes[0].WorkloadID)
+		})
+	}
+}
+
+// The same rule reaches the consumer that carries its own port: one lister,
+// and the K8S-PODS deploy reads it through the other constructor.
+func TestKubernetesDiscovery_OnPortIgnoresTheReadyConditionToo(t *testing.T) {
+	t.Parallel()
+
+	pod := newOrchestratorPod("orchestrator-aaaaa-bbbbb", "10.0.0.1", corev1.PodRunning)
+	podReadinessShapes()["reports itself unhealthy"](pod)
+
+	d := NewPodsOnPort(fake.NewSimpleClientset(pod), testNamespace, testLabelSelector, 6123, true)
 
 	nodes, err := d.ListInstances(t.Context())
 	require.NoError(t, err)
 	require.Len(t, nodes, 1)
-	assert.Equal(t, ready.Name, nodes[0].WorkloadID)
+	assert.Equal(t, "10.0.0.1:6123", nodes[0].Address())
+}
+
+// A pod that has finished is gone whatever its last IP was.
+func TestKubernetesDiscovery_FiltersCompletedPods(t *testing.T) {
+	t.Parallel()
+
+	succeeded := newOrchestratorPod("orchestrator-aaaaa-ccccc", "10.0.0.1", corev1.PodSucceeded)
+	failed := newOrchestratorPod("orchestrator-aaaaa-ddddd", "10.0.0.2", corev1.PodFailed)
+
+	client := fake.NewSimpleClientset(succeeded, failed)
+	d := NewPods(client, testNamespace, testLabelSelector)
+
+	nodes, err := d.ListInstances(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, nodes)
 }
 
 // TestKubernetesDiscovery_FiltersPending ensures pods that are not in the
-// Running phase are excluded even if they have no conditions yet.
+// Running phase are excluded. A scheduled host-networked pod already carries
+// the node IP while its init containers run, so only the phase can exclude it.
 func TestKubernetesDiscovery_FiltersPending(t *testing.T) {
 	t.Parallel()
 
-	pending := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "orchestrator-pending",
-			Namespace: testNamespace,
-			Labels:    map[string]string{"app.kubernetes.io/name": "orchestrator"},
-		},
-		Status: corev1.PodStatus{
-			Phase:  corev1.PodPending,
-			HostIP: "10.0.0.3",
-		},
-	}
+	pending := newOrchestratorPod("orchestrator-pending", "10.0.0.3", corev1.PodPending)
 
 	client := fake.NewSimpleClientset(pending)
 	d := NewPods(client, testNamespace, testLabelSelector)
@@ -134,19 +177,7 @@ func TestKubernetesDiscovery_FiltersPending(t *testing.T) {
 func TestKubernetesDiscovery_FiltersMissingIP(t *testing.T) {
 	t.Parallel()
 
-	noIP := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "orchestrator-no-ip",
-			Namespace: testNamespace,
-			Labels:    map[string]string{"app.kubernetes.io/name": "orchestrator"},
-		},
-		Status: corev1.PodStatus{
-			Phase: corev1.PodRunning,
-			Conditions: []corev1.PodCondition{
-				{Type: corev1.PodReady, Status: corev1.ConditionTrue},
-			},
-		},
-	}
+	noIP := newOrchestratorPod("orchestrator-no-ip", "", corev1.PodRunning)
 
 	client := fake.NewSimpleClientset(noIP)
 	d := NewPods(client, testNamespace, testLabelSelector)

@@ -18,8 +18,12 @@ import (
 const (
 	// ServiceDiscoveryProviderNomad queries Nomad's HTTP API (the original / Nomad-based deploy).
 	ServiceDiscoveryProviderNomad = "nomad"
-	// ServiceDiscoveryProviderKubernetes queries the in-cluster K8s API (the K8s deploy).
+	// ServiceDiscoveryProviderKubernetes lists pods via the K8s API (the K8s deploy).
 	ServiceDiscoveryProviderKubernetes = "kubernetes"
+	// ServiceDiscoveryProviderNomadKubernetes queries both and returns the
+	// deduplicated union. Used while orchestrators and template managers run on
+	// both platforms at once.
+	ServiceDiscoveryProviderNomadKubernetes = "nomad+kubernetes"
 	// ServiceDiscoveryProviderLocal returns a single statically configured
 	// orchestrator address. Used to develop the API against the darwin dummy
 	// orchestrator on macOS, where neither Nomad nor Kubernetes is available.
@@ -52,8 +56,9 @@ type Config struct {
 	// carries no envDefault precisely so that "unset" stays distinguishable
 	// from "set to nomad", which an operator running a local Nomad agent needs.
 	// Allowed values:
-	//   "nomad"      (default) - query the local Nomad agent's HTTP API.
-	//   "kubernetes"           - list pods via the in-cluster K8s API.
+	//   "nomad"            (default) - query the local Nomad agent's HTTP API.
+	//   "kubernetes"                 - list pods via the K8s API.
+	//   "nomad+kubernetes"           - the deduplicated union of both.
 	ServiceDiscoveryProvider string `env:"SERVICE_DISCOVERY_PROVIDER"`
 
 	NomadAddress string `env:"NOMAD_ADDRESS" envDefault:"http://localhost:4646"`
@@ -63,7 +68,8 @@ type Config struct {
 	// Nomad-native service names whose registrations enumerate orchestrator
 	// instances (GET /v1/service/<name> per name, results unioned). Every
 	// orchestrator jobspec registers one of these services, regardless of
-	// job type or node pool. Used when ServiceDiscoveryProvider=nomad.
+	// job type or node pool. Used when ServiceDiscoveryProvider is nomad or
+	// nomad+kubernetes.
 	NomadOrchestratorServiceNames []string `env:"NOMAD_ORCHESTRATOR_SERVICE_NAMES" envDefault:"orchestrator" envSeparator:","`
 
 	// NomadOrchestratorLegacyDiscoveryEnabled enables a node-pool-based
@@ -74,7 +80,8 @@ type Config struct {
 	// Address (pre-port-label-fix), which service discovery skips as
 	// unroutable, and removes any rollout ordering constraint between the
 	// API and orchestrator releases. Set to false once no legacy orchestrator
-	// jobs remain. Used when ServiceDiscoveryProvider=nomad.
+	// jobs remain. Used when ServiceDiscoveryProvider is nomad or
+	// nomad+kubernetes.
 	NomadOrchestratorLegacyDiscoveryEnabled bool `env:"NOMAD_ORCHESTRATOR_LEGACY_DISCOVERY_ENABLED" envDefault:"true"`
 
 	// LocalOrchestratorAddress is the "host:port" address of a statically
@@ -83,7 +90,10 @@ type Config struct {
 	// dummy orchestrator.
 	LocalOrchestratorAddress string `env:"LOCAL_ORCHESTRATOR_ADDRESS" envDefault:"127.0.0.1:5008"`
 
-	// Used when ServiceDiscoveryProvider=kubernetes.
+	// Used when ServiceDiscoveryProvider is kubernetes or nomad+kubernetes.
+	// Empty K8sAPIEndpoint uses the pod's own ServiceAccount and only works
+	// inside the cluster; set it to reach a cluster from outside, on Google ADC.
+	K8sAPIEndpoint                     string `env:"K8S_API_ENDPOINT"`
 	K8sNamespace                       string `env:"K8S_NAMESPACE"                           envDefault:"default"`
 	K8sOrchestratorPodLabelSelector    string `env:"K8S_ORCHESTRATOR_POD_LABEL_SELECTOR"     envDefault:"app.kubernetes.io/name=orchestrator"`
 	K8sTemplateManagerPodLabelSelector string `env:"K8S_TEMPLATE_MANAGER_POD_LABEL_SELECTOR" envDefault:"app.kubernetes.io/name=template-manager"`
@@ -275,7 +285,7 @@ func Parse() (Config, error) {
 		config.AuthDBConnectionString = config.PostgresConnectionString
 	}
 
-	if !slices.Contains([]string{"", ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
+	if !slices.Contains([]string{"", ServiceDiscoveryProviderNomad, ServiceDiscoveryProviderKubernetes, ServiceDiscoveryProviderNomadKubernetes, ServiceDiscoveryProviderLocal}, config.ServiceDiscoveryProvider) {
 		return config, newFailureError(
 			FailureConditionInvalidServiceDiscoveryProvider,
 			fmt.Sprintf("invalid service discovery provider: %s", config.ServiceDiscoveryProvider),

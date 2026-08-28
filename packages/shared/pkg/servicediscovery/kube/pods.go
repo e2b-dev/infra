@@ -19,9 +19,11 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/servicedi
 // server.
 //
 // Those pods run with host networking, so each pod's status.HostIP equals
-// status.PodIP and is the address the orchestrator gRPC server listens on. We
-// only return pods that are Running and have Ready=True, mirroring the Nomad
-// equivalent's "Status == ready" filter.
+// status.PodIP and is the address the orchestrator gRPC server listens on. A
+// pod is returned while it is Running and has an IP; the Ready condition is
+// deliberately not consulted, because it is false for instances that still
+// have to be reachable — self-reported unhealthy, not yet probed, on a
+// NotReady node. Liveness is in-band and routing gates on that instead.
 type k8sDiscovery struct {
 	servicediscovery.NoSync
 
@@ -74,7 +76,7 @@ func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]servicediscovery.In
 
 	out := make([]servicediscovery.Instance, 0, len(pods.Items))
 	for _, p := range pods.Items {
-		if !podReady(&p) {
+		if p.Status.Phase != corev1.PodRunning {
 			continue
 		}
 
@@ -94,23 +96,11 @@ func (d *k8sDiscovery) ListInstances(ctx context.Context) ([]servicediscovery.In
 			NodeID:     p.Spec.NodeName,
 			IPAddress:  ip,
 			Port:       d.port,
+			Backend:    servicediscovery.BackendKubernetes,
 		})
 	}
 
 	return out, nil
-}
-
-func podReady(p *corev1.Pod) bool {
-	if p.Status.Phase != corev1.PodRunning {
-		return false
-	}
-	for _, c := range p.Status.Conditions {
-		if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (d *k8sDiscovery) addressOf(p corev1.Pod) string {

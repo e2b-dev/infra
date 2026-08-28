@@ -55,6 +55,7 @@ func (d *nomadAllocationDiscovery) ListInstances(ctx context.Context) ([]service
 			NodeID:     a.NodeID,
 			IPAddress:  a.AllocationIP,
 			Port:       d.port,
+			Backend:    servicediscovery.BackendNomad,
 		})
 	}
 

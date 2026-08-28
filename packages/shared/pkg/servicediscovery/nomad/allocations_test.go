@@ -65,8 +65,8 @@ func TestNomadAllocationDiscovery_IdentifiesTheAllocationAndTheMachineSeparately
 	require.Len(t, instances, 2)
 
 	assert.Equal(t, []servicediscovery.Instance{
-		{WorkloadID: "alloc-1", NodeID: "nomad-node-1", IPAddress: "10.1.0.1", Port: consts.OrchestratorAPIPort},
-		{WorkloadID: "alloc-2", NodeID: "nomad-node-1", IPAddress: "10.1.0.2", Port: consts.OrchestratorAPIPort},
+		{WorkloadID: "alloc-1", NodeID: "nomad-node-1", IPAddress: "10.1.0.1", Port: consts.OrchestratorAPIPort, Backend: servicediscovery.BackendNomad},
+		{WorkloadID: "alloc-2", NodeID: "nomad-node-1", IPAddress: "10.1.0.2", Port: consts.OrchestratorAPIPort, Backend: servicediscovery.BackendNomad},
 	}, instances, "same machine, two allocations, two instances")
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 )
 
 // newNomadNodesMock returns a nomad API client backed by an httptest server
@@ -68,6 +69,7 @@ func TestNomadNodePoolDiscovery_MapsNodes(t *testing.T) {
 	assert.Equal(t, fullNodeID, nodes[0].NodeID, "the machine facet is the untruncated node")
 	assert.Equal(t, "10.0.0.1", nodes[0].IPAddress)
 	assert.Equal(t, net.JoinHostPort("10.0.0.1", port), nodes[0].Address())
+	assert.Equal(t, servicediscovery.BackendNomad, nodes[0].Backend)
 }
 
 // TestNomadNodePoolDiscovery_FiltersByStatusAndPool verifies the server-side

@@ -46,6 +46,7 @@ func NewLocal(addr string) (Discoverer, error) {
 			NodeID:     localInstanceID,
 			IPAddress:  host,
 			Port:       uint16(port),
+			Backend:    BackendLocal,
 		},
 	}, nil
 }

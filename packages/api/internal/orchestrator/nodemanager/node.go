@@ -37,6 +37,7 @@ type NodePlaneInstance struct {
 
 	OrchestratorAddress string
 	IPAddress           string
+	Backend             string
 }
 
 type Node struct {
@@ -50,6 +51,9 @@ type Node struct {
 	ClusterID     uuid.UUID
 	IPAddress     string
 	SandboxDomain *string
+
+	// Backend is the discovery lister this node was found through.
+	Backend string
 
 	client *clusters.GRPCClient
 	status StatusInfo
@@ -116,6 +120,7 @@ func New(
 		ID:            nodeInfo.GetNodeId(),
 		IPAddress:     discoveredNode.IPAddress,
 		SandboxDomain: nil,
+		Backend:       discoveredNode.Backend,
 
 		client: client,
 		status: StatusInfo{Status: nodeStatus, ChangedAt: nodeStatusChangedAt},
@@ -152,6 +157,7 @@ func NewClusterNode(ctx context.Context, client *clusters.GRPCClient, clusterID 
 	n := &Node{
 		source:    sourceClusterRegistry,
 		ClusterID: clusterID,
+		Backend:   i.Backend,
 		ID:        i.NodeID,
 		// API control-plane calls still use the cluster gRPC proxy, but edge/client
 		// proxies need the node IP address for data-plane sandbox traffic.

@@ -66,6 +66,7 @@ func (d *nomadNodePoolDiscovery) ListInstances(ctx context.Context) ([]servicedi
 			NodeID:     n.ID,
 			IPAddress:  n.Address,
 			Port:       consts.OrchestratorAPIPort,
+			Backend:    servicediscovery.BackendNomad,
 		})
 	}
 

@@ -49,6 +49,7 @@ func (o *Orchestrator) setupMetrics(meterProvider metric.MeterProvider) error {
 				obs.ObserveInt64(gauge, 1, metric.WithAttributes(
 					attribute.String("status", string(node.Status())),
 					attribute.String("node.id", node.ID),
+					attribute.String("backend", node.Backend),
 				))
 			}
 

@@ -48,6 +48,9 @@ func (d *remoteDiscovery) ListInstances(ctx context.Context) ([]Instance, error)
 			WorkloadID: o.ServiceInstanceID,
 			NodeID:     o.NodeID,
 			IPAddress:  hostWithoutPort(o.ServiceHost),
+			// Which scheduler runs it is the remote cluster's business and its
+			// edge API does not report one, so this names how we heard of it.
+			Backend: BackendRemote,
 			// The edge API reports a host, not a control-plane port: a remote
 			// cluster is reached for data-plane routing, never dialled here.
 		})

@@ -35,8 +35,27 @@ func TestNewLocal_ResolvesTheAddress(t *testing.T) {
 			assert.Equal(t, "local", instances[0].WorkloadID)
 			assert.Equal(t, "local", instances[0].NodeID)
 			assert.Equal(t, tt.wantAddress, instances[0].Address())
+			assert.Equal(t, BackendLocal, instances[0].Backend)
 		})
 	}
+}
+
+func TestNewStatic_NamesItsBackend(t *testing.T) {
+	t.Parallel()
+
+	items, err := NewStatic([]string{"10.0.0.1"}, 5008).ListInstances(t.Context())
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	assert.Equal(t, BackendStatic, items[0].Backend)
+}
+
+// Every lister names itself, so a caller grouping by backend never has to
+// account for an empty bucket.
+func TestBackend_EveryListerNamesItself(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{"nomad", "kubernetes", "local", "remote", "dns", "static"},
+		[]string{BackendNomad, BackendKubernetes, BackendLocal, BackendRemote, BackendDNS, BackendStatic})
 }
 
 func TestNewLocal_RejectsAnUnusableAddress(t *testing.T) {

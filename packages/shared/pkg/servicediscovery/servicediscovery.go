@@ -28,6 +28,19 @@ var ErrNotYetSynced = errors.New("service discovery has not completed a refresh 
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery")
 
+// The lister that produced an instance. Both schedulers run instances during
+// the migration and shift on independent schedules, so an operator reading the
+// catalog has to be able to tell the two apart; the rest are named so the
+// answer is never "unknown".
+const (
+	BackendNomad      = "nomad"
+	BackendKubernetes = "kubernetes"
+	BackendLocal      = "local"
+	BackendRemote     = "remote"
+	BackendDNS        = "dns"
+	BackendStatic     = "static"
+)
+
 // Instance is a single discovered instance.
 //
 // It carries two identities because consumers need different ones and a single
@@ -58,6 +71,11 @@ type Instance struct {
 
 	// Port is that server's port.
 	Port uint16
+
+	// Backend is the lister that produced this instance. Only two of them name
+	// a scheduler; the others say how the instance was learned of instead,
+	// which is the honest answer and keeps the field total.
+	Backend string
 }
 
 // Address is the "<IPAddress>:<Port>" dial target.

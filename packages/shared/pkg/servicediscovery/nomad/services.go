@@ -83,6 +83,7 @@ func (d *nomadDiscovery) ListInstances(ctx context.Context) ([]servicediscovery.
 				NodeID:     reg.NodeID,
 				IPAddress:  reg.Address,
 				Port:       uint16(reg.Port),
+				Backend:    servicediscovery.BackendNomad,
 			})
 		}
 	}

@@ -70,6 +70,22 @@ func TestParse(t *testing.T) {
 		assert.Equal(t, "secrets-backend:5000", result.SecretsStoreBackendGrpcAddress)
 	})
 
+	t.Run("composed service discovery provider is accepted", func(t *testing.T) {
+		t.Setenv("SERVICE_DISCOVERY_PROVIDER", ServiceDiscoveryProviderNomadKubernetes)
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, "nomad+kubernetes", result.ServiceDiscoveryProvider)
+	})
+
+	t.Run("kubernetes api endpoint is read from the environment", func(t *testing.T) {
+		t.Setenv("K8S_API_ENDPOINT", "https://dns-endpoint.example")
+
+		result, err := Parse()
+		require.NoError(t, err)
+		assert.Equal(t, "https://dns-endpoint.example", result.K8sAPIEndpoint)
+	})
+
 	t.Run("invalid service discovery provider exposes failure condition", func(t *testing.T) {
 		t.Setenv("SERVICE_DISCOVERY_PROVIDER", "invalid")
 

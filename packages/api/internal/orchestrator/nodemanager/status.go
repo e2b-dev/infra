@@ -65,7 +65,7 @@ func (n *Node) setStatus(ctx context.Context, status api.NodeStatus, changedAt t
 	defer n.mutex.Unlock()
 
 	if n.status.Status != status {
-		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)))
+		logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(status)), zap.String("backend", n.Backend))
 	}
 
 	n.status = StatusInfo{Status: status, ChangedAt: changedAt}
@@ -82,7 +82,7 @@ func (n *Node) markUnhealthyLocal(ctx context.Context) {
 		return
 	}
 
-	logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(api.NodeStatusUnhealthy)))
+	logger.L().Info(ctx, "NodeID status changed", logger.WithNodeID(n.ID), zap.String("status", string(api.NodeStatusUnhealthy)), zap.String("backend", n.Backend))
 	n.status = StatusInfo{Status: api.NodeStatusUnhealthy, ChangedAt: time.Now()}
 }
 
