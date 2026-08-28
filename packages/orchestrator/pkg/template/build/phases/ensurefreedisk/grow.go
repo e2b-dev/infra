@@ -116,6 +116,14 @@ func (b *EnsureFreeDiskBuilder) measureFree(
 	size, blockSize int64,
 	buildID uuid.UUID,
 ) (free int64, e error) {
+	// The phase mounts twice, here and in resizeOffline, and the two fail
+	// differently: this one holds a device across a journal replay and a
+	// debugfs read of the free-space counters. Without a span of its own its
+	// teardown nests straight under the phase, which is also resizeOffline's
+	// ancestor, so a trace cannot say which of the two mounts stalled.
+	ctx, span := tracer.Start(ctx, "measure-free")
+	defer span.End()
+
 	cache, err := block.NewCache(size, blockSize, filepath.Join(b.BuilderConfig.DefaultCacheDir, resizeDiskName+"-"+buildID.String()+"-measure.cache"), false)
 	if err != nil {
 		return 0, fmt.Errorf("create measurement cache: %w", err)

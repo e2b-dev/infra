@@ -442,6 +442,14 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	// Release the descriptor Flush syncs before disconnecting, so nothing holds
 	// the block device open while the device goes back to the pool.
+	//
+	// The event is the boundary between this close and the drain above it. Both
+	// can block unboundedly -- Drain waits on the pending-response WaitGroup,
+	// and this is the block device's last close -- so without a mark between
+	// them a stall shows up as one interval covering both, which is how a
+	// two-minute teardown stays unattributable in a trace that otherwise
+	// records every step it takes.
+	telemetry.ReportEvent(ctx, "closing NBD device descriptor")
 	if d.deviceFile != nil {
 		if err := d.deviceFile.Close(); err != nil {
 			errs = append(errs, fmt.Errorf("error closing NBD device: %w", err))
