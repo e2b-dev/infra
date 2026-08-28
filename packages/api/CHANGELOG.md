@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 (2026-08-28)
+
+
+### Features
+
+* **servicediscovery:** union orchestrator discovery across both schedulers (df09b1d)
+
 ## 0.6.2 (2026-08-27)
 
 
