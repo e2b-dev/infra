@@ -16,7 +16,8 @@ import (
 func TestProjectMemberApplyRequestMatchesTheProjectionShape(t *testing.T) {
 	t.Parallel()
 
-	body := `{"revision":4,"present":true,"identities":[{"issuer":"https://issuer.test","subject":"subject"}]}`
+	body := `{"revision":4,"present":true,"is_default":true,"identities":[{"issuer":"https://issuer.test","subject":"subject"}]}`
+	isDefault := true
 
 	var decoded api.ManagementProjectMemberApplyRequest
 	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
@@ -24,14 +25,15 @@ func TestProjectMemberApplyRequestMatchesTheProjectionShape(t *testing.T) {
 	}
 
 	want := api.ManagementProjectMemberApplyRequest{
-		Revision: 4,
-		Present:  true,
+		Revision:  4,
+		Present:   true,
+		IsDefault: &isDefault,
 		Identities: &[]api.ManagementProjectMemberIdentity{{
 			Issuer:  "https://issuer.test",
 			Subject: "subject",
 		}},
 	}
-	if decoded.Revision != want.Revision || decoded.Present != want.Present || decoded.Identities == nil || (*decoded.Identities)[0] != (*want.Identities)[0] {
+	if decoded.Revision != want.Revision || decoded.Present != want.Present || decoded.IsDefault == nil || *decoded.IsDefault != *want.IsDefault || decoded.Identities == nil || (*decoded.Identities)[0] != (*want.Identities)[0] {
 		t.Errorf("decoded %+v, want %+v", decoded, want)
 	}
 }

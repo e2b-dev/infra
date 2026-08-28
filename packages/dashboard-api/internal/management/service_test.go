@@ -42,6 +42,22 @@ func teamMembers(t *testing.T, db *testutils.Database, teamID uuid.UUID) []uuid.
 	return members
 }
 
+func teamMemberIsDefault(t *testing.T, db *testutils.Database, teamID, userID uuid.UUID) bool {
+	t.Helper()
+
+	var isDefault bool
+	err := db.AuthDB.TestsRawSQLQuery(t.Context(),
+		"SELECT is_default FROM public.users_teams WHERE team_id = $1 AND user_id = $2",
+		func(rows pgx.Rows) error {
+			rows.Next()
+
+			return rows.Scan(&isDefault)
+		}, teamID, userID)
+	require.NoError(t, err)
+
+	return isDefault
+}
+
 func publicUserExists(t *testing.T, db *testutils.Database, userID uuid.UUID) bool {
 	t.Helper()
 

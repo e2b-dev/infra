@@ -51,9 +51,11 @@ func TestApplyProjectMemberHonorsTheNewestRevision(t *testing.T) {
 		UserID:     userID,
 		Revision:   1,
 		Present:    true,
+		IsDefault:  true,
 		Identities: []ProjectMemberIdentity{identity},
 	}))
 	require.Equal(t, []uuid.UUID{userID}, teamMembers(t, db, projectID))
+	require.True(t, teamMemberIsDefault(t, db, projectID, userID))
 	require.True(t, publicUserExists(t, db, userID))
 	require.Equal(t, userID, identityOwner(t, db, identity))
 
@@ -79,6 +81,29 @@ func TestApplyProjectMemberHonorsTheNewestRevision(t *testing.T) {
 	}))
 	require.Empty(t, teamMembers(t, db, projectID))
 	require.Equal(t, []memberKey{{userID: userID, teamID: projectID.String()}}, cache.members)
+}
+
+func TestApplyProjectMemberReplacesTheExistingDefault(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	firstProjectID := testutils.CreateTestTeam(t, db)
+	secondProjectID := testutils.CreateTestTeam(t, db)
+	service, _ := newService(db)
+	userID := uuid.New()
+	identity := ProjectMemberIdentity{Issuer: "https://issuer.test", Subject: "subject"}
+
+	require.NoError(t, service.ApplyProjectMember(t.Context(), ProjectMemberProjection{
+		ProjectID: firstProjectID, UserID: userID, Revision: 1, Present: true, IsDefault: true,
+		Identities: []ProjectMemberIdentity{identity},
+	}))
+	require.NoError(t, service.ApplyProjectMember(t.Context(), ProjectMemberProjection{
+		ProjectID: secondProjectID, UserID: userID, Revision: 1, Present: true, IsDefault: true,
+		Identities: []ProjectMemberIdentity{identity},
+	}))
+
+	require.False(t, teamMemberIsDefault(t, db, firstProjectID, userID))
+	require.True(t, teamMemberIsDefault(t, db, secondProjectID, userID))
 }
 
 func TestApplyProjectMemberReportsAnUnknownProject(t *testing.T) {

@@ -29,6 +29,7 @@ type ProjectMemberProjection struct {
 	UserID     uuid.UUID
 	Revision   int64
 	Present    bool
+	IsDefault  bool
 	Identities []ProjectMemberIdentity
 }
 
@@ -97,8 +98,9 @@ func (s *Service) applyProjectMember(ctx context.Context, projection ProjectMemb
 			}
 		}
 		if err := txDB.UpsertTeamMember(ctx, authqueries.UpsertTeamMemberParams{
-			TeamID: projection.ProjectID,
-			UserID: projection.UserID,
+			TeamID:    projection.ProjectID,
+			UserID:    projection.UserID,
+			IsDefault: projection.IsDefault,
 		}); err != nil {
 			return false, fmt.Errorf("upsert project member: %w", err)
 		}

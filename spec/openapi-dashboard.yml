@@ -1335,6 +1335,10 @@ components:
           minimum: 1
         present:
           type: boolean
+        is_default:
+          type: boolean
+          default: false
+          description: Whether this membership is the user's default team. Omitted requests from older sources remain non-default.
         identities:
           type: array
           maxItems: 16

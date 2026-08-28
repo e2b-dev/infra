@@ -35,12 +35,17 @@ func (s *APIStore) ManagementApplyProjectMember(c *gin.Context, projectID api.Pr
 			})
 		}
 	}
+	isDefault := false
+	if body.IsDefault != nil {
+		isDefault = *body.IsDefault
+	}
 
 	if err := s.managementService.ApplyProjectMember(ctx, management.ProjectMemberProjection{
 		ProjectID:  projectID,
 		UserID:     userID,
 		Revision:   body.Revision,
 		Present:    body.Present,
+		IsDefault:  isDefault,
 		Identities: identities,
 	}); err != nil {
 		s.sendProjectMemberError(c, err, attrs...)
