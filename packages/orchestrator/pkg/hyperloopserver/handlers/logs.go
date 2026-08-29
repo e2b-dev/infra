@@ -25,13 +25,24 @@ import (
 var (
 	logForwardMeter      = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/hyperloopserver/handlers")
 	logForwardWriteCount = mustLogForwardCounter(
-		"hyperloop_log_forward_write_count",
+		logForwardWriteCountName,
 		"Number of hyperloop log forward HTTP attempts by route and result",
 	)
 	logForwardShadowInflight = mustLogForwardUpDownCounter(
 		"hyperloop_log_forward_shadow_inflight",
 		"Current number of in-flight best-effort shadow log forwards",
 	)
+)
+
+const (
+	logForwardWriteCountName = "orchestrator.hyperloop.log_forward.write_count"
+	// staleLogWarningInterval is a sampler tick bucketed on entry.Time (the wall clock): the sampler
+	// stores resetAt = entry.Time + tick, so after a backward clock step warnings stay suppressed until
+	// the wall clock catches back up past resetAt -- silence lasting roughly the step size, self-healing
+	// once time recovers. Accepted trade-off of using the stock zap sampler; the per-drop metric is
+	// unaffected and still records every drop. Emitted warnings deliberately omit a suppressed count;
+	// the per-drop metric carries the magnitude.
+	staleLogWarningInterval = 30 * time.Second
 )
 
 func mustLogForwardCounter(name, description string) metric.Int64Counter {
@@ -85,7 +96,12 @@ func (h *APIStore) Logs(c *gin.Context) {
 
 	if hasStaleLogTimestamp(payload, sbx.LifecycleStartedAt) {
 		h.sendAPIStoreError(c, http.StatusBadRequest, "Log timestamp predates this sandbox's resume")
-		h.logger.Warn(ctx, "dropping envd log with a stale pre-resume timestamp", logger.WithSandboxID(sbxID))
+		recordLogForwardWrite(ctx, "ingest", "dropped", "stale_timestamp")
+		h.staleWarnLogger.Warn(
+			ctx,
+			"dropping envd log with a stale pre-resume timestamp",
+			logger.WithSandboxID(sbxID),
+		)
 
 		return
 	}
