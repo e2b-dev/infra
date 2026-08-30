@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.0 (2026-08-29)
+
+
+### Features
+
+* **orch:** make a blocked NBD close attributable in traces (71495c2)
+
+
+### Bug Fixes
+
+* **orchestrator:** remove the cache file when a diff turns out to be empty (acc670b)
+* rate-limit stale log drop warnings (9e4d5c4)
+
 ## 0.10.0 (2026-08-27)
 
 
