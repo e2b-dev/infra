@@ -53,6 +53,15 @@ func TestPlacementAPIError(t *testing.T) {
 			wantMsg:       "Failed to place sandbox: no compatible node for this template's requirements",
 		},
 		{
+			// Distinct from "no eligible node": the cluster is not busy, it is
+			// too old, and the client must not be told to retry.
+			name:          "feature unsupported by the cluster",
+			err:           placement.UnsupportedFeatureError{Features: []string{"https-backend-ports"}, MinVersion: "0.11.0"},
+			wantCode:      http.StatusServiceUnavailable,
+			wantErrorCode: "sandbox_feature_unsupported",
+			wantMsg:       "Failed to place sandbox: no available orchestrator at version 0.11.0 or above for a feature the request asked for",
+		},
+		{
 			name:          "create failed forwards safe status message",
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.FailedPrecondition, "sandbox files for 'abc' not found")},
 			wantCode:      http.StatusInternalServerError,

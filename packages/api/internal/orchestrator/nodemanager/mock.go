@@ -166,6 +166,13 @@ func WithCPUInfo(cpuArch, cpuFamily, cpuModel string) TestOptions {
 	}
 }
 
+// WithOrchestratorVersion sets the orchestrator release the test node reports.
+func WithOrchestratorVersion(version string) TestOptions {
+	return func(node *TestNode) {
+		node.meta.Version = version
+	}
+}
+
 func WithLabels(labels []string) TestOptions {
 	return func(node *TestNode) {
 		labelsSet := make(map[string]struct{}, len(labels))

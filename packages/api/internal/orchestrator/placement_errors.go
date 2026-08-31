@@ -22,6 +22,7 @@ const (
 	errCodePlacementTimeout    = "sandbox_placement_timeout"
 	errCodeCapacityUnavailable = "sandbox_capacity_unavailable"
 	errCodeNoCompatibleNode    = "sandbox_no_compatible_node"
+	errCodeFeatureUnsupported  = "sandbox_feature_unsupported"
 	errCodeSandboxCreateFailed = "sandbox_create_failed"
 	errCodeInternalServer      = "internal_server_error"
 )
@@ -31,6 +32,7 @@ var PlacementErrorCodes = []string{
 	errCodePlacementTimeout,
 	errCodeCapacityUnavailable,
 	errCodeNoCompatibleNode,
+	errCodeFeatureUnsupported,
 	errCodeSandboxCreateFailed,
 	errCodeInternalServer,
 }
@@ -54,10 +56,11 @@ func placementAPIError(err error) *api.APIError {
 	}
 
 	var (
-		timeoutErr    placement.PlacementTimeoutError
-		noNodesErr    placement.NoNodesAvailableError
-		noEligibleErr placement.FailedToPlaceSandboxError
-		createErr     placement.SandboxCreateError
+		timeoutErr     placement.PlacementTimeoutError
+		noNodesErr     placement.NoNodesAvailableError
+		noEligibleErr  placement.FailedToPlaceSandboxError
+		unsupportedErr placement.UnsupportedFeatureError
+		createErr      placement.SandboxCreateError
 	)
 
 	switch {
@@ -69,6 +72,10 @@ func placementAPIError(err error) *api.APIError {
 		return apiErr(http.StatusGatewayTimeout, errCodePlacementTimeout, fmt.Sprintf("%s: placement timed out after %d attempt(s), please retry", placementMessagePrefix, timeoutErr.Attempts))
 	case errors.As(err, &noNodesErr):
 		return apiErr(http.StatusServiceUnavailable, errCodeCapacityUnavailable, placementMessagePrefix+": not enough capacity for the requested resources right now, please retry shortly")
+	case errors.As(err, &unsupportedErr):
+		// Same status as the sibling refusals; the error code carries the
+		// distinction, and the message offers no retry because none helps.
+		return apiErr(http.StatusServiceUnavailable, errCodeFeatureUnsupported, fmt.Sprintf("%s: no available orchestrator at version %s or above for a feature the request asked for", placementMessagePrefix, unsupportedErr.MinVersion))
 	case errors.As(err, &noEligibleErr):
 		return apiErr(http.StatusServiceUnavailable, errCodeNoCompatibleNode, placementMessagePrefix+": no compatible node for this template's requirements")
 	case errors.As(err, &createErr):

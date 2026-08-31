@@ -25,6 +25,7 @@ func (s stubAlgorithm) chooseNode(
 	nodesExcluded map[string]struct{},
 	_ nodemanager.SandboxResources,
 	_ CPURequirement,
+	_ FeatureRequirement,
 	_ bool,
 	_ []string,
 ) (*nodemanager.Node, error) {

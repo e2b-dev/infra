@@ -34,9 +34,12 @@ type PlacementResult struct {
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
 type Algorithm interface {
-	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, cpu CPURequirement, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error)
+	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error)
 }
 
+// PlaceSandbox derives sbxRequest's orchestrator-capability requirement and
+// places it. The requirement is read off the request rather than supplied by
+// the caller, so it cannot disagree with the bytes the orchestrator receives.
 func PlaceSandbox(
 	ctx context.Context,
 	algorithm Algorithm,
@@ -44,6 +47,20 @@ func PlaceSandbox(
 	preferredNode *nodemanager.Node,
 	sbxRequest *orchestrator.SandboxCreateRequest,
 	cpu CPURequirement,
+	labelFilteringEnabled bool,
+	requiredLabels []string,
+) (PlacementResult, error) {
+	return placeSandbox(ctx, algorithm, clusterNodes, preferredNode, sbxRequest, cpu, requiredFeatures(sbxRequest), labelFilteringEnabled, requiredLabels)
+}
+
+func placeSandbox(
+	ctx context.Context,
+	algorithm Algorithm,
+	clusterNodes []*nodemanager.Node,
+	preferredNode *nodemanager.Node,
+	sbxRequest *orchestrator.SandboxCreateRequest,
+	cpu CPURequirement,
+	features FeatureRequirement,
 	labelFilteringEnabled bool,
 	requiredLabels []string,
 ) (PlacementResult, error) {
@@ -55,9 +72,18 @@ func PlaceSandbox(
 
 	var node *nodemanager.Node
 	// Vetted here rather than trusted: the preferred node skips chooseNode, so
-	// affinity would otherwise outrank the CPU requirement on every resume.
-	if preferredNode != nil && NodeSatisfiesCPU(preferredNode, cpu) {
+	// affinity would otherwise outrank the CPU and feature requirements on
+	// every resume.
+	if preferredNode != nil && NodeSatisfiesCPU(preferredNode, cpu) && NodeSatisfiesFeatures(preferredNode, features) {
 		node = preferredNode
+	}
+
+	// Reported before the loop so a too-old fleet does not reach the caller as a
+	// timeout after burning the deadline on nodes that can never serve it. An
+	// empty cluster and an already-cancelled request are left to the loop, which
+	// classifies them better.
+	if node == nil && len(clusterNodes) > 0 && ctx.Err() == nil && !anyNodeSatisfiesFeatures(clusterNodes, features) {
+		return PlacementResult{}, UnsupportedFeatureError{Features: features.FeatureNames(), MinVersion: features.MinVersion()}
 	}
 
 	// First node that attempted the create (not a fast ResourceExhausted refusal).
@@ -113,7 +139,7 @@ func PlaceSandbox(
 				return failed(NoNodesAvailableError{})
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, cpu, labelFilteringEnabled, requiredLabels)
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}, cpu, features, labelFilteringEnabled, requiredLabels)
 			if err != nil {
 				// A create was already attempted: its error explains the failure
 				// better than the empty candidate set it caused.

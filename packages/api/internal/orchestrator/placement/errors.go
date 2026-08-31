@@ -14,6 +14,20 @@ func (NoNodesAvailableError) Error() string {
 	return "no nodes available"
 }
 
+// UnsupportedFeatureError reports that no orchestrator in the cluster is new
+// enough for a capability the request asked for; separate from
+// NoNodesAvailableError because no retry can succeed.
+type UnsupportedFeatureError struct {
+	Features   []string
+	MinVersion string
+}
+
+var _ error = UnsupportedFeatureError{}
+
+func (e UnsupportedFeatureError) Error() string {
+	return fmt.Sprintf("no available orchestrator at version %s or above for feature(s) %v", e.MinVersion, e.Features)
+}
+
 // PlacementTimeoutError is returned when the request context expires while
 // placing; Attempts counts the completed create attempts.
 type PlacementTimeoutError struct {

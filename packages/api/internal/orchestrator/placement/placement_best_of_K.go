@@ -88,12 +88,12 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 }
 
 // chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, cpu CPURequirement, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
+func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config, excludedNodes, cpu, filterByLabels, requiredLabels)
+	candidates := b.sample(nodes, config, excludedNodes, cpu, features, filterByLabels, requiredLabels)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
@@ -113,6 +113,7 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 			filterByLabels: filterByLabels,
 			requiredLabels: requiredLabels,
 			cpu:            cpu,
+			features:       features,
 		}
 	}
 
@@ -123,6 +124,7 @@ type FailedToPlaceSandboxError struct {
 	filterByLabels bool
 	requiredLabels []string
 	cpu            CPURequirement
+	features       FeatureRequirement
 }
 
 var _ error = FailedToPlaceSandboxError{}
@@ -138,11 +140,15 @@ func (e FailedToPlaceSandboxError) Error() string {
 		message += fmt.Sprintf(", labels=%v", e.requiredLabels)
 	}
 
+	if e.features.MinVersion() != "" {
+		message += fmt.Sprintf(", features=%v, min_orchestrator_version=%s", e.features.FeatureNames(), e.features.MinVersion())
+	}
+
 	return message
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, cpu CPURequirement, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
 	if config.K <= 0 || len(items) == 0 {
 		return nil
 	}
@@ -178,6 +184,11 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 
 		// Skip if node is not CPU compatible
 		if !NodeSatisfiesCPU(n, cpu) {
+			continue
+		}
+
+		// Skip if the node's orchestrator predates a requested feature
+		if !NodeSatisfiesFeatures(n, features) {
 			continue
 		}
 
