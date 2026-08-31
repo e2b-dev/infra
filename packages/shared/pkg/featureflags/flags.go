@@ -130,6 +130,7 @@ var (
 	UseNFSCacheForBuildingTemplatesFlag = NewBoolFlag("use-nfs-for-building-templates", env.IsDevelopment())
 	CreateStorageCacheSpansFlag         = NewBoolFlag("create-storage-cache-spans", env.IsDevelopment())
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
+	WorkspacesEnabledFlag               = NewBoolFlag("workspacesEnabled", false)
 
 	// FsFreezeViaExecFlag freezes the guest rootfs with `fsfreeze -f /` run through
 	// the envd exec API before a filesystem-only pause, for guests whose envd
