@@ -54,12 +54,42 @@ func TestProjectUpsertIgnoresARetiredProjectType(t *testing.T) {
 	}
 }
 
+func TestManagementClusterRegistrationContainsOnlyClusterDescriptorFields(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := api.GetSwagger()
+	if err != nil {
+		t.Fatalf("loading Dashboard API contract: %v", err)
+	}
+
+	schema := swagger.Components.Schemas["ManagementClusterRegistrationRequest"]
+	if schema == nil || schema.Value == nil {
+		t.Fatal("ManagementClusterRegistrationRequest schema is missing")
+	}
+	want := map[string]struct{}{
+		"name": {}, "endpoint": {}, "endpoint_tls": {}, "token": {},
+		"sandbox_proxy_domain": {}, "auth_org_id": {},
+	}
+	for name := range schema.Value.Properties {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("management cluster registration exposes unexpected field %q", name)
+		}
+		delete(want, name)
+	}
+	if len(want) != 0 {
+		t.Fatalf("management cluster registration is missing fields: %v", want)
+	}
+}
+
 func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 	t.Parallel()
 
 	projectID := uuid.New().String()
 	userID := uuid.New().String()
+	clusterID := uuid.New().String()
 	project := "/v1/management/projects/" + projectID
+	cluster := "/v1/management/clusters/" + clusterID
+	projectCluster := project + "/cluster/" + clusterID
 
 	for _, tt := range []struct {
 		operation string
@@ -71,6 +101,10 @@ func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 		{"deleteProject", http.MethodDelete, project, ""},
 		{"applyProjectMember", http.MethodPut, project + "/members/" + userID, `{"revision":1,"present":false}`},
 		{"upsertLimits", http.MethodPut, project + "/limits", `{}`},
+		{"registerCluster", http.MethodPut, cluster, `{"name":"a","endpoint":"a:443","endpoint_tls":true,"token":"token"}`},
+		{"deleteCluster", http.MethodDelete, cluster, ""},
+		{"assignProjectCluster", http.MethodPut, projectCluster, ""},
+		{"detachProjectCluster", http.MethodDelete, projectCluster, ""},
 	} {
 		t.Run(tt.operation, func(t *testing.T) {
 			t.Parallel()
@@ -122,4 +156,20 @@ func (r *routeRecorder) ManagementApplyProjectMember(c *gin.Context, _ api.Proje
 
 func (r *routeRecorder) ManagementUpsertProjectLimits(c *gin.Context, _ api.ProjectID) {
 	r.report(c, "upsertLimits")
+}
+
+func (r *routeRecorder) ManagementRegisterCluster(c *gin.Context, _ api.ClusterID) {
+	r.report(c, "registerCluster")
+}
+
+func (r *routeRecorder) ManagementDeleteCluster(c *gin.Context, _ api.ClusterID) {
+	r.report(c, "deleteCluster")
+}
+
+func (r *routeRecorder) ManagementAssignProjectCluster(c *gin.Context, _ api.ProjectID, _ api.ClusterID) {
+	r.report(c, "assignProjectCluster")
+}
+
+func (r *routeRecorder) ManagementDetachProjectCluster(c *gin.Context, _ api.ProjectID, _ api.ClusterID) {
+	r.report(c, "detachProjectCluster")
 }

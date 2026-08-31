@@ -265,6 +265,12 @@ already owned by a different user returns 409. A revocation removes only that Us
 caches member authorization, so each accepted command invalidates that User's authorization for
 the Project after commit.
 
+The management surface also owns a replay-safe cluster lifecycle. A caller registers a stable
+cluster UUID with immutable connection details, assigns it only to the named project, detaches that
+exact assignment before provider cleanup, and deletes the cluster only after no project references
+it. Replaying the same registration or assignment succeeds, while a changed descriptor, a different
+assignment, an inexact detach, or deletion of a referenced cluster returns a conflict.
+
 `DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
 `volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
 project that ever built one pins its team row — and releasing it needs the API service's

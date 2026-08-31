@@ -285,6 +285,48 @@ func TestPutAdminTeamsTeamIDClusterAssignsExistingCluster(t *testing.T) {
 	require.Equal(t, clusterID, assignedClusterID)
 }
 
+func TestPutAdminTeamsTeamIDClusterRetriesCacheInvalidation(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	clusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token')`,
+		clusterID,
+	))
+
+	authService := &configurableCacheAuthService{invalidateErr: errors.New("cache unavailable")}
+	store := &APIStore{db: db.SqlcClient, authService: authService}
+	request := api.AdminTeamClusterAssignmentRequest{ClusterId: clusterID}
+
+	first := callAssignCluster(t, store, teamID, request)
+	require.Equal(t, http.StatusInternalServerError, first.Code, first.Body.String())
+	require.Equal(t, []uuid.UUID{teamID}, authService.invalidated)
+
+	var assignedClusterID uuid.UUID
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT cluster_id FROM public.teams WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&assignedClusterID)
+		},
+		teamID,
+	))
+	require.Equal(t, clusterID, assignedClusterID)
+
+	second := callAssignCluster(t, store, teamID, request)
+	require.Equal(t, http.StatusInternalServerError, second.Code, second.Body.String())
+	require.Equal(t, []uuid.UUID{teamID, teamID}, authService.invalidated)
+
+	authService.invalidateErr = nil
+	third := callAssignCluster(t, store, teamID, request)
+	require.Equal(t, http.StatusNoContent, third.Code, third.Body.String())
+	require.Equal(t, []uuid.UUID{teamID, teamID, teamID}, authService.invalidated)
+}
+
 func TestPutAdminTeamsTeamIDClusterPreservesExistingAssignment(t *testing.T) {
 	t.Parallel()
 

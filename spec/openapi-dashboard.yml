@@ -1312,6 +1312,32 @@ components:
               type: string
               format: uuid
 
+    ManagementClusterRegistrationRequest:
+      type: object
+      required:
+        - name
+        - endpoint
+        - endpoint_tls
+        - token
+      properties:
+        name:
+          type: string
+          minLength: 1
+        endpoint:
+          type: string
+          minLength: 1
+        endpoint_tls:
+          type: boolean
+        token:
+          type: string
+          minLength: 1
+        sandbox_proxy_domain:
+          type: string
+          nullable: true
+        auth_org_id:
+          type: string
+          nullable: true
+
     ManagementProjectMemberIdentity:
       type: object
       required: [issuer, subject]
@@ -2366,3 +2392,86 @@ paths:
           $ref: "#/components/responses/500"
         "501":
           $ref: "#/components/responses/501"
+
+  /v1/management/clusters/{clusterID}:
+    parameters:
+      - $ref: "#/components/parameters/clusterID"
+    put:
+      operationId: managementRegisterCluster
+      summary: Register a cluster (v1).
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManagementClusterRegistrationRequest"
+      responses:
+        "204":
+          description: Cluster registration is present.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      operationId: managementDeleteCluster
+      summary: Delete an unreferenced cluster (v1).
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: Cluster is absent.
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/management/projects/{projectID}/cluster/{clusterID}:
+    parameters:
+      - $ref: "#/components/parameters/projectID"
+      - $ref: "#/components/parameters/clusterID"
+    put:
+      operationId: managementAssignProjectCluster
+      summary: Assign a cluster to a project (v1).
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: Cluster is assigned to the project.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      operationId: managementDetachProjectCluster
+      summary: Detach a cluster assignment from a project (v1).
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      responses:
+        "204":
+          description: The matching assignment is absent.
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "409":
+          $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"

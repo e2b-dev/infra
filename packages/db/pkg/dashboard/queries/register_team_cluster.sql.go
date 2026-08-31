@@ -165,9 +165,9 @@ WHERE id = $1::uuid
   AND cluster_id IS NOT NULL
 `
 
-func (q *Queries) TeamClusterAssignment(ctx context.Context, teamID uuid.UUID) (uuid.UUID, error) {
+func (q *Queries) TeamClusterAssignment(ctx context.Context, teamID uuid.UUID) (*uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, teamClusterAssignment, teamID)
-	var clusterID uuid.UUID
-	err := row.Scan(&clusterID)
-	return clusterID, err
+	var cluster_id *uuid.UUID
+	err := row.Scan(&cluster_id)
+	return cluster_id, err
 }
