@@ -19,9 +19,29 @@ echo "运行日志: $LOG_FILE"
 
 GO_VERSION="1.26.5"
 DATACENTER="hk-prod"
+# HashiCorp 组件版本
+NOMAD_VERSION="1.10.5"
+CONSUL_VERSION="1.20.2"
+VAULT_VERSION="1.21.0"
+# 离线安装包目录（install-*.sh 从这里查找 zip）
+INSTALLERS_DIR="/mnt/nfs/nomad_cluster_installers"
 # LOCAL_IP="192.168.162.212"
 # 获取本机内网 IP
 LOCAL_IP=$(hostname -I | awk '{print $1}')
+
+# 确保 HashiCorp 安装包存在；不存在则从官方源下载（香港可直连 releases.hashicorp.com）
+ensure_installer() {
+  local name="$1" version="$2"
+  local dir="${INSTALLERS_DIR}/${name}"
+  local zip="${dir}/${name}_${version}_linux_amd64.zip"
+  if [ -s "$zip" ]; then
+    echo "已存在安装包: $zip"
+    return 0
+  fi
+  echo "下载 ${name} ${version} -> ${zip}"
+  mkdir -p "$dir"
+  curl -fSL "https://releases.hashicorp.com/${name}/${version}/${name}_${version}_linux_amd64.zip" -o "$zip"
+}
 
 echo "================================================="
 echo "Step 1: Installing system dependencies"
@@ -105,13 +125,20 @@ HCL_DIR="${INFRA_DIR}/volcano_hcls/sh_prod"
 echo "================================================="
 echo "Step 4: Installing Nomad"
 echo "================================================="
-mv /mnt/nfs/infra/nomad_cluster_installers /mnt/nfs/
+# 确保三个组件的离线包就位（本地/NFS 已有则复用，否则官方源下载）
+ensure_installer nomad  "$NOMAD_VERSION"
+ensure_installer consul "$CONSUL_VERSION"
+ensure_installer vault  "$VAULT_VERSION"
 cd /mnt/nfs/e2b_val/infrawaves/bashs
-./install-nomad.sh --version 1.10.5
+./install-nomad.sh --version "$NOMAD_VERSION"
 
 echo "================================================="
 echo "Step 5: Installing bash-commons"
 echo "================================================="
+# bash-commons 是 Gruntwork 官方库；NFS 上没有就从官方源 clone（香港可直连 GitHub）
+if [ ! -d /mnt/nfs/bash-commons ]; then
+  git clone https://github.com/gruntwork-io/bash-commons /mnt/nfs/bash-commons
+fi
 sudo mkdir -p /opt/gruntwork
 cd /opt/gruntwork
 cp -r /mnt/nfs/bash-commons ./
@@ -122,8 +149,8 @@ echo "================================================="
 echo "Step 6: Installing Consul and Vault"
 echo "================================================="
 cd /mnt/nfs/e2b_val/infrawaves/bashs
-./install-consul.sh --version 1.20.2
-./install-vault.sh --version 1.21.0
+./install-consul.sh --version "$CONSUL_VERSION"
+./install-vault.sh --version "$VAULT_VERSION"
 
 echo "================================================="
 echo "Step 7: Copying Nomad and Consul startup scripts"
@@ -163,6 +190,27 @@ echo '{}' > /opt/consul/config/default.json
 # 修复权限，consul 进程以 consul 用户运行
 chown -R consul:consul /opt/consul/config /opt/consul/data
 
+# 生成 consul.service（install-consul.sh 只装二进制不建 unit，fresh 节点上没有）
+cat > /etc/systemd/system/consul.service <<EOF
+[Unit]
+Description=HashiCorp Consul
+Requires=network-online.target
+After=network-online.target
+
+[Service]
+User=consul
+Group=consul
+ExecStart=/opt/consul/bin/consul agent -config-dir /opt/consul/config -data-dir /opt/consul/data
+ExecReload=/bin/kill -HUP \$MAINPID
+KillMode=process
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl daemon-reload
+
 systemctl reset-failed consul 2>/dev/null || true
 systemctl enable consul
 systemctl start consul
@@ -173,9 +221,10 @@ echo "CONSUL_TOKEN: $CONSUL_HTTP_TOKEN"
 echo "================================================="
 echo "Step 9: Starting Nomad Server + Client (combined)"
 echo "================================================="
-pkill nomad 2>/dev/null; sleep 2
+pkill -f 'nomad agent' 2>/dev/null || true
+sleep 2
 
-mkdir -p /opt/nomad/config /opt/nomad/data
+mkdir -p /opt/nomad/config /opt/nomad/data /opt/nomad/plugins
 cat > /opt/nomad/config/server.hcl <<EOF
 datacenter = "${DATACENTER}"
 name       = "nomad-server-api"
@@ -271,10 +320,34 @@ EOF
 supervisorctl reread
 supervisorctl update
 supervisorctl start nomad
-sleep 15
-export NOMAD_TOKEN=$(nomad acl bootstrap | grep 'Secret ID' | awk '{print $4}')
-echo "NOMAD_TOKEN: $NOMAD_TOKEN"
-NOMAD_TOKEN=$NOMAD_TOKEN nomad node status
+
+# 等待 Nomad API 就绪并选出 leader（最多 60s），避免 acl bootstrap 卡死
+echo "等待 Nomad leader 就绪..."
+for i in $(seq 1 60); do
+  if nomad operator api /v1/status/leader 2>/dev/null | grep -q ':'; then
+    echo "Nomad leader 已就绪"
+    break
+  fi
+  sleep 1
+done
+
+# ACL bootstrap 幂等：首次生成 token 并持久化到 /opt/nomad/nomad-acl.token；已存在则复用
+NOMAD_TOKEN_FILE="/opt/nomad/nomad-acl.token"
+if [ -s "$NOMAD_TOKEN_FILE" ]; then
+  export NOMAD_TOKEN="$(cat "$NOMAD_TOKEN_FILE")"
+  echo "复用已有 NOMAD_TOKEN"
+else
+  NOMAD_TOKEN="$(nomad acl bootstrap 2>/dev/null | grep 'Secret ID' | awk '{print $4}')"
+  if [ -n "$NOMAD_TOKEN" ]; then
+    echo "$NOMAD_TOKEN" > "$NOMAD_TOKEN_FILE"
+    chmod 600 "$NOMAD_TOKEN_FILE"
+    export NOMAD_TOKEN
+  else
+    echo "警告: acl bootstrap 未返回 token（可能集群已 bootstrap）。请手动提供已有 token 写入 $NOMAD_TOKEN_FILE 后重跑。"
+  fi
+fi
+echo "NOMAD_TOKEN: ${NOMAD_TOKEN:-<空>}"
+NOMAD_TOKEN=$NOMAD_TOKEN nomad node status || true
 
 # 启用内存 oversubscription，使 memory_max 生效（集群级 raft 配置，立即生效无需重启）
 nomad operator scheduler set-config -memory-oversubscription=true
