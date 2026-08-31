@@ -3,6 +3,7 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
+CLEAN_NFS_CACHE_IMAGE_REGISTRY := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core/clean-nfs-cache
 
 # Public bucket holding released, prebuilt orchestrator-package binaries
 # (objects are <version>/orchestrator and <version>/clean-nfs-cache; there is
@@ -169,6 +170,11 @@ endif
 
 .PHONY: build-and-upload/clean-nfs-cache
 build-and-upload/clean-nfs-cache: $(BIN_SOURCE) upload/clean-nfs-cache
+
+.PHONY: build-and-upload/clean-nfs-cache-image
+build-and-upload/clean-nfs-cache-image: $(BIN_SOURCE)
+	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
+	@docker buildx build --platform $(BUILD_PLATFORM) --tag $(CLEAN_NFS_CACHE_IMAGE_REGISTRY) --tag $(CLEAN_NFS_CACHE_IMAGE_REGISTRY):$(COMMIT_SHA) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile.clean-nfs-cache .
 
 .PHONY: build-and-upload/orchestrator
 build-and-upload/orchestrator: $(BIN_SOURCE) upload/orchestrator
