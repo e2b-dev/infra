@@ -2,14 +2,23 @@
 set -euo pipefail
 
 # =========================================================
-# sh-prod server-api 节点一键安装脚本
+# hk-prod server-api 节点一键安装脚本
 # 包含：系统依赖、Docker、Go、NFS、Nomad、Consul、ClickHouse
 # =========================================================
 
-# INFRA_DIR="/mnt/nfs/gaomingxing/infra"
-# HCL_DIR="${INFRA_DIR}/volcano_hcls/sh_prod"
+# HOME 有时未设置（sudo/su 无登录环境），后续 go env -w、.bashrc、.docker 都依赖它
+export HOME="${HOME:-/root}"
+
+# 运行日志：把全部 stdout/stderr 同时写到终端和带时间戳的日志文件
+LOG_DIR="/var/log/server-api-install"
+mkdir -p "$LOG_DIR"
+LOG_FILE="${LOG_DIR}/install-$(date +%Y%m%d-%H%M%S).log"
+# 每行前缀时间戳后再落盘，终端仍显示原始输出
+exec > >(tee >(while IFS= read -r line; do printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$line"; done >> "$LOG_FILE")) 2>&1
+echo "运行日志: $LOG_FILE"
+
 GO_VERSION="1.26.5"
-DATACENTER="sh-prod"
+DATACENTER="hk-prod"
 # LOCAL_IP="192.168.162.212"
 # 获取本机内网 IP
 LOCAL_IP=$(hostname -I | awk '{print $1}')
@@ -18,7 +27,7 @@ echo "================================================="
 echo "Step 1: Installing system dependencies"
 echo "================================================="
 apt-get update -y
-apt-get install -y nfs-common nfs-server git curl supervisor
+apt-get install -y nfs-common nfs-kernel-server git curl supervisor
 apt-get install -y postgresql-client redis-tools
 apt-get install -y docker.io
 
@@ -72,19 +81,31 @@ export GOPROXY=https://goproxy.cn,direct
 echo "Go: $(/usr/local/go/bin/go version)"
 
 echo "================================================="
-echo "Step 3: Mounting NFS"
+echo "Step 3: Setting up NFS server (export /mnt/nfs)"
 echo "================================================="
-mkdir -p /mnt/nfs
-if ! mountpoint -q /mnt/nfs; then
-  mount ${LOCAL_IP}:/mnt/nfs /mnt/nfs
+# 本机作为 NFS server，导出 /mnt/nfs 供其它节点挂载；本机直接使用本地目录，无需自挂载
+NFS_SHARE="/mnt/nfs"
+# 允许同网段（LOCAL_IP 的 /24）的节点挂载
+NFS_EXPORT_CIDR="$(echo "$LOCAL_IP" | awk -F. '{print $1"."$2"."$3".0/24"}')"
+mkdir -p "$NFS_SHARE"
+if ! grep -qE "^${NFS_SHARE}[[:space:]]" /etc/exports 2>/dev/null; then
+  echo "${NFS_SHARE} ${NFS_EXPORT_CIDR}(rw,sync,no_subtree_check,no_root_squash)" >> /etc/exports
 fi
+systemctl enable --now nfs-server
+exportfs -ra
+echo "当前 NFS 导出:"; exportfs -v
+
 cd /mnt/nfs
 git clone https://github.com/agiping/e2b_infrawaves
 mv e2b_infrawaves e2b_val
+git clone https://github.com/orion-gmx/infra
+INFRA_DIR="/mnt/nfs/infra"
+HCL_DIR="${INFRA_DIR}/volcano_hcls/sh_prod"
 
 echo "================================================="
 echo "Step 4: Installing Nomad"
 echo "================================================="
+mv /mnt/nfs/infra/nomad_cluster_installers /mnt/nfs/
 cd /mnt/nfs/e2b_val/infrawaves/bashs
 ./install-nomad.sh --version 1.10.5
 

@@ -19,3 +19,4 @@ go.work.sum
 /packages/fc-kernels
 /packages/fc-versions
 **/bin/
+nomad_cluster_installers/
