@@ -279,22 +279,20 @@ func NewIntFlag(name string, fallback int) IntFlag {
 }
 
 var (
-	MaxSandboxesPerNode = NewIntFlag("max-sandboxes-per-node", 200)
-	// The LD keys keep the legacy "gcloud-" prefix, but the limits apply to uploads on all storage providers.
-	StorageConcurrentUploadLimit  = NewIntFlag("gcloud-concurrent-upload-limit", 8)
-	StorageMaxUploadTasks         = NewIntFlag("gcloud-max-tasks", 16)
-	ClickhouseBatcherMaxBatchSize = NewIntFlag("clickhouse-batcher-max-batch-size", 100)
-	ClickhouseBatcherMaxDelay     = NewIntFlag("clickhouse-batcher-max-delay", 1000) // 1s in milliseconds
-	ClickhouseBatcherQueueSize    = NewIntFlag("clickhouse-batcher-queue-size", 1000)
-	BestOfKSampleSize             = NewIntFlag("best-of-k-sample-size", 3)                           // Default K=3
-	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)                      // Default R=4 (stored as percentage, max over-commit ratio)
-	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                                // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
-	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50)         // Timeout for envd init request in milliseconds
-	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs()) // Timeout for waiting for envd on resume; falls back to ENVD_TIMEOUT env var (default 10s)
-	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
-	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
-	// timeout from guest RAM; a positive value pins it.
-	GuestSyncTimeoutMs            = NewIntFlag("guest-sync-timeout-milliseconds", 0)
+	MaxSandboxesPerNode              = NewIntFlag("max-sandboxes-per-node", 400)
+	GcloudConcurrentUploadLimit      = NewIntFlag("gcloud-concurrent-upload-limit", 8)
+	GcloudMaxTasks                   = NewIntFlag("gcloud-max-tasks", 16)
+	StorageConcurrentUploadLimit     = NewIntFlag("storage-concurrent-upload-limit", 8)
+	StorageMaxUploadTasks            = NewIntFlag("storage-max-upload-tasks", 16)
+	ClickhouseBatcherMaxBatchSize = NewIntFlag("clickhouse-batcher-max-batch-size", 5000)
+	ClickhouseBatcherMaxDelay     = NewIntFlag("clickhouse-batcher-max-delay", 3000) // 3s in milliseconds
+	ClickhouseBatcherQueueSize    = NewIntFlag("clickhouse-batcher-queue-size", 20000)
+	BestOfKSampleSize             = NewIntFlag("best-of-k-sample-size", 3)                   // Default K=3
+	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)              // Default R=4 (stored as percentage, max over-commit ratio)
+	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                        // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
+	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50000) // Timeout for envd init request in milliseconds
+	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs())
+	HostStatsSamplingInterval     = NewIntFlag("host-stats-sampling-interval", 5000)         // Host stats sampling interval in milliseconds (default 5s)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
@@ -320,6 +318,10 @@ var (
 	// MemoryPrefetchMaxCopyWorkers is the maximum number of parallel copy workers per sandbox for memory prefetching.
 	// Copy uses uffd syscalls, so we limit parallelism to avoid overwhelming the system.
 	MemoryPrefetchMaxCopyWorkers = NewIntFlag("memory-prefetch-max-copy-workers", 8)
+
+	// GuestSyncTimeoutMs pins the pre-pause guest sync deadline in milliseconds
+	// when set to a positive value. Zero or negative falls back to RAM-scaled timeout.
+	GuestSyncTimeoutMs = NewIntFlag("guest-sync-timeout-ms", 0)
 
 	// PauseResumePrefetchHarvestFlag makes the orchestrator, after a pause
 	// snapshot is durable, run a throwaway warm resume of the just-written
@@ -354,7 +356,7 @@ var (
 	SandboxMaxIncomingConnections = NewIntFlag("sandbox-max-incoming-connections", -1)
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
-	BuildBaseRootfsSizeLimitMB = NewIntFlag("build-base-rootfs-size-limit-mb", 25000)
+	BuildBaseRootfsSizeLimitMB = NewIntFlag("build-base-rootfs-size-limit-mb", 50000)
 
 	// MinAutoResumeTimeoutSeconds is the minimum auto-resume timeout in seconds.
 	// This prevents thrashing from very short timeouts.

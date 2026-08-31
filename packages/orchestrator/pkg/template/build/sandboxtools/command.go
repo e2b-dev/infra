@@ -19,7 +19,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/envd/process"
@@ -249,13 +248,18 @@ func SyncChangesToDisk(
 	proxy *proxy.SandboxProxy,
 	sandboxID string,
 ) error {
+	// Use plain "sync" with an explicit PATH so the command works on any
+	// distro (Alpine musl, Debian glibc, etc.) without depending on the
+	// e2b-injected busybox binary, which may be glibc-linked and fail on
+	// musl-only images.
 	return RunCommand(
 		ctx,
 		proxy,
 		sandboxID,
-		rootfs.SandboxBusyBoxPath+" sync",
+		"sync",
 		metadata.Context{
-			User: "root",
+			User:    "root",
+			EnvVars: map[string]string{"PATH": "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"},
 		},
 	)
 }

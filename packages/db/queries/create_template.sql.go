@@ -14,7 +14,7 @@ import (
 
 const createOrUpdateTemplate = `-- name: CreateOrUpdateTemplate :one
 INSERT INTO "public"."envs"(id, team_id, created_by, updated_at, public, cluster_id, source)
-VALUES ($1, $2, $3, NOW(), FALSE, $4, 'template')
+VALUES ($1, $2, $3, NOW(), TRUE, $4, 'template')
 ON CONFLICT (id) DO UPDATE
 SET updated_at  = NOW(),
     build_count = envs.build_count + 1

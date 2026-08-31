@@ -83,17 +83,18 @@
       "source.organizeImports": "explicit"
     }
   },
-  "go.goroot": "${workspaceFolder}/.vscode/mise-tools/goRoot",
   "go.alternateTools": {
-    "customFormatter": "golangci-lint",
-    "dlv": "${workspaceFolder}/.vscode/mise-tools/dlv",
-    "go": "${workspaceFolder}/.vscode/mise-tools/go",
-    "gopls": "${workspaceFolder}/.vscode/mise-tools/gopls"
+    "customFormatter": "golangci-lint"
   },
   "mise.configureExtensionsUseSymLinks": true,
   "mise.configureExtensionsAutomatically": true,
   "mise.configureExtensionsAutomaticallyIgnoreList": [
     "ms-vscode.js-debug"
   ],
-  "python.defaultInterpreterPath": "${workspaceFolder}/.vscode/mise-tools/python"
+  "python.defaultInterpreterPath": "/usr/bin/python3",
+  "python.analysis.extraPaths": [
+    "volcano_hcls/test_script"
+  ],
+  "commentTranslate.source": "Bing",
+  "python-envs.defaultEnvManager": "ms-python.python:system"
 }

@@ -5,6 +5,11 @@ FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
 
 RUN apk add --no-cache make
 
+ENV GOPROXY=https://goproxy.cn,direct
+ENV GOSUMDB=sum.golang.google.cn
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
+
+
 # Cached golang dependencies
 WORKDIR /build/shared
 COPY ./shared/go.mod ./shared/go.sum ./
@@ -33,8 +38,7 @@ COPY ./docker-reverse-proxy/Makefile ./docker-reverse-proxy/Makefile
 WORKDIR /build/docker-reverse-proxy
 
 ARG COMMIT_SHA
-ARG VERSION=dev
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} VERSION=${VERSION}
+RUN make build COMMIT_SHA=${COMMIT_SHA}
 
 RUN chmod +x /build/docker-reverse-proxy/bin/docker-reverse-proxy
 

@@ -8,11 +8,11 @@ $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hos
 
 expectedMigration := $(shell ./../../scripts/get-latest-migration.sh)
 
-ifeq ($(PROVIDER),aws)
-	REGISTRY_PREFIX := $(AWS_ACCOUNT_ID).dkr.ecr.$(AWS_REGION).amazonaws.com/$(PREFIX)core
-else
-	REGISTRY_PREFIX := $(GCP_REGION)-docker.pkg.dev/$(GCP_PROJECT_ID)/$(PREFIX)core
-endif
+# Volcengine configuration
+VOLC_REGISTRY ?= mp-bp-cn-shanghai.cr.volces.com
+VOLC_NAMESPACE ?= e2b
+VOLC_IMAGE_PREFIX := $(VOLC_REGISTRY)/$(VOLC_NAMESPACE)
+IMAGE_TAG ?= 2026.29
 
 .PHONY: generate
 generate:
@@ -75,10 +75,14 @@ profiler:
 build-and-upload:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP := $(expectedMigration))
-	cd .. && REGISTRY_PREFIX=$(REGISTRY_PREFIX) \
-		COMMIT_SHA=$(COMMIT_SHA) \
-		EXPECTED_MIGRATION_TIMESTAMP=$(EXPECTED_MIGRATION_TIMESTAMP) \
-		docker buildx bake -f api/docker-bake.hcl --push
+	@echo "Building and pushing to Volcengine: $(VOLC_IMAGE_PREFIX)/api:$(IMAGE_TAG)"
+	@docker build \
+		--tag "$(VOLC_IMAGE_PREFIX)/api:$(IMAGE_TAG)" \
+		--build-arg COMMIT_SHA="$(COMMIT_SHA)" \
+		--build-arg EXPECTED_MIGRATION_TIMESTAMP="$(EXPECTED_MIGRATION_TIMESTAMP)" \
+		-f ./Dockerfile ..
+	@echo "Pushing image to Volcengine..."
+	@docker push "$(VOLC_IMAGE_PREFIX)/api:$(IMAGE_TAG)"
 
 .PHONY: test
 test:

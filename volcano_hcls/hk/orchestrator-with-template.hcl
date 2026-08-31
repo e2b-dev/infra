@@ -1,0 +1,152 @@
+job "template-manager" {
+  type        = "system"
+  datacenters = ["prod-e2b-dc"]
+  node_pool   = "default"
+  priority    = 91
+
+  group "template-manager" {
+    constraint {
+      attribute = "${meta.role}"
+      value     = "orchestrator"
+    }
+
+    restart {
+      attempts = 3
+      interval = "1m"
+      delay    = "15s"
+      mode     = "delay"
+    }
+
+    // For future as we can remove static and allow multiple instances on one machine if needed.
+    // Also network allocation is used by Nomad service discovery on API and edge API to find jobs and register them.
+    network {
+      port "orchestrator" {
+        static = 9090
+      }
+      port "orchestrator-proxy" {
+        static = 5007
+      }
+      port "template-manager" {
+        static = 5008
+      }
+    }
+
+    // orchestrator gRPC service
+    service {
+      name     = "orchestrator"
+      port     = "orchestrator"
+      provider = "nomad"
+
+      check {
+        type     = "http"
+        path     = "/health"
+        name     = "health"
+        interval = "20s"
+        timeout  = "5s"
+      }
+    }
+
+    // orchestrator proxy (sandbox traffic)
+    service {
+      name     = "orchestrator-proxy"
+      port     = "orchestrator-proxy"
+      provider = "nomad"
+
+      check {
+        type     = "tcp"
+        name     = "health"
+        interval = "30s"
+        timeout  = "1s"
+      }
+    }
+
+    // template-manager gRPC service (合并部署，health check 复用 orchestrator 的 /health 端点)
+    service {
+      name     = "template-manager"
+      port     = "template-manager"
+      provider = "nomad"
+
+      check {
+        type     = "http"
+        path     = "/health"
+        name     = "health"
+        interval = "20s"
+        timeout  = "5s"
+        port     = "orchestrator" # 合并部署时 /health 只在 GRPC_PORT(9090) 上
+      }
+    }
+
+    task "start" {
+      driver = "raw_exec"
+
+     # restart {
+     #   attempts = 0
+     # }
+
+      resources {
+        memory = 102400
+        cpu    = 5000
+      }
+
+      kill_timeout = "10m"
+      kill_signal  = "SIGTERM"
+
+      env {
+        NODE_ID = "${node.unique.name}"
+        #NODE_ID                       = "${NOMAD_ALLOC_ID}"
+        NODE_IP      = "${attr.unique.network.ip-address}"
+        CONSUL_TOKEN = "da11d9ec-9bad-243e-3936-f1d0786dd82d"
+        ENVIRONMENT  = "dev"
+
+        # 合并部署：orchestrator 二进制同时提供两个服务
+        ORCHESTRATOR_SERVICES = "orchestrator,template-manager"
+
+        # OTEL_TRACING_PRINT           = "false"
+        OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:4317"
+        LOGS_COLLECTOR_ADDRESS       = "http://localhost:19095"
+
+        ENVD_TIMEOUT = ""
+
+        TEMPLATE_BUCKET_NAME    = "e2b-prod-hk-tos"
+        STORAGE_PROVIDER        = "AWSBucket"
+        BUILD_CACHE_BUCKET_NAME = "e2b-build-hk"
+        AWS_ENDPOINT_URL        = "https://tos-s3-cn-hongkong.ivolces.com"
+        AWS_REGION              = "cn-hongkong"
+        AWS_ACCESS_KEY_ID       = "REPLACE_WITH_VOLC_AK"
+        AWS_SECRET_ACCESS_KEY   = "REPLACE_WITH_VOLC_SK"
+        AWS_S3_FORCE_PATH_STYLE = "true"
+
+        ALLOW_SANDBOX_INTERNET       = "true"
+        ALLOW_SANDBOX_INTERNAL_CIDRS = ""
+
+        SHARED_CHUNK_CACHE_PATH      = ""
+        CLICKHOUSE_CONNECTION_STRING = "clickhouse://default:@192.168.0.146:9000/prod_e2b_clickhouse"
+
+        REDIS_URL         = "192.168.0.147:6379"
+        REDIS_CLUSTER_URL = ""
+
+        GRPC_PORT             = "9090"
+        PROXY_PORT            = "5007"
+        LOG_LEVEL             = "debug"
+        GIN_MODE              = "release"
+        LAUNCH_DARKLY_API_KEY = ""
+        LAUNCH_DARKLY_ENABLE  = "false"
+
+        ORCHESTRATOR_BASE_PATH = "/data1/orchestrator"
+        TMPDIR                 = "/data1/tmp"
+
+        SANDBOX_HYPERLOOP_PROXY_PORT = "5010"
+        PPROF                        = "6060"
+
+        DOCKERHUB_REMOTE_REPOSITORY_URL = ""
+        ARTIFACTS_REGISTRY_PROVIDER     = "Local"
+        PERSISTENT_VOLUME_MOUNTS        = "local:/data1/orchestrator/volumes"
+        DOMAIN_NAME                     = ""
+      }
+
+      config {
+        command = "/opt/orchestrator/orchestrator"
+      }
+    }
+  }
+}

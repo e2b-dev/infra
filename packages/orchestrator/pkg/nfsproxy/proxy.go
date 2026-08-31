@@ -22,7 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 )
 
-const cacheLimit = 1024
+const cacheLimit = 16384
 
 var setLogLevelOnce sync.Once
 

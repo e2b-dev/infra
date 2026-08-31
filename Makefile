@@ -4,6 +4,11 @@ PROVIDER ?= gcp
 
 -include ${ENV_FILE}
 
+# Volcengine image registry (api, client-proxy, db, docker-reverse-proxy)
+VOLC_REGISTRY ?= mp-bp-cn-shanghai.cr.volces.com
+VOLC_NAMESPACE ?= e2b
+IMAGE_TAG ?= 2026.29
+
 AWS_BUCKET_PREFIX ?= $(PREFIX)$(AWS_ACCOUNT_ID)-
 GCP_BUCKET_PREFIX ?= $(GCP_PROJECT_ID)-
 
@@ -92,9 +97,16 @@ build-and-upload/template-manager:
 build-and-upload/orchestrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/orchestrator build-and-upload/orchestrator
+build-and-upload/api:
+	./scripts/confirm.sh $(ENV)
+	IMAGE_TAG=$(IMAGE_TAG) VOLC_REGISTRY=$(VOLC_REGISTRY) VOLC_NAMESPACE=$(VOLC_NAMESPACE) $(MAKE) -C packages/api build-and-upload
+	IMAGE_TAG=$(IMAGE_TAG) VOLC_REGISTRY=$(VOLC_REGISTRY) VOLC_NAMESPACE=$(VOLC_NAMESPACE) $(MAKE) -C packages/db build-and-upload
 build-and-upload/clickhouse-migrator:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/clickhouse build-and-upload
+build-and-upload/client-proxy build-and-upload/docker-reverse-proxy:
+	./scripts/confirm.sh $(ENV)
+	IMAGE_TAG=$(IMAGE_TAG) VOLC_REGISTRY=$(VOLC_REGISTRY) VOLC_NAMESPACE=$(VOLC_NAMESPACE) $(MAKE) -C packages/$(notdir $@) build-and-upload
 build-and-upload/%:
 	./scripts/confirm.sh $(TERRAFORM_ENVIRONMENT)
 	GCP_PROJECT_ID=$(GCP_PROJECT_ID) $(MAKE) -C packages/$(notdir $@) build-and-upload
