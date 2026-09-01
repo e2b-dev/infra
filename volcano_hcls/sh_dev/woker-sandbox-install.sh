@@ -17,7 +17,7 @@ echo "================================================="
 mkdir -p /mnt/nfs
 # 重试挂载，最多等 60 秒（NFS 服务可能还没就绪）
 for i in $(seq 1 12); do
-  mount 192.168.162.30:/mnt/nfs /mnt/nfs && break
+  mount 192.168.0.225:/mnt/nfs /mnt/nfs && break
   echo "NFS mount failed, retrying in 5s... ($i/12)"
   sleep 5
 done

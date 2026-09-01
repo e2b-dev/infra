@@ -120,7 +120,7 @@ git clone https://github.com/agiping/e2b_infrawaves
 mv e2b_infrawaves e2b_val
 git clone https://github.com/orion-gmx/infra
 INFRA_DIR="/mnt/nfs/infra"
-HCL_DIR="${INFRA_DIR}/volcano_hcls/sh_prod"
+HCL_DIR="${INFRA_DIR}/volcano_hcls/hk_test"
 
 echo "================================================="
 echo "Step 4: Installing Nomad"
@@ -214,9 +214,35 @@ systemctl daemon-reload
 systemctl reset-failed consul 2>/dev/null || true
 systemctl enable consul
 systemctl start consul
-sleep 8
-export CONSUL_HTTP_TOKEN=$(consul acl bootstrap | grep SecretID | awk '{print $2}')
-echo "CONSUL_TOKEN: $CONSUL_HTTP_TOKEN"
+
+# 等待 Consul 选出 leader（最多 60s），再做 ACL bootstrap
+echo "等待 Consul leader 就绪..."
+for i in $(seq 1 60); do
+  if curl -sf http://127.0.0.1:8500/v1/status/leader 2>/dev/null | grep -q ':'; then
+    echo "Consul leader 已就绪"
+    break
+  fi
+  sleep 1
+done
+
+# ACL bootstrap 幂等：token 持久化到 /opt/consul/consul-acl.token；已存在则复用，
+# 避免重跑时 "ACL bootstrap no longer allowed" 导致 token 为空。
+CONSUL_TOKEN_FILE="/opt/consul/consul-acl.token"
+if [ -s "$CONSUL_TOKEN_FILE" ]; then
+  export CONSUL_HTTP_TOKEN="$(cat "$CONSUL_TOKEN_FILE")"
+  echo "复用已有 CONSUL_TOKEN"
+else
+  CONSUL_HTTP_TOKEN="$(consul acl bootstrap 2>/dev/null | grep SecretID | awk '{print $2}')"
+  if [ -n "$CONSUL_HTTP_TOKEN" ]; then
+    echo "$CONSUL_HTTP_TOKEN" > "$CONSUL_TOKEN_FILE"
+    chmod 600 "$CONSUL_TOKEN_FILE"
+    export CONSUL_HTTP_TOKEN
+  else
+    echo "警告: consul acl bootstrap 未返回 token（集群可能已 bootstrap）。"
+    echo "      若有旧 token，请写入 $CONSUL_TOKEN_FILE 后重跑；否则需重置 Consul ACL。"
+  fi
+fi
+echo "CONSUL_TOKEN: ${CONSUL_HTTP_TOKEN:-<空>}"
 
 echo "================================================="
 echo "Step 9: Starting Nomad Server + Client (combined)"
@@ -356,17 +382,17 @@ echo "================================================="
 echo "Step 10: Deploying ClickHouse"
 echo "================================================="
 # 预拉取镜像，避免 Nomad 调度时超时
-# docker pull clickhouse/clickhouse-server:25.4.5.24
-# nomad job run "${HCL_DIR}/clickhouse.hcl"
+docker pull clickhouse/clickhouse-server:25.4.5.24
+nomad job run "${HCL_DIR}/clickhouse.hcl"
 
 echo "================================================="
 echo "Step 11: Running ClickHouse migrations"
 echo "================================================="
 export PATH=/usr/local/go/bin:$PATH
 export GOPROXY=https://goproxy.cn,direct
-# cd "${INFRA_DIR}/packages/clickhouse"
-# GOOSE_DBSTRING="clickhouse://default:@${LOCAL_IP}:9000/${DATACENTER}_e2b_clickhouse" \
-#   go tool goose -table "_migrations" -dir "migrations" clickhouse up
+cd "${INFRA_DIR}/packages/clickhouse"
+GOOSE_DBSTRING="clickhouse://default:@${LOCAL_IP}:9000/${DATACENTER}_e2b_clickhouse" \
+  go tool goose -table "_migrations" -dir "migrations" clickhouse up
 
 echo "================================================="
 echo "Step 12: Preparing data directories"
@@ -376,50 +402,79 @@ mkdir -p /mnt/data1/loki
 chmod 777 /mnt/data1/loki
 
 echo "================================================="
-echo "Step 13: Deploying PG migrations (API + db-migrator)"
+echo "Step 12b: Deploying PostgreSQL and Redis containers"
 echo "================================================="
-# 注意：如果 PG 是共享实例，可能已有 authenticated/trigger_user 角色，
-# db-migrator 会自动跳过已执行的迁移。首次部署如果报 CREATE ROLE 错误，
-# 需要手动处理：
-#   1. 手动创建 auth.users 表
-#   2. 手动执行 migration 20231220094836（跳过 CREATE USER trigger_user）
-#   3. 用 goose 标记已执行，然后重新运行 migrator
-# nomad job run "${HCL_DIR}/api.hcl"
-# echo "等待 API 服务启动..."
-# sleep 30
+# PostgreSQL: postgresql://postgres:postgres@${LOCAL_IP}:5432/postgres?sslmode=disable
+mkdir -p /mnt/data1/postgres
+if [ -z "$(docker ps -aq -f name=^/postgres$)" ]; then
+  docker run -d --name postgres --restart unless-stopped \
+    -e POSTGRES_USER=postgres \
+    -e POSTGRES_PASSWORD=postgres \
+    -e POSTGRES_DB=postgres \
+    -p 5432:5432 \
+    -v /mnt/data1/postgres:/var/lib/postgresql/data \
+    postgres:16
+else
+  echo "postgres 容器已存在，确保运行中"
+  docker start postgres 2>/dev/null || true
+fi
 
-echo "================================================="
-echo "Step 14: Deploying Loki"
-echo "================================================="
-# nomad job run "${HCL_DIR}/loki.hcl"
+# Redis: ${LOCAL_IP}:6379（无密码）
+mkdir -p /mnt/data1/redis
+if [ -z "$(docker ps -aq -f name=^/redis$)" ]; then
+  docker run -d --name redis --restart unless-stopped \
+    -p 6379:6379 \
+    -v /mnt/data1/redis:/data \
+    redis:7 redis-server --appendonly yes
+else
+  echo "redis 容器已存在，确保运行中"
+  docker start redis 2>/dev/null || true
+fi
 
-echo "================================================="
-echo "Step 15: Deploying remaining services"
-echo "================================================="
-# otel-collector 和 log-collector 部署在所有节点
-# nomad job run "${HCL_DIR}/otel-collector-prod.hcl"
-# nomad job run "${HCL_DIR}/log-collector.hcl"
-# client-proxy 部署在 API 节点
-# nomad job run "${HCL_DIR}/client-proxy.hcl"
+# 等待 PostgreSQL 就绪（最多 60s）
+echo "等待 PostgreSQL 就绪..."
+for i in $(seq 1 60); do
+  if docker exec postgres pg_isready -U postgres >/dev/null 2>&1; then
+    echo "PostgreSQL 已就绪"
+    break
+  fi
+  sleep 1
+done
+docker exec redis redis-cli ping 2>/dev/null || echo "警告: redis 未响应 PING"
 
 echo "================================================="
 echo "Installation complete!"
 echo "================================================="
-echo
-# echo "⚠  以下服务需要在 sandbox 节点加入后部署："
-# echo "  nomad job run ${HCL_DIR}/orchestrator.hcl"
-# echo "  nomad job run ${HCL_DIR}/template-manager.hcl"
 echo
 echo "请保存以下 Token："
 echo "  CONSUL_TOKEN: ${CONSUL_HTTP_TOKEN}"
 echo "  NOMAD_TOKEN:  ${NOMAD_TOKEN}"
 echo "  GOSSIP_KEY:   ${GOSSIP_KEY}"
 
-# 持久化 Token 到 /root/.bashrc
-if ! grep -q 'NOMAD_TOKEN' /root/.bashrc 2>/dev/null; then
-  cat >> /root/.bashrc <<TOKENEOF
-export NOMAD_TOKEN="${NOMAD_TOKEN}"
-export CONSUL_HTTP_TOKEN="${CONSUL_HTTP_TOKEN}"
-TOKENEOF
-fi
+# 持久化 Token 到 /root/.bashrc（分别 upsert，避免其中一个已存在就漏掉另一个）
+persist_bashrc_var() {
+  local var="$1" val="$2"
+  [ -z "$val" ] && return 0
+  # 先删旧行再追加，保证幂等且值最新
+  sed -i "/^export ${var}=/d" /root/.bashrc 2>/dev/null || true
+  echo "export ${var}=\"${val}\"" >> /root/.bashrc
+}
+persist_bashrc_var NOMAD_TOKEN "${NOMAD_TOKEN:-}"
+persist_bashrc_var CONSUL_HTTP_TOKEN "${CONSUL_HTTP_TOKEN:-}"
+
+set +u
+# shellcheck disable=SC1090
+. /root/.bashrc 2>/dev/null || true
+set -u
+
+echo
+echo "================================================="
+echo "✅ server-api 节点部署完成！"
+echo "================================================="
+echo "  Consul   : $(systemctl is-active consul 2>/dev/null)  (UI: http://${LOCAL_IP}:8500/ui)"
+echo "  Nomad    : $(supervisorctl status nomad 2>/dev/null | awk '{print $2}')  (UI: http://${LOCAL_IP}:4646/ui)"
+echo "  Postgres : postgresql://postgres:postgres@${LOCAL_IP}:5432/postgres?sslmode=disable"
+echo "  Redis    : ${LOCAL_IP}:6379 (无密码)"
+echo
+echo "================================================="
 

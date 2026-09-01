@@ -1,6 +1,6 @@
 job "template-manager" {
   type        = "system"
-  datacenters = ["prod-e2b-dc"]
+  datacenters = ["hk-prod"]
   node_pool   = "default"
   priority    = 91
 
@@ -26,10 +26,7 @@ job "template-manager" {
       port "orchestrator-proxy" {
         static = 5007
       }
-      port "template-manager" {
-        static = 5008
-      }
-    }
+          }
 
     // orchestrator gRPC service
     service {
@@ -63,7 +60,7 @@ job "template-manager" {
     // template-manager gRPC service (合并部署，health check 复用 orchestrator 的 /health 端点)
     service {
       name     = "template-manager"
-      port     = "template-manager"
+      port     = "orchestrator"
       provider = "nomad"
 
       check {
@@ -84,8 +81,8 @@ job "template-manager" {
      # }
 
       resources {
-        memory = 102400
-        cpu    = 5000
+        memory = 10240
+        cpu    = 2000
       }
 
       kill_timeout = "10m"
@@ -93,15 +90,14 @@ job "template-manager" {
 
       env {
         NODE_ID = "${node.unique.name}"
-        #NODE_ID                       = "${NOMAD_ALLOC_ID}"
         NODE_IP      = "${attr.unique.network.ip-address}"
-        CONSUL_TOKEN = "da11d9ec-9bad-243e-3936-f1d0786dd82d"
+        CONSUL_TOKEN = "3a50c4ff-2059-d455-1e60-2f386651aa2e"
         ENVIRONMENT  = "dev"
 
         # 合并部署：orchestrator 二进制同时提供两个服务
         ORCHESTRATOR_SERVICES = "orchestrator,template-manager"
 
-        # OTEL_TRACING_PRINT           = "false"
+        # OTEL_TRACING_PRINT          = "false"
         OTEL_COLLECTOR_GRPC_ENDPOINT = "localhost:4317"
         LOGS_COLLECTOR_ADDRESS       = "http://localhost:19095"
 
@@ -114,15 +110,15 @@ job "template-manager" {
         AWS_REGION              = "cn-hongkong"
         AWS_ACCESS_KEY_ID       = "REPLACE_WITH_VOLC_AK"
         AWS_SECRET_ACCESS_KEY   = "REPLACE_WITH_VOLC_SK"
-        AWS_S3_FORCE_PATH_STYLE = "true"
+        S3_USE_PATH_STYLE = "false"
 
         ALLOW_SANDBOX_INTERNET       = "true"
-        ALLOW_SANDBOX_INTERNAL_CIDRS = ""
+        ALLOW_SANDBOX_INTERNAL_CIDRS = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
 
         SHARED_CHUNK_CACHE_PATH      = ""
-        CLICKHOUSE_CONNECTION_STRING = "clickhouse://default:@192.168.0.146:9000/prod_e2b_clickhouse"
+        CLICKHOUSE_CONNECTION_STRING = "clickhouse://default:@192.168.0.225:9000/hk-prod_e2b_clickhouse"
 
-        REDIS_URL         = "192.168.0.147:6379"
+        REDIS_URL         = "192.168.0.225:6379"
         REDIS_CLUSTER_URL = ""
 
         GRPC_PORT             = "9090"
@@ -140,7 +136,8 @@ job "template-manager" {
 
         DOCKERHUB_REMOTE_REPOSITORY_URL = ""
         ARTIFACTS_REGISTRY_PROVIDER     = "Local"
-        PERSISTENT_VOLUME_MOUNTS        = "local:/data1/orchestrator/volumes"
+        # PERSISTENT_VOLUME_MOUNTS        = "local:/data1/orchestrator/volumes"
+        PERSISTENT_VOLUME_MOUNTS = "local:/data1/orchestrator/volumes,vepfs:/volcano-vepfs/volumes"
         DOMAIN_NAME                     = ""
       }
 
