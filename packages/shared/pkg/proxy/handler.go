@@ -47,7 +47,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			return
 		}
 
-		var invalidPortErr *InvalidSandboxPortError
+		var invalidPortErr InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
 			logger.L().Warn(ctx, "invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
 			cors.Error(w, "Invalid sandbox port", http.StatusBadRequest)
