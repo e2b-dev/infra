@@ -12,12 +12,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 )
 
-// TestFirecrackerSupports pins the server-side version gate for the E2B
-// snapshot feature set: only e2b-format releases >= 0.2.0 qualify; legacy
-// _hash builds — including dev builds that mechanically carry the endpoints —
-// and unparsable versions fail CLOSED. The gate feeds two call sites with
-// different failure modes (in-place checkpoint falls back to resume-fresh;
-// a filesystem-only pause is refused), so it must never err toward true.
+// TestFirecrackerSupports pins what the wrapper adds over the fcversion
+// predicates (whose floors sandbox_features_test.go owns): it reads the
+// RUNNING version off the sandbox config, and an unparsable version fails
+// CLOSED — a version-gated feature must never engage on a build outside the
+// release contract.
 func TestFirecrackerSupports(t *testing.T) {
 	t.Parallel()
 
@@ -33,13 +32,10 @@ func TestFirecrackerSupports(t *testing.T) {
 	cases := []struct {
 		version string
 		inPlace bool
-		fsOnly  bool
 	}{
-		{"v1.14-0.2.0", true, true},
-		{"v1.14-1.0.0", true, true},
-		{"v1.14-0.1.1", false, true},      // fs-only ships from 0.1.0; in-place needs the 0.2.0 balloon API
-		{"v1.14.1_6ecb627", false, false}, // legacy build carrying the endpoints: still refused
-		{"garbage", false, false},         // unparsable: fail closed
+		{"v1.14-0.2.0", true},
+		{"v1.14.1_6ecb627", false}, // legacy build carrying the endpoints: still refused
+		{"garbage", false},         // unparsable: fail closed
 	}
 
 	for _, tc := range cases {
@@ -49,8 +45,6 @@ func TestFirecrackerSupports(t *testing.T) {
 			sbx := mkSbx(tc.version)
 			assert.Equal(t, tc.inPlace,
 				firecrackerSupports(t.Context(), sbx, "in-place checkpoint", (*fcversion.Info).HasInPlaceCheckpoint))
-			assert.Equal(t, tc.fsOnly,
-				firecrackerSupports(t.Context(), sbx, "filesystem-only snapshot", (*fcversion.Info).HasFilesystemSnapshots))
 		})
 	}
 }

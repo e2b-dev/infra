@@ -413,10 +413,10 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		ClientId:              s.info.ClientId,
 		SchedulingMetadata:    schedulingMetadata,
 		FilesystemBootApplied: filesystemBooted,
-		// The version the sandbox actually runs, frozen for its lifetime:
-		// version-gated callers (the API's fs-only pre-checks) must read
-		// this instead of re-resolving, which can disagree with the frozen
-		// value whenever the flag moves.
+		// The resolved Firecracker version the sandbox actually runs, frozen
+		// for its lifetime. The API stores it so a version-gated feature can
+		// key off the running binary exactly instead of re-resolving the
+		// flag, which drifts from this frozen value whenever the flag moves.
 		ResolvedFirecrackerVersion: resolvedFCVersion,
 	}, nil
 }
@@ -833,18 +833,6 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 		telemetry.WithKernelVersion(sbx.Config.FirecrackerConfig.KernelVersion),
 		telemetry.WithEnvdVersion(sbx.Config.Envd.Version),
 	)
-
-	// Version-gate filesystem-only snapshots BEFORE MarkStopping, while the
-	// sandbox is still fully live: producing one is part of the e2b release
-	// contract from 0.1.0, and silently taking a memory snapshot instead
-	// would betray an explicit memory:false. The API pre-checks this before
-	// committing its pause chain, so reaching here means a stale client or a
-	// direct gRPC caller; FailedPrecondition names the real cause either way.
-	if in.GetFilesystemOnly() && !firecrackerSupports(ctx, sbx, "filesystem-only snapshot", (*fcversion.Info).HasFilesystemSnapshots) {
-		return nil, status.Errorf(codes.FailedPrecondition,
-			"filesystem-only snapshots require an e2b firecracker release (>= 0.1.0); sandbox '%s' runs %q",
-			in.GetSandboxId(), sbx.Config.FirecrackerConfig.FirecrackerVersion)
-	}
 
 	marked := s.sandboxFactory.Sandboxes.MarkStopping(ctx, sbx.Runtime.SandboxID, sbx.LifecycleID)
 	if !marked {
