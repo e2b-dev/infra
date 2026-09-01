@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.3.0 (2026-09-01)
+
+
+### Features
+
+* **api:** add guarded cluster cleanup (bb58376)
+* **api:** remove deprecated E2B access token auth (a301352)
+* **dashboard-api:** add authenticated cluster management operations (914ed3a)
+* **dashboard-api:** add team access status endpoint (d95f364)
+* **dashboard-api:** gate legacy team mutations (255470b)
+* **db:** add PostgreSQL session primitives (22f0ccb)
+* **db:** drop the access_tokens table (4c6dbff)
+* **redis:** password auth and explicit TLS enablement (1c49ecf)
+* register managed AWS clusters (8258bf0)
+* **shared:** move RejectRoutes middleware to the shared package (deb735f)
+* **shared:** use TypeID encoding for object IDs (4a5075b)
+
+
+### Bug Fixes
+
+* preserve default project memberships (aba2385)
+
+
+### Dependencies
+
+* bump go-redis to v9.21.0 across the OSS modules (1aa38f8)
+* update Go to 1.26.6 (127e8a2)
+
+
+### Code Refactoring
+
+* **autobyoc:** rename managed service identity (a3e8683)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump the go_modules group across 22 directories with 1 update (1b92ad2)
+
 ## [0.2.0](https://github.com/e2b-dev/infra/compare/dashboard-api-v0.1.0...dashboard-api-v0.2.0) (2026-08-17)
 
 
