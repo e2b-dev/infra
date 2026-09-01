@@ -41,6 +41,9 @@ func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNet
 	if ingress := network.Ingress; ingress != nil {
 		result.AllowPublicTraffic = ingress.AllowPublicAccess
 		result.MaskRequestHost = ingress.MaskRequestHost
+		if ingress.HTTPSPorts != nil {
+			result.HttpsPorts = &ingress.HTTPSPorts
+		}
 	}
 
 	if egress := network.Egress; egress != nil {

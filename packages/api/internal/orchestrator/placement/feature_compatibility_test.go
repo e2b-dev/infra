@@ -239,3 +239,36 @@ func TestAnyNodeSatisfiesFeatures(t *testing.T) {
 		})
 	}
 }
+
+// TestRequiredFeatures_HTTPSBackendPorts exercises the live gate against the
+// request the orchestrator receives. It is the only test that would catch the
+// predicate reading a field the create path does not populate.
+func TestRequiredFeatures_HTTPSBackendPorts(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		httpsPorts  []uint32
+		wantVersion string
+	}{
+		{name: "no network config", httpsPorts: nil, wantVersion: ""},
+		{name: "empty list", httpsPorts: []uint32{}, wantVersion: ""},
+		{name: "one port", httpsPorts: []uint32{8443}, wantVersion: "0.10.0"},
+		{name: "several ports", httpsPorts: []uint32{443, 8443}, wantVersion: "0.10.0"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			req := testSbxRequest("sbx-1")
+			if tt.httpsPorts != nil {
+				req.Sandbox.Network = &orchestrator.SandboxNetworkConfig{
+					Ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: tt.httpsPorts},
+				}
+			}
+
+			assert.Equal(t, tt.wantVersion, requiredFeatures(req).MinVersion())
+		})
+	}
+}

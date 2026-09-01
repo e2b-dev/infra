@@ -454,6 +454,16 @@ components:
         maskRequestHost:
           type: string
           description: Specify host mask which will be used for all sandbox requests
+        httpsPorts:
+          type: array
+          description: Sandbox ports that serve HTTPS rather than plaintext HTTP. Affects how the proxy reaches the service inside the sandbox; the public URL is HTTPS either way. Certificates are not verified, so self-signed ones work. The envd port (49983) cannot be listed.
+          maxItems: 128
+          uniqueItems: true
+          items:
+            type: integer
+            format: uint32
+            minimum: 1
+            maximum: 65535
         rules:
           type: object
           description: >

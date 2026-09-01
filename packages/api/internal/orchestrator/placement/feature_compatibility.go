@@ -30,7 +30,18 @@ type featureGate struct {
 // featureGates is every version-gated sandbox capability. An orchestrator that
 // predates a request field drops it and starts the sandbox without the
 // capability, which the caller cannot tell apart from success.
-var featureGates = []featureGate{}
+var featureGates = []featureGate{
+	{
+		// An orchestrator below 0.10.0 drops https_ports and serves the
+		// declared port as plaintext HTTP, so the TLS-only service behind it
+		// answers with the 502 this capability exists to remove — while the
+		// API returns 201.
+		feature: Feature{name: "https-backend-ports", minVersion: semver.New(0, 10, 0, "", "")},
+		requested: func(req *orchestrator.SandboxCreateRequest) bool {
+			return len(req.GetSandbox().GetNetwork().GetIngress().GetHttpsPorts()) > 0
+		},
+	},
+}
 
 // FeatureRequirement is the orchestrator-capability constraint a sandbox puts
 // on a candidate node. The zero value constrains nothing.

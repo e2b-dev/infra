@@ -182,7 +182,8 @@ Key mechanisms (all under `pkg/sandbox/`):
   reused; slot indexes are allocated locally against the node's netns state (leftover
   namespaces from a previous run are torn down by startup reclaim).
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
-  the sandbox's slot IP and requested port, enforcing per-sandbox traffic access tokens.
+  the sandbox's slot IP and requested port over HTTP or configured HTTPS, enforcing per-sandbox
+  traffic access tokens. HTTPS backends may use self-signed certificates.
 - Writes sandbox lifecycle **events** and cgroup **host stats** to ClickHouse; exports metrics via
   OTel. Sandbox and template-build log writes go through a flag-resolved HTTP route: the legacy
   collector remains the fallback primary destination, and configured shadow destinations can mirror

@@ -126,6 +126,17 @@ func TestBuildEgressConfigPreservesWildcardRuleKey(t *testing.T) {
 	assert.Equal(t, "value", rules.GetRules()[0].GetTransform().GetHeaders()["X-Test"])
 }
 
+func TestBuildNetworkConfigHTTPSPorts(t *testing.T) {
+	t.Parallel()
+
+	httpsPorts := []uint32{443, 8443}
+	network := buildNetworkConfig(&dbtypes.SandboxNetworkConfig{
+		Ingress: &dbtypes.SandboxNetworkIngressConfig{HTTPSPorts: httpsPorts},
+	}, nil, nil)
+
+	assert.Equal(t, httpsPorts, network.GetIngress().GetHttpsPorts())
+}
+
 // TestCreateSandbox_StaleDataAfterConcurrentPause exercises CreateSandbox with
 // two sequential resume attempts where the snapshot changes between them.
 //
