@@ -152,7 +152,7 @@ func setupOverlay(t *testing.T, size int64) *block.Overlay {
 
 // setupNBDMount is setupNBDDevice's sibling for tests that drive the mount
 // itself rather than the device path it exposes.
-func setupNBDMount(t *testing.T, featureFlags *featureflags.Client, backend block.Device) (*DirectPathMount, string) {
+func setupNBDMount(t *testing.T, featureFlags *featureflags.Client, backend block.Device, mountOpts ...MountOption) (*DirectPathMount, string) {
 	t.Helper()
 
 	devicePool, err := NewDevicePool(64)
@@ -166,7 +166,7 @@ func setupNBDMount(t *testing.T, featureFlags *featureflags.Client, backend bloc
 		close(poolClosed)
 	}()
 
-	mnt := NewDirectPathMount(backend, devicePool, featureFlags)
+	mnt := NewDirectPathMount(backend, devicePool, featureFlags, mountOpts...)
 
 	deviceIndex, err := mnt.Open(t.Context())
 	require.NoError(t, err, "failed to open nbd mount")

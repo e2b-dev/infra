@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -43,6 +44,10 @@ const (
 
 	// disconnectTimeout should not be necessary if the disconnect is reliable
 	disconnectTimeout = 30 * time.Second
+
+	// deviceCloseWarnThreshold flags a stalled descriptor release: through a
+	// live data path the flush and close finish well under a second.
+	deviceCloseWarnThreshold = 5 * time.Second
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd")
@@ -60,6 +65,16 @@ var (
 	nbdUnwoundCounter = utils.Must(meter.Int64Counter("orchestrator.nbd.device.unwound",
 		metric.WithDescription("Connected NBD devices torn down by Open because it cannot return them, by the stage that failed. Each count is a kernel device and a pool slot that would otherwise be held for the life of the process."),
 		metric.WithUnit("{device}"),
+	))
+
+	nbdSlowCloseCounter = utils.Must(meter.Int64Counter("orchestrator.nbd.device.close.slow",
+		metric.WithDescription("NBD device descriptor releases slower than the watchdog threshold, tagged with the teardown step in progress when the watchdog fired. Close flushes writeback through the descriptor before releasing it, so a slow release is a teardown blocked behind commands the backend is not answering."),
+		metric.WithUnit("{close}"),
+	))
+
+	nbdCloseDuration = utils.Must(meter.Int64Histogram("orchestrator.nbd.device.close.duration",
+		metric.WithDescription("Time to flush writeback and close the NBD device descriptor during mount teardown. The stall watchdog warns past its threshold; this carries the full distribution."),
+		metric.WithUnit("ms"),
 	))
 
 	nbdFlushSuccess           = metric.WithAttributeSet(attribute.NewSet(attribute.String("result", "success")))
@@ -318,8 +333,9 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 // cancels the handlers and drains the dispatchers before disconnecting, and
 // releases the slot with infinite retry. Close reads the index off the mount,
 // and Open's deferred assignment has not run yet, so set it first. The context
-// Close is given has to be detached, because Close cancels Open's as its first
-// step.
+// Close is given has to be detached, because Close cancels Open's partway
+// through its teardown - and Close's opening flush-and-release of the
+// descriptor can block on the backend, canceled context or not.
 func (d *DirectPathMount) closeConnected(ctx context.Context, deviceIndex uint32, stage string) error {
 	nbdUnwoundCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("stage", stage)))
 
@@ -375,10 +391,7 @@ func (d *DirectPathMount) Flush(ctx context.Context) error {
 		span.SetStatus(codes.Error, "NBD device writeback failed, backend is missing acknowledged writes")
 	}
 
-	// Invalidate even when the sync failed: the device index goes back to the
-	// pool either way, and leaving pages of a dead sandbox in the cache would
-	// outlive the error we are about to return.
-	invalidateErr := unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0)
+	invalidateErr := invalidateDevice(file)
 
 	// One flush, one count, so the rate reads as a share of flushes. A lost
 	// writeback outranks a stale cache when both fail.
@@ -403,6 +416,14 @@ func (d *DirectPathMount) Flush(ctx context.Context) error {
 	return errors.Join(errs...)
 }
 
+// invalidateDevice drops the kernel's block-device cache for the device
+// behind file. Callers run it even when the preceding sync failed: the device
+// index goes back to the pool either way, and leaving pages of a dead sandbox
+// in the cache would outlive the error they are about to return.
+func invalidateDevice(file *os.File) error {
+	return unix.IoctlSetInt(int(file.Fd()), unix.BLKFLSBUF, 0)
+}
+
 func (d *DirectPathMount) Close(ctx context.Context) error {
 	ctx, span := tracer.Start(ctx, "direct-path-mount-close")
 	defer span.End()
@@ -411,7 +432,77 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	idx := d.deviceIndex
 
-	// First cancel the context, which will stop waiting on pending readAt/writeAt...
+	// Flush and release the descriptor while the dispatchers still
+	// serve the device: the kernel's last-close page-cache teardown waits on
+	// pages locked by any in-flight request - speculative readahead reads
+	// included, not only dirty writeback - and once the data path below is
+	// torn down those requests hang until the kernel gives the connection up
+	// (deadconnTimeout; ioTimeout + deadconnTimeout for commands already in
+	// flight). Closing here lets them complete through the live path instead.
+	// The explicit sync covers the second leg: acknowledged writes land
+	// before the descriptor goes away, without betting on this descriptor
+	// being the device's last opener - it is not whenever a udev probe holds
+	// the device open across Close.
+	//
+	// The intended contract: against a live but unanswering backend this
+	// flush holds the device, its pool slot, and the handlers for up to the
+	// kernel ceiling (ioTimeout + deadconnTimeout), ahead of the cancel below
+	// -- deliberately. Tearing down first was faster only by abandoning
+	// writes the kernel had already acknowledged to the guest.
+	//
+	// Each event marks a step that can block on the backend, so a stall in a
+	// trace is attributable to one step instead of one interval covering
+	// several. The watchdog fires while the stall is happening -- tagging the
+	// step in progress -- then accounts the total on return, so a stuck
+	// teardown is visible during the incident and not only after it.
+	if d.deviceFile != nil {
+		closeStart := time.Now()
+
+		var stage atomic.Value
+		stage.Store("sync")
+		watchdog := time.AfterFunc(deviceCloseWarnThreshold, func() {
+			nbdSlowCloseCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("stage", stage.Load().(string))))
+			logger.L().Warn(ctx, "NBD device descriptor close stalled",
+				zap.Duration("threshold", deviceCloseWarnThreshold),
+				zap.Uint32("device_index", idx),
+			)
+		})
+
+		telemetry.ReportEvent(ctx, "flushing NBD device writeback")
+		if syncErr := d.deviceFile.Sync(); syncErr != nil {
+			// Mark the span the way Flush does: the backend is missing writes
+			// the guest was told had landed. The error also returns below.
+			span.SetAttributes(attribute.Int64("nbd.device_index", int64(idx)))
+			span.RecordError(syncErr)
+			span.SetStatus(codes.Error, "NBD device writeback failed, backend is missing acknowledged writes")
+
+			errs = append(errs, fmt.Errorf("sync NBD device: %w", syncErr))
+		}
+
+		stage.Store("invalidate")
+		if invalidateErr := invalidateDevice(d.deviceFile); invalidateErr != nil {
+			errs = append(errs, fmt.Errorf("flush NBD device buffers: %w", invalidateErr))
+		}
+
+		stage.Store("descriptor_close")
+		telemetry.ReportEvent(ctx, "closing NBD device descriptor")
+		if err := d.deviceFile.Close(); err != nil {
+			errs = append(errs, fmt.Errorf("error closing NBD device: %w", err))
+		}
+
+		if !watchdog.Stop() {
+			logger.L().Warn(ctx, "NBD device descriptor close finished after stalling",
+				zap.Duration("duration", time.Since(closeStart)),
+				zap.Uint32("device_index", idx),
+			)
+		}
+
+		nbdCloseDuration.Record(ctx, time.Since(closeStart).Milliseconds())
+
+		d.deviceFile = nil
+	}
+
+	// Cancel the context, which will stop waiting on pending readAt/writeAt...
 	telemetry.ReportEvent(ctx, "canceling context")
 	if d.cancelfn != nil {
 		d.cancelfn()
@@ -438,24 +529,6 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	telemetry.ReportEvent(ctx, "waiting for pending responses")
 	for _, d := range d.dispatchers {
 		d.Drain()
-	}
-
-	// Release the descriptor Flush syncs before disconnecting, so nothing holds
-	// the block device open while the device goes back to the pool.
-	//
-	// The event is the boundary between this close and the drain above it. Both
-	// can block unboundedly -- Drain waits on the pending-response WaitGroup,
-	// and this is the block device's last close -- so without a mark between
-	// them a stall shows up as one interval covering both, which is how a
-	// two-minute teardown stays unattributable in a trace that otherwise
-	// records every step it takes.
-	telemetry.ReportEvent(ctx, "closing NBD device descriptor")
-	if d.deviceFile != nil {
-		if err := d.deviceFile.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("error closing NBD device: %w", err))
-		}
-
-		d.deviceFile = nil
 	}
 
 	// Disconnect NBD

@@ -19,16 +19,19 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
-// TestCloseMarksTheDescriptorCloseBetweenDrainAndDisconnect pins the boundary
-// the change exists for.
+// TestCloseClosesTheDescriptorBeforeTheHandlerTeardown pins Close's order and
+// its trace marks.
 //
-// Drain and the descriptor close can each block without bound, and a stalled
-// close is read by differencing the surrounding event timestamps. If the
-// descriptor event is missing, or drifts to either side of the operation it
-// marks, the two collapse into one interval and a two-minute stall becomes
-// unattributable -- which is the state this replaces, and which a green suite
-// would otherwise not notice.
-func TestCloseMarksTheDescriptorCloseBetweenDrainAndDisconnect(t *testing.T) {
+// The descriptor close is the block device's last close, where the kernel
+// flushes writeback, so it must precede the context cancel and socket close
+// that kill the data path the flush needs (see
+// TestPathDirect_CloseReturnsWhileTheBackendStalls for what the reversed
+// order costs). The event marks matter too: the descriptor close and Drain
+// can each block without bound, and a stall is read by differencing the
+// surrounding event timestamps -- if the descriptor event is missing or
+// drifts away from the operation it marks, a two-minute stall becomes one
+// unattributable interval, which a green suite would otherwise not notice.
+func TestCloseClosesTheDescriptorBeforeTheHandlerTeardown(t *testing.T) {
 	t.Parallel()
 
 	if os.Geteuid() != 0 {
@@ -91,14 +94,20 @@ func TestCloseMarksTheDescriptorCloseBetweenDrainAndDisconnect(t *testing.T) {
 	}
 	require.NotEmpty(t, events, "the close span must record its steps")
 
-	drain := indexOfEvent(t, events, "waiting for pending responses")
+	flush := indexOfEvent(t, events, "flushing NBD device writeback")
 	descriptor := indexOfEvent(t, events, "closing NBD device descriptor")
+	cancel := indexOfEvent(t, events, "canceling context")
+	drain := indexOfEvent(t, events, "waiting for pending responses")
 	disconnect := indexOfEvent(t, events, "disconnecting NBD")
 
-	require.Greaterf(t, descriptor, drain,
-		"the descriptor mark must follow the drain, else the two are one interval: %v", events)
-	require.Lessf(t, descriptor, disconnect,
-		"the descriptor mark must precede the disconnect, else the two are one interval: %v", events)
+	require.Lessf(t, flush, descriptor,
+		"the flush must precede the descriptor close, and each needs its own mark since each can block on the backend: %v", events)
+	require.Lessf(t, descriptor, cancel,
+		"the descriptor must close before the cancel kills the data path its writeback needs, and the cancel mark bounds its interval: %v", events)
+	require.Lessf(t, cancel, drain,
+		"the drain must follow the cancel that unblocks the pending handlers: %v", events)
+	require.Lessf(t, drain, disconnect,
+		"the disconnect must wait for the drain, else it aborts responses still owed to the kernel: %v", events)
 }
 
 func indexOfEvent(t *testing.T, events []string, name string) int {
