@@ -207,6 +207,34 @@ const (
 	// score drifted from the stored EndTime and were re-scored by the evictor
 	// scan. Sustained non-zero rate means score updates are being lost.
 	ApiRedisStorageExpirationIndexRescored CounterType = "api.redis_storage.expiration_index.rescored"
+
+	// ApiRedisStorageLockTimeouts counts Obtain calls whose context expired
+	// while waiting for the distributed sandbox lock.
+	ApiRedisStorageLockTimeouts CounterType = "api.redis_storage.lock.timeout_total"
+
+	// ApiRedisStorageTransitionCallbackFailures counts createCallback closures
+	// that could not obtain the lock, leaving waiters without a result notification.
+	ApiRedisStorageTransitionCallbackFailures CounterType = "api.redis_storage.transition.callback_failures_total"
+
+	// ApiRedisStorageTransitionJoined counts StartRemoving calls that joined an
+	// in-flight transition to the same target state rather than starting their own.
+	ApiRedisStorageTransitionJoined CounterType = "api.redis_storage.transition.joined_total"
+
+	// ApiRedisStorageTransitionFallbackPolls counts waitForTransition iterations
+	// driven by the 1-second fallback ticker (PubSub notification was missed).
+	ApiRedisStorageTransitionFallbackPolls CounterType = "api.redis_storage.transition.wait_fallback_polls_total"
+
+	// ApiRedisStorageTransitionExecutionMismatches counts StartRemoving calls
+	// refused because the sandbox ExecutionID did not match the caller's pin.
+	ApiRedisStorageTransitionExecutionMismatches CounterType = "api.redis_storage.transition.execution_mismatch_total"
+
+	// ApiRedisStorageScanTeamsSkipped counts per-team scan failures silenced
+	// by forEachSandboxBatch (the team is skipped; remaining teams still scan).
+	ApiRedisStorageScanTeamsSkipped CounterType = "api.redis_storage.scan.teams_skipped_total"
+
+	// ApiRedisStorageScanCorruptRecords counts sandbox records that failed
+	// JSON unmarshal during a scan batch and were skipped.
+	ApiRedisStorageScanCorruptRecords CounterType = "api.redis_storage.scan.corrupt_records_total"
 )
 
 const (
@@ -350,6 +378,26 @@ const (
 const (
 	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
 
+	// ApiRedisStorageTeamIndexSize records the SCARD of each team's sandbox
+	// index SET once per heal pass (every 5 min). p99/max detects unbounded growth.
+	ApiRedisStorageTeamIndexSize HistogramType = "api.redis_storage.team_index.size"
+
+	// ApiRedisStorageExpirationIndexSize records the global expiration ZSET
+	// cardinality once per heal pass.
+	ApiRedisStorageExpirationIndexSize HistogramType = "api.redis_storage.expiration_index.size"
+
+	// ApiRedisStorageExpirationIndexSweepDuration records the wall-clock time
+	// of each ExpiredItems (evictor scan) call in milliseconds.
+	ApiRedisStorageExpirationIndexSweepDuration HistogramType = "api.redis_storage.expiration_index.sweep_duration"
+
+	// ApiRedisStorageLockWaitDuration records the total wait time inside Obtain
+	// (first tryLock attempt until the lock is held), per successful acquisition.
+	ApiRedisStorageLockWaitDuration HistogramType = "api.redis_storage.lock.wait_duration"
+
+	// ApiRedisStorageTransitionDuration records the wall-clock time from
+	// StartRemoving setting the transition key until the callback writes the result.
+	ApiRedisStorageTransitionDuration HistogramType = "api.redis_storage.transition.duration"
+
 	// Firecracker net histograms — per-sandbox distribution per metrics flush, no sandbox_id.
 	// Firecracker serializes SharedIncMetric as per-flush deltas (default flush interval: 60 s).
 	// Symmetric TX/RX metrics carry a direction=tx/rx attribute; TX-only metrics always use direction=tx.
@@ -451,6 +499,14 @@ var counterDesc = map[CounterType]string{
 	ApiRedisStorageExpirationIndexHealed:   "Sandboxes re-added to the global expiration index by the healer; sustained non-zero rate means index writes are being lost",
 	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution|invalid)",
 	ApiRedisStorageExpirationIndexRescored: "Live expiration index members re-scored after drifting from the stored EndTime",
+
+	ApiRedisStorageLockTimeouts:                 "Obtain calls whose context expired while waiting for the distributed sandbox lock",
+	ApiRedisStorageTransitionCallbackFailures:   "createCallback closures that could not obtain the lock, leaving waiters without a result notification",
+	ApiRedisStorageTransitionJoined:             "StartRemoving calls that joined an in-flight transition to the same target state instead of starting a new one",
+	ApiRedisStorageTransitionFallbackPolls:      "waitForTransition loop iterations driven by the 1-second fallback ticker (PubSub notification missed)",
+	ApiRedisStorageTransitionExecutionMismatches: "StartRemoving calls refused because the sandbox ExecutionID did not match the caller's pin",
+	ApiRedisStorageScanTeamsSkipped:             "Per-team scan failures silenced by forEachSandboxBatch; the team is skipped but remaining teams still scan",
+	ApiRedisStorageScanCorruptRecords:           "Sandbox records that failed JSON unmarshal during a scan batch and were skipped",
 }
 
 var counterUnits = map[CounterType]string{
@@ -498,6 +554,14 @@ var counterUnits = map[CounterType]string{
 	ApiRedisStorageExpirationIndexHealed:   "{sandbox}",
 	ApiRedisStorageExpirationIndexSwept:    "{member}",
 	ApiRedisStorageExpirationIndexRescored: "{member}",
+
+	ApiRedisStorageLockTimeouts:                  "{call}",
+	ApiRedisStorageTransitionCallbackFailures:     "{callback}",
+	ApiRedisStorageTransitionJoined:              "{call}",
+	ApiRedisStorageTransitionFallbackPolls:       "{poll}",
+	ApiRedisStorageTransitionExecutionMismatches: "{call}",
+	ApiRedisStorageScanTeamsSkipped:              "{team}",
+	ApiRedisStorageScanCorruptRecords:            "{record}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -637,6 +701,12 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
 
+	ApiRedisStorageTeamIndexSize:                "SCARD of a team's sandbox index SET sampled once per heal pass; p99/max detects unbounded growth",
+	ApiRedisStorageExpirationIndexSize:          "Global expiration ZSET cardinality sampled once per heal pass",
+	ApiRedisStorageExpirationIndexSweepDuration: "Wall-clock time of each ExpiredItems (evictor scan) call",
+	ApiRedisStorageLockWaitDuration:             "Total wait time in Obtain from first tryLock attempt until the lock is held, per successful acquisition",
+	ApiRedisStorageTransitionDuration:           "Wall-clock time from StartRemoving setting the transition key until the callback writes the result",
+
 	BuildDurationHistogramName:                 "Time taken to build a template",
 	BuildPhaseDurationHistogramName:            "Time taken to build each phase of a template",
 	BuildStepDurationHistogramName:             "Time taken to build each step of a template",
@@ -706,6 +776,12 @@ var histogramDesc = map[HistogramType]string{
 
 var histogramUnits = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "ms",
+
+	ApiRedisStorageTeamIndexSize:                "{entry}",
+	ApiRedisStorageExpirationIndexSize:          "{entry}",
+	ApiRedisStorageExpirationIndexSweepDuration: "ms",
+	ApiRedisStorageLockWaitDuration:             "ms",
+	ApiRedisStorageTransitionDuration:           "ms",
 
 	BuildDurationHistogramName:                    "ms",
 	BuildPhaseDurationHistogramName:               "ms",
