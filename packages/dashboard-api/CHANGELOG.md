@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/e2b-dev/infra/compare/dashboard-api-v0.3.1...dashboard-api-v0.4.0) (2026-09-01)
+
+
+### Features
+
+* **dashboard-api:** serve a team's tier and effective limits on their own route ([126fc77](https://github.com/e2b-dev/infra/commit/126fc77232bdf6e770e8ea497aad694ac9b78c77))
+
 ## 0.3.1 (2026-09-01)
 
 
