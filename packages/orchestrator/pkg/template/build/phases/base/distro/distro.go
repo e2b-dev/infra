@@ -81,7 +81,7 @@ var Profiles = []Profile{
 			"systemd", "shadow-utils", "passwd", "openssh-server", "sudo", "chrony",
 			"socat", "curl", "ca-certificates", "fuse3", "iptables", "git",
 			"nfs-utils", "less", "nftables", "iputils", "jq", "bash", "tar",
-			"iproute",
+			"iproute", "findutils",
 		},
 		PkgQueryBody: `rpm -q "$1" >/dev/null 2>&1`,
 		// dnf → microdnf → yum spans the family (yum for CentOS 7); errors reach

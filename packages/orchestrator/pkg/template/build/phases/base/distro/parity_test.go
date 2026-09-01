@@ -124,6 +124,18 @@ var capabilities = []struct {
 		"arch":   {},
 		"alpine": {"iproute2"},
 	}},
+	{"find", map[string][]string{
+		// The finalize configuration script walks /etc/skel with find(1) when
+		// copying skeleton files, so every provisioned image must ship it.
+		// findutils is priority: required on Debian and Ubuntu, and a
+		// dependency of Arch's base metapackage; busybox ships a find applet
+		// with the -mindepth/-type/-print0 predicates the script uses. Only
+		// the RPM family's minimal images (Rocky/Alma/UBI-style) omit it.
+		"debian": {},
+		"rhel":   {"findutils"},
+		"arch":   {},
+		"alpine": {},
+	}},
 	{"archiver", map[string][]string{
 		// Only the RPM family needs tar declared: yum-era CentOS 7 doesn't ship
 		// it, while Debian, Arch and busybox all provide tar in the base image.
