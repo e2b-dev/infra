@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 (2026-09-01)
+
+
+### Miscellaneous Chores
+
+* **dashboard-api:** clarify release version alignment (d8eb355)
+
 ## 0.3.0 (2026-09-01)
 
 
