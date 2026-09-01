@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 (2026-09-01)
+
+
+### Features
+
+* **api:** accept HTTPS backend ports on sandbox create (c395e9b)
+* **api:** filter sandbox placement by orchestrator release (7e433ac)
+
 ## 0.7.0 (2026-08-28)
 
 
