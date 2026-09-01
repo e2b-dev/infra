@@ -727,22 +727,34 @@ components:
           format: int64
         concurrentSandboxes:
           type: integer
-          format: int32
+          format: int64
         concurrentTemplateBuilds:
           type: integer
-          format: int32
+          format: int64
         maxVcpu:
           type: integer
-          format: int32
+          format: int64
         maxRamMb:
           type: integer
-          format: int32
+          format: int64
         diskMb:
           type: integer
-          format: int32
+          format: int64
         eventsTtlDays:
           type: integer
-          format: int32
+          format: int64
+
+    TeamLimitsResponse:
+      type: object
+      required:
+        - tier
+        - limits
+      properties:
+        tier:
+          type: string
+          description: The team's raw tier identifier, exactly as stored (not normalized to a catalog plan).
+        limits:
+          $ref: "#/components/schemas/UserTeamLimits"
 
     UserTeam:
       type: object
@@ -1971,10 +1983,11 @@ paths:
   /teams/{teamID}/status:
     get:
       summary: Get team access status
-      description: Returns whether the team is blocked or banned and its recorded blocked reason. Bearer-authenticated users may read only teams they belong to.
+      description: Returns whether the team is blocked or banned and its recorded blocked reason. Team-authenticated requests may read only the team they are scoped to.
       tags: [teams]
       security:
         - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
@@ -1985,6 +1998,31 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeamStatusResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}/limits:
+    get:
+      summary: Get team limits
+      description: Returns the team's tier and effective resource limits. Team-authenticated requests may read only the team they are scoped to.
+      tags: [teams]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned team limits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamLimitsResponse"
         "401":
           $ref: "#/components/responses/401"
         "404":

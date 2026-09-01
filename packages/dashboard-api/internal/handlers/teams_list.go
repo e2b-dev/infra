@@ -40,20 +40,14 @@ func (s *APIStore) GetTeams(c *gin.Context) {
 			BlockedReason:     row.Team.BlockedReason,
 			IsDefault:         row.IsDefault,
 			CreatedAt:         row.Team.CreatedAt,
-			// Narrowed because the response schema declares int32 while the
-			// columns are bigint. The conversion was previously done by sqlc,
-			// which could not infer the type of the view's arithmetic and
-			// defaulted to int32; it now resolves to int64, so the boundary is
-			// explicit here instead. Same values either way — these limits are
-			// nowhere near 2^31.
 			Limits: api.UserTeamLimits{
 				MaxLengthHours:           row.TeamLimit.MaxLengthHours,
-				ConcurrentSandboxes:      int32(row.TeamLimit.ConcurrentSandboxes),
-				ConcurrentTemplateBuilds: int32(row.TeamLimit.ConcurrentTemplateBuilds),
-				MaxVcpu:                  int32(row.TeamLimit.MaxVcpu),
-				MaxRamMb:                 int32(row.TeamLimit.MaxRamMb),
-				DiskMb:                   int32(row.TeamLimit.DiskMb),
-				EventsTtlDays:            int32(row.TeamLimit.EventsTtlDays),
+				ConcurrentSandboxes:      row.TeamLimit.ConcurrentSandboxes,
+				ConcurrentTemplateBuilds: row.TeamLimit.ConcurrentTemplateBuilds,
+				MaxVcpu:                  row.TeamLimit.MaxVcpu,
+				MaxRamMb:                 row.TeamLimit.MaxRamMb,
+				DiskMb:                   row.TeamLimit.DiskMb,
+				EventsTtlDays:            row.TeamLimit.EventsTtlDays,
 			},
 		})
 	}
