@@ -7,11 +7,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 )
 
 const legacyTeamMutationDisabledMessage = "Legacy team mutations are no longer available. Use the workspace API."
 
-var legacyTeamMutationRoutes = []RouteTemplate{
+var legacyTeamMutationRoutes = []sharedmiddleware.RouteTemplate{
 	{Method: http.MethodPost, Path: "/teams"},
 	{Method: http.MethodPatch, Path: "/teams/:teamID"},
 	{Method: http.MethodPost, Path: "/teams/:teamID/members"},
@@ -24,12 +25,12 @@ var legacyTeamMutationRoutes = []RouteTemplate{
 }
 
 func DisableLegacyTeamMutations(featureFlags *featureflags.Client) gin.HandlerFunc {
-	return RejectRoutes(
+	return sharedmiddleware.RejectRoutes(
 		legacyTeamMutationRoutes,
 		func(ctx context.Context) bool {
 			return featureFlags.BoolFlag(ctx, featureflags.DisableLegacyTeamMutationsFlag)
 		},
-		RouteRejection{
+		sharedmiddleware.RouteRejection{
 			Reason:  "legacy_team_mutations_disabled",
 			Status:  http.StatusPreconditionFailed,
 			Message: legacyTeamMutationDisabledMessage,
