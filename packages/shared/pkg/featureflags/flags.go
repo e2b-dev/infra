@@ -325,6 +325,7 @@ var (
 	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
 
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
+	MaxNetworkRuleDomains     = NewIntFlag("max-network-rule-domains", 10)
 
 	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
 

@@ -405,7 +405,7 @@ func TestValidateNetworkConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			mockFF := handlersmocks.NewMockFeatureFlagsClient(t)
-			err := validateNetworkConfig(t.Context(), mockFF, uuid.Nil, "", tt.network)
+			err := validateNetworkConfig(t.Context(), mockFF, uuid.Nil, "", 10, tt.network)
 
 			if tt.wantErr {
 				if err == nil {
@@ -978,6 +978,16 @@ func TestValidateNetworkRules(t *testing.T) {
 	t.Parallel()
 
 	teamID := uuid.New()
+	const defaultMaxDomains = 10
+
+	rulesWithDomains := func(count int) *map[string][]api.SandboxNetworkRule {
+		rules := make(map[string][]api.SandboxNetworkRule, count)
+		for i := range count {
+			rules[fmt.Sprintf("domain%d.example.com", i)] = nil
+		}
+
+		return &rules
+	}
 
 	tests := []struct {
 		name        string
@@ -1032,32 +1042,18 @@ func TestValidateNetworkRules(t *testing.T) {
 		},
 		// ── domain count ─────────────────────────────────────────────────────────
 		{
-			name: "exactly max domains is valid",
-			rules: func() *map[string][]api.SandboxNetworkRule {
-				m := make(map[string][]api.SandboxNetworkRule, maxNetworkRuleDomains)
-				for i := range maxNetworkRuleDomains {
-					m[fmt.Sprintf("domain%d.example.com", i)] = nil
-				}
-
-				return &m
-			}(),
+			name:        "exactly max domains is valid",
+			rules:       rulesWithDomains(defaultMaxDomains),
 			envdVersion: minEnvdVersionForNetworkRules,
 			setupFF:     ffEnabled,
 		},
 		{
-			name: "one over max domains returns 400",
-			rules: func() *map[string][]api.SandboxNetworkRule {
-				m := make(map[string][]api.SandboxNetworkRule, maxNetworkRuleDomains+1)
-				for i := range maxNetworkRuleDomains + 1 {
-					m[fmt.Sprintf("domain%d.example.com", i)] = nil
-				}
-
-				return &m
-			}(),
+			name:        "one over max domains returns 400",
+			rules:       rulesWithDomains(defaultMaxDomains + 1),
 			envdVersion: minEnvdVersionForNetworkRules,
 			setupFF:     ffEnabled,
 			wantCode:    http.StatusBadRequest,
-			wantMsg:     fmt.Sprintf("at most %d domains", maxNetworkRuleDomains),
+			wantMsg:     fmt.Sprintf("at most %d domains", defaultMaxDomains),
 		},
 		// ── domain key validation ─────────────────────────────────────────────────
 		{
@@ -1365,7 +1361,7 @@ func TestValidateNetworkRules(t *testing.T) {
 			t.Parallel()
 
 			ff := tt.setupFF(t)
-			apiErr := validateNetworkRules(t.Context(), ff, teamID, tt.envdVersion, tt.rules)
+			apiErr := validateNetworkRules(t.Context(), ff, teamID, tt.envdVersion, defaultMaxDomains, tt.rules)
 
 			if tt.wantMsg == "" {
 				assert.Nil(t, apiErr)
@@ -1383,6 +1379,8 @@ func TestValidateNetworkRules(t *testing.T) {
 			}
 		})
 	}
+
+	assert.Nil(t, validateNetworkRules(t.Context(), ffEnabled(t), teamID, minEnvdVersionForNetworkRules, defaultMaxDomains+1, rulesWithDomains(defaultMaxDomains+1)), "custom max domains should override the boundary")
 }
 
 func createTestTemplateAliasWithName(ctx context.Context, t *testing.T, db *testutils.Database, templateID, aliasName string, namespace *string) {

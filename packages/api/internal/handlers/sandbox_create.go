@@ -54,7 +54,6 @@ const (
 	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
 
 	maxHTTPSPorts                     = 128
-	maxNetworkRuleDomains             = 10
 	maxNetworkRuleTransformsPerDomain = 1
 	maxNetworkRuleDomainLen           = 128
 	maxNetworkRuleHeaderNameLen       = 64
@@ -232,7 +231,8 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 
 	var network *types.SandboxNetworkConfig
 	if n := body.Network; n != nil {
-		if err := validateNetworkConfig(ctx, a.featureFlags, teamInfo.Team.ID, sharedUtils.DerefOrDefault(build.EnvdVersion, ""), n); err != nil {
+		maxDomains := a.featureFlags.IntFlag(ctx, featureflags.MaxNetworkRuleDomains, featureflags.TeamContext(teamInfo.Team.ID.String()))
+		if err := validateNetworkConfig(ctx, a.featureFlags, teamInfo.Team.ID, sharedUtils.DerefOrDefault(build.EnvdVersion, ""), maxDomains, n); err != nil {
 			telemetry.ReportError(ctx, "invalid network config", err.Err, telemetry.WithSandboxID(sandboxID))
 			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
 
@@ -704,7 +704,7 @@ func apiRulesToDBRules(apiRules *map[string][]api.SandboxNetworkRule) map[string
 	return dbRules
 }
 
-func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, network *api.SandboxNetworkConfig) *api.APIError {
+func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, maxDomains int, network *api.SandboxNetworkConfig) *api.APIError {
 	if network == nil {
 		return nil
 	}
@@ -781,7 +781,7 @@ func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient,
 		return err
 	}
 
-	return validateNetworkRules(ctx, featureFlags, teamID, envdVersion, network.Rules)
+	return validateNetworkRules(ctx, featureFlags, teamID, envdVersion, maxDomains, network.Rules)
 }
 
 // validateEgressRules validates egress allow/deny rules:
@@ -825,7 +825,7 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 	return nil
 }
 
-func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, rules *map[string][]api.SandboxNetworkRule) *api.APIError {
+func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, teamID uuid.UUID, envdVersion string, maxDomains int, rules *map[string][]api.SandboxNetworkRule) *api.APIError {
 	if rules == nil {
 		return nil
 	}
@@ -854,11 +854,11 @@ func validateNetworkRules(ctx context.Context, featureFlags featureFlagsClient, 
 		}
 	}
 
-	if len(*rules) > maxNetworkRuleDomains {
+	if len(*rules) > maxDomains {
 		return &api.APIError{
 			Code:      http.StatusBadRequest,
-			Err:       fmt.Errorf("too many rule domains: %d (max %d)", len(*rules), maxNetworkRuleDomains),
-			ClientMsg: fmt.Sprintf("Network rules can have at most %d domains.", maxNetworkRuleDomains),
+			Err:       fmt.Errorf("too many rule domains: %d (max %d)", len(*rules), maxDomains),
+			ClientMsg: fmt.Sprintf("Network rules can have at most %d domains.", maxDomains),
 		}
 	}
 
