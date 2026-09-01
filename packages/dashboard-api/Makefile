@@ -29,11 +29,8 @@ E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/dashboard-api/dashboar
 # stripped so both `=v0.1.0` and `="v0.1.0"` work; a command-line value
 # always wins over the env file.
 #
-# Bump in lockstep with API_VERSION: dashboard-api guards startup on the
-# same DB's migration timestamp, and the migrations come from the db-migrator
-# image that releases WITH the api — a dashboard-api pinned ahead of
-# API_VERSION expects migrations the pinned migrator doesn't carry and fails
-# its startup check.
+# Keep this version in lockstep with API_VERSION. The API release's db-migrator
+# carries the migrations dashboard-api expects during its startup check.
 DASHBOARD_API_VERSION := $(strip $(subst ",,$(DASHBOARD_API_VERSION)))
 
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
@@ -86,4 +83,3 @@ run-local:
 .PHONY: test
 test:
 	go test -race -v ./...
-
