@@ -125,6 +125,9 @@ type Result struct {
 // 8. Snapshot
 // 9. Upload template (and all not yet uploaded layers)
 func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.TemplateConfig, logsCore zapcore.Core) (r *Result, e error) {
+	// The caller's span (template-background-build for gRPC builds); captured
+	// before we open our own so the result attribute lands on both.
+	parentSpan := trace.SpanFromContext(ctx)
 	ctx, childSpan := tracer.Start(ctx, "build")
 	defer childSpan.End()
 
@@ -135,26 +138,31 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		featureflags.TeamContext(cfg.TeamID),
 	)
 
-	// Record build duration and result at the end
+	// Record build duration and result at the end. This defer is registered
+	// first so it runs last, after the deferred WrapContextAsUserError below has
+	// produced the final error; the metric label and the span attribute are
+	// derived from that same final error so they can never disagree.
 	startTime := time.Now()
 	defer func() {
 		duration := time.Since(startTime)
 		success := e == nil && r != nil
 		b.metrics.RecordBuildDuration(ctx, duration, success)
 
+		resultType := ClassifyBuildResult(r, e)
+		b.metrics.RecordBuildResult(ctx, cfg.TeamID, resultType)
 		if success {
-			b.metrics.RecordBuildResult(ctx, cfg.TeamID, metrics.BuildResultSuccess)
 			b.metrics.RecordRootfsSize(ctx, units.MBToBytes(r.RootfsSizeMB))
-		} else {
-			// Determine if the error is a user error or internal error
-			var resultType metrics.BuildResultType
-			if builderrors.IsUserError(e) {
-				resultType = metrics.BuildResultUserError
-			} else {
-				resultType = metrics.BuildResultInternalError
-			}
-			b.metrics.RecordBuildResult(ctx, cfg.TeamID, resultType)
 		}
+
+		// Stamp the classification on the build span and on the caller's span
+		// (template-background-build for gRPC builds) so any span in the trace
+		// can be filtered by build.result without knowing which span carries an
+		// Error status. Child spans keep Error status for every failed
+		// operation, including user command failures; this attribute is the
+		// only place that says whose fault it was.
+		resultAttr := metrics.BuildResultAttribute(resultType)
+		childSpan.SetAttributes(resultAttr)
+		parentSpan.SetAttributes(resultAttr)
 	}()
 
 	cacheScope := cfg.CacheScope

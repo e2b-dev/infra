@@ -31,6 +31,17 @@ const (
 	BuildResultInternalError BuildResultType = "internal_error"
 )
 
+// BuildResultAttributeKey is the span attribute that carries the same value as
+// the `result` label on template_build_result_total, so a trace can be filtered
+// by classification (e.g. TraceQL `{ span.build.result = "internal_error" }`)
+// without relying on which span happened to get an Error status.
+const BuildResultAttributeKey = attribute.Key("build.result")
+
+// BuildResultAttribute returns the build.result span attribute for resultType.
+func BuildResultAttribute(resultType BuildResultType) attribute.KeyValue {
+	return BuildResultAttributeKey.String(string(resultType))
+}
+
 // BuildMetrics contains all metrics related to template building
 type BuildMetrics struct {
 	// Duration histograms
