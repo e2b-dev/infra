@@ -105,7 +105,8 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
 - **Resources**: sandboxes (create/list/kill/pause/resume/connect/timeout/metrics/logs),
   templates and builds, teams, volumes, API keys, secrets, admin operations.
 - **Auth** (via `packages/auth`): team API keys (`X-API-Key`, `e2b_` prefix), auth-provider JWTs
-  (OIDC), admin token. Backed by an auth DB (Postgres) with a Redis team cache.
+  (OIDC), and either an admin token or a service JWT verified from the configured admin JWKS.
+  Backed by an auth DB (Postgres) with a Redis team cache.
 - **Workload identity**: sandbox create accepts an optional `iam.tokens` map of caller-named
   workload-token definitions (each an exact `audience` and `tokenType`). A non-empty, validated
   map enables workload identity, whose identity the orchestrator derives from the sandbox's
@@ -136,8 +137,8 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   orchestrator node pools ("rigs"). They list rigs, change rig capacity, list and terminate
   instances, and read recent scaling errors. Every handler delegates to the cluster's edge service
   (`/v1/rigs/...`) through the per-cluster HTTP client that the cluster sync keeps fresh. The API
-  holds no cloud credentials and makes no scaling decisions. The caller authenticates with the
-  admin token and never holds the cluster's edge secret. Edge status codes pass through unchanged
+  holds no cloud credentials and makes no scaling decisions. The caller authenticates with an
+  admin credential and never holds the cluster's edge secret. Edge status codes pass through unchanged
   (400, 404, 409, 501). An edge 401 becomes a 500: it means the API is misconfigured against the
   cluster, not that the caller's token is invalid. A cluster with no rig management configured
   returns an empty list. The local cluster has no edge deployment and answers 501 for every rig
@@ -233,9 +234,10 @@ the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparent
 
 A separate REST service (port 3010, spec `spec/openapi-dashboard.yml`) consumed by the web
 dashboard, not the SDK: legacy team management/provisioning, template tags, build listings, admin
-bootstrap. The `disable-legacy-team-mutations` LaunchDarkly flag rejects legacy lifecycle writes
-with 412 after authentication; it leaves reads and the workspace API's management projection
-writes available. Team-scoped template and build read routes accept either dashboard user auth or
+bootstrap. Its admin routes accept either a shared admin token or a short-lived service JWT
+verified against the configured admin JWKS. The `disable-legacy-team-mutations` LaunchDarkly flag
+rejects legacy lifecycle writes with 412 after authentication; it leaves reads and the workspace
+API's management projection writes available. Team-scoped template and build read routes accept either dashboard user auth or
 team API key auth (`X-API-Key`). Its workspace-agnostic `/v1/management` operations are defined in the
 same dashboard OpenAPI contract and registered on the existing router. Their `AdminJWTAuth`
 OpenAPI security scheme accepts only short-lived service JWTs verified against the workspace-api

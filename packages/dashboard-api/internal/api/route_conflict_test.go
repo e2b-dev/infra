@@ -128,16 +128,20 @@ func assertTeamOrAdminAuth(t *testing.T, swagger *openapi3.T, path string) {
 
 	operation := operationForRoute(t, swagger, http.MethodGet, path)
 	require.NotNil(t, operation.Security)
-	require.Len(t, *operation.Security, 2)
+	require.Len(t, *operation.Security, 3)
 
 	teamRequirement := (*operation.Security)[0]
 	assert.Len(t, teamRequirement, 2)
 	assert.Contains(t, teamRequirement, "AuthProviderBearerAuth")
 	assert.Contains(t, teamRequirement, "AuthProviderTeamAuth")
 
-	adminRequirement := (*operation.Security)[1]
-	assert.Len(t, adminRequirement, 1)
-	assert.Contains(t, adminRequirement, "AdminApiKeyAuth")
+	adminTokenRequirement := (*operation.Security)[1]
+	assert.Len(t, adminTokenRequirement, 1)
+	assert.Contains(t, adminTokenRequirement, "AdminApiKeyAuth")
+
+	adminJWTRequirement := (*operation.Security)[2]
+	assert.Len(t, adminJWTRequirement, 1)
+	assert.Contains(t, adminJWTRequirement, "AdminJWTAuth")
 }
 
 func TestProjectMemberApplyRequestIsBounded(t *testing.T) {

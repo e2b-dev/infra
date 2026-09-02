@@ -28,6 +28,10 @@ components:
       type: apiKey
       in: header
       name: X-Admin-Token
+    AdminJWTAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
     AdminTeamAuth:
       type: apiKey
       in: header
@@ -2354,6 +2358,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - in: query
@@ -2398,6 +2404,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
@@ -2450,6 +2458,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: metadata
           in: query
@@ -2481,6 +2491,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       requestBody:
         required: true
@@ -2516,6 +2528,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - name: metadata
@@ -2587,6 +2601,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: sandbox_ids
           in: query
@@ -2624,6 +2640,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
@@ -2666,6 +2684,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
@@ -2726,6 +2746,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2752,6 +2774,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       responses:
@@ -2774,6 +2798,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
@@ -2822,6 +2848,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2853,6 +2881,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
@@ -2902,6 +2932,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
       requestBody:
@@ -2942,6 +2974,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
@@ -2989,6 +3023,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -3016,6 +3052,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       tags: [sandboxes]
       requestBody:
@@ -3048,6 +3086,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       tags: [sandboxes]
       requestBody:
         content:
@@ -3074,6 +3114,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/sandboxID"
@@ -3109,6 +3151,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - name: sandboxID
@@ -3153,6 +3197,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3186,6 +3232,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - in: query
@@ -3227,6 +3275,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3258,6 +3308,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -3295,6 +3347,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - in: query
@@ -3356,6 +3410,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/paginationNextToken"
@@ -3412,6 +3468,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
       responses:
@@ -3431,6 +3489,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -3481,6 +3541,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
         - $ref: "#/components/parameters/buildID"
@@ -3508,6 +3570,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -3541,6 +3605,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -3590,6 +3656,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -3648,6 +3716,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3679,6 +3749,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -3707,6 +3779,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/templateID"
@@ -3739,6 +3813,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - name: alias
           in: path
@@ -3769,6 +3845,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - in: query
           name: clusterID
@@ -3798,6 +3875,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/nodeID"
         - in: query
@@ -3826,6 +3904,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/nodeID"
       requestBody:
@@ -3852,6 +3931,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - name: teamID
           in: path
@@ -3883,6 +3963,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       responses:
         "200":
           description: Running sandbox counts keyed by team ID
@@ -3902,6 +3983,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - name: teamID
           in: path
@@ -3931,6 +4013,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - name: teamID
           in: path
@@ -3970,6 +4053,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - name: teamID
           in: path
@@ -4000,6 +4084,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       responses:
         "200":
@@ -4049,6 +4135,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       requestBody:
@@ -4075,6 +4163,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/apiKeyID"
       responses:
@@ -4097,6 +4187,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       responses:
         "200":
@@ -4121,6 +4213,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       requestBody:
         required: true
@@ -4153,6 +4247,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:
@@ -4179,6 +4275,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/volumeID"
       responses:
@@ -4201,6 +4299,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/paginationNextToken"
@@ -4246,6 +4346,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       requestBody:
         required: true
         content:
@@ -4289,6 +4391,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/secretID"
       responses:
@@ -4326,6 +4430,8 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
           AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/secretID"
@@ -4371,6 +4477,8 @@ paths:
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
           AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
       parameters:
         - $ref: "#/components/parameters/secretID"
       responses:
@@ -4406,6 +4514,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/clusterID"
       responses:
@@ -4436,6 +4545,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/clusterID"
         - $ref: "#/components/parameters/rigID"
@@ -4470,6 +4580,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/clusterID"
         - name: instanceID
@@ -4511,6 +4622,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/clusterID"
         - $ref: "#/components/parameters/rigID"
@@ -4543,6 +4655,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/clusterID"
         - $ref: "#/components/parameters/rigID"

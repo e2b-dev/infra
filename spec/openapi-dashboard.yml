@@ -1662,6 +1662,7 @@ paths:
       tags: [teams]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       requestBody:
         required: true
         content:
@@ -1691,6 +1692,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       requestBody:
         required: true
         content:
@@ -1722,6 +1724,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       requestBody:
         required: true
         content:
@@ -1751,6 +1754,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/clusterID"
       responses:
@@ -1772,6 +1776,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       responses:
@@ -1795,6 +1800,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       requestBody:
@@ -1826,6 +1832,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
         - $ref: "#/components/parameters/clusterID"
@@ -1851,6 +1858,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       requestBody:
         required: true
         content:
@@ -1877,6 +1885,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       requestBody:
         required: true
         content:
@@ -1903,6 +1912,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -1926,6 +1936,7 @@ paths:
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/userId"
       responses:
@@ -2011,6 +2022,7 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       responses:
@@ -2036,6 +2048,7 @@ paths:
         - AuthProviderBearerAuth: []
           AuthProviderTeamAuth: []
         - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
       parameters:
         - $ref: "#/components/parameters/teamID"
       responses:

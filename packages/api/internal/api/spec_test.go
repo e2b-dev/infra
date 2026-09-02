@@ -74,6 +74,7 @@ func TestAuthProviderTeamAuthHeaderRoutes(t *testing.T) {
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
 		"AdminApiKeyAuth":        auth.HeaderAdminToken,
+		"AdminJWTAuth":           auth.HeaderAuthorization,
 		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
@@ -160,6 +161,7 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 		"AuthProviderBearerAuth": auth.HeaderAuthorization,
 		"AuthProviderTeamAuth":   auth.HeaderTeamID,
 		"AdminApiKeyAuth":        auth.HeaderAdminToken,
+		"AdminJWTAuth":           auth.HeaderAuthorization,
 		"AdminTeamAuth":          auth.HeaderTeamID,
 	}
 
@@ -172,9 +174,12 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 		if value := input.RequestValidationInput.Request.Header.Get(header); value == "" {
 			return http.ErrNoCookie
 		}
+		if input.SecuritySchemeName == "AuthProviderBearerAuth" && input.RequestValidationInput.Request.Header.Get(auth.HeaderAuthorization) == "Bearer service-token" {
+			return http.ErrNoCookie
+		}
 
 		switch input.SecuritySchemeName {
-		case "AdminApiKeyAuth", "AdminTeamAuth":
+		case "AdminApiKeyAuth", "AdminJWTAuth", "AdminTeamAuth":
 			adminSchemeOrder = append(adminSchemeOrder, input.SecuritySchemeName)
 		}
 
@@ -206,4 +211,15 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code, "request with admin token and team header should pass auth (body: %s)", rr.Body.String())
 	require.Equal(t, []string{"AdminApiKeyAuth", "AdminTeamAuth"}, adminSchemeOrder)
+
+	adminSchemeOrder = nil
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api-keys", nil)
+	req.Header.Set(auth.HeaderAuthorization, "Bearer service-token")
+	req.Header.Set(auth.HeaderTeamID, "team-id")
+
+	rr = httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code, "request with admin JWT and team header should pass auth (body: %s)", rr.Body.String())
+	require.Equal(t, []string{"AdminJWTAuth", "AdminTeamAuth"}, adminSchemeOrder)
 }

@@ -130,7 +130,8 @@ type Config struct {
 
 	VolumesToken VolumesTokenConfig
 
-	AuthProvider sharedauth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
+	AuthProvider      sharedauth.ProviderConfig `env:"AUTH_PROVIDER_CONFIG"`
+	AdminAuthProvider sharedauth.ProviderConfig `env:"ADMIN_AUTH_PROVIDER_CONFIG"`
 
 	DefaultPersistentVolumeType     string `env:"DEFAULT_PERSISTENT_VOLUME_TYPE"`
 	PlaceholderPersistentVolumeType string `env:"PLACEHOLDER_PERSISTENT_VOLUME_TYPE" envDefault:"__DEFAULT_VOLUME_TYPE__"`
