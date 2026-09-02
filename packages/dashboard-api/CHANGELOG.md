@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.0 (2026-09-02)
+
+
+### Features
+
+* **api:** add service JWT authentication (3374207)
+* **limits:** bridge maximum free disk limits (eceb319)
+
 ## [0.4.0](https://github.com/e2b-dev/infra/compare/dashboard-api-v0.3.1...dashboard-api-v0.4.0) (2026-09-01)
 
 
