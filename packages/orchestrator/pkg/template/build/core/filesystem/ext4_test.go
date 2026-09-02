@@ -3,11 +3,81 @@
 package filesystem
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Make requires a block size >= inodesRatio; 4 KiB is what the rootfs uses.
+const makeBlockSize = 4096
+
+// TestMakeDirIndex pins both sides of the build-ext4-dir-index switch: nothing
+// else exercises the enabled path until the flag is turned on.
+func TestMakeDirIndex(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		opts    MakeOptions
+		indexed bool
+	}{
+		{name: "enabled keeps the mkfs base feature", opts: MakeOptions{DirIndex: true}, indexed: true},
+		{name: "disabled strips the index", opts: MakeOptions{DirIndex: false}, indexed: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			requireTools(t, "mkfs.ext4", "dumpe2fs")
+
+			rootfsPath := filepath.Join(t.TempDir(), "rootfs.ext4")
+			require.NoError(t, Make(t.Context(), rootfsPath, 64, makeBlockSize, tc.opts))
+
+			features := filesystemFeatures(t, rootfsPath)
+			assert.Equal(t, tc.indexed, slices.Contains(features, "dir_index"),
+				"dir_index in mkfs.ext4 feature set %v", features)
+		})
+	}
+}
+
+func requireTools(t *testing.T, tools ...string) {
+	t.Helper()
+
+	for _, tool := range tools {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Skipf("requires %s to inspect an ext4 filesystem: %v", tool, err)
+		}
+	}
+}
+
+// filesystemFeatures returns the feature names dumpe2fs reports for the image.
+func filesystemFeatures(t *testing.T, rootfsPath string) []string {
+	t.Helper()
+
+	cmd := exec.CommandContext(t.Context(), "dumpe2fs", "-h", rootfsPath)
+	// The parser below relies on dumpe2fs's English field names.
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	output, err := cmd.Output()
+	require.NoError(t, err, "dumpe2fs -h %s", rootfsPath)
+
+	const prefix = "Filesystem features:"
+	for line := range strings.Lines(string(output)) {
+		if after, ok := strings.CutPrefix(strings.TrimSpace(line), prefix); ok {
+			return strings.Fields(after)
+		}
+	}
+
+	t.Fatalf("no %q line in dumpe2fs output:\n%s", prefix, output)
+
+	return nil
+}
 
 func TestParseFreeBlocks(t *testing.T) {
 	t.Parallel()

@@ -364,6 +364,11 @@ var (
 
 	// BuildEnsureFreeDiskSpace grows the rootfs after build steps and before finalize.
 	BuildEnsureFreeDiskSpace = NewBoolFlag("build-ensure-free-disk-space", false)
+
+	// BuildExt4DirIndex keeps the htree directory index that mkfs.ext4 enables by
+	// default on the rootfs. Read at mkfs time, so it governs only rootfs images
+	// built after the flip.
+	BuildExt4DirIndex = NewBoolFlag("build-ext4-dir-index", false)
 )
 
 // envdTimeoutFallbackMs reads ENVD_TIMEOUT (Go duration string, e.g. "10s")
