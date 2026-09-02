@@ -37,7 +37,7 @@ type ProjectLimitsProjection struct {
 	DiskMB                   int64
 	EventsTTLDays            int64
 	DefaultFreeDiskSizeMB    int64
-	MaxDiskSizeMB            int64
+	MaxFreeDiskSizeMB        int64
 }
 
 // ApplyProjectLimits records a project's effective limits, behind the revision
@@ -113,7 +113,7 @@ func (s *Service) applyProjectLimits(ctx context.Context, projection ProjectLimi
 		DiskMb:                   projection.DiskMB,
 		EventsTtlDays:            projection.EventsTTLDays,
 		DefaultFreeDiskSizeMb:    projection.DefaultFreeDiskSizeMB,
-		MaxDiskSizeMb:            projection.MaxDiskSizeMB,
+		MaxFreeDiskSizeMb:        projection.MaxFreeDiskSizeMB,
 	}); err != nil {
 		if dberrors.IsCheckViolation(err) {
 			return false, fmt.Errorf("%w: %w", ErrProjectLimitsRejected, err)

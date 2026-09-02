@@ -23,7 +23,7 @@ func projectLimits(projectID uuid.UUID, revision int64) ProjectLimitsProjection 
 		DiskMB:                   20480,
 		EventsTTLDays:            14,
 		DefaultFreeDiskSizeMB:    10240,
-		MaxDiskSizeMB:            51200,
+		MaxFreeDiskSizeMB:        51200,
 	}
 }
 
@@ -170,7 +170,7 @@ func TestApplyProjectLimitsLeavesTheLedgerBehindARejectedWrite(t *testing.T) {
 	teamID := testutils.CreateTestTeam(t, db)
 
 	incoherent := projectLimits(teamID, 4)
-	incoherent.DefaultFreeDiskSizeMB = incoherent.MaxDiskSizeMB + 1
+	incoherent.DefaultFreeDiskSizeMB = incoherent.MaxFreeDiskSizeMB + 1
 
 	require.ErrorIs(t, service.ApplyProjectLimits(t.Context(), incoherent), ErrProjectLimitsRejected)
 	require.Nil(t, ledgerRevision(t, db, teamID))

@@ -25,6 +25,9 @@ func newTeamLimits(
 		MaxRamMb:           teamLimits.MaxRamMb,
 		DiskMb:             teamLimits.DiskMb,
 		EventsTTLDays:      teamLimits.EventsTtlDays,
+
+		DefaultFreeDiskSizeMb: teamLimits.DefaultFreeDiskSizeMb,
+		MaxFreeDiskSizeMb:     teamLimits.MaxFreeDiskSizeMb,
 	}
 }
 

@@ -39,6 +39,10 @@ SELECT EXISTS (SELECT 1 FROM changed) AS applied;
 -- Every column is supplied on every call: the caller sends a complete set, so
 -- there is no partial update to merge and no prior row to read first.
 --
+-- max_disk_size_mb and max_free_disk_size_mb are the same ceiling under the old
+-- and the new name, and the table holds them equal. Both are written here so a
+-- receiver of this version keeps the compatibility bridge in application code.
+--
 -- Which deliveries reach this statement is the ledger's decision, and the two
 -- writes share a transaction. Nothing here compares revisions.
 -- name: UpsertProjectLimits :exec
@@ -53,6 +57,7 @@ INSERT INTO public.project_limits (
     events_ttl_days,
     default_free_disk_size_mb,
     max_disk_size_mb,
+    max_free_disk_size_mb,
     updated_at
 ) VALUES (
     sqlc.arg(team_id)::uuid,
@@ -64,7 +69,8 @@ INSERT INTO public.project_limits (
     sqlc.arg(disk_mb)::bigint,
     sqlc.arg(events_ttl_days)::bigint,
     sqlc.arg(default_free_disk_size_mb)::bigint,
-    sqlc.arg(max_disk_size_mb)::bigint,
+    sqlc.arg(max_free_disk_size_mb)::bigint,
+    sqlc.arg(max_free_disk_size_mb)::bigint,
     now()
 )
 ON CONFLICT (team_id) DO UPDATE SET
@@ -77,4 +83,5 @@ ON CONFLICT (team_id) DO UPDATE SET
     events_ttl_days            = EXCLUDED.events_ttl_days,
     default_free_disk_size_mb  = EXCLUDED.default_free_disk_size_mb,
     max_disk_size_mb           = EXCLUDED.max_disk_size_mb,
+    max_free_disk_size_mb      = EXCLUDED.max_free_disk_size_mb,
     updated_at                 = now();

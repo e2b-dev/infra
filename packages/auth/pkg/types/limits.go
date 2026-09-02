@@ -10,4 +10,7 @@ type TeamLimits struct {
 	DiskMb   int64
 
 	EventsTTLDays int64
+
+	DefaultFreeDiskSizeMb int64
+	MaxFreeDiskSizeMb     int64
 }

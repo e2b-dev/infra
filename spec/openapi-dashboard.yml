@@ -1396,6 +1396,13 @@ components:
         under looser constraints on purpose — it is a push target, and a floor
         that only rejects the impossible keeps a future decision about what is
         allowed a change to this schema rather than a migration.
+
+
+        `max_disk_size_mb` and `max_free_disk_size_mb` are one ceiling under two
+        names, and either name alone carries it. A caller that sends both must
+        send them equal; a caller that sends neither is refused. Sending both is
+        what a caller does while receivers older than the second name are still
+        running.
       required:
         - revision
         - concurrent_sandboxes
@@ -1406,7 +1413,9 @@ components:
         - concurrent_template_builds
         - events_ttl_days
         - default_free_disk_size_mb
-        - max_disk_size_mb
+      anyOf:
+        - required: [max_free_disk_size_mb]
+        - required: [max_disk_size_mb]
       properties:
         revision:
           type: integer
@@ -1455,12 +1464,25 @@ components:
           format: int64
           minimum: 0
           description: >-
-            Free rootfs allowance. Must not exceed max_disk_size_mb; the two
-            are stored together and rejected as a pair if they disagree.
+            The default free-space growth target when a template build request
+            omits one. May sit anywhere at or below the maximum free-space
+            growth target, and usually sits well below it; a delivery whose
+            default exceeds the maximum is rejected.
+        max_free_disk_size_mb:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            The most a template build may request as its free-space growth
+            target.
         max_disk_size_mb:
           type: integer
           format: int64
           minimum: 1
+          description: >-
+            The same ceiling as max_free_disk_size_mb, under the name it was
+            first published with. Kept until every deployed sender and receiver
+            speaks the other name.
 
 tags:
   - name: builds

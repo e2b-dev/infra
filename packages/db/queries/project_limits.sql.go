@@ -79,6 +79,7 @@ INSERT INTO public.project_limits (
     events_ttl_days,
     default_free_disk_size_mb,
     max_disk_size_mb,
+    max_free_disk_size_mb,
     updated_at
 ) VALUES (
     $1::uuid,
@@ -90,6 +91,7 @@ INSERT INTO public.project_limits (
     $7::bigint,
     $8::bigint,
     $9::bigint,
+    $10::bigint,
     $10::bigint,
     now()
 )
@@ -103,6 +105,7 @@ ON CONFLICT (team_id) DO UPDATE SET
     events_ttl_days            = EXCLUDED.events_ttl_days,
     default_free_disk_size_mb  = EXCLUDED.default_free_disk_size_mb,
     max_disk_size_mb           = EXCLUDED.max_disk_size_mb,
+    max_free_disk_size_mb      = EXCLUDED.max_free_disk_size_mb,
     updated_at                 = now()
 `
 
@@ -116,7 +119,7 @@ type UpsertProjectLimitsParams struct {
 	DiskMb                   int64
 	EventsTtlDays            int64
 	DefaultFreeDiskSizeMb    int64
-	MaxDiskSizeMb            int64
+	MaxFreeDiskSizeMb        int64
 }
 
 // UpsertProjectLimits records a project's effective limits, which the
@@ -124,6 +127,10 @@ type UpsertProjectLimitsParams struct {
 //
 // Every column is supplied on every call: the caller sends a complete set, so
 // there is no partial update to merge and no prior row to read first.
+//
+// max_disk_size_mb and max_free_disk_size_mb are the same ceiling under the old
+// and the new name, and the table holds them equal. Both are written here so a
+// receiver of this version keeps the compatibility bridge in application code.
 //
 // Which deliveries reach this statement is the ledger's decision, and the two
 // writes share a transaction. Nothing here compares revisions.
@@ -138,7 +145,7 @@ func (q *Queries) UpsertProjectLimits(ctx context.Context, arg UpsertProjectLimi
 		arg.DiskMb,
 		arg.EventsTtlDays,
 		arg.DefaultFreeDiskSizeMb,
-		arg.MaxDiskSizeMb,
+		arg.MaxFreeDiskSizeMb,
 	)
 	return err
 }
