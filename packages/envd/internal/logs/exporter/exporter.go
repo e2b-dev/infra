@@ -45,9 +45,9 @@ func NewHTTPLogsExporter(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) *H
 			Transport: &http.Transport{DisableKeepAlives: true},
 		},
 		triggers:     make(chan struct{}, 1),
-		jsonErrLog:   newRateLimitedLogger(logFloor, "error adding instance logging options to JSON: %v"),
-		sendErrLog:   newRateLimitedLogger(logFloor, "error sending instance logs: %+v"),
-		oversizedLog: newRateLimitedLogger(logFloor, "dropped log line exceeding %d bytes"),
+		jsonErrLog:   newRateLimitedLogger("error adding instance logging options to JSON: %v"),
+		sendErrLog:   newRateLimitedLogger("error sending instance logs: %+v"),
+		oversizedLog: newRateLimitedLogger("dropped log line exceeding %d bytes"),
 	}
 
 	go exporter.listenForMMDSOptsAndStart(ctx, mmdsChan)
@@ -78,6 +78,50 @@ func (w *HTTPExporter) sendInstanceLogs(ctx context.Context, logs []byte, addres
 	}
 
 	return nil
+}
+
+// FlushAndPurge synchronously sends the logs buffered when the call begins,
+// then discards anything still buffered. Sending is best-effort: the first
+// error is returned to the caller, while the purge always runs.
+func (w *HTTPExporter) FlushAndPurge(ctx context.Context) error {
+	logs := w.getAllLogs()
+	defer w.purgeLogs()
+
+	opts := w.mmdsOpts.Load()
+	if opts == nil {
+		return nil
+	}
+
+	var flushErr error
+	for _, logLine := range logs {
+		if err := ctx.Err(); err != nil {
+			if flushErr == nil {
+				flushErr = err
+			}
+
+			break
+		}
+
+		logLineWithOpts, err := opts.AddOptsToJSON(logLine)
+		if err != nil {
+			if flushErr == nil {
+				flushErr = fmt.Errorf("add instance logging options to JSON: %w", err)
+			}
+
+			continue
+		}
+
+		if err := w.sendInstanceLogs(ctx, logLineWithOpts, opts.LogsCollectorAddress); err != nil {
+			if flushErr == nil {
+				flushErr = fmt.Errorf("send instance logs: %w", err)
+			}
+			if ctx.Err() != nil {
+				break
+			}
+		}
+	}
+
+	return flushErr
 }
 
 func (w *HTTPExporter) listenForMMDSOptsAndStart(ctx context.Context, mmdsChan <-chan *host.MMDSOpts) {
@@ -155,7 +199,9 @@ func (w *HTTPExporter) Write(logs []byte) (int, error) {
 	logsCopy := make([]byte, len(logs))
 	copy(logsCopy, logs)
 
-	go w.addLogs(logsCopy)
+	// Enqueue synchronously so a completed Write is visible to flush barriers.
+	// addLogs only holds logLock for in-memory queue bookkeeping, never I/O.
+	w.addLogs(logsCopy)
 
 	return len(logs), nil
 }
@@ -169,6 +215,14 @@ func (w *HTTPExporter) getAllLogs() [][]byte {
 	w.bufferedBytes = 0
 
 	return logs
+}
+
+func (w *HTTPExporter) purgeLogs() {
+	w.logLock.Lock()
+	defer w.logLock.Unlock()
+
+	w.logs = nil
+	w.bufferedBytes = 0
 }
 
 func (w *HTTPExporter) addLogs(logs []byte) {

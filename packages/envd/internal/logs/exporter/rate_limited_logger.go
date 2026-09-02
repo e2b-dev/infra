@@ -2,7 +2,6 @@ package exporter
 
 import (
 	"log"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/logs/ratelimit"
 )
@@ -12,8 +11,8 @@ type rateLimitedLogger struct {
 	format string
 }
 
-func newRateLimitedLogger(floor time.Duration, format string) *rateLimitedLogger {
-	return &rateLimitedLogger{limit: ratelimit.New(floor), format: format}
+func newRateLimitedLogger(format string) *rateLimitedLogger {
+	return &rateLimitedLogger{limit: ratelimit.New(logFloor), format: format}
 }
 
 func (r *rateLimitedLogger) log(args ...any) {

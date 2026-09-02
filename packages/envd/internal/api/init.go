@@ -39,6 +39,7 @@ var (
 const (
 	maxTimeInPast   = 50 * time.Millisecond
 	maxTimeInFuture = 5 * time.Second
+	logFlushTimeout = 2 * time.Second
 )
 
 // validateInitAccessToken validates the access token for /init requests.
@@ -314,6 +315,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 // snapshot and /init thaws on resume. Best-effort: tries every cgroup even if
 // one fails so we freeze as many as possible before the snapshot.
 func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFreezeParams) {
+	handlerStart := time.Now()
 	defer r.Body.Close()
 
 	logger := a.logger.With().Str(string(logs.OperationIDKey), logs.AssignOperationID()).Logger()
@@ -368,6 +370,19 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFree
 		logger.Error().Err(err).
 			Int("failed", res.Failed).
 			Msg("some cgroups failed to freeze; reporting them in the result")
+	}
+	// The caller's maxWaitMs covers the whole handler, not just the cgroup wait.
+	// Spend only its remainder on sending logs. A legacy caller provides no
+	// observable budget, so an immediately expired context makes this purge-only.
+	flushBudget := time.Duration(0)
+	if report {
+		flushBudget = min(logFlushTimeout, max(maxWait-time.Since(handlerStart), 0))
+	}
+	flushCtx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), flushBudget)
+	flushErr := a.logFlusher.FlushAndPurge(flushCtx)
+	cancel()
+	if flushErr != nil {
+		logger.Warn().Err(flushErr).Msg("flush and purge logs before pause")
 	}
 	if !report {
 		// Nothing was observed, so there is nothing to say about whether the workload

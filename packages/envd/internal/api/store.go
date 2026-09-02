@@ -22,6 +22,18 @@ type MMDSClient interface {
 	GetAccessTokenHash(ctx context.Context) (string, error)
 }
 
+// LogFlusher flushes and purges logs before the guest is paused.
+type LogFlusher interface {
+	FlushAndPurge(ctx context.Context) error
+}
+
+type noopLogFlusher struct{}
+
+func (noopLogFlusher) FlushAndPurge(context.Context) error { return nil }
+
+// NewNoopLogFlusher returns a log flusher that performs no work.
+func NewNoopLogFlusher() LogFlusher { return noopLogFlusher{} }
+
 // DefaultMMDSClient is the production implementation that calls the real MMDS endpoint.
 type DefaultMMDSClient struct{}
 
@@ -48,6 +60,7 @@ type API struct {
 	// API's /freeze, /unfreeze and /init deferred thaw, plus the upgrade — is
 	// serialized through one lock.
 	workloadFreezer *cgroups.WorkloadFreezer
+	logFlusher      LogFlusher
 
 	isMountingNFS atomic.Bool
 	mountedPaths  sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
@@ -110,7 +123,12 @@ func (a *API) SetHandoverResult(failed bool, procs, procsFailed, retained, retai
 	}
 }
 
-func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool, workloadFreezer *cgroups.WorkloadFreezer) *API {
+func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.MMDSOpts, isNotFC bool, workloadFreezer *cgroups.WorkloadFreezer, logFlushers ...LogFlusher) *API {
+	logFlusher := NewNoopLogFlusher()
+	if len(logFlushers) > 0 && logFlushers[0] != nil {
+		logFlusher = logFlushers[0]
+	}
+
 	return &API{
 		logger:          l,
 		defaults:        defaults,
@@ -121,6 +139,7 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 		accessToken:     &SecureToken{},
 		caCertInstaller: host.NewCACertInstaller(l),
 		workloadFreezer: workloadFreezer,
+		logFlusher:      logFlusher,
 		initLock:        semaphore.NewWeighted(1),
 		fsFreezer:       fsfreeze.New(),
 		fsFreezeLock:    semaphore.NewWeighted(1),

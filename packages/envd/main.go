@@ -21,6 +21,7 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
+	"github.com/e2b-dev/infra/packages/envd/internal/logs/exporter"
 	"github.com/e2b-dev/infra/packages/envd/internal/permissions"
 	publicport "github.com/e2b-dev/infra/packages/envd/internal/port"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
@@ -199,7 +200,14 @@ func run() error {
 		go host.PollForMMDSOpts(ctx, mmdsChan, defaults.EnvVars)
 	}
 
-	l := logs.NewLogger(ctx, !isNotFC, verbose, mmdsChan)
+	logFlusher := api.NewNoopLogFlusher()
+	var logWriters []io.Writer
+	if !isNotFC {
+		logExporter := exporter.NewHTTPLogsExporter(ctx, mmdsChan)
+		logWriters = append(logWriters, logExporter)
+		logFlusher = logExporter
+	}
+	l := logs.NewLogger(verbose, logWriters...)
 
 	m := chi.NewRouter()
 
@@ -270,7 +278,7 @@ func run() error {
 		}()
 	}
 
-	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, workloadFreezer)
+	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, workloadFreezer, logFlusher)
 	if resumeHandover {
 		// Restore the NFS mount ledger carried across the upgrade before the
 		// post-upgrade /init runs setupNFS, so it recognizes a still-live mount
