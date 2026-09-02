@@ -70,6 +70,8 @@ type commonAuthenticator[T any] struct {
 	errorMessage   string
 }
 
+const authFailureStatusContextKey = "e2b.auth.middleware.failure_status"
+
 // getHeaderKeysFromRequest extracts the token from the request header.
 func (a *commonAuthenticator[T]) getHeaderKeysFromRequest(req *http.Request) (string, error) {
 	key := req.Header.Get(a.header.name)
@@ -101,9 +103,12 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 			attribute.String("auth.reason", err.Error()),
 		)
 
-		// stamp 401 so the ErrorHandler's max(writer, 400) resolves to 401
-		// when every security group fails. without this, auth failures become 400s.
-		ginCtx.Status(http.StatusUnauthorized)
+		// Gin's default 404 is not an authentication failure. This key records
+		// errors returned by common authenticators across security alternatives.
+		if _, hasAuthenticationFailure := ginCtx.Get(authFailureStatusContextKey); !hasAuthenticationFailure {
+			ginCtx.Status(http.StatusUnauthorized)
+			ginCtx.Set(authFailureStatusContextKey, struct{}{})
+		}
 
 		return err
 	}
@@ -121,6 +126,7 @@ func (a *commonAuthenticator[T]) Authenticate(ctx context.Context, ginCtx *gin.C
 		)
 
 		ginCtx.Status(validationError.Code)
+		ginCtx.Set(authFailureStatusContextKey, struct{}{})
 
 		var forbiddenError *internalauthteam.ForbiddenError
 		if errors.As(validationError.Err, &forbiddenError) {

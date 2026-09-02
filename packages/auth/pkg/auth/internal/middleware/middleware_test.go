@@ -209,6 +209,68 @@ func TestNewAuthenticatorStamps401OnAMissingHeader(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, ginCtx.Writer.Status())
 }
 
+func TestNewAuthenticatorPreservesExistingStatusOnMissingHeader(t *testing.T) {
+	t.Parallel()
+
+	failingAuthenticator := NewAuthenticator(AuthenticatorConfig[struct{}]{
+		SchemeName: "ExistingAuth",
+		Header:     HeaderAdminToken,
+		Validate: func(context.Context, *gin.Context, string) (struct{}, *APIError) {
+			return struct{}{}, &APIError{
+				Err:       ErrInvalidAuthHeader,
+				ClientMsg: "team not found",
+				Code:      http.StatusNotFound,
+			}
+		},
+	})
+	authenticator := NewAuthenticator(AuthenticatorConfig[struct{}]{
+		SchemeName: "CustomBearerAuth",
+		Header:     HeaderAuthorization,
+		Validate: func(context.Context, *gin.Context, string) (struct{}, *APIError) {
+			return struct{}{}, nil
+		},
+	})
+
+	ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+	req.Header.Set(HeaderAdminToken, "valid-token")
+	require.Error(t, failingAuthenticator.Authenticate(t.Context(), ginCtx, &openapi3filter.AuthenticationInput{
+		RequestValidationInput: &openapi3filter.RequestValidationInput{Request: req},
+	}))
+
+	err := authenticator.Authenticate(t.Context(), ginCtx, &openapi3filter.AuthenticationInput{
+		RequestValidationInput: &openapi3filter.RequestValidationInput{
+			Request: req,
+		},
+	})
+	require.ErrorIs(t, err, ErrNoAuthHeader)
+	require.Equal(t, http.StatusNotFound, ginCtx.Writer.Status())
+}
+
+func TestNewAuthenticatorStamps401OverGinDefaultNotFoundOnMissingHeader(t *testing.T) {
+	t.Parallel()
+
+	authenticator := NewAuthenticator(AuthenticatorConfig[struct{}]{
+		SchemeName: "CustomBearerAuth",
+		Header:     HeaderAuthorization,
+		Validate: func(context.Context, *gin.Context, string) (struct{}, *APIError) {
+			return struct{}{}, nil
+		},
+	})
+
+	ginCtx, _ := gin.CreateTestContext(httptest.NewRecorder())
+	ginCtx.Status(http.StatusNotFound)
+
+	err := authenticator.Authenticate(t.Context(), ginCtx, &openapi3filter.AuthenticationInput{
+		RequestValidationInput: &openapi3filter.RequestValidationInput{
+			Request: httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil),
+		},
+	})
+
+	require.ErrorIs(t, err, ErrNoAuthHeader)
+	require.Equal(t, http.StatusUnauthorized, ginCtx.Writer.Status())
+}
+
 // SetContext is optional: a scheme that only proves the caller may proceed
 // has nothing to record, and must not require a setter to say so.
 func TestNewAuthenticatorAllowsNoContextSetter(t *testing.T) {
