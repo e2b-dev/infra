@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.0 (2026-09-02)
+
+
+### Features
+
+* **api:** add service JWT authentication (3374207)
+* **api:** make network rule domain limit configurable (291ae2c)
+* **orchestrator:** snapshot-admission pre-flight for pause and checkpoint (flag-gated) (b47217c)
+
 ## 0.8.0 (2026-09-01)
 
 
