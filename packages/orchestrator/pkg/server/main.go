@@ -89,6 +89,9 @@ type Server struct {
 	envdUpgradeHandover      metric.Int64Counter
 	envdUpgradeDuration      metric.Int64Histogram
 
+	pauseAdmissionCounter      metric.Int64Counter
+	pauseAdmissionWaitDuration metric.Int64Histogram
+
 	// uploadsWG tracks in-flight async snapshot uploads so a graceful shutdown
 	// can wait for them to finish instead of dropping them. uploadsInFlight is
 	// the live count, used to log drain progress during shutdown.
@@ -176,6 +179,18 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox checkpoint counter: %w", err)
 	}
 	server.sandboxCheckpointCounter = sandboxCheckpointCounter
+
+	pauseAdmissionCounter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxPauseAdmissionCounterName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register pause admission counter: %w", err)
+	}
+	server.pauseAdmissionCounter = pauseAdmissionCounter
+
+	pauseAdmissionWaitDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxPauseAdmissionWaitDurationName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register pause admission wait duration histogram: %w", err)
+	}
+	server.pauseAdmissionWaitDuration = pauseAdmissionWaitDuration
 
 	uploadFailedCounter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSnapshotUploadFailedCounterName)
 	if err != nil {

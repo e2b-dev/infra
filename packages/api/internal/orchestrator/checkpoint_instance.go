@@ -7,11 +7,13 @@ import (
 
 	"github.com/gogo/status"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/storageopts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -91,6 +93,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 
 				return fmt.Errorf("checkpoint rejected: %w", err)
 			case codes.ResourceExhausted:
+				logger.L().Warn(ctx, "Checkpoint refused by the node", logger.WithSandboxID(sandboxID), zap.String("node_message", st.Message()))
 				finish(nil)
 
 				return PauseQueueExhaustedError{}

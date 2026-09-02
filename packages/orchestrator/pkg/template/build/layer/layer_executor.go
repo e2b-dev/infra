@@ -308,6 +308,7 @@ func (lb *LayerExecutor) UploadSnapshot(
 		snapshot.RootfsDiff,
 		snapshot.MemorySnapshot.ProvisionalDiffHeader,
 		snapshot.MemorySnapshot.ProvisionalDiff,
+		snapshot.MemorySnapshot.ProvisionalCreatedAt,
 		snapshot.MemorySnapshot.ProvisionalSwapDone,
 	)
 	if err != nil {

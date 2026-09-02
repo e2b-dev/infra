@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
@@ -46,6 +47,7 @@ var (
 		metric.WithDescription("Requests for templates that were already cached")))
 	missesMetric = utils.Must(meter.Int64Counter("orchestrator.templates.cache.misses",
 		metric.WithDescription("Requests for templates that were not cached")))
+	memfileDedupDuration = utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxMemfileDedupDurationName))
 )
 
 type Cache struct {
@@ -233,6 +235,10 @@ func (c *Cache) AddSnapshot(
 	// from memfileHeader as before. The upload always uses memfileHeader.
 	provisionalMemfileHeader *header.Header,
 	provisionalMemfileDiff build.Diff,
+	// provisionalMemfileCreatedAt, when non-zero, is the provisional header's
+	// birth at pause; the swap goroutine records the dedup-duration metric
+	// from it.
+	provisionalMemfileCreatedAt time.Time,
 	// provisionalSwapDone, when non-nil, is called once the deduped header has
 	// been swapped in; it lets the dedup goroutine release the memfd the
 	// provisional source was serving from.
@@ -381,6 +387,10 @@ func (c *Cache) AddSnapshot(
 				}
 			} else {
 				mem.SwapHeader(deduped)
+			}
+
+			if !provisionalMemfileCreatedAt.IsZero() {
+				memfileDedupDuration.Record(swapCtx, time.Since(provisionalMemfileCreatedAt).Milliseconds())
 			}
 
 			// Reads now route off the provisional build id; the deferred signal

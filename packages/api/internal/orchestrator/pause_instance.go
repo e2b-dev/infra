@@ -60,7 +60,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 		o.failSnapshotBuild(ctx, result.BuildID, err)
 
 		if errors.Is(err, PauseQueueExhaustedError{}) {
-			telemetry.ReportCriticalError(ctx, "pause queue exhausted", err)
+			telemetry.ReportCriticalError(ctx, "pause queue exhausted", err, telemetry.WithSandboxID(sbx.SandboxID))
 
 			return PauseQueueExhaustedError{}
 		}
@@ -107,6 +107,8 @@ func snapshotInstance(ctx context.Context, node *nodemanager.Node, sbx sandbox.S
 	}
 
 	if st.Code() == codes.ResourceExhausted {
+		logger.L().Warn(ctx, "Pause refused by the node", logger.WithSandboxID(sbx.SandboxID), zap.String("node_message", st.Message()))
+
 		return PauseQueueExhaustedError{}
 	}
 

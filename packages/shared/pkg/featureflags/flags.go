@@ -428,7 +428,12 @@ var (
 	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
 	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
 	// timeout from guest RAM; a positive value pins it.
-	GuestSyncTimeoutMs            = NewIntFlag("guest-sync-timeout-milliseconds", 0)
+	GuestSyncTimeoutMs = NewIntFlag("guest-sync-timeout-milliseconds", 0)
+	// PauseAdmissionGraceMs gates the pause/checkpoint snapshot-admission
+	// pre-flight, in milliseconds. Negative (default) disables the pre-flight;
+	// 0 probes the parent header's readiness without waiting; a positive value
+	// waits up to that long before refusing retryably.
+	PauseAdmissionGraceMs         = NewIntFlag("pause-admission-grace-milliseconds", -1)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage

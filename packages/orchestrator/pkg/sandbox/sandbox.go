@@ -2104,6 +2104,10 @@ type MemorySnapshot struct {
 	// goroutine once it has swapped the deduped header in; it lets the dedup
 	// goroutine release the memfd the provisional source was serving from.
 	ProvisionalSwapDone func()
+	// ProvisionalCreatedAt, when non-zero, is the provisional header's birth at
+	// pause; the AddSnapshot swap goroutine records the dedup-duration metric
+	// from it.
+	ProvisionalCreatedAt time.Time
 	// BlockSize is captured synchronously at Pause time because NewUpload's
 	// compression validation needs it before the async dedup header resolves;
 	// the dedup memfile path produces a page-granular Diff.BlockSize() that
@@ -2346,12 +2350,18 @@ func (s *Sandbox) processMemorySnapshot(ctx context.Context, buildID uuid.UUID, 
 	// this is the synchronous path's.
 	cleanup.AddNoContext(ctx, memfileDiff.Close)
 
+	var provCreatedAt time.Time
+	if provMemfileHeader != nil {
+		provCreatedAt = time.Now()
+	}
+
 	return MemorySnapshot{
 		Diff:                  memfileDiff,
 		DiffHeader:            memfileDiffHeader,
 		ProvisionalDiffHeader: provMemfileHeader,
 		ProvisionalDiff:       provMemfileDiff,
 		ProvisionalSwapDone:   provMemfileSwapDone,
+		ProvisionalCreatedAt:  provCreatedAt,
 		BlockSize:             memfileHeader.Metadata.BlockSize,
 		header:                memfileHeader,
 		newBytes:              memfileDiffMetadata.Dirty.GetCardinality() * uint64(memfileDiffMetadata.BlockSize),
@@ -3341,6 +3351,115 @@ func (s *Sandbox) EnsurePausable() error {
 	}
 
 	return nil
+}
+
+// SnapshotAdmissionOutcome labels how a snapshot-admission pre-flight ended.
+type SnapshotAdmissionOutcome string
+
+const (
+	// SnapshotAdmissionReady: admitted without waiting.
+	SnapshotAdmissionReady SnapshotAdmissionOutcome = "ready"
+	// SnapshotAdmissionReadyAfterWait: the parent header became durable inside
+	// the grace wait.
+	SnapshotAdmissionReadyAfterWait SnapshotAdmissionOutcome = "ready_after_wait"
+	// SnapshotAdmissionRefused: still deduplicating when the grace elapsed.
+	SnapshotAdmissionRefused SnapshotAdmissionOutcome = "refused"
+	// SnapshotAdmissionLatchedError: a latched seal failure means no valid
+	// snapshot can ever be produced; not retryable.
+	SnapshotAdmissionLatchedError SnapshotAdmissionOutcome = "latched_error"
+)
+
+// ErrSnapshotAdmissionPending marks a retryable admission refusal: the parent
+// memfile header was still deduplicating when the grace elapsed.
+var ErrSnapshotAdmissionPending = errors.New("parent memfile header is still deduplicating")
+
+// AwaitSnapshotAdmission is the pre-destructive snapshot-admission pre-flight:
+// "can this sandbox produce a valid snapshot right now?". It folds the
+// EnsurePausable latched-error checks together with the durable-parent
+// readiness check, so the Pause/Checkpoint handlers ask once, BEFORE any
+// destructive step. Readiness is monotonic per resumed sandbox (the
+// provisional->durable swap never reverts), so a positive answer cannot be
+// invalidated between this check and the snapshot.
+//
+// memorySnapshot=false (a filesystem-only pause) skips the durable-parent
+// wait entirely — an fs-only snapshot has no memory parent, so it can never
+// be refused here; only the latched checks apply.
+//
+// The wait runs on its own timer, never the RPC deadline. Returns:
+//   - (Ready|ReadyAfterWait, waited, nil): admitted, proceed.
+//   - (Refused, waited, ErrSnapshotAdmissionPending): refuse retryably.
+//   - (LatchedError, waited, err): permanently unpersistable; the caller's
+//     existing terminal handling applies.
+//   - ("", waited, ctx.Err()): the caller's context ended mid-wait; nothing
+//     was decided and the sandbox is untouched.
+func (s *Sandbox) AwaitSnapshotAdmission(ctx context.Context, grace time.Duration, memorySnapshot bool) (SnapshotAdmissionOutcome, time.Duration, error) {
+	ctx, span := tracer.Start(ctx, "snapshot-admission")
+	defer span.End()
+
+	outcome, waited, err := s.awaitSnapshotAdmission(ctx, grace, memorySnapshot)
+	span.SetAttributes(
+		attribute.String("outcome", string(outcome)),
+		attribute.Int64("waited_ms", waited.Milliseconds()),
+	)
+
+	return outcome, waited, err
+}
+
+func (s *Sandbox) awaitSnapshotAdmission(ctx context.Context, grace time.Duration, memorySnapshot bool) (SnapshotAdmissionOutcome, time.Duration, error) {
+	if err := s.EnsurePausable(); err != nil {
+		return SnapshotAdmissionLatchedError, 0, err
+	}
+
+	if !memorySnapshot {
+		return SnapshotAdmissionReady, 0, nil
+	}
+
+	memfile, err := s.Template.Memfile(ctx)
+	if err != nil {
+		// No memory parent to wait on (e.g. a filesystem-only boot); the
+		// snapshot path tolerates a missing memfile.
+		return SnapshotAdmissionReady, 0, nil
+	}
+
+	dh, ok := memfile.(interface {
+		DurableHeaderNow() (*header.Header, bool)
+		DurableHeader(ctx context.Context) (*header.Header, error)
+	})
+	if !ok {
+		return SnapshotAdmissionReady, 0, nil
+	}
+
+	if _, ready := dh.DurableHeaderNow(); ready {
+		return SnapshotAdmissionReady, 0, nil
+	}
+
+	// grace <= 0 yields an already-expired waitCtx: an instant probe. It must
+	// still go through DurableHeader, which returns an already-resolved error
+	// even under an expired context — a failed dedup classifies as latched,
+	// never as retryable-pending.
+	waitCtx, cancel := context.WithTimeout(ctx, grace)
+	defer cancel()
+
+	start := time.Now()
+	_, err = dh.DurableHeader(waitCtx)
+	waited := time.Since(start)
+
+	switch {
+	case err == nil:
+		return SnapshotAdmissionReadyAfterWait, waited, nil
+	case ctx.Err() != nil:
+		return "", waited, ctx.Err()
+	//nolint:errorlint // identity on purpose: timer expiry returns the raw
+	// sentinel, while a permanent dedup failure stored in the future WRAPS a
+	// context error — errors.Is would misread it as a pending swap.
+	case err == context.DeadlineExceeded && waitCtx.Err() != nil:
+		return SnapshotAdmissionRefused, waited, ErrSnapshotAdmissionPending
+	default:
+		// The durable future resolved with an error: the deduped header will
+		// never exist, so no valid memory snapshot can ever be produced —
+		// permanent, like a latched seal failure, not retryable.
+		return SnapshotAdmissionLatchedError, waited, err
+	}
 }
 
 // bestEffortEnvdReinit re-runs the envd /init a real resume makes, after an
