@@ -134,13 +134,12 @@ func TestEntry_Validate(t *testing.T) {
 			wantErr: "discoveryURL must be different",
 		},
 		{
-			name: "empty audiences",
+			name: "valid without audiences",
 			entry: Config{
 				Issuer: Issuer{
 					URL: "https://issuer.example.com",
 				},
 			},
-			wantErr: "audiences must contain at least one entry",
 		},
 		{
 			name: "multiple audiences without MatchAny",

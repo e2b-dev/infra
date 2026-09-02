@@ -24,12 +24,16 @@ const (
 // validateAudienceMatchPolicy ensures the policy is allowed for the given
 // audiences. It mirrors Kubernetes' apiserver validation:
 //
-//   - audiences must be non-empty.
+//   - With no audiences, the policy must be empty and audience matching is disabled.
 //   - With more than one audience, the policy must be MatchAny.
 //   - With a single audience, the policy must be empty or MatchAny.
 func validateAudienceMatchPolicy(policy AudienceMatchPolicy, audiences []string) error {
 	if len(audiences) == 0 {
-		return errors.New("audiences must contain at least one entry")
+		if policy != "" {
+			return errors.New("audienceMatchPolicy must be empty when audiences are not configured")
+		}
+
+		return nil
 	}
 
 	if len(audiences) > 1 && policy != AudienceMatchAny {

@@ -16,10 +16,15 @@ func TestValidateAudienceMatchPolicy(t *testing.T) {
 		wantErr   string
 	}{
 		{
-			name:      "empty audiences errors",
+			name:      "empty audiences without policy are allowed",
 			policy:    "",
 			audiences: nil,
-			wantErr:   "audiences must contain at least one entry",
+		},
+		{
+			name:      "empty audiences with policy error",
+			policy:    AudienceMatchAny,
+			audiences: nil,
+			wantErr:   "audienceMatchPolicy must be empty when audiences are not configured",
 		},
 		{
 			name:      "single audience empty policy ok",

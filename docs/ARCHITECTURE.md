@@ -244,6 +244,10 @@ OpenAPI security scheme accepts only short-lived service JWTs verified against t
 the same config shape as `AUTH_PROVIDER_CONFIG`. Talks to Postgres and ClickHouse; never talks to
 orchestrators.
 
+An issuer normally configures at least one accepted audience, binding a JWT to its intended target.
+An issuer may omit `audiences` only with no `audienceMatchPolicy`; this deliberately disables
+audience matching while issuer, signature, and temporal-claim verification remain required.
+
 The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
 project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
 assigned once at creation from a local default and no push moves it; a changed slug renames the project, and nothing else follows it), per-member projection,

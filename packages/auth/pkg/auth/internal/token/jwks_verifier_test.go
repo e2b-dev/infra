@@ -89,6 +89,36 @@ func TestJWKSVerifier(t *testing.T) {
 		_, err := verifier.Verify(t.Context(), signAdminToken(t, privateKey, claims))
 		require.Error(t, err)
 	})
+
+	t.Run("missing audience", func(t *testing.T) {
+		t.Parallel()
+
+		claims := baseClaims()
+		delete(claims, "aud")
+		_, err := verifier.Verify(t.Context(), signAdminToken(t, privateKey, claims))
+		require.Error(t, err)
+	})
+}
+
+func TestJWKSVerifierWithoutAudienceRestriction(t *testing.T) {
+	t.Parallel()
+
+	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+
+	server := jwks.NewTestServer(t, publicKey, adminTestKeyID, jose.EdDSA, "https://unexpected.example.com")
+	verifier, err := NewJWKSVerifier(t.Context(), ProviderConfig{
+		JWT: []jwks.Config{{
+			Issuer: jwks.Issuer{URL: server.URL},
+		}},
+	}, server.Client())
+	require.NoError(t, err)
+
+	_, err = verifier.Verify(t.Context(), signAdminToken(t, privateKey, jwt.MapClaims{
+		"iss": server.URL,
+		"exp": time.Now().Add(5 * time.Minute).Unix(),
+	}))
+	require.NoError(t, err)
 }
 
 func TestJWKSVerifierDisabled(t *testing.T) {
