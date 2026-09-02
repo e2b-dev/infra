@@ -48,6 +48,11 @@ type Uffd struct {
 	handler    utils.SetOnce[*userfaultfd.Userfaultfd]
 	fdExit     utils.SetOnce[*fdexit.FdExit]
 
+	// logger carries the sandbox's identity (sandbox, template, team and
+	// build ids), so the serve loop and every component it hands the logger
+	// to inherit it instead of re-tagging each line.
+	logger logger.Logger
+
 	// syncWP records whether the paired Firecracker was resumed with
 	// use_sync_wp (synchronous WP fault delivery). Set once at resume from
 	// the same decision passed to fc.Resume; the backend owns its mode so
@@ -61,7 +66,9 @@ var (
 	_ CoWExporter   = (*Uffd)(nil)
 )
 
-func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
+// New builds a UFFD memory backend. lg is required and is expected to carry
+// the sandbox's identity fields.
+func New(memfile block.ReadonlyDevice, socketPath string, lg logger.Logger) *Uffd {
 	return &Uffd{
 		exit:       utils.NewErrorOnce(),
 		readyCh:    make(chan struct{}),
@@ -69,6 +76,7 @@ func New(memfile block.ReadonlyDevice, socketPath string) *Uffd {
 		memfile:    memfile,
 		handler:    *utils.NewSetOnce[*userfaultfd.Userfaultfd](),
 		fdExit:     *utils.NewSetOnce[*fdexit.FdExit](),
+		logger:     lg,
 	}
 }
 
@@ -86,7 +94,7 @@ func (u *Uffd) Prefault(ctx context.Context, offset int64, data []byte) (install
 	return handler.Prefault(ctx, offset, data)
 }
 
-func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
+func (u *Uffd) Start(ctx context.Context) error {
 	lis, err := net.ListenUnix("unix", &net.UnixAddr{Name: u.socketPath, Net: "unix"})
 	if err != nil {
 		return fmt.Errorf("failed listening on socket: %w", err)
@@ -115,7 +123,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 		defer span.End()
 
 		// TODO: If the handle function fails, we should kill the sandbox
-		handleErr := u.handle(ctx, sandboxId, fdExit)
+		handleErr := u.handle(ctx, fdExit)
 
 		// If handle failed before setting the handler value, set an error to unblock
 		// any waiters (e.g., prefetcher goroutines waiting on Prefault).
@@ -135,7 +143,7 @@ func (u *Uffd) Start(ctx context.Context, sandboxId string) error {
 	return nil
 }
 
-func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdExit) error {
+func (u *Uffd) handle(ctx context.Context, fdExit *fdexit.FdExit) error {
 	err := u.lis.SetDeadline(time.Now().Add(uffdMsgListenerTimeout))
 	if err != nil {
 		return fmt.Errorf("failed setting listener deadline: %w", err)
@@ -198,7 +206,7 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 		u.memfile,
 		m,
 		generation,
-		logger.L().With(logger.WithSandboxID(sandboxId)),
+		u.logger,
 	)
 	if err != nil {
 		for _, fd := range fds {
@@ -215,12 +223,12 @@ func (u *Uffd) handle(ctx context.Context, sandboxId string, fdExit *fdexit.FdEx
 
 		closeErr := uffd.Close()
 		if closeErr != nil {
-			logger.L().Error(ctx, "failed to close uffd", logger.WithSandboxID(sandboxId), zap.String("socket_path", u.socketPath), zap.Error(closeErr))
+			u.logger.Error(ctx, "failed to close uffd", zap.String("socket_path", u.socketPath), zap.Error(closeErr))
 		}
 
 		if m := u.memfd.Swap(nil); m != nil {
 			if closeErr := m.Close(); closeErr != nil {
-				logger.L().Error(ctx, "failed to close memfd", logger.WithSandboxID(sandboxId), zap.Error(closeErr))
+				u.logger.Error(ctx, "failed to close memfd", zap.Error(closeErr))
 			}
 		}
 	}()
@@ -318,7 +326,7 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process, useTrackerDirty 
 		empty.AndNot(faulted)
 
 		handler.Logger().Info(ctx, "dirty source: page tracker (sync-WP)",
-			zap.String("build_id", buildID),
+			zap.String("metadata_build_id", buildID),
 			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),
 			zap.Uint64("tracker_empty_pages", empty.GetCardinality()))
 
@@ -353,7 +361,7 @@ func (u *Uffd) DiffMetadata(ctx context.Context, f *fc.Process, useTrackerDirty 
 		dirtyDivergencePages.Record(ctx, int64(pagemapOnly), dirtyDivergenceAttrs["pagemap_only"])
 		dirtyDivergencePages.Record(ctx, int64(pagemapDirty), dirtyDivergenceAttrs["pagemap_dirty"])
 		handler.Logger().Info(ctx, "dirty-source divergence (tracker vs pagemap)",
-			zap.String("build_id", buildID),
+			zap.String("metadata_build_id", buildID),
 			zap.Uint64("tracker_only_pages", trackerOnly),
 			zap.Uint64("pagemap_only_pages", pagemapOnly),
 			zap.Uint64("tracker_dirty_pages", faulted.GetCardinality()),

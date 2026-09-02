@@ -1007,6 +1007,15 @@ func (f *Factory) ResumeSandbox(
 
 	telemetry.ReportEvent(ctx, "created sandbox files")
 
+	// Identity shared by everything this resume logs on the sandbox's behalf:
+	// the uffd backend (and its serve loop) and the prefetcher.
+	sbxLogger := logger.L().With(
+		logger.WithSandboxID(runtime.SandboxID),
+		logger.WithTemplateID(runtime.TemplateID),
+		logger.WithTeamID(runtime.TeamID),
+		logger.WithBuildID(runtime.BuildID),
+	)
+
 	// Uffd initialization
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
 	uffdPromise := utils.NewPromise(func() (*uffd.Uffd, error) {
@@ -1017,7 +1026,7 @@ func (f *Factory) ResumeSandbox(
 
 		telemetry.ReportEvent(ctx, "got template memfile")
 
-		return uffd.New(memfile, fcUffdPath), nil
+		return uffd.New(memfile, fcUffdPath, sbxLogger), nil
 	})
 
 	// Prefetching. Derive the prefetch context and register its cancel with the
@@ -1110,25 +1119,24 @@ func (f *Factory) ResumeSandbox(
 		}
 
 		telemetry.ReportEvent(ctx, "starting prefetcher")
-		l := logger.L().With(logger.WithSandboxID(runtime.SandboxID), logger.WithTemplateID(runtime.TemplateID), logger.WithTeamID(runtime.TeamID))
 
 		go func() {
 			// Init trace first, prefaulted (prod behavior). Start blocks until
 			// its fetch+copy complete, so it acts as a barrier before the
 			// last-cycle fetch begins.
 			if initMapping != nil {
-				p := prefetch.New(l, memfile, fcUffd, initMapping, f.featureFlags)
+				p := prefetch.New(sbxLogger, memfile, fcUffd, initMapping, f.featureFlags)
 				if err := p.Start(prefetchCtx); err != nil {
-					l.Error(ctx, "failed to start init prefetcher", zap.Error(err))
+					sbxLogger.Error(ctx, "failed to start init prefetcher", zap.Error(err))
 				}
 			}
 
 			// Last-cycle diff, fetch-only.
 			if lastCycleMapping != nil {
-				p := prefetch.New(l, memfile, fcUffd, lastCycleMapping, f.featureFlags)
+				p := prefetch.New(sbxLogger, memfile, fcUffd, lastCycleMapping, f.featureFlags)
 				p.Prefault = false
 				if err := p.Start(prefetchCtx); err != nil {
-					l.Error(ctx, "failed to start last-cycle prefetcher", zap.Error(err))
+					sbxLogger.Error(ctx, "failed to start last-cycle prefetcher", zap.Error(err))
 				}
 			}
 		}()
@@ -1182,7 +1190,6 @@ func (f *Factory) ResumeSandbox(
 			execCtx,
 			cleanup,
 			fcUffd,
-			runtime.SandboxID,
 		)
 		if err != nil {
 			return struct{}{}, fmt.Errorf("failed to serve memory: %w", err)
@@ -3677,14 +3684,13 @@ func serveMemory(
 	ctx context.Context,
 	cleanup *Cleanup,
 	fcUffd *uffd.Uffd,
-	sandboxID string,
 ) error {
 	ctx, span := tracer.Start(ctx, "serve-memory")
 	defer span.End()
 
 	telemetry.ReportEvent(ctx, "created uffd")
 
-	if err := fcUffd.Start(ctx, sandboxID); err != nil {
+	if err := fcUffd.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start uffd: %w", err)
 	}
 

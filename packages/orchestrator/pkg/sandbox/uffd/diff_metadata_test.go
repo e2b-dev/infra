@@ -21,7 +21,7 @@ import (
 func stateOnlyUffd(t *testing.T, tracker *block.Tracker, syncWP bool) *Uffd {
 	t.Helper()
 
-	u := New(nil, "")
+	u := New(nil, "", logger.NewNopLogger())
 	u.handler.SetValue(userfaultfd.NewStateOnly(tracker, uintptr(header.HugepageSize), logger.NewNopLogger()))
 	u.SetSyncWP(syncWP)
 

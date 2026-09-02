@@ -65,7 +65,7 @@ func (m *NoopMemory) PrefetchData(_ context.Context) (block.PrefetchData, error)
 	}, nil
 }
 
-func (m *NoopMemory) Start(context.Context, string) error {
+func (m *NoopMemory) Start(context.Context) error {
 	return nil
 }
 
