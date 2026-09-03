@@ -2,9 +2,16 @@ package handler
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // The process wrapper must degrade cleanly when the priority helpers are absent
@@ -49,4 +56,70 @@ func TestWrapperPrefix(t *testing.T) {
 		t.Parallel()
 		assert.Equal(t, "/bin/ionice -c 1 -n 6 ", ioniceNicePrefix(1, 6, 0, only("ionice")))
 	})
+}
+
+func TestSendSignalTargetsOnlyLeaderByDefault(t *testing.T) {
+	t.Parallel()
+
+	cmd := startCommandGroup(t)
+
+	h := &Handler{cmd: cmd, outCancel: func() {}}
+	t.Cleanup(func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_, _ = cmd.Process.Wait()
+	})
+
+	require.NoError(t, h.SendSignal(syscall.SIGTERM, false))
+	state, err := cmd.Process.Wait()
+	require.NoError(t, err)
+	assert.False(t, state.Success())
+	require.NoError(t, syscall.Kill(-cmd.Process.Pid, syscall.Signal(0)), "child should remain in the group")
+}
+
+func TestSendSignalTargetsProcessGroupWhenDescendantsRequested(t *testing.T) {
+	t.Parallel()
+
+	cmd := startCommandGroup(t)
+
+	h := &Handler{cmd: cmd, outCancel: func() {}}
+	t.Cleanup(func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_, _ = cmd.Process.Wait()
+	})
+
+	require.NoError(t, h.SendSignal(syscall.SIGTERM, true))
+	state, err := cmd.Process.Wait()
+	require.NoError(t, err)
+	assert.False(t, state.Success())
+	require.Eventually(t, func() bool {
+		return syscall.Kill(-cmd.Process.Pid, syscall.Signal(0)) != nil
+	}, 2*time.Second, 10*time.Millisecond)
+}
+
+func TestConfigureProcessGroup(t *testing.T) {
+	t.Parallel()
+
+	nonPTY := &syscall.SysProcAttr{}
+	configureProcessGroup(nonPTY, false)
+	assert.True(t, nonPTY.Setpgid)
+
+	pty := &syscall.SysProcAttr{}
+	configureProcessGroup(pty, true)
+	assert.False(t, pty.Setpgid, "PTY startup creates its own session")
+}
+
+func startCommandGroup(t *testing.T) *exec.Cmd {
+	t.Helper()
+
+	childReady := filepath.Join(t.TempDir(), "child.pid")
+	cmd := exec.CommandContext(t.Context(), "sh", "-c", fmt.Sprintf("sleep 60 & echo $! > %q; exec sleep 60", childReady))
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	require.NoError(t, cmd.Start())
+	require.Eventually(t, func() bool {
+		_, err := os.Stat(childReady)
+
+		return err == nil
+	}, 2*time.Second, 10*time.Millisecond)
+
+	return cmd
 }
