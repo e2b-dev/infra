@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0 (2026-09-03)
+
+
+### Features
+
+* **api:** report egress proxy usage in product analytics (1049c80)
+
+
+### Bug Fixes
+
+* **api:** chunk Reconcile MGETs to 256 keys per command (bc61e07)
+* **api:** stop retrying pause on already-killing leftovers (df365d4)
+
+
+### Performance Improvements
+
+* **api:** bound sandbox-store MGETs to 256 keys per command (a49f2d1)
+
 ## 0.9.0 (2026-09-02)
 
 
