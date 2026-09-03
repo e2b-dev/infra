@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -120,39 +119,34 @@ func (s *Storage) Remove(ctx context.Context, teamID uuid.UUID, sandboxID string
 	return nil
 }
 
-// TeamItems retrieves sandboxes for a specific team, filtered by states and options
+// TeamItems retrieves sandboxes for a specific team, filtered by states (all
+// states when empty).
+//
+// The team index is read with SSCAN and the records fetched in MGET batches of
+// sandboxScanBatchSize, which caps each command's work and reply size
+// regardless of how many sandboxes the team has.
+//
+// This is not a consistent snapshot, and neither was reading the whole index
+// at once: records removed between the index read and the record fetch are
+// skipped, and SSCAN may emit a member twice, which scannedItems drops.
+// Callers already sort the result and treat it as best effort.
 func (s *Storage) TeamItems(ctx context.Context, teamID uuid.UUID, states []sandboxtypes.State) ([]sandboxtypes.Sandbox, error) {
-	// Get sandbox IDs from team index
-	teamKey := GetSandboxStorageTeamIndexKey(teamID.String())
-	sandboxIDs, err := s.redisClient.SMembers(ctx, teamKey).Result()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get sandbox IDs from team index: %w", err)
-	}
+	items := newScannedItems(states)
 
-	if len(sandboxIDs) == 0 {
-		return []sandboxtypes.Sandbox{}, nil
-	}
+	err := s.forEachTeamSandboxBatch(ctx, teamID.String(), func(_ string, batch []sandboxtypes.Sandbox) error {
+		items.add(batch)
 
-	// One MGET over the whole team, decoded by the same helper the store scans
-	// use. Deliberately not the batching iterator above it: that reaches teams
-	// through SSCAN, which is weakly consistent and may repeat members, and a
-	// user-facing listing wants the atomic snapshot SMembers gives.
-	fetched, err := s.fetchSandboxBatch(ctx, teamID.String(), sandboxIDs)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Filter by state if states are specified
-	var sandboxes []sandboxtypes.Sandbox
-	for _, sbx := range fetched {
-		if len(states) > 0 && !slices.Contains(states, sbx.State) {
-			continue
-		}
-
-		sandboxes = append(sandboxes, sbx)
+	if items.out == nil {
+		return []sandboxtypes.Sandbox{}, nil
 	}
 
-	return sandboxes, nil
+	return items.out, nil
 }
 
 // Update modifies a sandbox atomically

@@ -2,6 +2,7 @@ package redis
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 
@@ -129,6 +130,30 @@ func TestTeamItems_EmptyTeam(t *testing.T) {
 	items, err := storage.TeamItems(t.Context(), uuid.New(), nil)
 	require.NoError(t, err)
 	assert.Empty(t, items)
+}
+
+// TestTeamItems_SpansSeveralBatches pins that a team larger than one
+// SSCAN/MGET batch is returned complete and without repeats. Sized so the scan
+// needs more than two full batches plus a partial one.
+func TestTeamItems_SpansSeveralBatches(t *testing.T) {
+	t.Parallel()
+
+	storage, client := setupTestStorage(t)
+	teamID := uuid.New()
+
+	running := sandboxScanBatchSize*2 + 37
+	seedTeamSandboxes(t, client, teamID, running, sandboxtypes.StateRunning)
+	seedTeamSandboxes(t, client, teamID, 5, sandboxtypes.StateKilling)
+
+	items, err := storage.TeamItems(t.Context(), teamID, []sandboxtypes.State{sandboxtypes.StateRunning})
+	require.NoError(t, err)
+
+	ids := sandboxIDsOf(items)
+	assert.Len(t, ids, running)
+	assert.Len(t, slices.Compact(slices.Sorted(slices.Values(ids))), running, "no sandbox listed twice")
+	for _, sbx := range items {
+		assert.Equal(t, sandboxtypes.StateRunning, sbx.State)
+	}
 }
 
 // TestTeamItems_IsScopedToOneTeam pins that the listing cannot leak another

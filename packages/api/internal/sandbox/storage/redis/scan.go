@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -132,8 +133,8 @@ type storedSandboxRef struct {
 	sandboxID string
 }
 
-// runningItems accumulates the running sandboxes seen across scan batches,
-// keeping one copy of each.
+// scannedItems accumulates the sandboxes seen across scan batches, keeping one
+// copy of each and only those in the wanted states (all states when empty).
 //
 // SSCAN guarantees every member present for the whole iteration is returned at
 // least once — not at most once. A set stored as a hash table can re-emit a
@@ -141,18 +142,19 @@ type storedSandboxRef struct {
 // team's index does as sandboxes start and stop. Callers read this result as
 // the set of records to act on, so the repeats are dropped once here instead
 // of being rediscovered by each of them.
-type runningItems struct {
-	seen map[storedSandboxRef]struct{}
-	out  []sandboxtypes.Sandbox
+type scannedItems struct {
+	states []sandboxtypes.State
+	seen   map[storedSandboxRef]struct{}
+	out    []sandboxtypes.Sandbox
 }
 
-func newRunningItems() *runningItems {
-	return &runningItems{seen: make(map[storedSandboxRef]struct{})}
+func newScannedItems(states []sandboxtypes.State) *scannedItems {
+	return &scannedItems{states: states, seen: make(map[storedSandboxRef]struct{})}
 }
 
-func (r *runningItems) add(batch []sandboxtypes.Sandbox) {
+func (r *scannedItems) add(batch []sandboxtypes.Sandbox) {
 	for _, sbx := range batch {
-		if sbx.State != sandboxtypes.StateRunning {
+		if len(r.states) > 0 && !slices.Contains(r.states, sbx.State) {
 			continue
 		}
 
@@ -171,7 +173,7 @@ func (r *runningItems) add(batch []sandboxtypes.Sandbox) {
 // so the result is best effort: a missing sandbox never means "this sandbox
 // does not exist" (see forEachSandboxBatch).
 func (s *Storage) AllRunningItems(ctx context.Context) ([]sandboxtypes.Sandbox, error) {
-	items := newRunningItems()
+	items := newScannedItems([]sandboxtypes.State{sandboxtypes.StateRunning})
 
 	err := s.forEachSandboxBatch(ctx, func(_ string, batch []sandboxtypes.Sandbox) error {
 		items.add(batch)

@@ -92,7 +92,7 @@ func TestAllRunningItems_SkipsUnreadableTeam(t *testing.T) {
 	assert.Len(t, items, 3)
 }
 
-// TestRunningItems_DropsRepeatsAcrossBatches covers the SSCAN guarantee that
+// TestScannedItems_DropsRepeatsAcrossBatches covers the SSCAN guarantee that
 // bites here: members present for the whole iteration are returned *at least*
 // once, so a team index that rehashes mid-scan can re-emit one on a later
 // page. Without this, a caller acting per record acts on that sandbox twice.
@@ -101,7 +101,7 @@ func TestAllRunningItems_SkipsUnreadableTeam(t *testing.T) {
 // cannot hold a duplicate member, so the repeat can only come from SSCAN's
 // internal rehashing, which there is no deterministic way to provoke from a
 // test. The batches below are what such a scan hands the callback.
-func TestRunningItems_DropsRepeatsAcrossBatches(t *testing.T) {
+func TestScannedItems_DropsRepeatsAcrossBatches(t *testing.T) {
 	t.Parallel()
 
 	teamID := uuid.New()
@@ -109,7 +109,7 @@ func TestRunningItems_DropsRepeatsAcrossBatches(t *testing.T) {
 		return sandboxtypes.Sandbox{SandboxID: id, TeamID: teamID, State: state}
 	}
 
-	items := newRunningItems()
+	items := newScannedItems([]sandboxtypes.State{sandboxtypes.StateRunning})
 	items.add([]sandboxtypes.Sandbox{
 		sbx("sbx-a", sandboxtypes.StateRunning),
 		sbx("sbx-b", sandboxtypes.StateRunning),
@@ -135,20 +135,41 @@ func TestRunningItems_DropsRepeatsAcrossBatches(t *testing.T) {
 		"each record once, in first-seen order, non-running filtered")
 }
 
-// TestRunningItems_SeparatesIdenticalIDsAcrossTeams pins the team scoping of
+// TestScannedItems_SeparatesIdenticalIDsAcrossTeams pins the team scoping of
 // the identity: records are keyed per team, so deduplication has to be too.
-func TestRunningItems_SeparatesIdenticalIDsAcrossTeams(t *testing.T) {
+func TestScannedItems_SeparatesIdenticalIDsAcrossTeams(t *testing.T) {
 	t.Parallel()
 
 	teamA, teamB := uuid.New(), uuid.New()
 
-	items := newRunningItems()
+	items := newScannedItems([]sandboxtypes.State{sandboxtypes.StateRunning})
 	items.add([]sandboxtypes.Sandbox{
 		{SandboxID: "sbx-1", TeamID: teamA, State: sandboxtypes.StateRunning},
 		{SandboxID: "sbx-1", TeamID: teamB, State: sandboxtypes.StateRunning},
 	})
 
 	assert.Len(t, items.out, 2, "the same ID under two teams is two records")
+}
+
+// TestScannedItems_StateFilter pins the filter TeamItems relies on: an empty
+// state list keeps every record, a non-empty one keeps only matching states.
+func TestScannedItems_StateFilter(t *testing.T) {
+	t.Parallel()
+
+	teamID := uuid.New()
+	batch := []sandboxtypes.Sandbox{
+		{SandboxID: "sbx-running", TeamID: teamID, State: sandboxtypes.StateRunning},
+		{SandboxID: "sbx-pausing", TeamID: teamID, State: sandboxtypes.StatePausing},
+		{SandboxID: "sbx-killing", TeamID: teamID, State: sandboxtypes.StateKilling},
+	}
+
+	all := newScannedItems(nil)
+	all.add(batch)
+	assert.Equal(t, []string{"sbx-running", "sbx-pausing", "sbx-killing"}, sandboxIDsOf(all.out))
+
+	some := newScannedItems([]sandboxtypes.State{sandboxtypes.StateRunning, sandboxtypes.StatePausing})
+	some.add(batch)
+	assert.Equal(t, []string{"sbx-running", "sbx-pausing"}, sandboxIDsOf(some.out))
 }
 
 // seedTeamSandboxes writes sandbox records + index entries directly (bypassing

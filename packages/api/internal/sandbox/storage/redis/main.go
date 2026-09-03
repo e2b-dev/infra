@@ -169,7 +169,8 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.NodeSandbox
 		return nil
 	}
 
-	// Pipeline per-team MGET calls.
+	// Pipeline per-team MGET calls, each capped at sandboxScanBatchSize keys
+	// so every command's work and reply size stay bounded.
 	pipe := s.redisClient.Pipeline()
 
 	type batchInfo struct {
@@ -179,13 +180,17 @@ func (s *Storage) Reconcile(ctx context.Context, sbxs []sandboxtypes.NodeSandbox
 
 	var batches []batchInfo
 	for _, candidates := range teamCandidates {
-		keys := make([]string, len(candidates))
-		for i, c := range candidates {
-			keys[i] = c.key
-		}
+		for start := 0; start < len(candidates); start += sandboxScanBatchSize {
+			chunk := candidates[start:min(start+sandboxScanBatchSize, len(candidates))]
 
-		cmd := pipe.MGet(ctx, keys...)
-		batches = append(batches, batchInfo{cmd: cmd, candidates: candidates})
+			keys := make([]string, len(chunk))
+			for i, c := range chunk {
+				keys[i] = c.key
+			}
+
+			cmd := pipe.MGet(ctx, keys...)
+			batches = append(batches, batchInfo{cmd: cmd, candidates: chunk})
+		}
 	}
 
 	_, err := pipe.Exec(ctx)
