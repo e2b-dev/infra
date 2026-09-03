@@ -401,6 +401,7 @@ func doBuild(
 		VCpuCount:          int64(vcpu),
 		MemoryMB:           int64(memory),
 		DiskSizeMB:         int64(disk),
+		FreeDiskSizeMB:     int64(disk),
 		HugePages:          hugePages,
 		StartCmd:           startCmd,
 		ReadyCmd:           readyCmd,

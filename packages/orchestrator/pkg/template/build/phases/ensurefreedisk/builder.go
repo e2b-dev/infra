@@ -77,7 +77,7 @@ func (b *EnsureFreeDiskBuilder) Hash(_ context.Context, sourceLayer phases.Layer
 	return cache.HashKeys(
 		sourceLayer.Hash,
 		resizeDiskName,
-		strconv.FormatInt(b.Config.DiskSizeMB, 10),
+		strconv.FormatInt(b.Config.FreeDiskSizeMB, 10),
 	), nil
 }
 
@@ -160,7 +160,7 @@ func (b *EnsureFreeDiskBuilder) Build(
 	}
 
 	// Measure the source and produce either an empty or grown rootfs layer.
-	rootfsDiff, rootfsHeader, res, err := b.growAndExport(ctx, sourceRootfs, layerBuildID, b.Config.DiskSizeMB)
+	rootfsDiff, rootfsHeader, res, err := b.growAndExport(ctx, sourceRootfs, layerBuildID, b.Config.FreeDiskSizeMB)
 	if err != nil {
 		return phases.LayerResult{}, fmt.Errorf("resize disk: %w", err)
 	}

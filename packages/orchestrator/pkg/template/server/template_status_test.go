@@ -24,6 +24,16 @@ type testLogLine struct {
 	level   string
 }
 
+func TestResolveFreeDiskSizeMB(t *testing.T) {
+	t.Parallel()
+
+	zero := int32(0)
+	distinct := int32(2048)
+	assert.EqualValues(t, 4096, resolveFreeDiskSizeMB(&template_manager.TemplateConfig{DiskSizeMB: 4096}))
+	assert.Zero(t, resolveFreeDiskSizeMB(&template_manager.TemplateConfig{DiskSizeMB: 4096, FreeDiskSizeMB: &zero}))
+	assert.EqualValues(t, 2048, resolveFreeDiskSizeMB(&template_manager.TemplateConfig{DiskSizeMB: 4096, FreeDiskSizeMB: &distinct}))
+}
+
 func TestTemplateBuildStatus_DirectionOrdering(t *testing.T) {
 	t.Parallel()
 

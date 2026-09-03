@@ -127,6 +127,8 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		attribute.String("args", fc.KernelArgs(cmdlineArgs).String()),
 	))
 
+	freeDiskSizeMB := resolveFreeDiskSizeMB(cfg)
+
 	template := config.TemplateConfig{
 		Version:              version,
 		TeamID:               cfg.GetTeamID(),
@@ -137,6 +139,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		StartCmd:             cfg.GetStartCommand(),
 		ReadyCmd:             cfg.GetReadyCommand(),
 		DiskSizeMB:           int64(cfg.GetDiskSizeMB()),
+		FreeDiskSizeMB:       freeDiskSizeMB,
 		HugePages:            hugePages,
 		FreePageReporting:    freePageReporting,
 		FreePageHinting:      freePageHinting,
@@ -234,4 +237,12 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	}(context.WithoutCancel(ctx))
 
 	return nil, nil
+}
+
+func resolveFreeDiskSizeMB(cfg *templatemanager.TemplateConfig) int64 {
+	if cfg.FreeDiskSizeMB != nil {
+		return int64(cfg.GetFreeDiskSizeMB())
+	}
+
+	return int64(cfg.GetDiskSizeMB())
 }

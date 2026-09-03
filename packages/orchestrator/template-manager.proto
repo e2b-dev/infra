@@ -87,6 +87,10 @@ message TemplateConfig {
   optional FromImageRegistry fromImageRegistry = 15;
 
   string teamID = 16;
+
+  // Optional during the rolling upgrade. When absent, the template manager
+  // uses diskSizeMB as the post-build free-space target.
+  optional int32 freeDiskSizeMB = 17;
 }
 
 message TemplateCreateRequest {

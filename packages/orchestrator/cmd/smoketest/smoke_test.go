@@ -95,6 +95,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 					VCpuCount:          2,
 					MemoryMB:           512,
 					DiskSizeMB:         512,
+					FreeDiskSizeMB:     512,
 					HugePages:          true,
 					KernelVersion:      featureflags.DefaultKernelVersion,
 					FirecrackerVersion: fcVersion,

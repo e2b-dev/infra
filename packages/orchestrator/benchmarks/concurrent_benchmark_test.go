@@ -346,6 +346,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 			MemoryMB:           sandboxConfig.RamMB,
 			StartCmd:           "echo 'start cmd debug' && sleep .1 && echo 'done starting command debug'",
 			DiskSizeMB:         sandboxConfig.TotalDiskSizeMB,
+			FreeDiskSizeMB:     sandboxConfig.TotalDiskSizeMB,
 			HugePages:          sandboxConfig.HugePages,
 			KernelVersion:      kernelVersion,
 			FirecrackerVersion: fcVersion,
