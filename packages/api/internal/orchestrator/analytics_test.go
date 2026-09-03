@@ -1,12 +1,16 @@
 package orchestrator
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
+	"github.com/posthog/posthog-go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
 func TestSbxStopTime(t *testing.T) {
@@ -96,6 +100,83 @@ func TestSbxStopTime_CorruptEndTime(t *testing.T) {
 			// Corrupt record must be zero: stop time collapses to StartTime.
 			require.True(t, start.Equal(got), "want StartTime %v, got %v", start, got)
 			require.Zero(t, got.Sub(sbx.StartTime), "duration must be zero for corrupt records")
+		})
+	}
+}
+
+func TestCreatedInstancePropertiesEgressProxy(t *testing.T) {
+	t.Parallel()
+
+	const (
+		proxyAddress  = "proxy.example.com:1080"
+		proxyUsername = "proxy-user"
+		proxyPassword = "proxy-secret"
+	)
+
+	tests := []struct {
+		name        string
+		network     *types.SandboxNetworkConfig
+		wantAny     bool
+		wantAuthSet bool
+		wantAuth    bool
+	}{
+		{
+			name: "no network config",
+		},
+		{
+			name:    "no egress config",
+			network: &types.SandboxNetworkConfig{},
+		},
+		{
+			name:    "egress without proxy",
+			network: &types.SandboxNetworkConfig{Egress: &types.SandboxNetworkEgressConfig{}},
+		},
+		{
+			name: "proxy without credentials",
+			network: &types.SandboxNetworkConfig{Egress: &types.SandboxNetworkEgressConfig{
+				EgressProxyAddress: proxyAddress,
+			}},
+			wantAny:     true,
+			wantAuthSet: true,
+		},
+		{
+			name: "proxy with credentials",
+			network: &types.SandboxNetworkConfig{Egress: &types.SandboxNetworkEgressConfig{
+				EgressProxyAddress:  proxyAddress,
+				EgressProxyUsername: proxyUsername,
+				EgressProxyPassword: proxyPassword,
+			}},
+			wantAny:     true,
+			wantAuthSet: true,
+			wantAuth:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			props := createdInstanceProperties(
+				posthog.NewProperties(),
+				sandbox.Sandbox{Network: tt.network},
+				sandbox.CreationMetadata{},
+				0,
+			)
+
+			assert.Equal(t, tt.wantAny, props["egress_proxy"])
+
+			if tt.wantAuthSet {
+				assert.Equal(t, tt.wantAuth, props["egress_proxy_auth"])
+			} else {
+				assert.NotContains(t, props, "egress_proxy_auth")
+			}
+
+			// The endpoint and the credentials must never leave the cluster.
+			for key, value := range props {
+				assert.NotContains(t, fmt.Sprint(value), proxyAddress, "property %q leaks the proxy address", key)
+				assert.NotContains(t, fmt.Sprint(value), proxyUsername, "property %q leaks the proxy username", key)
+				assert.NotContains(t, fmt.Sprint(value), proxyPassword, "property %q leaks the proxy password", key)
+			}
 		})
 	}
 }

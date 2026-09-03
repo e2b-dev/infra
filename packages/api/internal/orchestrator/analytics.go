@@ -95,8 +95,20 @@ func (o *Orchestrator) analyticsInsert(ctx context.Context, sandbox sandbox.Sand
 
 func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandbox.Sandbox, meta sandbox.CreationMetadata, startDuration time.Duration) {
 	o.posthogClient.IdentifyAnalyticsTeam(ctx, sbx.TeamID.String(), meta.TeamName)
-	properties := o.posthogClient.GetPackageToPosthogProperties(&meta.RequestHeader)
 
+	props := createdInstanceProperties(
+		o.posthogClient.GetPackageToPosthogProperties(&meta.RequestHeader),
+		sbx, meta, startDuration,
+	)
+
+	o.posthogClient.CreateAnalyticsTeamEvent(ctx, sbx.TeamID.String(), "created_instance", props)
+}
+
+// createdInstanceProperties fills in the sandbox-specific properties of the
+// created_instance event on top of the SDK properties parsed from the request
+// header. Only the presence of an egress proxy is reported, never its endpoint
+// or credentials.
+func createdInstanceProperties(properties posthog.Properties, sbx sandbox.Sandbox, meta sandbox.CreationMetadata, startDuration time.Duration) posthog.Properties {
 	props := properties.
 		Set("environment", sbx.TemplateID).
 		Set("instance_id", sbx.SandboxID).
@@ -110,7 +122,13 @@ func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandb
 		Set("vcpu", sbx.VCpu).
 		Set("ram_mb", sbx.RamMB).
 		Set("total_disk_size_mb", sbx.TotalDiskSizeMB).
-		Set("auto_pause", sbx.AutoPause)
+		Set("auto_pause", sbx.AutoPause).
+		Set("egress_proxy", sbx.Network.HasEgressProxy())
+
+	if sbx.Network.HasEgressProxy() {
+		props = props.Set("egress_proxy_auth", sbx.Network.HasEgressProxyAuth())
+	}
+
 	if startDuration > 0 {
 		props = props.Set("start_time_ms", startDuration.Milliseconds())
 	}
@@ -132,7 +150,7 @@ func (o *Orchestrator) emitCreatedInstancePosthog(ctx context.Context, sbx sandb
 			Set("volume_count", len(sbx.VolumeMounts))
 	}
 
-	o.posthogClient.CreateAnalyticsTeamEvent(ctx, sbx.TeamID.String(), "created_instance", props)
+	return props
 }
 
 func logSandboxCreated(ctx context.Context, sbx sandbox.Sandbox) {
