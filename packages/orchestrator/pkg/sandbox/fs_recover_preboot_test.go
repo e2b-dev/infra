@@ -6,7 +6,6 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,28 +37,27 @@ func TestFsRecoverPreBoot_Gating(t *testing.T) {
 	t.Parallel()
 
 	runtime := RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}
-	buildID := uuid.New()
 
 	rec, got := recorder()
 	assert.Nil(t,
-		recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, true, false, buildID, rec),
+		recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, true, false, rec),
 		"quiesced snapshot has nothing to repair")
 	assert.Equal(t, []rootfs.RecoverOutcome{rootfs.RecoverOutcomeSkippedQuiesced}, *got,
 		"quiesced records skipped_quiesced so the create metric pairs it")
 
 	rec, got = recorder()
 	assert.Nil(t,
-		recoverTestFactory(t, false).fsRecoverPreBoot(t.Context(), runtime, false, false, buildID, rec),
+		recoverTestFactory(t, false).fsRecoverPreBoot(t.Context(), runtime, false, false, rec),
 		"flag off keeps today's cold-boot behavior")
 	assert.Empty(t, *got, "flag off records nothing; the create metric stays none")
 
 	rec, _ = recorder()
 	assert.NotNil(t,
-		recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, false, true, buildID, rec),
+		recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, false, true, rec),
 		"non-quiesced with the flag on runs recovery (rescue trigger)")
 	rec, _ = recorder()
 	assert.NotNil(t,
-		recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, false, false, buildID, rec),
+		recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, false, false, rec),
 		"non-quiesced with the flag on runs recovery (legacy trigger)")
 }
 
@@ -73,7 +71,7 @@ func TestFsRecoverPreBoot_ClosurePropagatesFailure(t *testing.T) {
 
 	runtime := RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}
 	rec, got := recorder()
-	fn := recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, false, true, uuid.New(), rec)
+	fn := recoverTestFactory(t, true).fsRecoverPreBoot(t.Context(), runtime, false, true, rec)
 	require.NotNil(t, fn)
 
 	err := fn(t.Context(), "/dev/sda")

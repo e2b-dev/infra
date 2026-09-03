@@ -256,6 +256,35 @@ type RuntimeMetadata struct {
 	SandboxType SandboxType
 }
 
+// LogFields returns the identity fields for every line logged on this
+// sandbox's behalf. Ids that are not populated are omitted rather than emitted
+// blank.
+func (r RuntimeMetadata) LogFields() []zap.Field {
+	fields := make([]zap.Field, 0, 5)
+
+	for _, f := range []struct {
+		value string
+		field func(string) zap.Field
+	}{
+		{r.SandboxID, logger.WithSandboxID},
+		{r.TemplateID, logger.WithTemplateID},
+		{r.TeamID, logger.WithTeamID},
+		{r.BuildID, logger.WithBuildID},
+		{r.ExecutionID, logger.WithExecutionID},
+	} {
+		if f.value != "" {
+			fields = append(fields, f.field(f.value))
+		}
+	}
+
+	return fields
+}
+
+// Logger returns the process logger tagged with LogFields.
+func (r RuntimeMetadata) Logger() logger.Logger {
+	return logger.L().With(r.LogFields()...)
+}
+
 // sandboxLDContext builds an LD context with envd/kernel/FC-version attributes for
 // per-sandbox flag targeting. Team/template targeting comes from the team and
 // template contexts the caller embeds in ctx.
@@ -463,6 +492,13 @@ func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
 	}
 }
 
+// log returns the internal orchestrator logger tagged with this sandbox's
+// identity. Not to be confused with LoggerMetadata, which feeds the separate,
+// customer-visible sandbox log stream.
+func (s *Sandbox) log() logger.Logger {
+	return s.Runtime.Logger()
+}
+
 // GetStartedAt returns the sandbox start time in a thread-safe manner.
 func (m *Metadata) GetStartedAt() time.Time {
 	m.rwmu.RLock()
@@ -588,16 +624,14 @@ func NewFactory(
 func (f *Factory) runNetworkAssignHook(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) {
 	defer func() {
 		if r := recover(); r != nil {
-			logger.L().Error(ctx, "sandbox network-assign hook panicked, continuing",
-				logger.WithSandboxID(sbx.Runtime.SandboxID),
+			sbx.log().Error(ctx, "sandbox network-assign hook panicked, continuing",
 				logger.WithLifecycleID(sbx.LifecycleID),
 				zap.Any("panic", r))
 		}
 	}()
 
 	if err := f.networkAssignHook.OnNetworkAssign(ctx, sbx, reason); err != nil {
-		logger.L().Warn(ctx, "sandbox network-assign hook failed, continuing",
-			logger.WithSandboxID(sbx.Runtime.SandboxID),
+		sbx.log().Warn(ctx, "sandbox network-assign hook failed, continuing",
 			logger.WithLifecycleID(sbx.LifecycleID),
 			zap.Error(err))
 	}
@@ -711,7 +745,7 @@ func (f *Factory) CreateSandbox(
 	go func() {
 		runErr := rootfsProvider.Start(execCtx)
 		if runErr != nil {
-			logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
+			runtime.Logger().Error(ctx, "rootfs overlay error", zap.Error(runErr))
 		}
 	}()
 
@@ -1009,12 +1043,7 @@ func (f *Factory) ResumeSandbox(
 
 	// Identity shared by everything this resume logs on the sandbox's behalf:
 	// the uffd backend (and its serve loop) and the prefetcher.
-	sbxLogger := logger.L().With(
-		logger.WithSandboxID(runtime.SandboxID),
-		logger.WithTemplateID(runtime.TemplateID),
-		logger.WithTeamID(runtime.TeamID),
-		logger.WithBuildID(runtime.BuildID),
-	)
+	sbxLogger := runtime.Logger()
 
 	// Uffd initialization
 	fcUffdPath := sandboxFiles.SandboxUffdSocketPath()
@@ -1172,7 +1201,7 @@ func (f *Factory) ResumeSandbox(
 		go func() {
 			runErr := overlay.Start(execCtx)
 			if runErr != nil {
-				logger.L().Error(ctx, "rootfs overlay error", zap.Error(runErr))
+				sbxLogger.Error(ctx, "rootfs overlay error", zap.Error(runErr))
 			}
 		}()
 
@@ -3250,7 +3279,7 @@ func (s *Sandbox) runDeferredRootfsExport(
 	// cost stays visible.
 	err := s.runRootfsSealCore(ctx, sealCache, buildID, blockSize, meta, diffPromise, false)
 	if err != nil {
-		logger.L().Error(ctx, "deferred rootfs export failed", zap.Error(err))
+		s.log().Error(ctx, "deferred rootfs export failed", zap.Error(err))
 	} else {
 		telemetry.ReportEvent(ctx, "rootfs diff sealed (deferred)")
 	}
@@ -3258,7 +3287,7 @@ func (s *Sandbox) runDeferredRootfsExport(
 	// The sandbox is torn down; the ejected cache is ours to close regardless of
 	// the export outcome.
 	if err := sealCache.Close(); err != nil {
-		logger.L().Warn(ctx, "closing ejected rootfs cache", zap.Error(err))
+		s.log().Warn(ctx, "closing ejected rootfs cache", zap.Error(err))
 	}
 }
 
@@ -3509,8 +3538,7 @@ func (s *Sandbox) bestEffortEnvdReinit(ctx context.Context) {
 	}()
 
 	if err := s.initEnvd(initCtx, StartTypeResume, false); err != nil {
-		logger.L().Warn(ctx, "envd re-init after in-place resume failed (guest clock may lag)",
-			logger.WithSandboxID(s.Runtime.SandboxID), zap.Error(err))
+		s.log().Warn(ctx, "envd re-init after in-place resume failed (guest clock may lag)", zap.Error(err))
 	}
 }
 
@@ -3548,7 +3576,7 @@ func (s *Sandbox) foldAndCloseSeal(ctx context.Context, sealCache *block.Cache) 
 		// failure here is a leaked file — not an incomplete cache — and must
 		// not feed the callers' latch. Mirrors the success-path seal close.
 		if closeErr := detached.Close(); closeErr != nil {
-			logger.L().Warn(ctx, "closing folded seal cache failed (leaked file)", zap.Error(closeErr))
+			s.log().Warn(ctx, "closing folded seal cache failed (leaked file)", zap.Error(closeErr))
 		}
 
 		return nil
@@ -3701,7 +3729,7 @@ func (s *Sandbox) runInPlaceRootfsExport(
 
 	err := s.runRootfsSealCore(ctx, sealCache, buildID, blockSize, meta, diffPromise, true)
 	if err != nil {
-		logger.L().Error(ctx, "in-place rootfs export failed", zap.Error(err))
+		s.log().Error(ctx, "in-place rootfs export failed", zap.Error(err))
 		// The checkpoint's artifact is lost (diffPromise already carries
 		// ErrDeferredSealFailed), but the SANDBOX must stay serviceable:
 		// sealDone is a write-once field on the long-lived Sandbox, and an
@@ -3714,7 +3742,7 @@ func (s *Sandbox) runInPlaceRootfsExport(
 		// seal signal SUCCESS; latch the error only if the fold-back itself
 		// fails, which is the genuinely unrecoverable-cache case.
 		if foldErr := s.foldAndCloseSeal(ctx, sealCache); foldErr != nil {
-			logger.L().Error(ctx, "in-place rootfs export fold-back failed", zap.Error(foldErr))
+			s.log().Error(ctx, "in-place rootfs export fold-back failed", zap.Error(foldErr))
 			_ = sealDone.SetError(fmt.Errorf("%w; folding the seal back also failed: %w", err, foldErr))
 
 			return
@@ -3729,14 +3757,14 @@ func (s *Sandbox) runInPlaceRootfsExport(
 	// diff again and the sealing slot frees for the next checkpoint.
 	detached, err := s.rootfs.FoldSealed(ctx)
 	if err != nil {
-		logger.L().Error(ctx, "folding sealed rootfs cache failed", zap.Error(err))
+		s.log().Error(ctx, "folding sealed rootfs cache failed", zap.Error(err))
 		_ = sealDone.SetError(fmt.Errorf("fold sealed rootfs cache: %w", err))
 
 		return
 	}
 	if detached != nil {
 		if closeErr := detached.Close(); closeErr != nil {
-			logger.L().Warn(ctx, "closing folded rootfs cache", zap.Error(closeErr))
+			s.log().Warn(ctx, "closing folded rootfs cache", zap.Error(closeErr))
 		}
 	}
 

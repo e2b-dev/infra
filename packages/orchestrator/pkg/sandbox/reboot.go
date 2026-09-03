@@ -194,8 +194,8 @@ func (f *Factory) RebootSandbox(
 	}
 
 	preBoot := chainPreBoot(
-		f.fsRecoverPreBoot(ctx, runtime, meta.IsFsQuiesced(), requestFilesystemBoot, buildID, recordRecovery),
-		f.envdOfflineUpgradePreBoot(ctx, config, runtime, meta.IsFsQuiesced(), buildID),
+		f.fsRecoverPreBoot(ctx, runtime, meta.IsFsQuiesced(), requestFilesystemBoot, recordRecovery),
+		f.envdOfflineUpgradePreBoot(ctx, config, runtime, meta.IsFsQuiesced()),
 	)
 
 	sbx, err := f.CreateSandbox(
@@ -338,7 +338,6 @@ func (f *Factory) fsRecoverPreBoot(
 	runtime RuntimeMetadata,
 	fsQuiesced bool,
 	requestFilesystemBoot bool,
-	buildID uuid.UUID,
 	record func(rootfs.RecoverOutcome),
 ) PreBootFn {
 	// Flag gate first: with the flag off, behavior is exactly today's (no metric,
@@ -404,18 +403,14 @@ func (f *Factory) fsRecoverPreBoot(
 			// cannot exec e2fsck), so the disk is what a flag-off cold boot would mount
 			// and the guest kernel replays the journal itself. Boot anyway — but at Warn:
 			// this is a host-image signal, not an expected per-sandbox outcome.
-			logger.L().Warn(ctx, "pre-boot filesystem recovery could not run; booting on the guest kernel's mount-time replay",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Warn(ctx, "pre-boot filesystem recovery could not run; booting on the guest kernel's mount-time replay",
 				zap.String("reason", string(reason)),
 			)
 
 			return nil
 		}
 
-		logger.L().Info(ctx, "preboot filesystem recovery finished",
-			logger.WithSandboxID(runtime.SandboxID),
-			logger.WithBuildID(buildID.String()),
+		runtime.Logger().Info(ctx, "preboot filesystem recovery finished",
 			zap.String("outcome", string(outcome)),
 			zap.Duration("duration", time.Since(start)),
 		)
@@ -440,7 +435,6 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 	config *Config,
 	runtime RuntimeMetadata,
 	fsQuiesced bool,
-	buildID uuid.UUID,
 ) PreBootFn {
 	from := config.Envd.Version
 
@@ -454,9 +448,7 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 		// A misconfigured / unstaged target is worth a logged signal on a ramp;
 		// off / same_version are the expected per-resume no-ops and stay silent.
 		if dec.logMisconfig {
-			logger.L().Info(ctx, "offline envd upgrade: target not resolved",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Info(ctx, "offline envd upgrade: target not resolved",
 				zap.String("reason", reason),
 				zap.String("built_with", from),
 			)
@@ -465,9 +457,7 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 		// (not frozen at pause): don't rewrite it — this population is waiting for a
 		// future freezing pause, so it is worth a line each as well as the count.
 		if dec.countResult == offlineNoopNotQuiesced {
-			logger.L().Info(ctx, "skipping offline envd upgrade: snapshot rootfs was not frozen at pause (not crash-consistent); awaiting a future freezing pause",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Info(ctx, "skipping offline envd upgrade: snapshot rootfs was not frozen at pause (not crash-consistent); awaiting a future freezing pause",
 				zap.String("built_with", from),
 				zap.String("target", path),
 				zap.String("to_version", toVersion),
@@ -507,9 +497,7 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 		result := "success"
 		switch {
 		case err == nil:
-			logger.L().Info(ctx, "swapped envd binary before reboot",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Info(ctx, "swapped envd binary before reboot",
 				zap.String("target", path),
 				zap.String("to_version", toVersion),
 				zap.String("built_with", from),
@@ -522,9 +510,7 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 			// Its own result value: this is a property of the rootfs, not a malfunction,
 			// and on a ramp it should not read as swap breakage.
 			result = "envd_too_large"
-			logger.L().Warn(ctx, "skipping offline envd upgrade: rootfs envd is too large to swap",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Warn(ctx, "skipping offline envd upgrade: rootfs envd is too large to swap",
 				zap.String("target", path),
 				zap.String("built_with", from),
 				zap.Error(err),
@@ -534,9 +520,7 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 			// Nothing touched, so the guest boots its own envd. A rootfs property,
 			// not a malfunction — its own result value, like envd_too_large.
 			result = "envd_missing"
-			logger.L().Warn(ctx, "skipping offline envd upgrade: rootfs has no envd to swap",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Warn(ctx, "skipping offline envd upgrade: rootfs has no envd to swap",
 				zap.String("target", path),
 				zap.String("built_with", from),
 				zap.Error(err),
@@ -546,27 +530,21 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 			// not open, which exits 0). Nothing touched; boot the original. A rootfs
 			// property, not swap breakage.
 			result = "stat_unparseable"
-			logger.L().Warn(ctx, "skipping offline envd upgrade: rootfs envd stat was unreadable",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Warn(ctx, "skipping offline envd upgrade: rootfs envd stat was unreadable",
 				zap.String("target", path),
 				zap.String("built_with", from),
 				zap.Error(err),
 			)
 		case unrecoverable:
 			result = "unrecoverable"
-			logger.L().Error(ctx, "offline envd swap left the rootfs without a usable envd; failing boot to discard the overlay",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Error(ctx, "offline envd swap left the rootfs without a usable envd; failing boot to discard the overlay",
 				zap.String("target", path),
 				zap.String("built_with", from),
 				zap.Error(err),
 			)
 		default:
 			result = "swap_failed"
-			logger.L().Error(ctx, "offline envd swap before reboot failed; booting original envd",
-				logger.WithSandboxID(runtime.SandboxID),
-				logger.WithBuildID(buildID.String()),
+			runtime.Logger().Error(ctx, "offline envd swap before reboot failed; booting original envd",
 				zap.String("target", path),
 				zap.String("built_with", from),
 				zap.Error(err),

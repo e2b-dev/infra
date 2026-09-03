@@ -482,8 +482,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 
 	response, count, err := s.doRequestWithInfiniteRetries(ctx, http.MethodPost, address)
 	if err != nil {
-		logger.L().Error(ctx, "failed to init envd after retries",
-			logger.WithSandboxID(s.Runtime.SandboxID),
+		s.log().Error(ctx, "failed to init envd after retries",
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 			zap.Int64("attempts", count),
@@ -539,8 +538,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 	}
 
 	if response.StatusCode != http.StatusNoContent {
-		logger.L().Error(ctx, "envd init request failed",
-			logger.WithSandboxID(s.Runtime.SandboxID),
+		s.log().Error(ctx, "envd init request failed",
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.Int("status_code", response.StatusCode),
 			zap.String("response_body", utils.Truncate(string(body), 100)),
@@ -549,8 +547,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
 	}
 
-	logger.L().Debug(ctx, "succeeded to init envd",
-		logger.WithSandboxID(s.Runtime.SandboxID),
+	s.log().Debug(ctx, "succeeded to init envd",
 		logger.WithEnvdVersion(s.Config.Envd.Version),
 		zap.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
 		zap.Int64("attempts", count),

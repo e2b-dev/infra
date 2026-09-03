@@ -68,6 +68,7 @@ func TestRunDeferredRootfsExport(t *testing.T) {
 	require.NoError(t, err)
 
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{},
 		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
 	}
@@ -100,6 +101,7 @@ func TestSetupDeferredRootfsExport_PrepareError(t *testing.T) {
 	t.Parallel()
 
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{rootfs: failingRootfs{err: errors.New("eject failed")}},
 		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
 	}
@@ -146,6 +148,7 @@ func TestSetupDeferredRootfsExport_AbortCleanupOrder(t *testing.T) {
 	require.NoError(t, err)
 
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{rootfs: stubRootfs{cache: ejected}},
 		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
 	}

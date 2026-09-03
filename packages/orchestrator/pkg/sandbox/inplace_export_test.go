@@ -96,6 +96,7 @@ func TestRunInPlaceRootfsExport(t *testing.T) {
 
 	fake := &fakeInPlaceRootfs{overlay: overlay, size: size, blockSize: blockSize, dir: t.TempDir()}
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{rootfs: fake},
 		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
 	}
@@ -182,6 +183,7 @@ func TestRunInPlaceRootfsExport_SealFailureRecovers(t *testing.T) {
 
 	fake := &fakeInPlaceRootfs{overlay: overlay, size: size, blockSize: blockSize, dir: t.TempDir()}
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{rootfs: fake},
 		// Non-existent cache dir: NewLocalDiffFile fails, so the reflink
 		// (sealCacheToDiff) errors before touching the frozen cache.
@@ -243,6 +245,7 @@ func TestRunInPlaceRootfsExport_RepeatedCycles(t *testing.T) {
 
 	fake := &fakeInPlaceRootfs{overlay: overlay, size: size, blockSize: blockSize, dir: t.TempDir()}
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{rootfs: fake},
 		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
 	}
@@ -389,6 +392,7 @@ func TestSetupInPlaceRootfsExport_AbortCleanupOrder(t *testing.T) {
 
 	fake := &fakeInPlaceRootfs{overlay: overlay, size: size, blockSize: blockSize, dir: t.TempDir()}
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{rootfs: fake},
 		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
 	}
@@ -454,6 +458,7 @@ func TestSetupInPlaceRootfsExport_EmptyDirtySet(t *testing.T) {
 
 	fake := &fakeInPlaceRootfs{overlay: overlay, size: size, blockSize: blockSize, dir: t.TempDir()}
 	s := &Sandbox{
+		Metadata:  &Metadata{},
 		Resources: &Resources{rootfs: fake},
 		config:    cfg.BuilderConfig{DefaultCacheDir: t.TempDir()},
 	}
