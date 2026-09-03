@@ -96,6 +96,22 @@ func TestSendSignalTargetsProcessGroupWhenDescendantsRequested(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond)
 }
 
+func TestSendSignalRejectsDescendantsWithoutOwnedProcessGroup(t *testing.T) {
+	t.Parallel()
+
+	cmd := exec.CommandContext(t.Context(), "sleep", "60")
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+
+	h := &Handler{cmd: cmd, outCancel: func() {}}
+	err := h.SendSignal(syscall.SIGKILL, true)
+	require.ErrorContains(t, err, "does not own a process group")
+	require.NoError(t, cmd.Process.Signal(syscall.Signal(0)), "leader should remain alive")
+}
+
 func TestConfigureProcessGroup(t *testing.T) {
 	t.Parallel()
 
