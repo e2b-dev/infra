@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -539,6 +540,76 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	var closers []closer
 
+	// Early-bind the service port and start the HTTP /health endpoint BEFORE the
+	// potentially long sandbox-runtime init below (startup reclaim can take tens
+	// of minutes on a host with many leaked ns-* in /run/netns). serviceInfo
+	// starts Unhealthy, so /health returns 503 until the gRPC server is wired up
+	// and we flip it to Healthy — the port is open (Nomad sees "starting", not a
+	// connection-refused "failed") but no new work is routed here yet.
+	//
+	// cmux matchers must be created before Serve() (Match mutates state Serve
+	// reads). The gRPC listener is matched here but only served later, after all
+	// RegisterService calls complete — gRPC forbids RegisterService after Serve,
+	// so early gRPC connections buffer in the matcher until then.
+	cmuxServer, err := NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
+	}
+	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
+	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
+
+	startService("cmux server", func() error {
+		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
+		err := cmuxServer.Serve()
+		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
+			return nil
+		}
+
+		return err
+	})
+	closers = append(closers, closer{"cmux server", func(context.Context) error {
+		logger.L().Info(ctx, "Shutting down cmux server")
+		cmuxServer.Close()
+
+		return nil
+	}})
+
+	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
+	}
+
+	// The /upload handler (local build storage) is created later during template
+	// manager setup. Register a stable indirection now so the mux is immutable
+	// once Serve starts; it 503s until the real handler is stored.
+	var uploadHandlerPtr atomic.Pointer[localupload.Handler]
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/health", healthcheck.CreateHandler())
+	httpMux.HandleFunc("/upload", func(w http.ResponseWriter, r *http.Request) {
+		if h := uploadHandlerPtr.Load(); h != nil {
+			h.ServeHTTP(w, r)
+
+			return
+		}
+
+		http.Error(w, "upload handler not ready", http.StatusServiceUnavailable)
+	})
+
+	httpServer := NewHTTPServer()
+	httpServer.Handler = httpMux
+	startService("http server", func() error {
+		err := httpServer.Serve(httpListener)
+		switch {
+		case errors.Is(err, cmux.ErrServerClosed):
+			return nil
+		case errors.Is(err, http.ErrServerClosed):
+			return nil
+		default:
+			return err
+		}
+	})
+	closers = append(closers, closer{"http server", httpServer.Shutdown})
+
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
 	sandboxes := sandbox.NewSandboxesMap()
@@ -932,14 +1003,17 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	// template manager
 	var tmpl *tmplserver.ServerStore
-	var localUploadHandler *localupload.Handler
 	if services.RunsTemplateManager() {
 		buildPersistence, uploadHandler, err := setupBuildStorage(ctx, limiter, config)
 		if err != nil {
 			logger.L().Fatal(ctx, "failed to setup build storage", zap.Error(err))
 		}
 
-		localUploadHandler = uploadHandler
+		// Publish the real /upload handler to the indirection registered on the
+		// early HTTP mux (nil until now → served 503).
+		if uploadHandler != nil {
+			uploadHandlerPtr.Store(uploadHandler)
+		}
 
 		tmpl, err = tmplserver.New(
 			ctx,
@@ -970,33 +1044,6 @@ func run(config cfg.Config, opts Options) (success bool) {
 	grpcHealth := health.NewServer()
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
-	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider)
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
-	}
-
-	// Create all matchers BEFORE starting Serve() to avoid data race.
-	// cmux.Match() modifies internal state that Serve() reads from.
-	httpListener := cmuxServer.Match(cmux.HTTP1Fast())
-	grpcListener := cmuxServer.Match(cmux.Any()) // the rest are GRPC requests
-
-	startService("cmux server", func() error {
-		logger.L().Info(ctx, "Starting network server", zap.Uint16("port", config.GRPCPort))
-		err := cmuxServer.Serve()
-		if err != nil && strings.Contains(err.Error(), "use of closed network connection") {
-			return nil
-		}
-
-		return err
-	})
-	closers = append(closers, closer{"cmux server", func(context.Context) error {
-		logger.L().Info(ctx, "Shutting down cmux server")
-		cmuxServer.Close()
-
-		return nil
-	}})
-
 	pprofServer := telemetry.NewPprofServer()
 	// We handle the pprof in a separate goroutine to prevent any interaction with the main server.
 	go func() {
@@ -1008,36 +1055,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}()
 	closers = append(closers, closer{"pprof server", pprofServer.Shutdown})
 
-	// http server
-	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
-	if err != nil {
-		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
-	}
-
-	httpMux := http.NewServeMux()
-	httpMux.Handle("/health", healthcheck.CreateHandler())
-
-	if localUploadHandler != nil {
-		httpMux.Handle("/upload", localUploadHandler)
-	}
-
-	httpServer := NewHTTPServer()
-	httpServer.Handler = httpMux
-
-	startService("http server", func() error {
-		err := httpServer.Serve(httpListener)
-		switch {
-		case errors.Is(err, cmux.ErrServerClosed):
-			return nil
-		case errors.Is(err, http.ErrServerClosed):
-			return nil
-		default:
-			return err
-		}
-	})
-	closers = append(closers, closer{"http server", httpServer.Shutdown})
-
-	// grpc server
+	// grpc server. All RegisterService calls above are complete, so it is now
+	// safe to Serve the grpc listener that cmux has been matching since early
+	// bind (any connections received meanwhile are buffered in the matcher).
 	startService("grpc server", func() error {
 		return grpcServer.Serve(grpcListener)
 	})
@@ -1047,6 +1067,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 		return nil
 	}})
+
+	// Sandbox runtime is fully wired up and the gRPC server is serving. Flip to
+	// Healthy so /health returns 200 and the edge starts routing new work here.
+	// Until this point the port was open but reported Unhealthy (503).
+	serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Healthy)
 
 	// Wait for the shutdown signal or if some service fails
 	select {
