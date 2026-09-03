@@ -106,10 +106,12 @@ func TestSendSignalRejectsDescendantsWithoutOwnedProcessGroup(t *testing.T) {
 		_, _ = cmd.Process.Wait()
 	})
 
-	h := &Handler{cmd: cmd, outCancel: func() {}}
+	outputCancelled := false
+	h := &Handler{cmd: cmd, outCancel: func() { outputCancelled = true }}
 	err := h.SendSignal(syscall.SIGKILL, true)
 	require.ErrorContains(t, err, "does not own a process group")
 	require.NoError(t, cmd.Process.Signal(syscall.Signal(0)), "leader should remain alive")
+	assert.False(t, outputCancelled, "a rejected signal must keep the live process output connected")
 }
 
 func TestConfigureProcessGroup(t *testing.T) {

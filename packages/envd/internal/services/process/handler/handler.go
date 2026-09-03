@@ -473,33 +473,40 @@ func configureProcessGroup(attr *syscall.SysProcAttr, hasPTY bool) {
 }
 
 func (p *Handler) SendSignal(signal syscall.Signal, descendants bool) error {
-	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
-		p.outCancel()
-	}
-
 	pid := int(p.Pid())
 	if pid == 0 {
 		return errors.New("process not started")
 	}
 
-	if descendants {
-		pgid, err := syscall.Getpgid(pid)
-		if err != nil {
-			return fmt.Errorf("get process group for pid %d: %w", pid, err)
+	var err error
+	switch {
+	case descendants:
+		pgid, groupErr := syscall.Getpgid(pid)
+		if groupErr != nil {
+			return fmt.Errorf("get process group for pid %d: %w", pid, groupErr)
 		}
 		if pgid != pid {
 			return fmt.Errorf("process %d does not own a process group", pid)
 		}
 
-		return syscall.Kill(-pgid, signal)
+		err = syscall.Kill(-pgid, signal)
+	case p.cmd == nil:
+		// Re-adopted handler (post live-upgrade): no cmd, signal by stored pid.
+		err = syscall.Kill(pid, signal)
+	default:
+		err = p.cmd.Process.Signal(signal)
+	}
+	if err != nil {
+		return err
 	}
 
-	// Re-adopted handler (post live-upgrade): no cmd, signal by stored pid.
-	if p.cmd == nil {
-		return syscall.Kill(pid, signal)
+	// Keep delivering output when signal validation or delivery fails. Once a terminal signal has
+	// actually been sent, stop the pumps promptly instead of waiting for every inherited pipe to close.
+	if signal == syscall.SIGKILL || signal == syscall.SIGTERM {
+		p.outCancel()
 	}
 
-	return p.cmd.Process.Signal(signal)
+	return nil
 }
 
 func (p *Handler) ResizeTty(size *pty.Winsize) error {
