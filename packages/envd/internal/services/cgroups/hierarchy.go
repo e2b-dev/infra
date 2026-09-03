@@ -2,9 +2,7 @@ package cgroups
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -243,6 +241,18 @@ type AuditResult struct {
 // on; the counts are the measurement.
 const auditPathSample = 8
 
+// samplePath appends path to a bounded sample, reusing the audit's bound. A handful of names
+// is enough to reconstruct what a guest was tearing down, and the log exporter drops any line
+// over 192 KiB outright -- so an unbounded list is the one shape that could make the line it
+// belongs to disappear entirely.
+func samplePath(into []string, path string) []string {
+	if len(into) >= auditPathSample {
+		return into
+	}
+
+	return append(into, path)
+}
+
 // sampleRel appends path relative to root, up to auditPathSample entries.
 func sampleRel(into []string, root, path string) []string {
 	if len(into) >= auditPathSample {
@@ -446,6 +456,11 @@ func ScanGuestFrozen(pm PathManager, procFile string, maxCgroups int) (map[strin
 		if !isOurs && !allowlisted(root, cur) {
 			requested, e := pm.FreezeRequestedAt(cur)
 			switch {
+			case vanished(e):
+				// A cgroup that no longer exists froze nothing the thaw has to preserve.
+				// Counted as a scan failure it would inflate ScanFailed, whose only
+				// consumer warns that some cgroups could not be classified -- a warning
+				// about a cgroup that no longer exists is one nobody can act on.
 			case e != nil:
 				errs = append(errs, fmt.Errorf("read freeze state of %s: %w", cur, e))
 			case requested:
@@ -455,7 +470,7 @@ func ScanGuestFrozen(pm PathManager, procFile string, maxCgroups int) (map[strin
 
 		children, e := pm.ChildrenOf(cur)
 		if e != nil {
-			if !errors.Is(e, fs.ErrNotExist) {
+			if !vanished(e) {
 				errs = append(errs, fmt.Errorf("list children of %s: %w", cur, e))
 			}
 

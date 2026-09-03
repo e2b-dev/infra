@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"slices"
 	"sync"
@@ -361,12 +360,19 @@ func (f *WorkloadFreezer) Manager() Manager { return f.mgr }
 // because it spans both phases: a write that never landed (so the cgroup was never
 // Requested at all) and a state read that errored (so it was). The totals therefore are
 //
-//	Requested + <writes that failed> == cgroups attempted
-//	Frozen + NotFrozen + Unobservable + <reads that failed> == Requested
+//	Requested + <writes that failed> + <writes that vanished> == cgroups attempted
+//	Frozen + NotFrozen + Unobservable + <polls that vanished> + <reads that failed> == Requested
 //
 // with Failed being the sum of the two failure terms. Splitting Failed in two would make
 // both lines add up on their own; it is kept as one count because a caller acting on it
 // does the same thing either way -- tolerate and carry on.
+//
+// Vanished spans the two phases exactly as Failed does, and is kept as one count for the
+// same reason: a caller acting on it does the same thing either way. It is a term in the
+// second line rather than a silent subtraction because NotFrozen is derived by
+// difference, so a cgroup dropped from the poll set without being counted somewhere
+// lands in NotFrozen -- the loudest outcome of the set, and the one that tells the caller
+// a snapshot may have caught a live workload.
 //
 // Note that Frozen is a state read back from cgroup.events, not an acknowledgement of
 // our write -- a cgroup the guest froze itself reads frozen too. We never establish
@@ -381,8 +387,10 @@ type FreezeResult struct {
 	// NotFrozen still read "frozen 0" when the budget expired. Their tasks may still
 	// be running, so a snapshot taken now can capture a live workload.
 	NotFrozen int
-	// ScanFailed counts cgroups the guest-freeze scan could not classify -- vanished or
-	// unreadable while it walked. Deliberately a COUNT and not an error: an unclassified
+	// ScanFailed counts cgroups the guest-freeze scan could not classify because they were
+	// unreadable while it walked. A cgroup that had simply gone away is not counted here at
+	// all: the scan tolerates a vanish outright, since a cgroup that no longer exists froze
+	// nothing the thaw has to preserve. Deliberately a COUNT and not an error: an unclassified
 	// cgroup is simply absent from the record, so the thaw clears it, which is the behaviour
 	// that predates the record. Returning it as an error instead would be fatal in the one
 	// place that treats any freeze error as fatal -- the live-upgrade handover refuses to swap
@@ -393,10 +401,36 @@ type FreezeResult struct {
 	// needs) and the resume thaw leaves them alone, so a guest's own `docker pause`
 	// survives the snapshot.
 	PreFrozen int
-	// Failed is the number of cgroups whose write or read errored. Expected and
-	// tolerated: a threaded cgroup rejects cgroup.freeze, and a cgroup removed
-	// mid-sweep reports ENOENT.
+	// Failed is the number of cgroups that were still there and still errored: the write
+	// was refused, or the state could not be read. Expected and tolerated, but a real
+	// property of the tree about to be snapshotted. A cgroup that merely went away is
+	// counted Vanished instead -- that is a race, and it resolves itself.
 	Failed int
+	// Vanished is the number of cgroups the hierarchy walk enumerated that the guest then
+	// removed before the sweep could finish with them. Held apart from Failed because the
+	// two call for opposite responses: Failed describes the tree we are about to snapshot,
+	// while Vanished is a claim about the CGROUP only -- tasks migrated out of it before it
+	// was removed can still be running, which is what the settle poll's vanish arm records
+	// as accepted residual risk.
+	//
+	// So AllFrozen deliberately ignores Vanished, and NOT because that case cannot arise:
+	// holding a pause for the guest's own churn would make every busy guest look like a
+	// failed freeze, and the residual risk is judged small inside the freeze budget. Read
+	// the vanish arm in awaitFrozen before changing that predicate.
+	//
+	// Scoped to the walk's own targets on purpose. A static cgroup of envd's own that
+	// disappears is reported Failed instead, because that is not guest churn -- see
+	// freezeTarget.tolerateVanish.
+	//
+	// Counted rather than dropped so that a settle-poll vanish cannot reach NotFrozen by
+	// subtraction -- but like Failed it spans both phases and so does not reconcile
+	// against Requested on its own; see the accounting note above.
+	Vanished int
+	// VanishedPaths samples the cgroups counted Vanished, bounded like the audit's offender
+	// list. A vanish deliberately raises no error, so without this there is no record of
+	// WHICH cgroup went away -- the counter says one did and nothing can name it, which is
+	// the wrong trade for a guest tearing its workload down mid-pause.
+	VanishedPaths []string
 	// Unobservable is the number of cgroups whose freeze state cannot be read at all,
 	// because this guest has no cgroup manager. Neither a success nor a failure: the
 	// write was accepted and there is simply nothing to read back, so these are held
@@ -517,13 +551,17 @@ func (f *WorkloadFreezer) FreezeHold(ctx context.Context, opts FreezeOptions) (r
 	}
 	res.SweepDuration = time.Since(sweepStart)
 
-	frozen, failed, unobservable, waitErrs := f.awaitFrozen(ctx, pending, opts.MaxWait)
-	res.Frozen = frozen
-	res.Unobservable = unobservable
-	res.NotFrozen = res.Requested - frozen - failed - unobservable
-	res.Failed += failed
+	poll := f.awaitFrozen(ctx, pending, opts.MaxWait)
+	res.Frozen = poll.frozen
+	res.Unobservable = poll.unobservable
+	res.Vanished += poll.vanished
+	for _, p := range poll.vanishedPaths {
+		res.VanishedPaths = samplePath(res.VanishedPaths, p)
+	}
+	res.NotFrozen = res.Requested - poll.frozen - poll.failed - poll.unobservable - poll.vanished
+	res.Failed += poll.failed
 	res.WaitDuration = time.Since(sweepStart) - res.SweepDuration
-	errs = append(errs, waitErrs...)
+	errs = append(errs, poll.errs...)
 
 	f.sweepMu.Lock()
 	f.lastSweepMode = res.Mode
@@ -558,6 +596,21 @@ type freezeTarget struct {
 	// label identifies the cgroup in errors: a ProcessType, or an absolute path.
 	label  string
 	frozen func() (bool, error)
+	// tolerateVanish says a removal of THIS cgroup between the write and the read-back is
+	// the guest's own churn rather than a fault. True only for cgroups the hierarchy walk
+	// discovered: they belong to the guest, which creates and retires them constantly.
+	//
+	// False for the static list, and that is the whole reason this field exists. Those
+	// cgroups are envd's own, so one disappearing does not mean a transient unit exited --
+	// it means something moved our tasks elsewhere and removed the cgroup underneath us
+	// (rmdir needs it task-free, which a migration achieves while leaving those tasks
+	// running). The freeze we wrote does not follow them, so they are running and the
+	// snapshot would catch them running. That has to stay loud.
+	//
+	// The poll cannot infer this: both kinds arrive in one slice, and in legacy mode the
+	// slice is ONLY the static list -- the default configuration, where a silently
+	// tolerated vanish would be the single way this counter could ever move.
+	tolerateVanish bool
 }
 
 // sweepLegacy freezes the static WorkloadProcessTypes list -- today's behaviour, and
@@ -655,7 +708,7 @@ func (f *WorkloadFreezer) sweepHierarchy(pm PathManager, res *FreezeResult, maxC
 	for _, ancestor := range descend {
 		children, e := pm.ChildrenOf(ancestor)
 		switch {
-		case errors.Is(e, fs.ErrNotExist):
+		case vanished(e):
 			// Nothing to descend into. Expected rather than exceptional: the descend set
 			// includes the ancestors of every allowlist entry, and the allowlist is a
 			// superset of what any one guest has -- a distro without rpcbind simply has no
@@ -663,7 +716,8 @@ func (f *WorkloadFreezer) sweepHierarchy(pm PathManager, res *FreezeResult, maxC
 			// broken.
 			continue
 		case e != nil:
-			// A vanished ancestor is a race, not a bug: keep walking the rest.
+			// Unreadable for a reason other than being gone, which the branch above
+			// handles. Counted, and the walk carries on with the other ancestors.
 			errs = append(errs, fmt.Errorf("list children of %s: %w", ancestor, e))
 			res.Failed++
 
@@ -705,14 +759,32 @@ func (f *WorkloadFreezer) sweepHierarchy(pm PathManager, res *FreezeResult, maxC
 			// description of OUR freeze from earlier in the same window, and adopting that would
 			// hand the whole workload to the guest and strand it frozen on resume.
 			if adoptLateFreezes {
-				if requested, e := pm.FreezeRequestedAt(child); e == nil && requested {
+				requested, e := pm.FreezeRequestedAt(child)
+				switch {
+				case vanished(e):
+					// The probe already learned this path is gone, so the write below
+					// would be a second open against it for the same answer. Skipping it
+					// matters only because this runs inside the freeze budget with the
+					// lock held; the classification that makes it possible is new here.
+					recordVanished(res, child)
+
+					continue
+				case e == nil && requested:
 					lateGuest = append(lateGuest, child)
 
 					continue
 				}
 			}
 
-			if e := pm.FreezeAt(child); e != nil {
+			switch e := pm.FreezeAt(child); {
+			case vanished(e):
+				// Gone between the parent's readdir and this write. Not Requested: the
+				// write never landed, so counting it would put a cgroup into the
+				// confirmation set that the settle poll can never read back.
+				recordVanished(res, child)
+
+				continue
+			case e != nil:
 				errs = append(errs, fmt.Errorf("freeze %s: %w", child, e))
 				res.Failed++
 
@@ -720,8 +792,9 @@ func (f *WorkloadFreezer) sweepHierarchy(pm PathManager, res *FreezeResult, maxC
 			}
 			res.Requested++
 			pending = append(pending, freezeTarget{
-				label:  child,
-				frozen: func() (bool, error) { return pm.FrozenAt(child) },
+				label:          child,
+				frozen:         func() (bool, error) { return pm.FrozenAt(child) },
+				tolerateVanish: true,
 			})
 		}
 	}
@@ -882,14 +955,35 @@ func (f *WorkloadFreezer) UnthawedSweepMode() FreezeMode {
 	return f.lastSweepMode
 }
 
+// pollOutcome is what one settle poll observed. A struct rather than a growing list of
+// positional returns: five counts already outran what a reader can keep straight at a call
+// site, and the sampled paths only mean anything beside the count they explain.
+type pollOutcome struct {
+	frozen        int
+	failed        int
+	unobservable  int
+	vanished      int
+	vanishedPaths []string
+	errs          []error
+}
+
+// recordVanished counts a cgroup that went away and samples its path. One function because
+// two places can now discover a vanish -- the late-freeze probe and the write itself -- and
+// a second copy of "what recording one means" is exactly the kind of duplication that drifts.
+func recordVanished(res *FreezeResult, path string) {
+	res.Vanished++
+	res.VanishedPaths = samplePath(res.VanishedPaths, path)
+}
+
 // awaitFrozen polls the given cgroups until each reports frozen, the budget expires, or
 // ctx is cancelled. All cgroups are polled together rather than one after another: the wait
 // is then bounded by the slowest cgroup instead of by the sum, which matters because
 // a single busy cgroup has been measured taking seconds to stop while the whole
 // pre-pause freeze budget is of that order.
-func (f *WorkloadFreezer) awaitFrozen(ctx context.Context, targets []freezeTarget, budget time.Duration) (frozen, failed, unobservable int, errs []error) {
+func (f *WorkloadFreezer) awaitFrozen(ctx context.Context, targets []freezeTarget, budget time.Duration) pollOutcome {
+	var out pollOutcome
 	if len(targets) == 0 || budget <= 0 {
-		return 0, 0, 0, nil
+		return out
 	}
 
 	remaining := slices.Clone(targets)
@@ -903,12 +997,31 @@ func (f *WorkloadFreezer) awaitFrozen(ctx context.Context, targets []freezeTarge
 			case errors.Is(err, ErrFrozenUnobservable):
 				// Nothing to read and nothing to wait for. Drop it from the poll set so
 				// the loop exits immediately instead of spinning out the whole budget.
-				unobservable++
+				out.unobservable++
+			case vanished(err) && t.tolerateVanish:
+				// A cgroup the WALK found went away while we waited for it to settle -- a
+				// transient unit that simply finished. Dropped from the poll set like the
+				// unobservable case, because there is nothing left to read: keeping it
+				// would spin the full budget re-reading a path that cannot come back.
+				//
+				// Counted, not discarded: NotFrozen is derived by subtraction, so an
+				// uncounted drop would silently become the loudest outcome of the set.
+				//
+				// The cgroup is certainly gone; its former TASKS are not certainly stopped.
+				// rmdir needs the cgroup task-free, which a migration by an unfrozen actor
+				// achieves -- and moving into an unfrozen cgroup thaws them. So this arm can
+				// cover a workload that is still running, exactly as the static-list case
+				// described on tolerateVanish. Accepted as residual risk rather than fixed:
+				// inside the freeze budget it is unlikely, and a cgroup created after the
+				// parent's readdir was never in the sweep's coverage to begin with. The
+				// sampled paths below are what makes it reconstructable after the fact.
+				out.vanished++
+				out.vanishedPaths = samplePath(out.vanishedPaths, t.label)
 			case err != nil:
-				failed++
-				errs = append(errs, fmt.Errorf("read %s cgroup.events: %w", t.label, err))
+				out.failed++
+				out.errs = append(out.errs, fmt.Errorf("read %s cgroup.events: %w", t.label, err))
 			case isFrozen:
-				frozen++
+				out.frozen++
 			default:
 				next = append(next, t)
 			}
@@ -919,14 +1032,14 @@ func (f *WorkloadFreezer) awaitFrozen(ctx context.Context, targets []freezeTarge
 		// once it stops listening the rest of that budget is ours to give back rather
 		// than spend holding the lock.
 		if len(remaining) == 0 || !time.Now().Before(deadline) || ctx.Err() != nil {
-			return frozen, failed, unobservable, errs
+			return out
 		}
 
 		sleep := min(freezePollInterval, time.Until(deadline))
 		if sleep > 0 {
 			select {
 			case <-ctx.Done():
-				return frozen, failed, unobservable, errs
+				return out
 			case <-time.After(sleep):
 			}
 		}
@@ -1114,7 +1227,7 @@ func (f *WorkloadFreezer) thawDiscovered(pm PathManager, res *ThawResult, maxCgr
 		if !skip {
 			frozen, e := pm.FreezeRequestedAt(cur)
 			switch {
-			case errors.Is(e, fs.ErrNotExist):
+			case vanished(e):
 				// Vanished between readdir and read: a race, not a bug, and the scan and the
 				// audit both already tolerate it. Counting it Failed made routine container
 				// churn produce a "dirty" thaw, which answered 500 on a thaw that worked, left
@@ -1125,7 +1238,7 @@ func (f *WorkloadFreezer) thawDiscovered(pm PathManager, res *ThawResult, maxCgr
 				res.Failed++
 			case frozen:
 				switch e := pm.UnfreezeAt(cur); {
-				case errors.Is(e, fs.ErrNotExist):
+				case vanished(e):
 					// The same race one step later: gone between the read and the write.
 					// Nothing left to thaw, so nothing failed.
 				case e != nil:
@@ -1139,7 +1252,7 @@ func (f *WorkloadFreezer) thawDiscovered(pm PathManager, res *ThawResult, maxCgr
 
 		children, e := pm.ChildrenOf(cur)
 		switch {
-		case errors.Is(e, fs.ErrNotExist):
+		case vanished(e):
 			// The same race, on the third of the three syscalls this loop makes against a
 			// cgroup: it was listed by its parent and removed before it could be read.
 			// A cgroup that no longer exists has no children and nothing left to thaw.

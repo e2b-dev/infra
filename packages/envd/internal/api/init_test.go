@@ -935,9 +935,11 @@ func TestPostFreeze(t *testing.T) {
 		assert.Zero(t, *body.Frozen)
 	})
 
-	// A cgroup that rejects the write is expected -- threaded cgroups do, and one
-	// removed mid-sweep reports ENOENT. Answering 500 would hide the failed count that
-	// exists to make those visible, and would lose the whole result with it.
+	// A cgroup that is still there and rejects the write is expected. Answering 500 would
+	// hide the failed count that exists to make it visible, and would lose the whole
+	// result with it. A WALK-DISCOVERED cgroup that was removed mid-sweep does not reach
+	// this arm -- it is counted vanished and raises nothing; one of envd's own static
+	// cgroups that goes away does reach it, by design.
 	t.Run("reports failed cgroups in the body rather than erroring", func(t *testing.T) {
 		t.Parallel()
 		mgr := &fakeCgroupManager{freezeErr: errors.New("write cgroup.freeze: io error")}

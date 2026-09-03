@@ -204,12 +204,16 @@ func TestFreeze_WaitIsBoundedBySlowestNotSum(t *testing.T) {
 	}
 }
 
-// TestFreeze_UnreadableStateIsCountedFailedNotAwaited covers the read-error arm of the
-// wait. A cgroup removed mid-sweep reports ENOENT and a threaded one rejects the read, so
-// this is expected rather than exceptional: the error is surfaced, but the result survives
-// alongside it, the cgroup is counted failed rather than notFrozen -- the two say different
-// things to the pause path -- and it is dropped from the poll set instead of waiting out a
-// budget on a state that can never be read. The remaining cgroup is still awaited normally.
+// TestFreeze_UnreadableStateIsCountedFailedNotAwaited covers the read-error arm of the wait
+// for a cgroup that is STILL THERE and merely unreadable -- deliberately not one that went
+// away, which is counted Vanished and covered separately. The distinction is why the fixture
+// injects an opaque error rather than an errno: a real ENOENT or ENODEV here would be a
+// vanish, and this test is about the other class.
+//
+// Expected rather than exceptional: the error is surfaced, but the result survives alongside
+// it, the cgroup is counted failed rather than notFrozen -- the two say different things to
+// the pause path -- and it is dropped from the poll set instead of waiting out a budget on a
+// state that can never be read. The remaining cgroup is still awaited normally.
 func TestFreeze_UnreadableStateIsCountedFailedNotAwaited(t *testing.T) {
 	t.Parallel()
 
@@ -234,8 +238,9 @@ func TestFreeze_UnreadableStateIsCountedFailedNotAwaited(t *testing.T) {
 func TestFreeze_CountsWriteFailuresWithoutAborting(t *testing.T) {
 	t.Parallel()
 	mgr := newFakeFreezeManager()
-	// A threaded cgroup rejects cgroup.freeze; that is expected, not exceptional, and
-	// must not stop the sweep reaching the remaining cgroups.
+	// A write the kernel refuses is expected, not exceptional, and must not stop the sweep
+	// reaching the remaining cgroups. An opaque error on purpose: a vanish errno would be
+	// tolerated rather than counted, which is a different arm.
 	mgr.freezeErr[WorkloadProcessTypes[0]] = errors.New("invalid argument")
 	f := NewWorkloadFreezer(mgr)
 

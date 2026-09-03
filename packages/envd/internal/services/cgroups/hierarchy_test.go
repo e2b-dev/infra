@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -1196,6 +1198,87 @@ func TestAuditFrozenState_OffenderSampleIsBounded(t *testing.T) {
 	assert.Len(t, res.EscapedPaths, auditPathSample, "but only a sample named")
 }
 
+// failAt makes one PathManager call fail for one cgroup with a chosen error, passing every
+// other call through to the real tree.
+//
+// Both halves are parameters on purpose. The walks divide errors into two classes -- a
+// cgroup that went away, which every walk tolerates, and everything else, which is counted
+// -- so a fixture has to be able to land on either side. And the errno a removal produces
+// depends on which call meets it, so the method has to be selectable too.
+type failAt struct {
+	PathManager
+
+	method string
+	target string
+	err    error
+
+	// calls counts how often the injected call was actually made, which is how a test
+	// asserts that a target was dropped from a poll set rather than re-read until the
+	// budget ran out. That is a structural claim, and counting the calls settles it
+	// without a clock -- an elapsed-time bound would measure the machine instead.
+	calls atomic.Int64
+}
+
+const (
+	failFreezeRequestedAt = "FreezeRequestedAt"
+	failFrozenAt          = "FrozenAt"
+	failFreezeAt          = "FreezeAt"
+	failUnfreezeAt        = "UnfreezeAt"
+	failChildrenOf        = "ChildrenOf"
+)
+
+// injected returns the error to report from method, or nil to fall through to the real
+// tree. Shaped as a PathError because that is what the os package returns and what the
+// production guards therefore have to unwrap.
+func (m *failAt) injected(method, path string) error {
+	if method != m.method || path != m.target {
+		return nil
+	}
+	m.calls.Add(1)
+
+	return &fs.PathError{Op: "open", Path: path, Err: m.err}
+}
+
+func (m *failAt) FreezeRequestedAt(path string) (bool, error) {
+	if e := m.injected(failFreezeRequestedAt, path); e != nil {
+		return false, e
+	}
+
+	return m.PathManager.FreezeRequestedAt(path)
+}
+
+func (m *failAt) FrozenAt(path string) (bool, error) {
+	if e := m.injected(failFrozenAt, path); e != nil {
+		return false, e
+	}
+
+	return m.PathManager.FrozenAt(path)
+}
+
+func (m *failAt) FreezeAt(path string) error {
+	if e := m.injected(failFreezeAt, path); e != nil {
+		return e
+	}
+
+	return m.PathManager.FreezeAt(path)
+}
+
+func (m *failAt) UnfreezeAt(path string) error {
+	if e := m.injected(failUnfreezeAt, path); e != nil {
+		return e
+	}
+
+	return m.PathManager.UnfreezeAt(path)
+}
+
+func (m *failAt) ChildrenOf(path string) ([]string, error) {
+	if e := m.injected(failChildrenOf, path); e != nil {
+		return nil, e
+	}
+
+	return m.PathManager.ChildrenOf(path)
+}
+
 // TestFreeze_ScanErrorIsNotFatal is the one that matters for the live upgrade. A cgroup that
 // vanishes while the guest-freeze scan walks is a race the sweep itself tolerates, but the
 // handover refuses to swap on ANY error from the freeze -- so propagating a scan error would
@@ -1211,8 +1294,15 @@ func TestFreeze_ScanErrorIsNotFatal(t *testing.T) {
 	// so it never touches workload/deep, while the scan walks the whole tree and does. That is
 	// what isolates a scan failure from a sweep failure -- breaking a top-level cgroup would
 	// fail the write too, and sweep errors are meant to propagate.
-	require.NoError(t, os.Remove(filepath.Join(root, "workload", "deep", "cgroup.freeze")))
-	require.NoError(t, os.Remove(filepath.Join(root, "workload", "deep", "cgroup.events")))
+	//
+	// EACCES rather than a removal: a cgroup that vanished is not a scan failure at all, so
+	// deleting one would test the tolerance rather than the failure this test is about.
+	f.mgr = &failAt{
+		PathManager: f.mgr.(PathManager),
+		method:      failFreezeRequestedAt,
+		target:      filepath.Join(root, "workload", "deep"),
+		err:         syscall.EACCES,
+	}
 
 	res, err := f.Freeze(t.Context(), FreezeOptions{Mode: ModeHierarchy})
 

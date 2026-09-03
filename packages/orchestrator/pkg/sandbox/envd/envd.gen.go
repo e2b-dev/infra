@@ -128,7 +128,7 @@ type FreezeResult struct {
 	// Allowlisted Cgroups skipped because the resume path depends on them (systemd, journald, envd's port forwarding). Reported because the allowlist is expected to grow, and a distro that routes journald differently changes this count
 	Allowlisted int `json:"allowlisted,omitempty"`
 
-	// Failed Cgroups whose freeze write or state read errored (expected for a threaded cgroup, and for one removed mid-sweep)
+	// Failed Cgroups that errored for a reason that is not simply being gone - the write was refused, or the state could not be read. A cgroup the hierarchy walk discovered that merely went away is counted vanished instead; one of envd's own static cgroups that goes away is counted here, by design
 	Failed int `json:"failed,omitempty"`
 
 	// Frozen Cgroups that read back "frozen 1" from cgroup.events within the budget; their tasks have stopped
@@ -154,6 +154,9 @@ type FreezeResult struct {
 
 	// Unobservable Cgroups whose freeze state cannot be read because this guest has no cgroup manager; the write was accepted but nothing can be read back, so these are neither frozen nor notFrozen
 	Unobservable int `json:"unobservable,omitempty"`
+
+	// Vanished Cgroups the hierarchy walk enumerated that the guest then removed before the sweep finished with them - envd's own static cgroups are excluded and report failed instead. A race rather than a failure, and a claim about the cgroup only - tasks migrated out of it before its removal can still be running. Like failed it spans both phases, so it does not reconcile against requested on its own - one removed during the settle poll was counted in requested, one removed before its write never was
+	Vanished int `json:"vanished,omitempty"`
 
 	// Visited Cgroups the walk examined, whether or not it froze them. The input for sizing the bound; meaningless in legacy mode
 	Visited int `json:"visited,omitempty"`

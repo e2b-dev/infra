@@ -1,6 +1,10 @@
 package cgroups
 
-import "errors"
+import (
+	"errors"
+	"io/fs"
+	"syscall"
+)
 
 // ErrFrozenUnobservable is returned by Frozen when the manager cannot read freeze
 // state at all, because it manages no cgroups. It is deliberately distinct from
@@ -71,4 +75,27 @@ type Manager interface {
 	// ErrFrozenUnobservable.
 	Frozen(procType ProcessType) (bool, error)
 	Close() error
+}
+
+// vanished reports whether err says the cgroup itself is no longer there. Both walks
+// this package runs are observers of a tree the guest keeps mutating, so a cgroup that
+// is enumerated and then removed before it can be read is the ordinary case, not a
+// fault -- systemd retires a transient unit on every timer tick.
+//
+// Deliberately NOT "any error". The freeze sweep's Failed count describes the tree that
+// is about to be snapshotted -- a cgroup that is still there and would not take the write,
+// or would not report its state -- and a predicate wide enough to swallow a vanished
+// cgroup swallows that too. The resume audit can skip on any error because it only
+// observes; the sweep cannot, because Failed is a count someone acts on. Only the errnos a
+// removal can produce belong here, and there are
+// exactly two of them. Which one arrives depends only on where the removal lands
+// relative to the open, so a guard naming either one alone is half a guard:
+//
+//	remove, then open           -> ENOENT
+//	open, then remove, then use -> ENODEV
+//
+// The second is a cgroupfs property, not a POSIX one: an ordinary unlinked-but-open
+// file keeps serving reads, which is why this cannot be reproduced on a tmpfs tree.
+func vanished(err error) bool {
+	return errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENODEV)
 }

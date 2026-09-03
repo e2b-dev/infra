@@ -585,6 +585,13 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 		// Counted so "the guest suspends its own containers" is visible as a population
 		// rather than inferred from a thaw that quietly does less.
 		"pre_frozen": res.PreFrozen,
+		// Cgroups the guest removed while the sweep was working on them. Held apart from
+		// failed because it is the guest's own churn rather than a property of the tree
+		// we are about to snapshot -- systemd retires a transient unit on every timer
+		// tick, and folding that into failed made routine churn look like a workload
+		// that would not stop. An envd too old to report it sends nothing, which decodes
+		// to zero rather than to a wrong number.
+		"vanished": res.Vanished,
 	} {
 		envdFreezeCgroupsHistogram.Record(ctx, int64(count),
 			metric.WithAttributes(
@@ -606,6 +613,7 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 		attribute.Int("freeze.frozen", res.Frozen),
 		attribute.Int("freeze.not_frozen", res.NotFrozen),
 		attribute.Int("freeze.failed", res.Failed),
+		attribute.Int("freeze.vanished", res.Vanished),
 		attribute.Int("freeze.unobservable", res.Unobservable),
 		attribute.Int64("freeze.sweep_ms", res.SweepMs),
 		attribute.Int64("freeze.wait_ms", res.WaitMs),
@@ -624,6 +632,11 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 			zap.Int("frozen", res.Frozen),
 			zap.Int("not_frozen", res.NotFrozen),
 			zap.Int("failed", res.Failed),
+			// Not a trigger for this warning, but logged with it: without it a reader
+			// checking these counts against requested finds them short and suspects the
+			// wrong thing. It closes that gap only for a cgroup that vanished during the
+			// settle poll -- one that vanished at the write was never requested.
+			zap.Int("vanished", res.Vanished),
 			zap.Int64("wait_ms", res.WaitMs),
 		)
 	}

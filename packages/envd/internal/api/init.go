@@ -364,9 +364,14 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFree
 	}
 	if err != nil {
 		// Per-cgroup failures are counted in res.Failed and reported in the body, not
-		// raised as a 500: a threaded cgroup rejecting cgroup.freeze and a cgroup
-		// removed mid-sweep are both expected, and answering with an error would hide
-		// the very counts that make them visible.
+		// raised as a 500: a cgroup that refuses the write is expected, and answering
+		// with an error would hide the very count that makes it visible.
+		//
+		// A WALK-DISCOVERED cgroup that vanished does not reach here -- it is counted
+		// Vanished and raises nothing. One of envd's own static cgroups still does, on
+		// purpose: in legacy mode those are the whole poll set, and a vanish there means
+		// something removed the cgroup from under our tasks rather than a transient unit
+		// exiting. See freezeTarget.tolerateVanish.
 		logger.Error().Err(err).
 			Int("failed", res.Failed).
 			Msg("some cgroups failed to freeze; reporting them in the result")
@@ -412,8 +417,27 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFree
 			Int("frozen", res.Frozen).
 			Int("not_frozen", res.NotFrozen).
 			Int("failed", res.Failed).
+			// Context rather than a cause: a vanished cgroup never makes this warning
+			// fire. Logged because it explains a requested count the other outcomes do
+			// not reach -- but only for one that vanished during the settle poll. One
+			// that vanished at the write was never requested, so it raises the total
+			// instead. FreezeResult's accounting note has the two lines that balance.
+			Int("vanished", res.Vanished).
 			Dur("wait_duration", res.WaitDuration).
 			Msg("pre-pause freeze did not stop the whole workload; snapshot may capture it running")
+	}
+	if res.Vanished > 0 {
+		// The only record of WHICH cgroups went away. A vanish raises no error and does not
+		// hold back AllFrozen, so a sweep that is otherwise clean logs nothing on either
+		// side of the call and the paths would be lost. Debug because it is routine -- the
+		// fleet sees it on roughly 0.02% of pauses -- and because envd's logger has no level
+		// gate, so Debug ships and is retained exactly like Info.
+		logger.Debug().
+			Int("vanished", res.Vanished).
+			Int("requested", res.Requested).
+			Int("frozen", res.Frozen).
+			Strs("vanished_paths", res.VanishedPaths).
+			Msg("cgroups vanished while the freeze was working on them; counted, not failed")
 	}
 	if res.ScanFailed > 0 {
 		// Not an error, but not silent either: the guest-freeze record is incomplete by this
@@ -454,6 +478,7 @@ func (a *API) PostFreeze(w http.ResponseWriter, r *http.Request, params PostFree
 		Frozen:       &res.Frozen,
 		NotFrozen:    &res.NotFrozen,
 		Failed:       &res.Failed,
+		Vanished:     &res.Vanished,
 		Unobservable: &res.Unobservable,
 		SweepMs:      &sweepMs,
 		WaitMs:       &waitMs,

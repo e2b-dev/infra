@@ -96,9 +96,10 @@ paths:
         what this call caused.
 
         Best-effort by design: a workload that will not quiesce within the budget is
-        reported as unconfirmed rather than failing the call, and cgroups that reject the
-        write are counted in failed, because neither an unfreezable customer task nor a
-        cgroup disappearing mid-sweep may block their pause.
+        reported as unconfirmed rather than failing the call, cgroups that reject the write
+        are counted in failed, and cgroups the guest removed while the sweep was working on
+        them are counted in vanished. None of the three may block a pause, which is why all
+        three are counts in the body rather than an error.
 
         Whether this endpoint waits is the caller's choice, expressed by supplying
         maxWaitMs: see that parameter.
@@ -577,7 +578,10 @@ components:
           description: Cgroups still reading "frozen 0" when the budget expired; their tasks may still be running, so a snapshot taken now can capture a live workload
         failed:
           type: integer
-          description: Cgroups whose freeze write or state read errored (expected for a threaded cgroup, and for one removed mid-sweep)
+          description: Cgroups that errored for a reason that is not simply being gone - the write was refused, or the state could not be read. A cgroup the hierarchy walk discovered that merely went away is counted vanished instead; one of envd's own static cgroups that goes away is counted here, by design
+        vanished:
+          type: integer
+          description: Cgroups the hierarchy walk enumerated that the guest then removed before the sweep finished with them - envd's own static cgroups are excluded and report failed instead. A race rather than a failure, and a claim about the cgroup only - tasks migrated out of it before its removal can still be running. Like failed it spans both phases, so it does not reconcile against requested on its own - one removed during the settle poll was counted in requested, one removed before its write never was
         unobservable:
           type: integer
           description: Cgroups whose freeze state cannot be read because this guest has no cgroup manager; the write was accepted but nothing can be read back, so these are neither frozen nor notFrozen
