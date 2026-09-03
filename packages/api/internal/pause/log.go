@@ -21,6 +21,9 @@ const (
 	SkipReasonAlreadyPaused SkipReason = "already_paused"
 	SkipReasonNotEvictable  SkipReason = "not_evictable"
 	SkipReasonNotFound      SkipReason = "not_found"
+	// SkipReasonStateChanged: the sandbox moved, between the expiry scan and
+	// the removal, into a state pause cannot start from.
+	SkipReasonStateChanged SkipReason = "state_changed"
 )
 
 // fsOnly rides on every pause event so the snapshot kind can be joined to the

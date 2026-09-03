@@ -158,12 +158,14 @@ func (e *Evictor) refreshConcurrencyLimit(ctx context.Context) {
 
 func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	action := sandbox.StateActionKill
-	if sbx.AutoPause {
+	if sbx.AutoPause && canTake(sbx.State, sandbox.StateActionPause) {
 		action = sandbox.StateActionPause
 		pause.LogInitiated(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, sbx.AutoPauseFilesystemOnly)
 	}
 
-	opts := sandbox.RemoveOpts{Action: action, Eviction: true}
+	// The action was chosen from a scanned record. Pin the removal to that
+	// execution so a resume landing in between is refused, not acted on.
+	opts := sandbox.RemoveOpts{Action: action, Eviction: true, ExpectExecutionID: sbx.ExecutionID}
 	switch action {
 	case sandbox.StateActionKill:
 		opts.Reason = sandbox.KillReasonTimeout
@@ -184,12 +186,14 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 			switch {
 			case isNotEvictableError(err):
 				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable, opts.FilesystemOnly)
-			case errors.Is(err, sandbox.ErrNotFound):
+			case isGone(err):
 				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotFound, opts.FilesystemOnly)
+			case isStaleDecision(err, sbx.State):
+				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonStateChanged, opts.FilesystemOnly)
 			default:
 				pause.LogFailure(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, opts.FilesystemOnly, err)
 			}
-		} else if !isKnownEvictionError(err) {
+		} else if !isKnownEvictionError(err, sbx.State) {
 			logger.L().Debug(ctx, "Evicting sandbox failed",
 				zap.Error(err),
 				logger.WithSandboxID(sbx.SandboxID),
@@ -211,10 +215,29 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	}
 }
 
+func canTake(state sandbox.State, action sandbox.StateAction) bool {
+	return state == action.TargetState || sandbox.AllowedTransitions[state][action.TargetState]
+}
+
 func isNotEvictableError(err error) bool {
 	return errors.Is(err, sandbox.ErrEvictionInProgress) || errors.Is(err, sandbox.ErrEvictionNotNeeded)
 }
 
-func isKnownEvictionError(err error) bool {
-	return isNotEvictableError(err) || errors.Is(err, sandbox.ErrNotFound)
+// isGone reports the scanned sandbox is no longer there: removed, or replaced
+// by a new execution under the same ID.
+func isGone(err error) bool {
+	return errors.Is(err, sandbox.ErrNotFound) || errors.Is(err, sandbox.ErrExecutionMismatch)
+}
+
+// isStaleDecision reports a refusal explained by the sandbox moving between
+// the expired-set read and StartRemoving. A refusal from the very state the
+// action was chosen for is a real failure and stays one.
+func isStaleDecision(err error, observed sandbox.State) bool {
+	var transErr *sandbox.InvalidStateTransitionError
+
+	return errors.As(err, &transErr) && transErr.CurrentState != observed
+}
+
+func isKnownEvictionError(err error, observed sandbox.State) bool {
+	return isNotEvictableError(err) || isGone(err) || isStaleDecision(err, observed)
 }

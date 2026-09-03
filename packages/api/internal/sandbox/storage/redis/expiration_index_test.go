@@ -254,6 +254,27 @@ func TestExpiredItems_ReturnsExpiredRunningSandbox(t *testing.T) {
 	require.Equal(t, sbx.ExecutionID, items[0].ExecutionID)
 }
 
+func TestExpiredItems_ResidualKillingAfterStaleCutoff(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+
+	teamID := uuid.New()
+	stale := makeIndexedSandbox(teamID, "sbx-stale-killing", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(-sandboxtypes.StaleCutoff-time.Minute))
+	stale.State = sandboxtypes.StateKilling
+	require.NoError(t, storage.Add(t.Context(), stale))
+
+	young := makeIndexedSandbox(teamID, "sbx-young-killing", uuid.NewString(), time.Now().Add(-time.Hour), time.Now().Add(-time.Minute))
+	young.State = sandboxtypes.StateKilling
+	require.NoError(t, storage.Add(t.Context(), young))
+
+	items, err := storage.ExpiredItems(t.Context())
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, stale.SandboxID, items[0].SandboxID)
+	require.Equal(t, sandboxtypes.StateKilling, items[0].State)
+}
+
 // TestHeal_RestoresMissingMember reproduces the production incident: a
 // sandbox present in team storage but missing from the global expiration
 // index is invisible to the evictor and would live forever.
