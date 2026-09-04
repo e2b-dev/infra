@@ -2,6 +2,10 @@ package redis
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -15,9 +19,10 @@ import (
 )
 
 const (
-	testLockTimeout  = 30 * time.Minute
-	testWaitTimeout  = time.Second
-	testPollInterval = 10 * time.Millisecond
+	testLockTimeout         = 30 * time.Minute
+	testWaitTimeout         = time.Second
+	testPollInterval        = 10 * time.Millisecond
+	testPubSubWakeupTimeout = 135 * time.Millisecond
 )
 
 // testPubSubWakeupTimeout bounds the waiter's Obtain in the test asserting
@@ -30,8 +35,6 @@ const (
 //     succeed via the pub/sub notification: if lock holders stop publishing
 //     release notifications, the test still fails instead of passing via
 //     the polling fallback.
-var testPubSubWakeupTimeout = time.Duration(0.9 * (1 - lockRetryJitter) * float64(lockRetryMinInterval))
-
 func TestStorageLocker_ObtainAfterReleaseNotification(t *testing.T) {
 	t.Parallel()
 
@@ -232,6 +235,362 @@ func TestStorageLocker_IgnoresUnrelatedNotification(t *testing.T) {
 	requireNoErrorFromChannel(t, waiterDone)
 }
 
+func TestStorageLocker_AttemptsImmediatelyBeforeWaiting(t *testing.T) {
+	t.Parallel()
+
+	t.Run("initial success", func(t *testing.T) {
+		t.Parallel()
+
+		client := newRecordingLockClient(nil)
+		locker, subManager := newScriptedStorageLocker(client, time.Hour)
+
+		lock, err := locker.Obtain(t.Context(), "initial-success", testLockTimeout)
+
+		require.NoError(t, err)
+		require.NotNil(t, lock)
+		require.Equal(t, 1, client.callCount())
+		require.Empty(t, subManager.waiters)
+	})
+
+	t.Run("initial attempt", func(t *testing.T) {
+		t.Parallel()
+
+		initialErr := errors.New("initial lock error")
+		client := newRecordingLockClient(initialErr)
+		locker, _ := newScriptedStorageLocker(client, time.Hour)
+
+		_, err := locker.Obtain(t.Context(), "initial", testLockTimeout)
+
+		require.ErrorIs(t, err, initialErr)
+		require.Equal(t, 1, client.callCount())
+	})
+
+	t.Run("post-subscribe recheck", func(t *testing.T) {
+		t.Parallel()
+
+		recheckErr := errors.New("recheck lock error")
+		client := newRecordingLockClient(redislock.ErrNotObtained, recheckErr)
+		locker, subManager := newScriptedStorageLocker(client, time.Hour)
+
+		_, err := locker.Obtain(t.Context(), "recheck", testLockTimeout)
+
+		require.ErrorIs(t, err, recheckErr)
+		require.Equal(t, 2, client.callCount())
+		require.Empty(t, subManager.waiters)
+	})
+
+	t.Run("post-subscribe recheck success", func(t *testing.T) {
+		t.Parallel()
+
+		client := newRecordingLockClient(redislock.ErrNotObtained, nil)
+		locker, subManager := newScriptedStorageLocker(client, time.Hour)
+
+		lock, err := locker.Obtain(t.Context(), "recheck-success", testLockTimeout)
+
+		require.NoError(t, err)
+		require.NotNil(t, lock)
+		require.Equal(t, 2, client.callCount())
+		require.Empty(t, subManager.waiters)
+	})
+}
+
+func TestStorageLocker_NotificationRetryIsDelayedAndCoalesced(t *testing.T) {
+	t.Parallel()
+
+	client := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+	var samples atomic.Int32
+	locker, subManager := newScriptedStorageLockerWithDelay(client, func() time.Duration {
+		samples.Add(1)
+
+		return 120 * time.Millisecond
+	})
+	lockKey := "coalesced-notification"
+	routingKey := getLockRoutingKey(lockKey)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	result := obtainErrorAsync(locker, ctx, lockKey)
+	waitForLockWaiter(t, subManager, routingKey, result)
+	require.Equal(t, 2, client.callCount())
+
+	notifiedAt := time.Now()
+	subManager.dispatch(routingKey)
+	require.Eventually(t, func() bool {
+		return samples.Load() == 1 || client.callCount() >= 3
+	}, testWaitTimeout, time.Millisecond)
+
+	// Notifications that arrive during the pending delay must neither reset
+	// its deadline nor create another acquisition attempt.
+	for range 5 {
+		time.Sleep(5 * time.Millisecond)
+		subManager.dispatch(routingKey)
+	}
+	require.Never(t, func() bool { return client.callCount() >= 3 }, 40*time.Millisecond, time.Millisecond)
+	require.Eventually(t, func() bool { return client.callCount() == 3 }, 250*time.Millisecond, time.Millisecond)
+
+	calls := client.callTimes()
+	require.GreaterOrEqual(t, calls[2].Sub(notifiedAt), 90*time.Millisecond)
+	require.Equal(t, int32(1), samples.Load())
+
+	// Any stale buffered notification was drained before the failed attempt;
+	// it cannot trigger a back-to-back retry.
+	require.Never(t, func() bool { return client.callCount() > 3 }, 60*time.Millisecond, time.Millisecond)
+	require.Equal(t, int32(1), samples.Load())
+
+	// A notification after the stale-signal drain is a new signal. It
+	// preempts the fallback, but still receives a fresh full delay.
+	notifiedAgainAt := time.Now()
+	subManager.dispatch(routingKey)
+	require.Eventually(t, func() bool { return samples.Load() == 2 }, testWaitTimeout, time.Millisecond)
+	require.Never(t, func() bool { return client.callCount() >= 4 }, 40*time.Millisecond, time.Millisecond)
+	require.Eventually(t, func() bool { return client.callCount() == 4 }, 250*time.Millisecond, time.Millisecond)
+	require.GreaterOrEqual(t, client.callTimes()[3].Sub(notifiedAgainAt), 90*time.Millisecond)
+
+	cancel()
+	requireErrorFromChannel(t, result, context.Canceled)
+}
+
+func TestStorageLocker_NotificationDelaysAreIndependent(t *testing.T) {
+	t.Parallel()
+
+	clientA := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+	clientB := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+	var samplesA, samplesB atomic.Int32
+	subManager := newSubscriptionManager(nil, globalStorageNotifyChannel)
+	lockerA := newScriptedStorageLockerWithManager(clientA, subManager, func() time.Duration {
+		samplesA.Add(1)
+
+		return 30 * time.Millisecond
+	})
+	lockerB := newScriptedStorageLockerWithManager(clientB, subManager, func() time.Duration {
+		samplesB.Add(1)
+
+		return 90 * time.Millisecond
+	})
+	lockKey := "independent-notifications"
+	routingKey := getLockRoutingKey(lockKey)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	resultA := obtainErrorAsync(lockerA, ctx, lockKey)
+	resultB := obtainErrorAsync(lockerB, ctx, lockKey)
+	waitForRecordedCalls(t, clientA, 2)
+	waitForRecordedCalls(t, clientB, 2)
+	waitForRegisteredWaiters(t, subManager, routingKey, 2)
+
+	notifiedAt := time.Now()
+	subManager.dispatch(routingKey)
+	waitForRecordedCalls(t, clientA, 3)
+	waitForRecordedCalls(t, clientB, 3)
+
+	delayA := clientA.callTimes()[2].Sub(notifiedAt)
+	delayB := clientB.callTimes()[2].Sub(notifiedAt)
+	require.GreaterOrEqual(t, delayA, 20*time.Millisecond)
+	require.GreaterOrEqual(t, delayB, 70*time.Millisecond)
+	require.Less(t, delayA, delayB)
+	require.Equal(t, int32(1), samplesA.Load())
+	require.Equal(t, int32(1), samplesB.Load())
+
+	cancel()
+	requireErrorFromChannel(t, resultA, context.Canceled)
+	requireErrorFromChannel(t, resultB, context.Canceled)
+}
+
+func TestStorageLocker_NotificationRetryPreservesFallbackBase(t *testing.T) {
+	t.Parallel()
+
+	client := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+	locker, subManager := newScriptedStorageLocker(client, 5*time.Millisecond)
+	lockKey := "notification-fallback-base"
+	routingKey := getLockRoutingKey(lockKey)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	result := obtainErrorAsync(locker, ctx, lockKey)
+	waitForLockWaiter(t, subManager, routingKey, result)
+	subManager.dispatch(routingKey)
+	waitForRecordedCalls(t, client, 3)
+	waitForRecordedCalls(t, client, 4)
+
+	calls := client.callTimes()
+	// The failed notification attempt rearms the original 200ms fallback.
+	// Advancing to 400ms here would have a minimum jittered delay of 300ms.
+	require.Less(t, calls[3].Sub(calls[2]), 300*time.Millisecond)
+
+	cancel()
+	requireErrorFromChannel(t, result, context.Canceled)
+}
+
+func TestStorageLocker_FallbackRetainsDoublingAndCap(t *testing.T) {
+	t.Parallel()
+
+	client := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+	locker, _ := newScriptedStorageLocker(client, time.Hour)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	result := obtainErrorAsync(locker, ctx, "fallback-backoff")
+	waitForRecordedCalls(t, client, 6)
+	cancel()
+	requireErrorFromChannel(t, result, context.Canceled)
+
+	calls := client.callTimes()
+	bases := []time.Duration{
+		lockRetryMinInterval,
+		2 * lockRetryMinInterval,
+		4 * lockRetryMinInterval,
+		lockRetryMaxInterval,
+	}
+	for i, base := range bases {
+		interval := calls[i+2].Sub(calls[i+1])
+		minDelay := time.Duration(float64(base)*(1-lockRetryJitter)) - 25*time.Millisecond
+		maxDelay := time.Duration(float64(base)*(1+lockRetryJitter)) + 250*time.Millisecond
+		require.GreaterOrEqual(t, interval, minDelay, "fallback interval %d", i)
+		require.LessOrEqual(t, interval, maxDelay, "fallback interval %d", i)
+	}
+}
+
+func TestStorageLocker_NotificationDelayHonorsCancellationAndDeadline(t *testing.T) {
+	t.Parallel()
+
+	t.Run("cancellation", func(t *testing.T) {
+		t.Parallel()
+
+		client := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+		locker, subManager := newScriptedStorageLocker(client, time.Hour)
+		lockKey := "notification-cancellation"
+
+		ctx, cancel := context.WithCancel(t.Context())
+		result := obtainErrorAsync(locker, ctx, lockKey)
+		waitForLockWaiter(t, subManager, getLockRoutingKey(lockKey), result)
+		subManager.dispatch(getLockRoutingKey(lockKey))
+		cancel()
+
+		requireErrorFromChannel(t, result, context.Canceled)
+		require.Equal(t, 2, client.callCount())
+	})
+
+	t.Run("original deadline", func(t *testing.T) {
+		t.Parallel()
+
+		client := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+		locker, subManager := newScriptedStorageLocker(client, time.Hour)
+		lockKey := "notification-deadline"
+
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+		result := obtainErrorAsync(locker, ctx, lockKey)
+		waitForLockWaiter(t, subManager, getLockRoutingKey(lockKey), result)
+		subManager.dispatch(getLockRoutingKey(lockKey))
+
+		requireErrorFromChannel(t, result, context.DeadlineExceeded)
+		require.Equal(t, 2, client.callCount())
+	})
+}
+
+func TestStorageLocker_PropagatesPostNotificationError(t *testing.T) {
+	t.Parallel()
+
+	lockErr := errors.New("notification lock error")
+	client := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained, lockErr)
+	locker, subManager := newScriptedStorageLocker(client, 5*time.Millisecond)
+	lockKey := "post-notification-error"
+	result := obtainErrorAsync(locker, t.Context(), lockKey)
+	waitForLockWaiter(t, subManager, getLockRoutingKey(lockKey), result)
+
+	subManager.dispatch(getLockRoutingKey(lockKey))
+	requireErrorFromChannel(t, result, lockErr)
+	require.Equal(t, 3, client.callCount())
+}
+
+func TestStorageLocker_IgnoresUnrelatedNotificationWithoutRedis(t *testing.T) {
+	t.Parallel()
+
+	client := newRecordingLockClient(redislock.ErrNotObtained, redislock.ErrNotObtained)
+	var samples atomic.Int32
+	locker, subManager := newScriptedStorageLockerWithDelay(client, func() time.Duration {
+		samples.Add(1)
+
+		return 5 * time.Millisecond
+	})
+	lockKey := "related-notification"
+
+	ctx, cancel := context.WithCancel(t.Context())
+	result := obtainErrorAsync(locker, ctx, lockKey)
+	waitForLockWaiter(t, subManager, getLockRoutingKey(lockKey), result)
+	subManager.dispatch(getLockRoutingKey("unrelated-notification"))
+
+	require.Never(t, func() bool {
+		return samples.Load() != 0 || client.callCount() != 2
+	}, 50*time.Millisecond, time.Millisecond)
+
+	cancel()
+	requireErrorFromChannel(t, result, context.Canceled)
+}
+
+func TestStorageLocker_ConcurrentWaitersRemainExclusive(t *testing.T) {
+	t.Parallel()
+
+	const waiterCount = 32
+
+	locker, subManager := setupTestLocker(t, true)
+	lockKey := redis_utils.GetLockKey(getSandboxKey(uuid.NewString(), "concurrent-waiters"))
+	routingKey := getLockRoutingKey(lockKey)
+	incumbent, err := locker.Obtain(t.Context(), lockKey, testLockTimeout)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Second)
+	defer cancel()
+	results := make(chan error, waiterCount)
+	entries := make([]atomic.Int32, waiterCount)
+	var active, maxActive atomic.Int32
+	for i := range waiterCount {
+		go func() {
+			lock, obtainErr := locker.Obtain(ctx, lockKey, testLockTimeout)
+			if obtainErr != nil {
+				results <- obtainErr
+
+				return
+			}
+
+			entries[i].Add(1)
+			current := active.Add(1)
+			for {
+				observed := maxActive.Load()
+				if current <= observed || maxActive.CompareAndSwap(observed, current) {
+					break
+				}
+			}
+			time.Sleep(2 * time.Millisecond)
+			active.Add(-1)
+			results <- lock.Release(context.WithoutCancel(ctx))
+		}()
+	}
+
+	waitForRegisteredWaiters(t, subManager, routingKey, waiterCount)
+	require.NoError(t, incumbent.Release(context.WithoutCancel(t.Context())))
+	for range waiterCount {
+		select {
+		case resultErr := <-results:
+			require.NoError(t, resultErr)
+		case <-ctx.Done():
+			require.FailNow(t, "concurrent lock waiters did not complete", "err: %v", ctx.Err())
+		}
+	}
+
+	require.Equal(t, int32(1), maxActive.Load())
+	require.Zero(t, active.Load())
+	for i := range waiterCount {
+		require.Equal(t, int32(1), entries[i].Load(), "waiter %d critical-section entries", i)
+	}
+}
+
+func TestLockNotificationRetryDelayStaysWithinConfiguredRange(t *testing.T) {
+	t.Parallel()
+
+	for range 10_000 {
+		delay := sampleLockNotificationRetryDelay()
+		require.GreaterOrEqual(t, delay, lockNotificationRetryMinDelay)
+		require.Less(t, delay, lockNotificationRetryMaxDelay)
+	}
+}
+
 func TestJitterBackoffStaysWithinConfiguredRange(t *testing.T) {
 	t.Parallel()
 
@@ -268,6 +627,93 @@ func setupTestLocker(t *testing.T, startSubManager bool) (*storageLocker, *subsc
 	return newStorageLocker(redisClient, subManager, pub), subManager
 }
 
+type recordingLockClient struct {
+	mu      sync.Mutex
+	results []error
+	calls   []time.Time
+}
+
+func newRecordingLockClient(results ...error) *recordingLockClient {
+	return &recordingLockClient{results: results}
+}
+
+func (c *recordingLockClient) Obtain(context.Context, string, time.Duration, *redislock.Options) (*redislock.Lock, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	call := len(c.calls)
+	c.calls = append(c.calls, time.Now())
+	if call < len(c.results) {
+		return nil, c.results[call]
+	}
+
+	return nil, redislock.ErrNotObtained
+}
+
+func (c *recordingLockClient) callCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return len(c.calls)
+}
+
+func (c *recordingLockClient) callTimes() []time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	return append([]time.Time(nil), c.calls...)
+}
+
+func newScriptedStorageLocker(client lockObtainer, delay time.Duration) (*storageLocker, *subscriptionManager) {
+	return newScriptedStorageLockerWithDelay(client, func() time.Duration { return delay })
+}
+
+func newScriptedStorageLockerWithDelay(client lockObtainer, delay func() time.Duration) (*storageLocker, *subscriptionManager) {
+	subManager := newSubscriptionManager(nil, globalStorageNotifyChannel)
+
+	return newScriptedStorageLockerWithManager(client, subManager, delay), subManager
+}
+
+func newScriptedStorageLockerWithManager(client lockObtainer, subManager *subscriptionManager, delay func() time.Duration) *storageLocker {
+	return &storageLocker{
+		client: client,
+		option: &redislock.Options{
+			RetryStrategy: redislock.NoRetry(),
+		},
+		subManager:             subManager,
+		notificationRetryDelay: delay,
+	}
+}
+
+func obtainErrorAsync(locker *storageLocker, ctx context.Context, lockKey string) <-chan error {
+	result := make(chan error, 1)
+	go func() {
+		_, err := locker.Obtain(ctx, lockKey, testLockTimeout)
+		result <- err
+	}()
+
+	return result
+}
+
+func waitForRecordedCalls(t *testing.T, client *recordingLockClient, expected int) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		return client.callCount() >= expected
+	}, 5*time.Second, time.Millisecond, "lock client did not receive %d calls", expected)
+}
+
+func waitForRegisteredWaiters(t *testing.T, subManager *subscriptionManager, routingKey string, expected int) {
+	t.Helper()
+
+	require.Eventually(t, func() bool {
+		subManager.mu.RLock()
+		defer subManager.mu.RUnlock()
+
+		return len(subManager.waiters[routingKey]) == expected
+	}, 5*time.Second, time.Millisecond, "expected %d registered lock waiters", expected)
+}
+
 func waitForLockWaiter(t *testing.T, subManager *subscriptionManager, routingKey string, waiterDone <-chan error) {
 	t.Helper()
 
@@ -299,6 +745,17 @@ func requireNoErrorFromChannel(t *testing.T, ch <-chan error) {
 		}
 	}, testWaitTimeout, testPollInterval, "operation did not complete")
 	require.NoError(t, err)
+}
+
+func requireErrorFromChannel(t *testing.T, ch <-chan error, expected error) {
+	t.Helper()
+
+	select {
+	case err := <-ch:
+		require.ErrorIs(t, err, expected)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, fmt.Sprintf("operation did not return %v", expected))
+	}
 }
 
 func requirePubSubPayload(t *testing.T, pubsub *goredis.PubSub, expected string) {
