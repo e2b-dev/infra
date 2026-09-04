@@ -981,7 +981,6 @@ components:
           description: Automatically pauses the sandbox after the timeout
         memory:
           type: boolean
-          x-not-implemented: true
           description: >-
             Defaults to true. When false, resume from disk state only: the sandbox cold-boots fresh and
             any memory in the snapshot is ignored, never modified or deleted. Disk
@@ -1002,7 +1001,6 @@ components:
           minimum: 0
         memory:
           type: boolean
-          x-not-implemented: true
           description: >-
             Defaults to true. When false and the sandbox is paused, resume from disk state only: the
             sandbox cold-boots fresh and any memory in the snapshot is ignored, never
