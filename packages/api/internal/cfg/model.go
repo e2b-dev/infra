@@ -47,8 +47,10 @@ type Config struct {
 	ClickhouseConnectionStrings []string `env:"CLICKHOUSE_CONNECTION_STRINGS" envSeparator:";"`
 
 	LokiPassword string `env:"LOKI_PASSWORD"`
-	LokiURL      string `env:"LOKI_URL,required"`
-	LokiUser     string `env:"LOKI_USER"`
+	// LokiURL is optional: without it the api has no Loki client, and sandbox
+	// and build log reads must be routed to ClickHouse by logs-read-config.
+	LokiURL  string `env:"LOKI_URL"`
+	LokiUser string `env:"LOKI_USER"`
 
 	// ServiceDiscoveryProvider selects how the API discovers orchestrator and
 	// template-manager instances. Left unset it is nomad, except in a local

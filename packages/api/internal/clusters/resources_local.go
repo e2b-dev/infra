@@ -2,6 +2,7 @@ package clusters
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -85,6 +86,11 @@ func newLocalClusterResourceProvider(
 		instances:                   instances,
 	}
 }
+
+// errNoLogStore is the error of a read that did not route to ClickHouse on an
+// api started without LOKI_URL: there is nothing to read from until
+// logs-read-config is on and a ClickHouse reader is configured.
+var errNoLogStore = errors.New("no log store for this read: LOKI_URL is unset and the read did not route to ClickHouse (logs-read-config off, or no CLICKHOUSE_CONNECTION_STRING to read from)")
 
 // readFromClickhouse reports whether log reads should hit ClickHouse. It is
 // true only when the logs-read-config flag is enabled AND a ClickHouse reader
@@ -203,7 +209,8 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		raw []logs.LogEntry
 		err error
 	)
-	if l.readFromClickhouse(ctx) {
+	switch {
+	case l.readFromClickhouse(ctx):
 		teamUUID, parseErr := uuid.Parse(teamID)
 		if parseErr != nil {
 			return api.SandboxLogs{}, &api.APIError{
@@ -217,7 +224,9 @@ func (l *LocalClusterResourceProvider) GetSandboxLogs(ctx context.Context, teamI
 		if err != nil {
 			recordClickhouseLogReadError(ctx, "sandbox")
 		}
-	} else {
+	case l.queryLogsProvider == nil:
+		err = errNoLogStore
+	default:
 		raw, err = l.queryLogsProvider.QuerySandboxLogs(ctx, teamID, sandboxID, start, end, limit, apiLogDirectionToLokiProtoDirection(qDirection), level, search)
 	}
 	if err != nil {
@@ -291,6 +300,14 @@ func (l *LocalClusterResourceProvider) logsFromClickhouse(ctx context.Context, t
 
 func (l *LocalClusterResourceProvider) logsFromLocalLoki(ctx context.Context, templateID string, buildID string, start time.Time, end time.Time, limit int, offset int32, level *logs.LogLevel, direction logproto.Direction) logSourceFunc {
 	return func() ([]logs.LogEntry, *api.APIError) {
+		if l.queryLogsProvider == nil {
+			return nil, &api.APIError{
+				Err:       errNoLogStore,
+				ClientMsg: "Failed to fetch build logs",
+				Code:      http.StatusInternalServerError,
+			}
+		}
+
 		entries, err := l.queryLogsProvider.QueryBuildLogs(ctx, templateID, buildID, start, end, limit, offset, level, direction)
 		if err != nil {
 			return nil, &api.APIError{

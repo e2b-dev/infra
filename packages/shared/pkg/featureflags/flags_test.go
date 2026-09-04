@@ -184,3 +184,28 @@ func TestResolveFirecrackerVersion_MetricAttributes(t *testing.T) {
 		assert.True(t, found[i], "no datapoint with exactly %v", w.Encoded(attribute.DefaultEncoder()))
 	}
 }
+
+func TestParseLogsReadConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		raw  string
+		want bool
+	}{
+		{raw: "", want: false},
+		{raw: "true", want: true},
+		{raw: "1", want: true},
+		{raw: " TRUE ", want: true},
+		{raw: "false", want: false},
+		{raw: "yes", want: false},
+		{raw: "clickhouse", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run("LOGS_READ_CONFIG="+tt.raw, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tt.want, parseLogsReadConfig(tt.raw))
+		})
+	}
+}

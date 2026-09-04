@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -816,9 +817,24 @@ var (
 var LogsWriteConfigFlag = NewJSONFlag("logs-write-config", ldvalue.Null())
 
 // LogsReadConfigFlag selects the backend used to read sandbox/build logs.
-// false (default) reads from Loki (unchanged behavior); true reads from the
-// ClickHouse sandbox_logs table.
-var LogsReadConfigFlag = NewBoolFlag("logs-read-config", false)
+// false reads from Loki (unchanged behavior); true reads from the ClickHouse
+// sandbox_logs table. The fallback comes from LOGS_READ_CONFIG and defaults to
+// false, so a deployment without LaunchDarkly, or one whose LaunchDarkly has
+// no value for the flag, reads where the variable says; a LaunchDarkly value
+// wins when there is one.
+var LogsReadConfigFlag = NewBoolFlag("logs-read-config", logsReadConfigFallback())
+
+// logsReadConfigFallback reads LOGS_READ_CONFIG. Unset or unparseable means
+// false, the way envdTimeoutFallbackMs treats ENVD_TIMEOUT.
+func logsReadConfigFallback() bool {
+	return parseLogsReadConfig(os.Getenv("LOGS_READ_CONFIG"))
+}
+
+func parseLogsReadConfig(raw string) bool {
+	value, err := strconv.ParseBool(strings.TrimSpace(raw))
+
+	return err == nil && value
+}
 
 // Log write routing modes for LogsWriteConfigFlag.
 const (

@@ -146,9 +146,12 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
 - **Extra listeners**: internal gRPC :5009 and edge gRPC :5109 expose `ResumeSandbox` so
   client-proxy can wake paused sandboxes on incoming traffic.
 - Reads ClickHouse for sandbox/team metrics endpoints. Sandbox and template-build logs default to
-  Loki, with a LaunchDarkly-gated ClickHouse read path for local-cluster logs during the log
-  storage migration. LaunchDarkly feature flags also gate placement parameters, rate limits, and
-  rollouts.
+  Loki, with a LaunchDarkly-gated ClickHouse read path (`logs-read-config`) for local-cluster logs
+  during the log storage migration. `LOKI_URL` is optional: without it the api has no Loki client
+  and those reads fail until the flag routes them to ClickHouse. `LOGS_READ_CONFIG=true|false` sets
+  the value the flag falls back to when LaunchDarkly has none (no LaunchDarkly, or the flag not
+  defined there); a LaunchDarkly value wins. LaunchDarkly feature flags also gate placement
+  parameters, rate limits, and rollouts.
 
 ### Orchestrator (`packages/orchestrator`)
 
@@ -538,7 +541,9 @@ flowchart TB
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
   and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
   select a primary collector and shadow collectors, and local-cluster log reads can be switched to
-  ClickHouse with `logs-read-config` after `sandbox_logs` is populated.
+  ClickHouse with `logs-read-config` after `sandbox_logs` is populated (`LOGS_READ_CONFIG` is the
+  flag's fallback where LaunchDarkly has no value). Once reads are on ClickHouse, Loki can be left
+  out of a deployment and the api started without `LOKI_URL`.
 
 ## Repository layout
 

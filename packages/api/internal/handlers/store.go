@@ -292,9 +292,18 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing service discovery", zap.Error(err))
 	}
 
-	queryLogsProvider, err := loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
-	if err != nil {
-		logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
+	if err := noLogStoreError(config.LokiURL, config.ClickhouseConnectionString); err != nil {
+		logger.L().Fatal(ctx, "no log store configured", zap.Error(err))
+	}
+
+	var queryLogsProvider *loki.LokiQueryProvider
+	if config.LokiURL == "" {
+		logger.L().Warn(ctx, "LOKI_URL is not set: sandbox and build log reads need logs-read-config on (ClickHouse) or they fail")
+	} else {
+		queryLogsProvider, err = loki.NewLokiQueryProvider(config.LokiURL, config.LokiUser, config.LokiPassword)
+		if err != nil {
+			logger.L().Fatal(ctx, "error when getting logs query provider", zap.Error(err))
+		}
 	}
 
 	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, sd.templateBuilders, clickhouseStore, queryLogsProvider, clusterLogsReader, featureFlags, config)
