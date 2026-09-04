@@ -469,6 +469,17 @@ components:
           type: string
           format: uuid
 
+    AdminTeamBlockRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: Shown to the team as the reason it is blocked.
+
     AdminTeamClusterAssignmentRequest:
       type: object
       required:
@@ -1849,6 +1860,90 @@ paths:
           $ref: "#/components/responses/409"
         "412":
           $ref: "#/components/responses/412"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/ban:
+    put:
+      summary: Ban a team
+      description: Marks the team as banned so its API keys stop authenticating. Idempotent; running workloads are not touched.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "204":
+          description: Team banned.
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      summary: Unban a team
+      description: Clears the team's ban. Idempotent.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "204":
+          description: Team unbanned.
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/block:
+    put:
+      summary: Block a team
+      description: Marks the team as blocked with the given reason, so it can no longer start sandboxes or builds. Idempotent; a repeated call replaces the reason.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamBlockRequest"
+      responses:
+        "204":
+          description: Team blocked.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "500":
+          $ref: "#/components/responses/500"
+    delete:
+      summary: Unblock a team
+      description: Clears the team's block and its recorded reason. Idempotent.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "204":
+          description: Team unblocked.
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 
