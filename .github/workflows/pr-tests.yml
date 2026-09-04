@@ -61,6 +61,13 @@ jobs:
             test_path: ./...
             sudo: true
             runner: blacksmith-4vcpu-ubuntu-2404
+          # The database seed: the key-resolution table and one Postgres-backed
+          # run through testcontainers.
+          - package: packages/local-dev
+            flag: unit-local-dev
+            test_path: ./...
+            sudo: false
+            runner: blacksmith-4vcpu-ubuntu-2404
           # The one shard whose code carries cross-goroutine ownership
           # invariants (network slot pool, netns state) — race-checked.
           - package: packages/orchestrator
