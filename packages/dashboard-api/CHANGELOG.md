@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.0 (2026-09-04)
+
+
+### Features
+
+* **dashboard-api:** add admin team ban and block endpoints (1775916)
+
 ## 0.5.0 (2026-09-02)
 
 
