@@ -290,7 +290,7 @@ planes today.
 |---|---|---|
 | **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
-| **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
+| **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, optionally `sandbox_logs` during the log migration, and `service_logs` (internal platform-service logs written by the OTel collectors' ClickHouse exporter where enabled, 30-day TTL; deliberately separate from the customer-facing `sandbox_logs`). Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |
 
 A template and a paused-sandbox snapshot have the **same artifact shape** — a snapshot is just a
@@ -526,7 +526,8 @@ flowchart TB
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
   and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
   select a primary collector and shadow collectors, and local-cluster log reads can be switched to
-  ClickHouse with `logs-read-config` after `sandbox_logs` is populated.
+  ClickHouse with `logs-read-config` after `sandbox_logs` is populated. Where enabled, the
+  collectors additionally export internal service logs to the ClickHouse `service_logs` table.
 
 ## Repository layout
 
