@@ -24,7 +24,7 @@ const (
 var (
 	teamID         = uuid.MustParse("0b8a3ded-4489-4722-afd1-1d82e64ec2d5")
 	teamTokenValue = "53ae1fed82754c17ad8077fbc8bcdd90"
-	userID         = uuid.MustParse("fb69f46f-eb51-4a87-a14e-306f7a3fd89c")
+	defaultUserID  = uuid.MustParse("fb69f46f-eb51-4a87-a14e-306f7a3fd89c")
 )
 
 func main() {
@@ -36,6 +36,15 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+	userID := defaultUserID
+	if raw := strings.TrimSpace(os.Getenv("SEED_USER_ID")); raw != "" {
+		var err error
+		userID, err = uuid.Parse(raw)
+		if err != nil || userID == uuid.Nil {
+			return errors.New("SEED_USER_ID must be a nonzero UUID")
+		}
+	}
+
 	connectionString := os.Getenv("POSTGRES_CONNECTION_STRING")
 
 	if connectionString == "" {
@@ -59,7 +68,7 @@ func run(ctx context.Context) error {
 	defer authDb.Close()
 
 	// create user
-	if err := upsertUser(ctx, authDb); err != nil {
+	if err := upsertUser(ctx, authDb, userID); err != nil {
 		return fmt.Errorf("failed to upsert user: %w", err)
 	}
 
@@ -69,16 +78,16 @@ func run(ctx context.Context) error {
 		return fmt.Errorf("failed to upsert team: %w", err)
 	}
 
-	if err = ensureUserIsOnTeam(ctx, authDb, teamID); err != nil {
+	if err = ensureUserIsOnTeam(ctx, authDb, userID, teamID); err != nil {
 		return fmt.Errorf("failed to ensure user is on team: %w", err)
 	}
 
-	if err = upsertUserIdentity(ctx, authDb, oidcIssuer, oidcSubject); err != nil {
+	if err = upsertUserIdentity(ctx, authDb, userID, oidcIssuer, oidcSubject); err != nil {
 		return fmt.Errorf("failed to upsert user identity: %w", err)
 	}
 
 	// create team token
-	if err = upsertTeamAPIKey(ctx, authDb, teamID, keys.ApiKeyPrefix, teamTokenValue); err != nil {
+	if err = upsertTeamAPIKey(ctx, authDb, userID, teamID, keys.ApiKeyPrefix, teamTokenValue); err != nil {
 		return fmt.Errorf("failed to upsert token: %w", err)
 	}
 
@@ -90,7 +99,7 @@ func run(ctx context.Context) error {
 	return nil
 }
 
-func upsertTeamAPIKey(ctx context.Context, db *authdb.Client, teamID uuid.UUID, tokenPrefix, token string) error {
+func upsertTeamAPIKey(ctx context.Context, db *authdb.Client, userID, teamID uuid.UUID, tokenPrefix, token string) error {
 	tokenHash, tokenMask, err := createTokenHash(tokenPrefix, token)
 	if err != nil {
 		return fmt.Errorf("failed to create token hash: %w", err)
@@ -112,7 +121,7 @@ func upsertTeamAPIKey(ctx context.Context, db *authdb.Client, teamID uuid.UUID, 
 	return nil
 }
 
-func upsertUserIdentity(ctx context.Context, db *authdb.Client, oidcIssuer, oidcSubject string) error {
+func upsertUserIdentity(ctx context.Context, db *authdb.Client, userID uuid.UUID, oidcIssuer, oidcSubject string) error {
 	if _, err := db.UpsertPublicIdentity(ctx, authqueries.UpsertPublicIdentityParams{
 		OidcIss: oidcIssuer,
 		OidcSub: oidcSubject,
@@ -124,20 +133,13 @@ func upsertUserIdentity(ctx context.Context, db *authdb.Client, oidcIssuer, oidc
 	return nil
 }
 
-func ensureUserIsOnTeam(ctx context.Context, db *authdb.Client, teamID uuid.UUID) error {
+func ensureUserIsOnTeam(ctx context.Context, db *authdb.Client, userID, teamID uuid.UUID) error {
 	if err := db.TestsRawSQL(ctx, `
 INSERT INTO users_teams (user_id, team_id, is_default)
-VALUES ($1, $2, $3)
-ON CONFLICT DO NOTHING;`, userID, teamID, true); err != nil {
+VALUES ($1, $2, NOT EXISTS (SELECT 1 FROM users_teams WHERE user_id = $1 AND is_default))
+ON CONFLICT (team_id, user_id) DO UPDATE
+SET is_default = users_teams.is_default OR EXCLUDED.is_default;`, userID, teamID); err != nil {
 		return fmt.Errorf("failed to add user to team: %w", err)
-	}
-
-	if err := db.TestsRawSQL(ctx, `
-UPDATE users_teams 
-SET is_default = CASE WHEN team_id = $2 THEN true ELSE false END 
-WHERE user_id = $1
-`, userID, teamID); err != nil {
-		return fmt.Errorf("failed to set test team as default: %w", err)
 	}
 
 	return nil
@@ -172,7 +174,7 @@ ON CONFLICT (id) DO UPDATE SET
 	return teamID, nil
 }
 
-func upsertUser(ctx context.Context, db *authdb.Client) error {
+func upsertUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) error {
 	err := db.TestsRawSQL(ctx, `
 INSERT INTO auth.users (id, email)
 VALUES ($1, $2)

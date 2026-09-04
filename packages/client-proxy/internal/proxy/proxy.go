@@ -26,8 +26,6 @@ import (
 )
 
 const (
-	orchestratorProxyPort = 5007 // orchestrator proxy port
-
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to a value higher than the idle timeout of the backend service
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -135,7 +133,7 @@ func handlePausedSandbox(
 	return nodeIP, autoResumeSucceeded, nil
 }
 
-func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
+func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port, orchestratorProxyPort uint16, catalog catalog.SandboxesCatalog, pausedSandboxResumer PausedSandboxResumer, featureFlagsClient *featureflags.Client) (*reverseproxy.Proxy, error) {
 	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
 	proxy := reverseproxy.New(
 		port,
@@ -187,7 +185,7 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			url := &url.URL{
 				Scheme: "http",
-				Host:   net.JoinHostPort(nodeIP, strconv.Itoa(orchestratorProxyPort)),
+				Host:   net.JoinHostPort(nodeIP, strconv.Itoa(int(orchestratorProxyPort))),
 			}
 
 			l = l.With(

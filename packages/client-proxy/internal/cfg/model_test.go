@@ -9,6 +9,7 @@ import (
 func TestParse_Defaults(t *testing.T) {
 	t.Setenv("HEALTH_PORT", "")
 	t.Setenv("PROXY_PORT", "")
+	t.Setenv("ORCHESTRATOR_PROXY_PORT", "")
 	t.Setenv("REDIS_URL", "")
 	t.Setenv("REDIS_CLUSTER_URL", "")
 	t.Setenv("REDIS_TLS_CA_BASE64", "")
@@ -23,6 +24,7 @@ func TestParse_Defaults(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 3003, cfg.HealthPort)
 	require.EqualValues(t, 3002, cfg.ProxyPort)
+	require.EqualValues(t, 5007, cfg.OrchestratorProxyPort)
 	require.Equal(t, 40, cfg.RedisPoolSize)
 	require.Empty(t, cfg.RedisURL)
 	require.Empty(t, cfg.RedisClusterURL)
@@ -37,6 +39,7 @@ func TestParse_Defaults(t *testing.T) {
 func TestParse_OverridesFromEnv(t *testing.T) {
 	t.Setenv("HEALTH_PORT", "9001")
 	t.Setenv("PROXY_PORT", "9002")
+	t.Setenv("ORCHESTRATOR_PROXY_PORT", "25007")
 	t.Setenv("REDIS_URL", "redis://localhost:6379")
 	t.Setenv("REDIS_CLUSTER_URL", "redis://cluster:6379")
 	t.Setenv("REDIS_TLS_CA_BASE64", "Y2EtZGF0YQ==")
@@ -51,6 +54,7 @@ func TestParse_OverridesFromEnv(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 9001, cfg.HealthPort)
 	require.EqualValues(t, 9002, cfg.ProxyPort)
+	require.EqualValues(t, 25007, cfg.OrchestratorProxyPort)
 	require.Equal(t, "redis://localhost:6379", cfg.RedisURL)
 	require.Equal(t, "redis://cluster:6379", cfg.RedisClusterURL)
 	require.Equal(t, "Y2EtZGF0YQ==", cfg.RedisTLSCABase64)
@@ -67,4 +71,14 @@ func TestParse_InvalidIntegerReturnsError(t *testing.T) {
 
 	_, err := Parse()
 	require.Error(t, err)
+}
+
+func TestParse_InvalidOrchestratorPortReturnsError(t *testing.T) {
+	for _, value := range []string{"0", "-1", "65536", "invalid"} {
+		t.Run(value, func(t *testing.T) {
+			t.Setenv("ORCHESTRATOR_PROXY_PORT", value)
+			_, err := Parse()
+			require.Error(t, err)
+		})
+	}
 }

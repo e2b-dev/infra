@@ -164,6 +164,7 @@ func run() int {
 		tel.MeterProvider,
 		serviceName,
 		config.ProxyPort,
+		config.OrchestratorProxyPort,
 		catalog,
 		pausedSandboxResumer,
 		featureFlagsClient,

@@ -227,7 +227,8 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
 The stateless edge for all sandbox traffic (port 3002; health on 3003). Terminates
 `https://<port>-<sandboxID>.<domain>` requests (host parsing in `packages/shared/pkg/proxy/host.go`),
 looks the sandbox up in the Redis routing catalog to find the owning node, and reverse-proxies to
-that node's orchestrator proxy on :5007. If the sandbox is not in the catalog (paused), it calls
+that node's orchestrator proxy on :5007 by default. `ORCHESTRATOR_PROXY_PORT` selects a
+different downstream port when the node proxy listens elsewhere. If the sandbox is not in the catalog (paused), it calls
 the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparently on traffic.
 
 ### Dashboard API (`packages/dashboard-api`)
