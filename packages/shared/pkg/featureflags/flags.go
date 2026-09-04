@@ -1138,12 +1138,27 @@ func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion str
 // (not_staged from a bad SHA, getversion_failed, a refused downgrade).
 func ResolveEnvdUpgrade(
 	ctx context.Context,
-	ff *Client,
+	target string,
 	builtWithVersion string,
 	hostEnvdPath string,
 	getVersion func(context.Context, string) (string, error),
 ) (path, version, reason string) {
-	return resolveEnvdUpgradePath(ctx, ff.StringFlag(ctx, EnvdUpgradeTargetFlag), builtWithVersion, hostEnvdPath, getVersion)
+	return resolveEnvdUpgradePath(ctx, target, builtWithVersion, hostEnvdPath, getVersion)
+}
+
+// EnvdUpgradeTarget reads the live-upgrade target flag. Split from ResolveEnvdUpgrade so a
+// caller can test the cheap, in-memory gates before the resolver stats up to three paths and
+// execs the candidate binary for its version — work a resume that is going to be gated
+// anyway should not pay for.
+func EnvdUpgradeTarget(ctx context.Context, ff *Client) string {
+	return ff.StringFlag(ctx, EnvdUpgradeTargetFlag)
+}
+
+// EnvdUpgradeTargetDisabled reports whether a target value names no target at all. One
+// definition, shared with the resolver, so an early-out at the call site and the resolver's
+// own "off" answer cannot disagree about which values mean disabled.
+func EnvdUpgradeTargetDisabled(target string) bool {
+	return target == "" || target == envdUpgradeTargetOff
 }
 
 // ResolveEnvdOfflineUpgrade is the offline-swap analog of ResolveEnvdUpgrade
@@ -1175,6 +1190,9 @@ func ResolveEnvdOfflineUpgrade(
 // candidate path.
 var envdUpgradeTargetRe = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9.-]*$`)
 
+// envdUpgradeTargetOff is the flag value that names no target.
+const envdUpgradeTargetOff = "off"
+
 func resolveEnvdUpgradePath(
 	ctx context.Context,
 	target string,
@@ -1183,9 +1201,10 @@ func resolveEnvdUpgradePath(
 	getVersion func(context.Context, string) (string, error),
 ) (path, version, reason string) {
 	var candidate string
-	switch target {
-	case "", "off":
+	if EnvdUpgradeTargetDisabled(target) {
 		return "", "", "off"
+	}
+	switch target {
 	case "promoted":
 		candidate = hostEnvdPath
 	default:

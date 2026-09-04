@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ioutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
@@ -60,6 +61,37 @@ type Context struct {
 	User    string            `json:"user,omitempty"`
 	WorkDir *string           `json:"workdir,omitempty"`
 	EnvVars map[string]string `json:"env_vars,omitempty"`
+}
+
+// EnvdDefaultUser reports the DefaultUser this template's build sent to envd's /init, and
+// whether the metadata can establish it at all.
+//
+// Only one recorded value can be established, and the reason is that determinacy here is a
+// property of the build's TEMPLATE VERSION while the metadata records a USER:
+//
+//   - finalize sends Context.User for a build at or above TemplateV2ReleaseVersion, and a
+//     flat ("user", nil) for anything below it, discarding whatever was recorded.
+//   - Context.User is written by three things at three different gates: the base phase
+//     stamps "root" unconditionally for every from-image build; the USER phase overwrites
+//     it with "user", gated on that same version; and a user-authored USER step overwrites
+//     it with any name at ANY version, because only the USER phase is gated and the step
+//     builders are appended unconditionally.
+//
+// So a recorded "app" is either a recent build whose /init received "app", or an older one
+// whose /init received "user" — and the build's template version is not carried in the
+// snapshot (Template.Version is the metadata FORMAT version). Same ambiguity for "root".
+// Only consts.TemplateDefaultUser is safe, because both branches send exactly that.
+//
+// No workdir is reported for the same reason and it is not an oversight: finalize sends
+// Context.WorkDir above the version gate and nil below it, so a recorded workdir is
+// unprovable by the same argument. Re-sending one would move the working directory of
+// every command that omits a cwd, on every start, for a template that never had it.
+func (t Template) EnvdDefaultUser() (user string, ok bool) {
+	if t.Context.User != consts.TemplateDefaultUser {
+		return "", false
+	}
+
+	return t.Context.User, true
 }
 
 func (c Context) WithUser(user string) Context {

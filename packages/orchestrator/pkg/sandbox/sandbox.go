@@ -57,6 +57,10 @@ var (
 	envdFreezeWaitHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeWaitHistogramName))
 	envdFreezeVisitedHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeVisitedHistogramName))
 	envdFreezeAuditHistogram      = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeAuditHistogramName))
+	envdDefaultsApplied           = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdDefaultsApplied))
+	envdDefaultsMismatch          = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdDefaultsMismatch))
+	envdDefaultsWorkdirWithheld   = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdDefaultsWorkdirWithheld))
+	envdDefaultsBuiltinFallback   = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdDefaultsBuiltinFallback))
 	envdFreezeCgroupsHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeCgroupsHistogramName))
 	envdUnfreezeDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdUnfreezeDurationHistogramName))
 	envdCollapseChunks            = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCollapseChunks))
@@ -395,6 +399,22 @@ type Sandbox struct {
 	// reported on its most recent /init (X-Envd-Handover header), or nil if the
 	// running envd did not boot from a handover.
 	handoverResult atomic.Pointer[EnvdHandoverResult]
+	// envdReportedDefaults is what the running envd said it is effectively serving
+	// with, from the X-Envd-Defaults header on its most recent /init. Nil means the
+	// running envd never reported any — which is a CAPABILITY signal, not an empty
+	// value: only an envd that carries the exec context across a handover emits this
+	// header, so its absence says the blob cannot preserve the identity either.
+	envdReportedDefaults atomic.Pointer[EnvdEffectiveDefaults]
+
+	// envdWorkdirWithheld records that this sandbox's metadata names a default workdir
+	// that the start path did NOT re-send, so the value survives only in the running
+	// envd's memory. Written once during resume, before the sandbox is published;
+	// read-only afterwards (see EnvdWorkdirWithheld).
+	//
+	// Only the memory-resume path sets it. A filesystem-only cold boot reconstructs and
+	// sends the recorded workdir, so nothing is withheld there and the zero value is
+	// correct — which matters, because both paths reach the live-upgrade gate.
+	envdWorkdirWithheld bool
 
 	Checks *Checks
 
@@ -956,6 +976,23 @@ type resumeOptions struct {
 	deferMarkRunning bool
 }
 
+// describesCustomerStart reports whether this resume's start-path telemetry describes a
+// customer start, and so belongs in the fleet's startup numbers.
+//
+// One definition for every such counter, because they are read against each other: the
+// prefetch harvest resumes EVERY memory pause with a copy of the original config, so a
+// counter that includes throwaways and a counter that does not cannot be divided. It loses
+// no signal — the sandbox's own resume reports the same thing moments later.
+//
+// The counters that follow it, exhaustively: the per-start KPI histograms (via
+// skipStartupMetrics), the two envd-defaults volume counters recordEnvdDefaults emits,
+// builtin_fallback in compareEnvdDefaults, and the resume wp_mode counter. Deliberately NOT
+// the mismatch counter, which reports a defect rather than sizing a population — a defect on
+// a throwaway resume is still a defect.
+func (o *resumeOptions) describesCustomerStart() bool {
+	return !o.skipLiveRegistration
+}
+
 // ResumeOption customizes a ResumeSandbox call.
 type ResumeOption func(*resumeOptions)
 
@@ -1270,6 +1307,46 @@ func (f *Factory) ResumeSandbox(
 		return nil, fmt.Errorf("failed to get metadata: %w", err)
 	}
 
+	// The default user lives only in the restored envd's memory, so a resume that sends it
+	// empty is correct only for as long as that process survives. Replace it — a live
+	// upgrade re-execs into a new image with no such state — and every request that omits a
+	// user resolves to the built-in fallback instead of the template's user, silently, for
+	// the rest of the sandbox's life. Re-send it, so the identity is delivered rather than
+	// inherited.
+	//
+	// Only when the metadata establishes what the build sent (see EnvdDefaultUser). When it
+	// cannot, the restored process still holds the right value and sending nothing preserves
+	// it; sending a guess would overwrite it permanently and without a signal.
+	//
+	// The workdir is never re-sent, for the same reason and deliberately: it is unprovable
+	// from the metadata. That leaves a resumed sandbox's cwd falling back to the resolved
+	// user's home, which is what it already did — identical to sending nothing, as today.
+	//
+	// A config arriving with a user already set does not skip the counter, it changes its
+	// source label. No external caller supplies one (finalize, the one build phase that
+	// does, goes through CreateSandbox), but this function MUTATES the config it is given
+	// and the checkpoint path hands that same config back for the sandbox's next life, so
+	// the second resume finds the first one's value in place. Counting only the derived
+	// starts would drop those resumes from applied and workdir_withheld while the
+	// live-upgrade gate still reads the withheld term off the sandbox — letting
+	// gated{unprovable_workdir} exceed its own denominator, which is the divergence the
+	// single derivation below exists to prevent.
+	//
+	// Whether a recorded workdir is being left in the running process rather than re-sent:
+	// replacing the process drops a workdir that only this metadata remembers and that
+	// nothing afterwards can restore. Computed ONCE, and taken by both readers — the counter
+	// below and the live-upgrade gate, which reads it back off the sandbox. Two derivations
+	// would let gated{unprovable_workdir} exceed workdir_withheld, and that ratio is how the
+	// gate's cost is meant to be read.
+	workdirWithheld := envdWorkdirWithheld(meta, config.Envd.DefaultWorkdir)
+
+	defaultUser, defaultsSource := resolveEnvdDefaultUser(meta, config.Envd.DefaultUser)
+	config.Envd.DefaultUser = defaultUser
+
+	if ropts.describesCustomerStart() {
+		recordEnvdDefaults(ctx, defaultsSource, runtime.SandboxType, workdirWithheld)
+	}
+
 	// Create cgroup for sandbox resource accounting
 	cgroupHandle, cgroupFD := createCgroup(ctx, f.cgroupManager, sandboxFiles.SandboxCgroupName())
 	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
@@ -1357,7 +1434,7 @@ func (f *Factory) ResumeSandbox(
 
 		// A throwaway resume keeps its warm, customer-indistinguishable start out
 		// of the per-resume KPI histograms (see WaitForEnvd).
-		skipStartupMetrics: ropts.skipLiveRegistration,
+		skipStartupMetrics: !ropts.describesCustomerStart(),
 	}
 
 	useMemfd := fc.FCSupportsMemfd(config.FirecrackerConfig.FirecrackerVersion) &&
@@ -1369,11 +1446,12 @@ func (f *Factory) ResumeSandbox(
 	// use_sync_wp: FC's MemBackendConfig is deny_unknown_fields, so a mismatch
 	// fails the snapshot load loudly instead of silently downgrading.
 	useSyncWP := f.featureFlags.BoolFlag(ctx, featureflags.UseSyncWPFlag, sandboxLDContext(runtime, config))
-	// Throwaway resumes (skipLiveRegistration, e.g. the pause-resume prefetch
-	// harvest) promise "no per-sandbox metrics" and never pause, so counting
-	// them would inflate the wp_mode denominator with resumes that can never
-	// contribute wp_resolve or divergence samples.
-	if !ropts.skipLiveRegistration {
+	// Throwaway resumes (e.g. the pause-resume prefetch harvest) promise "no
+	// per-sandbox metrics" and never pause, so counting them would inflate the
+	// wp_mode denominator with resumes that can never contribute wp_resolve or
+	// divergence samples — the same rule, and now the same predicate, as the
+	// other start-population counters.
+	if ropts.describesCustomerStart() {
 		wpMode := "async"
 		if useSyncWP {
 			wpMode = "sync"
@@ -1383,6 +1461,7 @@ func (f *Factory) ResumeSandbox(
 	// Remembered for pause: only a sync-WP sandbox may use the page tracker
 	// as its dirty source (see processMemorySnapshot).
 	sbx.useSyncWP = useSyncWP
+	sbx.envdWorkdirWithheld = workdirWithheld
 	// The backend records its own mode so DiffMetadata can refuse the
 	// tracker dirty source for a WP_ASYNC sandbox (fail closed).
 	fcUffd.SetSyncWP(useSyncWP)

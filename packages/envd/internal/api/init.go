@@ -135,6 +135,31 @@ type freezeAudit struct {
 	Truncated  bool `json:"truncated"`
 }
 
+// defaultsHeader reports the defaults this envd is EFFECTIVELY serving with, after
+// SetData has applied whatever /init carried. Same JSON-header convention as
+// X-Envd-Handover and X-Envd-Freeze-Audit, on a call the orchestrator already makes.
+//
+// It exists because the orchestrator can otherwise only see what it SENT, never what
+// the guest ended up with — and the two diverging silently is exactly the failure this
+// reports. A re-exec'd envd rebuilds defaults from scratch and depends on /init to
+// repopulate them; if that ever fails to happen, every request that omits a user
+// resolves to the built-in fallback, with a 200 on every RPC and nothing in any log.
+const defaultsHeader = "X-Envd-Defaults"
+
+// effectiveDefaults is the wire form. Workdir is a pointer so "unset" and "set to
+// empty" stay distinguishable — the orchestrator compares against what it sent, and
+// collapsing those two would make a real mismatch look like agreement.
+type effectiveDefaults struct {
+	User    string  `json:"user"`
+	Workdir *string `json:"workdir,omitempty"`
+	// Fallback is true when nothing ever told this envd who to run as, so User is
+	// whatever the binary was compiled with. Deliberately provenance and not
+	// User == BuiltinDefaultUser: a template whose default user genuinely is that value
+	// had its identity DELIVERED, and reporting it as a fallback would both cry wolf on
+	// every resume and hide a real loss behind a value that happens to match.
+	Fallback bool `json:"fallback"`
+}
+
 func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
@@ -187,6 +212,13 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		// Safe because Destroy() is nil-safe and TakeFrom clears the source.
 		defer initRequest.AccessToken.Destroy()
 
+		// After the body is read, and before auth or SetData. Acquiring earlier would let
+		// an unauthenticated caller hold this semaphore for as long as it withholds the
+		// rest of its body: /init is auth-excluded (MMDS-validated instead) and the server
+		// sets no ReadTimeout, and the orchestrator's own /init would then block here.
+		// The Release is deferred to function exit, not block exit, so the lock is still
+		// held across reportEffectiveDefaults below -- which is what serialises that read
+		// against SetData.
 		if err := a.initLock.Acquire(ctx, 1); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 
@@ -248,9 +280,44 @@ func (a *API) PostInit(w http.ResponseWriter, r *http.Request) {
 		host.PollForMMDSOpts(ctx, a.mmdsChan, a.defaults.EnvVars)
 	}()
 
+	// After SetData, so this reports what is actually in effect rather than what was
+	// requested. Set before WriteHeader.
+	a.reportEffectiveDefaults(w, logger)
+
 	w.Header().Set("Cache-Control", "no-store")
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// reportEffectiveDefaults advertises the in-effect defaults on the /init response, and
+// warns when a live-upgraded envd ends up on the built-in fallback.
+//
+// The warn is deliberately scoped to a handover boot. On a cold boot the fallback is
+// legitimate and momentary — /init has not necessarily arrived yet — so warning there
+// would be noise. On a handover boot it means the swap dropped an identity the outgoing
+// process was holding, which is never expected and never self-heals.
+func (a *API) reportEffectiveDefaults(w http.ResponseWriter, logger zerolog.Logger) {
+	eff := effectiveDefaults{
+		User:     a.defaults.User,
+		Workdir:  a.defaults.Workdir,
+		Fallback: !a.defaults.UserDelivered,
+	}
+
+	if eff.Fallback && a.handover != nil {
+		logger.Warn().
+			Str("user", eff.User).
+			Msg("live-upgraded envd was never told which user to run as: neither /init nor the " +
+				"handover blob carried one, so every request that omits a user runs as the " +
+				"built-in default")
+	}
+
+	b, err := json.Marshal(eff)
+	if err != nil {
+		logger.Error().Err(err).Msg("failed to marshal effective defaults")
+
+		return
+	}
+	w.Header().Set(defaultsHeader, string(b))
 }
 
 func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJSONBody) error {
@@ -287,6 +354,7 @@ func (a *API) SetData(ctx context.Context, logger zerolog.Logger, data PostInitJ
 	if data.DefaultUser != nil && *data.DefaultUser != "" {
 		logger.Debug().Msgf("Setting default user to: %s", *data.DefaultUser)
 		a.defaults.User = *data.DefaultUser
+		a.defaults.UserDelivered = true
 	}
 
 	if data.DefaultWorkdir != nil && *data.DefaultWorkdir != "" {

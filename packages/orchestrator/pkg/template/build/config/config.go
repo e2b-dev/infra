@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -11,7 +12,7 @@ const (
 	InstanceBuildPrefix = "b"
 
 	// TemplateDefaultUser is the default user to use in the template to run all commands.
-	TemplateDefaultUser = "user"
+	TemplateDefaultUser = consts.TemplateDefaultUser
 )
 
 type TemplateConfig struct {

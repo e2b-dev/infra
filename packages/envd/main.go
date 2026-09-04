@@ -46,10 +46,6 @@ const (
 	// budget, so it only fires when that /init genuinely never arrives.
 	handoverFallbackThawTimeout = 60 * time.Second
 
-	// This is the default user used in the container if not specified otherwise.
-	// It should be always overridden by the user in /init when building the template.
-	defaultUser = "root"
-
 	kilobyte = 1024
 	megabyte = 1024 * kilobyte
 )
@@ -185,7 +181,7 @@ func run() error {
 	}
 
 	defaults := &execcontext.Defaults{
-		User:    defaultUser,
+		User:    execcontext.BuiltinDefaultUser,
 		EnvVars: utils.NewEnvVars(),
 	}
 	isFCBoolStr := strconv.FormatBool(!isNotFC)

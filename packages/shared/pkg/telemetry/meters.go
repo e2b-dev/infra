@@ -85,8 +85,9 @@ const (
 	// attempts/resumes is the fire rate.
 	OrchestratorEnvdUpgradeAttempts CounterType = "orchestrator.envd.upgrade.attempts"
 	// OrchestratorEnvdUpgradeGated counts resumes the envd-upgrade-target flag
-	// targeted but the min-version gate skipped (reason=old_envd) — a silent
-	// no-op worth watching during a ramp.
+	// targeted but a gate declined, by reason — a silent no-op worth watching during
+	// a ramp. The reasons are the resolver's and the gates' own vocabulary; read them
+	// off `sum by (reason)` rather than from a list here, which would go stale.
 	OrchestratorEnvdUpgradeGated CounterType = "orchestrator.envd.upgrade.gated"
 	// OrchestratorEnvdUpgradeHandover counts live-upgrade handover items by item
 	// (proc|retained|watcher) and result (ok|failed), reported back by the new
@@ -94,6 +95,41 @@ const (
 	// fleet-visible signal (otherwise only logged in-guest) that the new envd
 	// dropped or degraded something it re-adopted across the swap.
 	OrchestratorEnvdUpgradeHandover CounterType = "orchestrator.envd.upgrade.handover"
+
+	// EnvdDefaultsApplied counts MEMORY RESUMES by where the default user the orchestrator
+	// sent came from, so the derivation has a positive engagement signal rather than an
+	// inferred one: a derivation that produced nothing and one that never ran read
+	// identically on a dashboard.
+	//
+	// Resumes, not starts: the cold-boot path does its own reconstruction and is not
+	// counted here. Split by sandbox_type, because a build's own internal resumes go
+	// through the same path and are not customer sandbox starts.
+	EnvdDefaultsApplied CounterType = "orchestrator.envd.defaults.applied"
+	// EnvdDefaultsMismatch counts /init responses where the defaults envd reports as
+	// EFFECTIVE differ from what the orchestrator sent, by field. Zero is the only
+	// acceptable steady state: a non-zero value means a sandbox is resolving requests
+	// against an identity nobody asked for. Note the header is written inside a guest,
+	// so a single hostile or broken sandbox can hold this above zero; investigate via
+	// the per-sandbox error log rather than treating the aggregate as authoritative.
+	EnvdDefaultsMismatch CounterType = "orchestrator.envd.defaults.mismatch"
+	// EnvdDefaultsWorkdirWithheld counts MEMORY RESUMES where the template recorded a
+	// default workdir the orchestrator could not prove the build sent, so it was not
+	// re-sent — the same event EnvdDefaultsApplied counts, so the two divide. An
+	// UPPER BOUND on the population that keeps the wrong working directory after a live
+	// upgrade: a workdir equal to the resolved user's home is withheld to no effect, and
+	// whether it coincides cannot be decided outside the guest.
+	EnvdDefaultsWorkdirWithheld CounterType = "orchestrator.envd.defaults.workdir_withheld"
+	// EnvdDefaultsBuiltinFallback counts /init responses where envd reports it was never
+	// told which user to run as, so it is serving the value it was compiled with. This is
+	// the REALIZED loss, and the only signal that can observe one: a mismatch cannot,
+	// because envd stores exactly what /init sent it and then reports that field back.
+	//
+	// Split by whether a user was sent, and by sandbox type. sent=true is a defect at any
+	// type, because a delivered user must never read back as never-told. sent=false is only
+	// about the population at risk at sandbox_type="sandbox": the build tree starts its own
+	// sandboxes with no default user configured, on the host envd, so it lands in
+	// sent=false from the first day of the rollout and would otherwise dominate the bucket.
+	EnvdDefaultsBuiltinFallback CounterType = "orchestrator.envd.defaults.builtin_fallback"
 
 	// OrchestratorEnvdOfflineUpgradeAttempts counts every OFFLINE envd upgrade
 	// OUTCOME on the cold boot of a filesystem-only snapshot — not only the ones that
@@ -437,12 +473,16 @@ var counterDesc = map[CounterType]string{
 	OrchestratorSnapshotUploadFailedCounterName:  "Number of pause-snapshot uploads that never landed durably",
 	SandboxPauseFsQuiescedCounterName:            "Filesystem-only pauses by whether the rootfs was frozen (quiesced) vs sync fallback",
 	SandboxResumeWPModeCounterName:               "Sandbox resumes by write-protect tracking mode (sync|async)",
+	EnvdDefaultsApplied:                          "Memory resumes by where the envd default user the orchestrator sent was derived from, and sandbox type",
+	EnvdDefaultsMismatch:                         "/init responses where envd's effective defaults differ from what was sent, by field",
+	EnvdDefaultsWorkdirWithheld:                  "Memory resumes where a recorded default workdir could not be proven and was not re-sent (upper bound on the unrepaired population)",
+	EnvdDefaultsBuiltinFallback:                  "/init responses where envd reports it was never told which user to run as, by whether one was sent and sandbox type",
 	OrchestratorEnvdUpgradeAttempts:              "Resume-time envd live-upgrade attempts, by result and from/to version",
 	OrchestratorEnvdOfflineUpgradeAttempts:       "Cold-boot offline envd rootfs-swap attempts, by result and from/to version",
 	OrchestratorFsRecoveryRuns:                   "Pre-boot filesystem-recovery decisions on cold boots, by result and trigger",
 	OrchestratorFsRecoveryToolingUnsupported:     "Fires once per process when the host e2fsck rejects -E journal_only",
 	TemplateBuildCmdlineArgs:                     "Template builds by the guest kernel cmdline parameters applied",
-	OrchestratorEnvdUpgradeGated:                 "Resumes the envd-upgrade-target flag targeted but the min-version gate skipped",
+	OrchestratorEnvdUpgradeGated:                 "Resumes where the envd-upgrade-target flag named a target but a gate declined the upgrade, by reason",
 	OrchestratorEnvdUpgradeHandover:              "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
 	PauseResumePrefetchHarvestAttempts:           "Pause-resume prefetch harvest attempts, by result",
 	TCPFirewallConnectionsTotal:                  "Total number of TCP firewall connections processed",
@@ -485,6 +525,10 @@ var counterUnits = map[CounterType]string{
 	OrchestratorSnapshotUploadFailedCounterName:  "{snapshot}",
 	SandboxPauseFsQuiescedCounterName:            "{snapshot}",
 	SandboxResumeWPModeCounterName:               "{resume}",
+	EnvdDefaultsApplied:                          "{resume}",
+	EnvdDefaultsMismatch:                         "{mismatch}",
+	EnvdDefaultsWorkdirWithheld:                  "{resume}",
+	EnvdDefaultsBuiltinFallback:                  "{response}",
 	OrchestratorEnvdUpgradeAttempts:              "{attempt}",
 	OrchestratorEnvdOfflineUpgradeAttempts:       "{attempt}",
 	OrchestratorFsRecoveryRuns:                   "{run}",

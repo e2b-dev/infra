@@ -26,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/sandboxtools"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/cache"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
@@ -160,9 +161,9 @@ func (ppb *PostProcessingBuilder) Build(
 		return phases.LayerResult{}, fmt.Errorf("error checking build version: %w", err)
 	}
 	if !ok {
-		// For older builds, always use "user" as the default user
+		// For older builds, always use the template default user
 		// and do not set a default workdir (defaults to the user homedir).
-		defaultUser = new("user")
+		defaultUser = new(consts.TemplateDefaultUser)
 		defaultWorkdir = nil
 	}
 

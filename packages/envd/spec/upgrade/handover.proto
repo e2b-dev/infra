@@ -42,6 +42,23 @@ message HandoverState {
   // finds frozen -- the behaviour that predates this field. That degradation is
   // deliberate: a lost record must never leave a guest frozen.
   repeated string guest_frozen_cgroups = 8;
+  // defaults is the exec context the outgoing envd was serving with -- the default
+  // user and workdir every request that omits them resolves against. Carried so the
+  // incoming image reconstructs them from the blob instead of depending on the
+  // orchestrator's post-upgrade /init to re-send them.
+  //
+  // Absent means "no record", and the incoming envd then keeps its compiled-in
+  // fallback -- the behaviour that predates this field. A subsequent /init carrying a
+  // non-empty user still wins: the host owns this state, the blob is a backstop.
+  HandoverDefaults defaults = 9;
+}
+
+// HandoverDefaults is the outgoing envd's execcontext.Defaults, minus the env vars
+// (which /init replaces wholesale anyway).
+message HandoverDefaults {
+  string user = 1;
+  string workdir = 2;    // empty when unset
+  bool has_workdir = 3;  // distinguishes an empty workdir from no workdir
 }
 
 // MountEntry is one NFS volume mount the outgoing envd had set up, keyed by the

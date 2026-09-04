@@ -1734,13 +1734,40 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 		}
 	}()
 
-	// Flag-driven resolver, keyed on the LIVE version. "" path => no upgrade, with
-	// a reason: off / same_version are the expected per-resume no-op (a re-resume
-	// of an already-upgraded sandbox), deliberately not counted as noise; the rest
-	// (not_staged — e.g. a bad SHA / rubbish flag value, getversion_failed,
-	// downgrade) are misconfigurations worth a counted, logged signal so a broken
-	// target is distinguishable from "already current".
-	path, tv, reason := featureflags.ResolveEnvdUpgrade(ctx, s.featureFlags, from, s.config.HostEnvdPath, buildenvd.GetEnvdVersion)
+	// The flag first, and on its own: resolving a target stats up to three paths and execs
+	// the candidate for its version, and a cluster with the flag off must pay none of that.
+	target := featureflags.EnvdUpgradeTarget(ctx, s.featureFlags)
+	if featureflags.EnvdUpgradeTargetDisabled(target) {
+		return false, nil
+	}
+
+	// The *running* envd must already have the /upgrade endpoint + handover code,
+	// else the delivery POST would 404 or hang. Count the skip so a ramp can see
+	// the gated population.
+	//
+	// Ahead of the resolver because it is a comparison against a version already in memory.
+	// It also makes the counter mean what its comment says: behind the resolver, a not_staged
+	// node or an already-current sandbox pre-empted this label, so the "gated population" it
+	// claims to size was systematically undercounted.
+	if ok, err := utils.IsGTEVersion(from, utils.MinEnvdVersionForUpgrade); err != nil || !ok {
+		s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "old_envd")))
+
+		return false, nil
+	}
+
+	// Resolve the target: "" path => no upgrade, with a reason. off / same_version are the
+	// expected per-resume no-op (a re-resume of an already-upgraded sandbox), deliberately
+	// not counted as noise; the rest (not_staged — e.g. a bad SHA / rubbish flag value,
+	// getversion_failed, downgrade) are misconfigurations worth a counted, logged signal so
+	// a broken target is distinguishable from "already current".
+	//
+	// This has to precede the exec-context gate below, even though that gate needs nothing
+	// from it. The offline swap advances a sandbox's envd to the promoted binary at cold
+	// boot, so a large share of the fleet resolves to same_version — and those sandboxes are
+	// not gated by anything, they simply have nowhere to upgrade to. Declining them first
+	// would count every one of their resumes as an exec-context decline and make that
+	// counter a measure of the fleet rather than of the population the gate holds back.
+	path, tv, reason := featureflags.ResolveEnvdUpgrade(ctx, target, from, s.config.HostEnvdPath, buildenvd.GetEnvdVersion)
 	toVersion = tv
 	if path == "" {
 		switch reason {
@@ -1755,11 +1782,43 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 		return false, nil
 	}
 
-	// The *running* envd must already have the /upgrade endpoint + handover code,
-	// else the delivery POST would 404 or hang. Count the skip so a ramp can see
-	// the gated population.
-	if ok, err := utils.IsGTEVersion(from, utils.MinEnvdVersionForUpgrade); err != nil || !ok {
-		s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "old_envd")))
+	// Never replace the envd process without a user to re-send afterwards. The new image
+	// rebuilds its exec context from scratch, so a post-upgrade /init carrying nothing
+	// leaves it on the compiled-in fallback for the rest of the sandbox's life —
+	// silently, with a 200 on every RPC.
+	//
+	// This is not defensive. The metadata cannot establish what a build sent whenever it
+	// records anything other than config.TemplateDefaultUser (see
+	// metadata.Template.EnvdDefaultUser), and a template that named its own user is in
+	// exactly that set while genuinely serving that name. Replacing its process is what
+	// would drop it to the fallback.
+	//
+	// The handover blob carries the identity independently, which is what will retire this
+	// gate. The condition is per-swap and not fleet-wide: what matters is the envd THIS
+	// sandbox is running, never whether every sandbox has the field. Do not read it as the
+	// latter and conclude the gate is permanent — a snapshot paused before the field
+	// existed keeps that envd in its RAM for as long as it stays paused, so "every sandbox
+	// has it" has no completion date, while "this one does" resolves on its own for
+	// anything that cold-boots.
+	//
+	// It retires itself per swap: the resume's own /init precedes this call and returns
+	// X-Envd-Defaults, whose fallback field is !UserDelivered in the running process, so a
+	// sandbox whose envd is holding a delivered identity is no longer declined. No release
+	// number is involved in either term — the header answers the question from the running
+	// process, and a constant guessed now would rot.
+	if reason := envdUpgradeDeclineReason(
+		utils.DerefOrDefault(sbx.Config.Envd.DefaultUser, ""),
+		sbx.EnvdWorkdirWithheld(),
+		envdPreservesExecContext(sbx.EnvdReportedDefaults()),
+	); reason != "" {
+		s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reason)))
+		// Counted, not logged, and that is the whole of the volume control. Both reasons are
+		// stable properties of the template and the running envd, so a per-resume warn
+		// repeats for the whole life of every sandbox in a population that is expected
+		// rather than broken -- and there is nowhere to dedupe it: a Sandbox is constructed
+		// fresh on every resume, so per-instance state cannot span two of them. The sibling
+		// old_envd gate above is counter-only for the same reason. Naming the templates the
+		// gate holds back needs a signal that outlives one resume, which this is not.
 
 		return false, nil
 	}
@@ -1893,4 +1952,68 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 	}
 
 	return true, nil
+}
+
+// The gated reasons a live upgrade is declined. Named constants because they are dashboard
+// values a rollout reads, and separate values because they cost different things: one
+// protects an identity the host cannot reconstruct, the other a workdir it cannot prove.
+const (
+	envdUpgradeGateNoDefaultUser     = "no_default_user"
+	envdUpgradeGateUnprovableWorkdir = "unprovable_workdir"
+)
+
+// envdPreservesExecContext reports whether the running envd will carry its exec context
+// across its own replacement without the host re-sending anything.
+//
+// Both terms are required, and the second is not redundant. A reporting envd that was never
+// told a user writes NO defaults into the handover blob at all — handoverDefaults refuses to
+// pass the compiled-in fallback off as a delivered identity — so its blob would carry the
+// exec context no further than a silent envd's. Testing only for a reported header would let
+// that swap through.
+func envdPreservesExecContext(reported *sandbox.EnvdEffectiveDefaults) bool {
+	return reported != nil && !reported.Fallback
+}
+
+// envdUpgradeDeclineReason reports why a live envd upgrade must not be attempted, or "" when
+// it may proceed. One rule: never replace the process without being able to restore
+// everything it was serving.
+//
+// A pure function over the three facts it needs, so the policy and its emitted labels are
+// pinned by a test rather than only by the call site: the whole point of the gate is that
+// its failure mode is silent in both directions — let a swap through and the sandbox loses
+// state with a 200 on every RPC, decline one that could have proceeded and it simply never
+// upgrades, which nothing else reports.
+//
+// envdPreserves is a capability, not a value: the header and the handover blob's defaults
+// field ship in the same envd, so an envd that reports a delivered exec context is also one
+// whose blob carries it across the swap by itself. That is what makes BOTH rules
+// self-retiring — each declines only while the running envd cannot preserve the value without
+// help, never on the shape of the template alone, so no template is excluded permanently.
+func envdUpgradeDeclineReason(sentUser string, workdirWithheld, envdPreserves bool) string {
+	// Both terms, so this rule retires itself per swap exactly as the workdir rule does. The
+	// host having nothing to send is not sufficient to decline: once the running envd
+	// reports a delivered identity, its blob restores that identity across the execve, and
+	// the post-upgrade /init carrying an empty user is a no-op in SetData rather than an
+	// overwrite. Declining on the sent user alone would exclude every template recording a
+	// non-default user for as long as it stays a memory snapshot, which is stricter than the
+	// mechanism needs and has no end date.
+	//
+	// It makes the guest's own report load-bearing, and the exposure is bounded to the
+	// sandbox that lies: a guest reporting fallback=false when it was never told gets a swap
+	// whose blob then carries nothing, so it loses its own default user. It cannot reach any
+	// other sandbox, and the default user is not a privilege boundary — any holder of the
+	// sandbox token can already run as any user that exists in the guest.
+	if sentUser == "" && !envdPreserves {
+		return envdUpgradeGateNoDefaultUser
+	}
+
+	// A recorded workdir that was not re-sent lives only in the process being replaced,
+	// and the metadata cannot establish it (finalize sends it above the template version
+	// gate and nothing below it, and that version is not in the snapshot), so nothing can
+	// put it back afterwards. Declining keeps it; upgrading trades it for a version bump.
+	if workdirWithheld && !envdPreserves {
+		return envdUpgradeGateUnprovableWorkdir
+	}
+
+	return ""
 }

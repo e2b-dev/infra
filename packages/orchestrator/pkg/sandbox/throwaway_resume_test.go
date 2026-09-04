@@ -23,6 +23,32 @@ func TestThrowawayResumeOptions(t *testing.T) {
 
 	require.True(t, o.denyEgress, "throwaway must deny egress")
 	require.True(t, o.skipLiveRegistration, "throwaway must stay out of the live registry")
+	require.False(t, o.describesCustomerStart(),
+		"a throwaway resume must not be counted in the fleet's startup numbers")
+}
+
+// TestDescribesCustomerStart pins the population rule every start-path counter shares.
+//
+// The prefetch harvest resumes EVERY memory pause with a copy of the original config, so a
+// counter that includes throwaways and one that does not cannot be divided by each other —
+// and these counters are read as ratios. One definition, asserted in both directions, because
+// the default (a real resume) is the case an inverted condition would silently break.
+func TestDescribesCustomerStart(t *testing.T) {
+	t.Parallel()
+
+	var plain resumeOptions
+	require.True(t, plain.describesCustomerStart(), "a plain resume is a customer start")
+
+	var throwaway resumeOptions
+	WithoutLiveRegistration()(&throwaway)
+	require.False(t, throwaway.describesCustomerStart())
+
+	// Deferred registration is NOT a throwaway: the sandbox does go live, just later, so
+	// its start belongs in the numbers.
+	var deferred resumeOptions
+	WithDeferredLiveRegistration()(&deferred)
+	require.True(t, deferred.describesCustomerStart(),
+		"a deferred promotion still becomes a live customer sandbox")
 }
 
 // TestWithoutLiveRegistrationKeepsSandboxOutOfLiveMap locks the invariant the

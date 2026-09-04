@@ -22,6 +22,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -403,6 +404,31 @@ func (s *Sandbox) HandoverResult() *EnvdHandoverResult {
 	return s.handoverResult.Load()
 }
 
+// EnvdReportedDefaults is what the running envd last said it is effectively serving with,
+// or nil if it never reported any.
+//
+// Nil is a capability answer rather than an empty one, and callers rely on that: the header
+// and the handover blob's defaults field ship in the same envd, so an envd that reports
+// nothing here is also one whose blob cannot carry the exec context across a swap.
+func (s *Sandbox) EnvdReportedDefaults() *EnvdEffectiveDefaults {
+	return s.envdReportedDefaults.Load()
+}
+
+// EnvdWorkdirWithheld reports that a recorded default workdir was not re-sent at start, so
+// it lives only in the running envd's memory. False on every path that sends one.
+func (s *Sandbox) EnvdWorkdirWithheld() bool {
+	return s.envdWorkdirWithheld
+}
+
+// envdWorkdirWithheld decides whether a recorded workdir is being left in the running
+// process instead of re-sent. BOTH terms are required: a recorded value alone is not
+// withheld if the start path is also sending it, which is exactly the filesystem-only cold
+// boot — it reconstructs and sends the recorded workdir, and it reaches the same
+// live-upgrade gate as a memory resume.
+func envdWorkdirWithheld(meta metadata.Template, sentWorkdir *string) bool {
+	return meta.Context.WorkDir != nil && sentWorkdir == nil
+}
+
 // envdServerURL returns the base URL (scheme://host:port) of the sandbox's envd
 // HTTP server. A non-empty internalConfig.envdServerURLOverride redirects it
 // (test-only; production always uses the slot IP and the default envd port).
@@ -532,6 +558,12 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 			s.setHandoverResult(&hr)
 		}
 	}
+	// What envd reports it is EFFECTIVELY serving with (X-Envd-Defaults), compared
+	// against what we just sent. Absent on an envd that predates the header, in which
+	// case there is nothing to compare and nothing is counted.
+	if d := response.Header.Get("X-Envd-Defaults"); d != "" {
+		s.compareEnvdDefaults(ctx, d)
+	}
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return fmt.Errorf("failed to read envd init response body: %w", err)
@@ -556,4 +588,273 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 	span.SetStatus(codes.Ok, fmt.Sprintf("envd init returned %d", response.StatusCode))
 
 	return nil
+}
+
+// EnvdEffectiveDefaults is what the running envd reports it is ACTUALLY serving
+// with, from the X-Envd-Defaults header on /init. Its JSON tags match envd's
+// api.effectiveDefaults so the header unmarshals directly.
+//
+// Absent from an envd that predates the header, which is the common case during a
+// rollout and is not an error. The caller skips the comparison on an empty header
+// rather than decoding one, so this type never holds a "no report" state: a zero value
+// reaching the comparison with a user sent would report a mismatch, and it must not be
+// reachable that way. Counting "envd did not tell us" as "envd disagrees" would make
+// the mismatch counter unusable exactly while it is most needed.
+type EnvdEffectiveDefaults struct {
+	User    string  `json:"user"`
+	Workdir *string `json:"workdir,omitempty"`
+	// Fallback is true when envd is still on its compiled-in default user, i.e.
+	// nothing ever told it who to run as.
+	Fallback bool `json:"fallback"`
+}
+
+// Bounds on the guest-written X-Envd-Defaults header. envd runs inside a guest the customer
+// controls, so every byte here is untrusted input that reaches a retained struct, a span
+// attribute and log lines on every /init.
+//
+// The numbers come from what the two fields can legitimately hold, not from the transport:
+// a username (useradd's own limit is 32; glibc LOGIN_NAME_MAX, the loosest bound at which a
+// name still resolves, is 256) and an absolute path (PATH_MAX, 4096). 256 + 4096 + ~40 bytes
+// of JSON envelope rounds up to 8 KiB, which is also the conventional per-header limit. Go's
+// transport default is 10 MiB and covers the whole header block, so it bounds neither.
+const (
+	// envdDefaultsHeaderMaxBytes is the admissible bound, in BYTES, refused before decoding.
+	// This is the one that limits retention: nothing that decodes can exceed it.
+	envdDefaultsHeaderMaxBytes = 8 << 10
+	// envdDefaultsUserMaxLen and envdDefaultsWorkdirMaxLen are display bounds, in RUNES,
+	// applied where a value escapes into a log line or a span attribute. They are not
+	// applied before the comparison: shortening one side of an equality would report a
+	// header that agreed as a mismatch. Multi-byte input can sit under these and still be
+	// refused by the byte cap above, which is the safe direction.
+	envdDefaultsUserMaxLen    = 256
+	envdDefaultsWorkdirMaxLen = 4096
+)
+
+// The source values envdDefaultsApplied reports. Named so the emitted vocabulary is
+// greppable from one place and a test can pin it: the metric's own description
+// deliberately does not enumerate them, because a list in a description is a claim
+// nothing checks.
+const (
+	// defaultsSourceMetadata: the metadata established what the build sent, and we sent it.
+	defaultsSourceMetadata = "metadata"
+	// defaultsSourceIndeterminate: the metadata could not establish it (see
+	// metadata.Template.EnvdDefaultUser), so nothing was sent and the restored process
+	// keeps serving what it holds. A population a rollout needs to size, not an error.
+	defaultsSourceIndeterminate = "indeterminate"
+	// defaultsSourceInherited: the config handed to this resume already carried a default
+	// user, so the derivation did not run and the inherited value was sent. Reachable
+	// because ResumeSandbox mutates the config it is given and the checkpoint path hands
+	// the same one back for the sandbox's next life — so the value came from the metadata
+	// originally, but not on this start. Counted, because the resume still sends a user
+	// and the withheld term is still recorded for the live-upgrade gate; kept separate,
+	// because it is not evidence that this start's derivation worked.
+	defaultsSourceInherited = "inherited"
+)
+
+// resolveEnvdDefaultUser decides which default user a resume sends and, in the same
+// return, the source it is counted under. One function for both, so what was sent and
+// what was reported cannot disagree: two derivations of the same decision are how the
+// counter came to describe a different population than the code took.
+//
+// A configured value wins without consulting the metadata. It is the metadata's own
+// value one life earlier — this function's caller writes it back into the config, and
+// the checkpoint path hands that config to the next resume — but this start did not
+// derive it, so it is not evidence the derivation works.
+func resolveEnvdDefaultUser(meta metadata.Template, configured *string) (*string, string) {
+	if configured != nil {
+		return configured, defaultsSourceInherited
+	}
+
+	if user, ok := meta.EnvdDefaultUser(); ok {
+		return &user, defaultsSourceMetadata
+	}
+
+	return nil, defaultsSourceIndeterminate
+}
+
+// recordEnvdDefaults counts where the default user this resume sent came from, and whether a
+// recorded workdir had to be withheld.
+//
+// Split by sandbox type because this path is not only customer starts: a template build
+// resumes its own sandbox once per uncached layer and again for each prefetch iteration, and
+// those never live-upgrade. Without the split the denominator answers no question.
+//
+// The withheld count sizes what this fix does NOT repair, as an UPPER BOUND rather than the
+// population. Two things make it loose, and the second dominates: a workdir equal to the
+// resolved user's home is withheld to no effect, and — for any build below
+// templates.TemplateV2ReleaseVersion — finalize sent no workdir at all, so the recorded one
+// was never in effect and withholding it loses nothing. Those are precisely the builds the
+// metadata cannot identify, so the counter cannot separate them either.
+//
+// Both labels and the withheld term are passed in rather than derived here, and the metadata
+// is deliberately NOT a parameter: the live-upgrade gate reads the same withheld term, and
+// this counter is the denominator its decline is read against. Deriving it twice is how the
+// two came to disagree — this counted a recorded workdir, the gate counted a recorded workdir
+// that was also not re-sent. With no metadata in scope the divergence cannot come back.
+func recordEnvdDefaults(ctx context.Context, source string, sbxType SandboxType, workdirWithheld bool) {
+	attrs := metric.WithAttributes(
+		attribute.String("source", source),
+		attribute.String("sandbox_type", string(sbxType)),
+	)
+	envdDefaultsApplied.Add(ctx, 1, attrs)
+
+	if workdirWithheld {
+		envdDefaultsWorkdirWithheld.Add(ctx, 1, attrs)
+	}
+}
+
+// envdDefaultsField names a field the comparison can disagree on. Values become the
+// `field` label on envdDefaultsMismatch.
+const (
+	envdDefaultsFieldUser    = "user"
+	envdDefaultsFieldWorkdir = "workdir"
+)
+
+// envdDefaultsMismatches reports which fields envd's EFFECTIVE defaults disagree with,
+// given what the orchestrator sent. Pure, so the skip rules are testable without a
+// metric reader — they are the subtle half:
+//
+//   - A value we never sent cannot be violated, so an empty `sent` is skipped rather
+//     than counted. Otherwise every legacy start would report a mismatch against a
+//     value nobody asked for.
+//   - "unset" is normalised to empty on BOTH sides. envd omits the workdir when it
+//     holds none and the orchestrator sends the empty string for the same state, so
+//     comparing the representations rather than the states would fire on every
+//     workdir-less template.
+func envdDefaultsMismatches(eff EnvdEffectiveDefaults, sentUser, sentWorkdir string) []string {
+	var fields []string
+	if sentUser != "" && eff.User != sentUser {
+		fields = append(fields, envdDefaultsFieldUser)
+	}
+	if sentWorkdir != "" && utils.DerefOrDefault(eff.Workdir, "") != sentWorkdir {
+		fields = append(fields, envdDefaultsFieldWorkdir)
+	}
+
+	return fields
+}
+
+// decodeEnvdEffectiveDefaults parses the guest-written header and bounds it, so the size
+// rules are exercised directly by a test rather than only through a sandbox.
+//
+// Over the byte cap is refused rather than parsed: a value that long is not a report we can
+// trust, so it takes the same path as one that fails to decode. That single byte bound is what
+// actually limits retention — everything the header can produce is under it.
+//
+// It deliberately does NOT shorten the values. compareEnvdDefaults tests them against what the
+// host sent, and shortening one side of an equality turns a header that agreed into a reported
+// mismatch. Display bounds belong at the points where a value escapes into a log line or a
+// span, and that is where envdDefaultsField*MaxLen are applied.
+func decodeEnvdEffectiveDefaults(header string) (EnvdEffectiveDefaults, error) {
+	if len(header) > envdDefaultsHeaderMaxBytes {
+		return EnvdEffectiveDefaults{}, fmt.Errorf("header is %d bytes, over the %d-byte cap", len(header), envdDefaultsHeaderMaxBytes)
+	}
+
+	var eff EnvdEffectiveDefaults
+	if err := json.Unmarshal([]byte(header), &eff); err != nil {
+		return EnvdEffectiveDefaults{}, err
+	}
+
+	return eff, nil
+}
+
+// effectiveUserForDisplay and effectiveWorkdirForDisplay bound a guest-written value on its way
+// into a log line or a span attribute. Separate from the decode cap because they serve a
+// different purpose: the byte cap decides what is admissible, these decide what is printable.
+func (eff EnvdEffectiveDefaults) effectiveUserForDisplay() string {
+	return utils.Truncate(eff.User, envdDefaultsUserMaxLen)
+}
+
+func (eff EnvdEffectiveDefaults) effectiveWorkdirForDisplay() string {
+	return utils.Truncate(utils.DerefOrDefault(eff.Workdir, ""), envdDefaultsWorkdirMaxLen)
+}
+
+// compareEnvdDefaults checks what envd reports as effective against what we sent, and
+// counts any divergence per field.
+//
+// This is the signal whose absence made the identity loss invisible: the orchestrator
+// could see what it SENT but never what the guest ended up with, and every RPC returned
+// 200 either way. A non-zero count here means a sandbox is running requests as somebody
+// other than its template's user.
+//
+// The header is written by envd, which runs inside a guest the customer controls, so it
+// is untrusted input. It reaches log fields, a span attribute, the retained struct this
+// function stores, and the `field` label — and `field` is ours, not the guest's, so a
+// hostile value cannot inflate label cardinality. The two string fields are bounded in
+// bytes before they decode and in runes wherever they escape (see the display helpers);
+// the retained copy is deliberately whole, so the comparison reads what envd reported.
+func (s *Sandbox) compareEnvdDefaults(ctx context.Context, header string) {
+	eff, err := decodeEnvdEffectiveDefaults(header)
+	if err != nil {
+		logger.L().Warn(ctx, "could not decode the envd effective-defaults header",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			zap.Error(err),
+		)
+
+		return
+	}
+
+	// Retain it before comparing: the live-upgrade gate reads this to tell an envd that
+	// can carry the exec context itself from one that cannot.
+	s.envdReportedDefaults.Store(&eff)
+
+	sentUser := utils.DerefOrDefault(s.Config.Envd.DefaultUser, "")
+	sentWorkdir := utils.DerefOrDefault(s.Config.Envd.DefaultWorkdir, "")
+
+	for _, field := range envdDefaultsMismatches(eff, sentUser, sentWorkdir) {
+		envdDefaultsMismatch.Add(ctx, 1, metric.WithAttributes(attribute.String("field", field)))
+		logger.L().Error(ctx, "envd is serving different defaults than the ones sent",
+			logger.WithSandboxID(s.Runtime.SandboxID),
+			logger.WithEnvdVersion(s.Config.Envd.Version),
+			zap.String("field", field),
+			zap.String("sent_user", sentUser),
+			zap.String("effective_user", eff.effectiveUserForDisplay()),
+			zap.String("sent_workdir", sentWorkdir),
+			zap.String("effective_workdir", eff.effectiveWorkdirForDisplay()),
+			zap.Bool("envd_on_builtin_fallback", eff.Fallback),
+		)
+	}
+
+	// The realized loss, and the only signal that can see one. A mismatch on the user is
+	// close to unfireable by construction: SetData stores exactly what /init carried and
+	// reportEffectiveDefaults reads that same field back, so the two agree whenever
+	// anything was sent. What a sandbox actually losing its identity looks like is envd
+	// reporting it was never told at all.
+	//
+	// Labelled by whether we sent a user, because the two cases mean opposite things:
+	// not sent is the indeterminate population realizing its loss, which is expected and
+	// worth sizing; sent is a defect, since a delivered user must never read back as
+	// never-told.
+	//
+	// Skipped for a resume whose start does not describe a customer start, the same rule
+	// recordEnvdDefaults follows: this runs on every /init, and the prefetch harvest resumes
+	// every memory pause, so counting throwaways here while applied excludes them would put
+	// roughly twice the samples in this counter for one underlying population. The mismatch
+	// loop above is deliberately NOT skipped — it reports a defect rather than sizing a
+	// population, and a defect on a throwaway is still a defect.
+	if eff.Fallback && !s.skipStartupMetrics {
+		// Split by sandbox type for the same reason recordEnvdDefaults is, and more
+		// strongly: this runs on every /init, creates included, and the build tree starts
+		// sandboxes with no default user in their config at all — so without the split
+		// sent="false" tracks build volume rather than the population at risk. Build
+		// sandboxes also run the host envd, so they emit this header from the first day of
+		// the rollout, before any customer template carries one.
+		envdDefaultsBuiltinFallback.Add(ctx, 1, metric.WithAttributes(
+			attribute.Bool("sent", sentUser != ""),
+			attribute.String("sandbox_type", string(s.Runtime.SandboxType))))
+		if sentUser != "" {
+			logger.L().Error(ctx, "envd reports it was never told a default user, but one was sent",
+				logger.WithSandboxID(s.Runtime.SandboxID),
+				logger.WithEnvdVersion(s.Config.Envd.Version),
+				zap.String("sent", sentUser),
+				zap.String("effective", eff.effectiveUserForDisplay()),
+			)
+		}
+	}
+
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		span.SetAttributes(
+			attribute.String("envd.defaults.effective_user", eff.effectiveUserForDisplay()),
+			attribute.Bool("envd.defaults.builtin_fallback", eff.Fallback),
+		)
+	}
 }

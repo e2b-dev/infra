@@ -11,6 +11,7 @@ import (
 	"golang.org/x/sys/unix"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/e2b-dev/infra/packages/envd/internal/execcontext"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/cgroups"
 	"github.com/e2b-dev/infra/packages/envd/internal/services/process/handler"
 	rpc "github.com/e2b-dev/infra/packages/envd/internal/services/spec/process"
@@ -35,7 +36,17 @@ var HandoverPath = "/run/e2b/envd-handover.pb"
 // workload is not re-adopted, and SetHandoverResult(failed) tells the orchestrator to tear the
 // sandbox down. That cost is why the version a writer STAMPS is chosen per blob
 // (schemaFor) rather than pinned to this maximum.
-const handoverSchema = handoverSchemaGuestFrozen
+//
+// It also constrains how a change to this file is rolled back. Version resolution is
+// monotonic — the upgrade target must be strictly newer than the running envd — so a reader
+// can never be an older VERSION than the writer, but it can know less: a binary whose version
+// sorts above the fleet's while its source predates a field refuses every blob that carries
+// that field, and each refusal fails a live resume. Reverting a field here is therefore not a
+// rollback while the live-upgrade flag names a target; turning that flag off is, and it takes
+// effect immediately, because this blob is tmpfs and is written and read seconds apart inside
+// one upgrade. Same trap for an experiment pointed at a branch build: do not aim one that
+// lacks a field at a fleet whose envd has it.
+const handoverSchema = handoverSchemaDefaults
 
 // The schema versions themselves. A writer stamps the LOWEST version that can express the blob
 // it actually produced, so a field's mere existence in the layout costs nothing at runtime.
@@ -44,6 +55,8 @@ const (
 	handoverSchemaBase = 1
 	// handoverSchemaGuestFrozen adds guest_frozen_cgroups.
 	handoverSchemaGuestFrozen = 2
+	// handoverSchemaDefaults adds defaults (the exec context's user/workdir).
+	handoverSchemaDefaults = 3
 )
 
 // schemaFor is the lowest schema that can carry st without loss.
@@ -56,6 +69,23 @@ const (
 // since most guests freeze nothing of their own, so pinning the stamp at the maximum would trade
 // away nearly every downgrade for a guarantee only the non-empty blob needs.
 func schemaFor(st *upgrade.HandoverState) uint32 {
+	// A carried default that differs from the compiled-in fallback is behaviour an
+	// older reader would drop, and dropping it means the new image serves requests as
+	// somebody else. Stamp so such a reader refuses instead. When the default already
+	// IS the fallback there is nothing to lose, so do not spend a refusal on it --
+	// same reasoning as guest_frozen_cgroups below.
+	//
+	// Unlike the empty-cgroup list, though, the cheap case is NOT the common one here:
+	// most templates record a default user, so most blobs really do stamp 3. What that
+	// costs is not downgrades but ROLLBACK -- while the live-upgrade flag names a
+	// target, reverting this field does not roll the change back, because a reader that
+	// knows less refuses every blob carrying it and each refusal fails a live resume.
+	// Turning the flag off is the rollback. See handoverSchema above for the full
+	// argument.
+	if d := st.GetDefaults(); d != nil &&
+		((d.GetUser() != "" && d.GetUser() != execcontext.BuiltinDefaultUser) || d.GetHasWorkdir()) {
+		return handoverSchemaDefaults
+	}
 	if len(st.GetGuestFrozenCgroups()) > 0 {
 		return handoverSchemaGuestFrozen
 	}
@@ -115,6 +145,10 @@ func (s *Service) Upgrade(newBin, fromVer string, watchers []*upgrade.HandoverWa
 		// freezer here rather than plumbed in by the caller: it is the freezer's own
 		// state, and the new image needs it before its /init thaws anything.
 		GuestFrozenCgroups: s.workloadFreezer.GuestFrozenPaths(),
+		// The exec context this envd was serving with. The new image rebuilds its
+		// defaults from scratch after the execve, so without this it depends entirely on
+		// the orchestrator's post-upgrade /init to re-send them.
+		Defaults: handoverDefaults(s.defaults),
 	}
 	st.Schema = schemaFor(st)
 
@@ -322,6 +356,19 @@ func (s *Service) ResumeFromHandover(reArmWatchers func([]*upgrade.HandoverWatch
 	// than a successful handover and better than a silently mis-decoded one.
 	if st.GetSchema() > handoverSchema {
 		return HandoverResult{}, fmt.Errorf("handover schema %d exceeds max supported %d", st.GetSchema(), handoverSchema)
+	}
+
+	// Restore the exec context BEFORE any re-adopted process can be interacted with,
+	// so a request that arrives between here and the post-upgrade /init resolves
+	// against the identity the outgoing envd was serving with rather than the
+	// compiled-in fallback. Absent from a blob written by an envd predating the field,
+	// in which case the fallback stands and /init remains the only source.
+	if userRestored, workdirRestored := ApplyHandoverDefaults(st, s.defaults); userRestored || workdirRestored {
+		// Name the fields actually applied. The blob carries them independently, so a
+		// message that always says "default user" would report the compiled-in fallback
+		// as a restored identity on a workdir-only blob.
+		fmt.Fprintf(os.Stderr, "envd: restored exec context from the handover blob (user=%t workdir=%t)\n",
+			userRestored, workdirRestored)
 	}
 
 	// journald-visible proof of the running image after the swap (from_ver is
@@ -551,4 +598,63 @@ func (s *Service) UnfreezeWorkload() {
 	if err := s.workloadFreezer.Unfreeze(context.Background()); err != nil {
 		s.logger.Warn().Err(err).Msg("handover: unfreeze failed")
 	}
+}
+
+// handoverDefaults converts the live exec context into its wire form. Env vars are
+// deliberately omitted: /init replaces them wholesale, so carrying them would add a
+// second source of truth for state that is already restored reliably.
+func handoverDefaults(d *execcontext.Defaults) *upgrade.HandoverDefaults {
+	if d == nil {
+		return nil
+	}
+	hd := &upgrade.HandoverDefaults{}
+	// Only a DELIVERED user is worth carrying. Carrying the compiled-in fallback would
+	// make the incoming image report that it was told, when it was not — and the incoming
+	// binary has that same fallback already.
+	if d.UserDelivered {
+		hd.User = d.User
+	}
+	// Per field, not per blob. An /init can carry a workdir with an empty user — a USER step
+	// whose argument expands to nothing is stored unvalidated — and the two are delivered
+	// independently, so dropping the workdir along with the user would lose it permanently:
+	// no later memory resume re-sends a workdir, and the next blob would faithfully carry
+	// the absence forward. has_workdir and SetData already treat them separately.
+	if d.Workdir != nil {
+		hd.Workdir = *d.Workdir
+		hd.HasWorkdir = true
+	}
+	if hd.GetUser() == "" && !hd.GetHasWorkdir() {
+		return nil
+	}
+
+	return hd
+}
+
+// ApplyHandoverDefaults restores the carried exec context onto the incoming envd's
+// defaults, and reports which fields it applied.
+//
+// Only ever widens: a blob with no record (an outgoing envd predating the field)
+// leaves the compiled-in fallback in place, which is the behaviour that existed
+// before this field. A later /init carrying a non-empty user still overrides it --
+// the host owns this state and the blob is a backstop, not an authority.
+//
+// Per field, matching the writer: a blob can carry a workdir and no user, and applying
+// neither because one is absent is how a delivered workdir gets lost for good.
+func ApplyHandoverDefaults(st *upgrade.HandoverState, d *execcontext.Defaults) (user, workdir bool) {
+	hd := st.GetDefaults()
+	if hd == nil || d == nil {
+		return false, false
+	}
+	if u := hd.GetUser(); u != "" {
+		d.User = u
+		d.UserDelivered = true
+		user = true
+	}
+	if hd.GetHasWorkdir() {
+		w := hd.GetWorkdir()
+		d.Workdir = &w
+		workdir = true
+	}
+
+	return user, workdir
 }

@@ -21,6 +21,7 @@ import (
 	buildenvd "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/constants"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -110,13 +111,21 @@ func (f *Factory) RebootSandbox(
 
 	// A cold boot starts envd with no prior state, so unlike a memory resume it
 	// can't inherit the template's default user/workdir from restored RAM — they
-	// must be re-sent via /init, or envd falls back to root and /root. Mirror
-	// finalize's build-time logic (Context.User, with a "user" fallback for
-	// pre-V2 builds that didn't record one).
+	// must be re-sent via /init, or envd falls back to root and /root.
+	//
+	// So this path must send something even when the metadata cannot establish what the
+	// build sent, and it reconstructs rather than abstains. That is a GUESS, and it is
+	// right only at or above templates.TemplateV2ReleaseVersion: below it finalize sent a
+	// flat ("user", nil) regardless of what was recorded, so for such a build this sends
+	// the recorded user where /init received "user" (see metadata.Template.EnvdDefaultUser
+	// for why the two cannot be told apart). A memory resume refuses that guess because
+	// the restored process still holds the truth; here there is no such process, and
+	// declining would leave envd on its compiled-in fallback — a worse guess than this
+	// one.
 	if config.Envd.DefaultUser == nil {
 		defaultUser := meta.Context.User
 		if defaultUser == "" {
-			defaultUser = "user"
+			defaultUser = consts.TemplateDefaultUser
 		}
 		config.Envd.DefaultUser = &defaultUser
 	}
