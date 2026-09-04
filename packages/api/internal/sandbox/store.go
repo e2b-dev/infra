@@ -133,6 +133,10 @@ func (s *Store) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID s
 	return s.storage.StartRemoving(ctx, teamID, sandboxID, opts)
 }
 
+func (s *Store) RestoreRunning(ctx context.Context, teamID uuid.UUID, sandboxID string, fromState State, retryAfter time.Duration) (Sandbox, error) {
+	return s.storage.RestoreRunning(ctx, teamID, sandboxID, fromState, retryAfter)
+}
+
 func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	return s.storage.WaitForStateChange(ctx, teamID, sandboxID)
 }

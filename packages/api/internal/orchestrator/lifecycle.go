@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"go.uber.org/zap"
@@ -12,17 +13,15 @@ import (
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
-func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox sandbox.Sandbox) {
+func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox sandbox.Sandbox) error {
 	node := o.GetNode(sandbox.ClusterID, sandbox.NodeID)
 	if node == nil {
-		logger.L().Error(ctx, "failed to get node", logger.WithNodeID(sandbox.NodeID))
-
-		return
+		return fmt.Errorf("node '%s' not found", sandbox.NodeID)
 	}
 
 	// For remote cluster nodes we are using gPRC metadata for routing registration instead
 	if node.IsClusterNode() {
-		return
+		return nil
 	}
 
 	nodeIP := routeNodeIPAddress(node, env.IsLocal())
@@ -37,8 +36,12 @@ func (o *Orchestrator) addSandboxToRoutingTable(ctx context.Context, sandbox san
 	}
 
 	lifetime := time.Duration(info.MaxLengthInHours) * time.Hour
-	err := o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
-	if err != nil {
+
+	return o.routingCatalog.StoreSandbox(ctx, sandbox.SandboxID, &info, lifetime)
+}
+
+func (o *Orchestrator) addSandboxToRoutingTableOrLog(ctx context.Context, sandbox sandbox.Sandbox) {
+	if err := o.addSandboxToRoutingTable(ctx, sandbox); err != nil {
 		logger.L().Error(ctx, "error adding routing record to catalog", zap.Error(err), logger.WithSandboxID(sandbox.SandboxID))
 	}
 }

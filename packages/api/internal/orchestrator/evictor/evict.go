@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
@@ -30,6 +31,7 @@ type Evictor struct {
 	featureFlags  *featureflags.Client
 
 	fsOnlyAutoPauseCounter metric.Int64Counter
+	degradedCounter        metric.Int64Counter
 
 	concurrencyLimiter *utils.AdjustableSemaphore
 
@@ -60,12 +62,18 @@ func New(
 		return nil, fmt.Errorf("failed to create fs-only auto-pause counter: %w", err)
 	}
 
+	degradedCounter, err := telemetry.GetCounter(meter, telemetry.ApiEvictorAutoPauseDegraded)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create auto-pause degraded counter: %w", err)
+	}
+
 	e := &Evictor{
 		store:                  store,
 		removeSandbox:          removeSandbox,
 		featureFlags:           featureFlags,
 		concurrencyLimiter:     concurrencyLimiter,
 		fsOnlyAutoPauseCounter: fsOnlyAutoPauseCounter,
+		degradedCounter:        degradedCounter,
 	}
 
 	if _, err := telemetry.GetObservableUpDownCounter(meter, telemetry.EvictionsRunningCounterName,
@@ -112,7 +120,12 @@ func (e *Evictor) Start(ctx context.Context) {
 				continue
 			}
 
+			now := time.Now()
 			for _, item := range sbxs {
+				if refusalHeld(item, now) {
+					continue
+				}
+
 				// Skip if an eviction for this sandbox is already in flight.
 				if _, loaded := e.activeEvictions.LoadOrStore(item.SandboxID, struct{}{}); loaded {
 					continue
@@ -166,6 +179,7 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	// The action was chosen from a scanned record. Pin the removal to that
 	// execution so a resume landing in between is refused, not acted on.
 	opts := sandbox.RemoveOpts{Action: action, Eviction: true, ExpectExecutionID: sbx.ExecutionID}
+	degradeCause := ""
 	switch action {
 	case sandbox.StateActionKill:
 		opts.Reason = sandbox.KillReasonTimeout
@@ -181,9 +195,34 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 		}
 	}
 
-	if err := e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, opts); err != nil {
+	err := e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, opts)
+	if action == sandbox.StateActionPause && !opts.FilesystemOnly && errors.Is(err, sandbox.PauseQueueExhaustedError{}) {
+		degradeCause = e.degradeCause(ctx, sbx, time.Now())
+	}
+	if degradeCause != "" {
+		// The refusal is an intermediate event; the filesystem-only pause
+		// that follows is this sweep's one result.
+		pause.LogRefused(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, opts.FilesystemOnly)
+		opts.FilesystemOnly = true
+		e.fsOnlyAutoPauseCounter.Add(ctx, 1)
+		err = e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, opts)
+	}
+	if err == nil && degradeCause != "" {
+		// Counted once, when the degraded pause lands — a pause that keeps
+		// failing past the budget must not re-count every tick.
+		e.degradedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("cause", degradeCause)))
+		logger.L().Warn(ctx, "Auto-pause degraded to filesystem-only",
+			logger.WithSandboxID(sbx.SandboxID),
+			logger.WithTeamID(sbx.TeamID.String()),
+			zap.String("cause", degradeCause),
+			zap.Duration("past_expiry", time.Since(sbx.EndTime)),
+		)
+	}
+	if err != nil {
 		if action == sandbox.StateActionPause {
 			switch {
+			case errors.Is(err, sandbox.PauseQueueExhaustedError{}):
+				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonAdmissionRefused, opts.FilesystemOnly)
 			case isNotEvictableError(err):
 				pause.LogSkipped(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, pause.SkipReasonNotEvictable, opts.FilesystemOnly)
 			case isGone(err):
@@ -215,8 +254,40 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 	}
 }
 
+const (
+	degradeCauseRefused  = "admission_refused"
+	degradeCauseOverstay = "overstay_budget"
+)
+
 func canTake(state sandbox.State, action sandbox.StateAction) bool {
 	return state == action.TargetState || sandbox.AllowedTransitions[state][action.TargetState]
+}
+
+// degradeCause decides, for a memory auto-pause the node has just refused,
+// whether this sweep degrades it to filesystem-only and why: a zero budget
+// degrades at the first refusal, a positive one once the refusal episode has
+// outlasted it, a negative one never. Only ever consulted on a refusal, so
+// eviction lag alone never degrades anything.
+func (e *Evictor) degradeCause(ctx context.Context, sbx sandbox.Sandbox, now time.Time) string {
+	budgetMs := e.featureFlags.IntFlag(ctx, featureflags.AutoPauseOverstayBudgetMs,
+		featureflags.TeamContext(sbx.TeamID.String()), featureflags.ClusterContext(sbx.ClusterID))
+	switch {
+	case budgetMs < 0:
+		return ""
+	case budgetMs == 0:
+		return degradeCauseRefused
+	case now.After(sbx.RefusalEpisodeStart(now).Add(time.Duration(budgetMs) * time.Millisecond)):
+		return degradeCauseOverstay
+	default:
+		return ""
+	}
+}
+
+// refusalHeld reports whether a node-refused, restored auto-pause is still
+// inside the retry window the restore stamped on its record — shared by every
+// replica's sweep, since it travels with the record.
+func refusalHeld(sbx sandbox.Sandbox, now time.Time) bool {
+	return now.Before(sbx.RefusedUntil)
 }
 
 func isNotEvictableError(err error) bool {

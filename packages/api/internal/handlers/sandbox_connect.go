@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
@@ -21,6 +23,21 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+// connectOrchestrator is the slice of *orchestrator.Orchestrator the connect
+// handler consults while a transition is in flight.
+type connectOrchestrator interface {
+	KeepAliveFor(ctx context.Context, teamID uuid.UUID, sandboxID string, duration time.Duration, allowShorter bool) (*sandbox.Sandbox, *api.APIError)
+	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
+}
+
+func (a *APIStore) connectBackend() connectOrchestrator {
+	if a.connectBackendOverride != nil {
+		return a.connectBackendOverride
+	}
+
+	return a.orchestrator
+}
 
 func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.SandboxID) {
 	ctx := c.Request.Context()
@@ -65,7 +82,7 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 	const maxConnectRetries = 3
 
 	for attempt := range maxConnectRetries {
-		sbx, apiErr := a.orchestrator.KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
+		sbx, apiErr := a.connectBackend().KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
 		if apiErr == nil {
 			c.JSON(http.StatusOK, sbx.ToAPISandbox())
 
@@ -101,8 +118,8 @@ func (a *APIStore) PostSandboxesSandboxIDConnect(c *gin.Context, sandboxID api.S
 			zap.Int("attempt", attempt+1),
 		)
 
-		err = a.orchestrator.WaitForStateChange(ctx, teamID, sandboxID)
-		if err != nil {
+		err = a.connectBackend().WaitForStateChange(ctx, teamID, sandboxID)
+		if err != nil && !errors.Is(err, sandbox.ErrTransitionRestored) {
 			telemetry.ReportCriticalError(ctx, "error waiting for sandbox state change", err,
 				telemetry.WithSandboxID(sandboxID),
 				telemetry.WithTeamID(teamID.String()),

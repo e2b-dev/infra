@@ -20,6 +20,7 @@ const (
 	sbxOrchestratorIdHeader   = "orchestrator-id"
 	sbxMaxLengthInHoursHeader = "sandbox-max-length-in-hours"
 	sbxStartTimeHeader        = "sandbox-start-time"
+	sbxRestoreOnRefusalHeader = "restore-on-refusal"
 )
 
 var (
@@ -47,6 +48,9 @@ type SandboxCatalogCreateEvent struct {
 type SandboxCatalogDeleteEvent struct {
 	SandboxID   string
 	ExecutionID string
+	// RestoreOnRefusal tells the edge the API will keep the sandbox if the
+	// node refuses the request retryably, so the route must come back too.
+	RestoreOnRefusal bool
 }
 
 func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD {
@@ -64,14 +68,17 @@ func SerializeSandboxCatalogCreateEvent(e SandboxCatalogCreateEvent) metadata.MD
 }
 
 func SerializeSandboxCatalogDeleteEvent(e SandboxCatalogDeleteEvent) metadata.MD {
-	return metadata.New(
-		map[string]string{
-			EventTypeHeader: CatalogDeleteEventType,
+	md := map[string]string{
+		EventTypeHeader: CatalogDeleteEventType,
 
-			sbxIdHeader:          e.SandboxID,
-			sbxExecutionIdHeader: e.ExecutionID,
-		},
-	)
+		sbxIdHeader:          e.SandboxID,
+		sbxExecutionIdHeader: e.ExecutionID,
+	}
+	if e.RestoreOnRefusal {
+		md[sbxRestoreOnRefusalHeader] = "true"
+	}
+
+	return metadata.New(md)
 }
 
 func ParseSandboxCatalogCreateEvent(md metadata.MD) (e *SandboxCatalogCreateEvent, err error) {
@@ -130,9 +137,12 @@ func ParseSandboxCatalogDeleteEvent(md metadata.MD) (e *SandboxCatalogDeleteEven
 		return nil, SandboxEventFieldMissingError{eventName: CatalogDeleteEventType, fieldName: sbxExecutionIdHeader}
 	}
 
+	restore, _ := getMetadataValue(md, sbxRestoreOnRefusalHeader)
+
 	return &SandboxCatalogDeleteEvent{
-		SandboxID:   sandboxID,
-		ExecutionID: executionID,
+		SandboxID:        sandboxID,
+		ExecutionID:      executionID,
+		RestoreOnRefusal: restore == "true",
 	}, nil
 }
 

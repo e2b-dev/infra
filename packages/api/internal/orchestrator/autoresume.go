@@ -63,7 +63,7 @@ func (o *Orchestrator) HandleExistingSandboxAutoResume(
 			}
 
 			err := o.WaitForStateChange(transitionCtx, teamID, sandboxID)
-			if err != nil {
+			if err != nil && !errors.Is(err, apisandbox.ErrTransitionRestored) {
 				if errors.Is(transitionCtx.Err(), context.DeadlineExceeded) && ctx.Err() == nil {
 					logger.L().Warn(
 						ctx,

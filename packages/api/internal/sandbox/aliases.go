@@ -23,6 +23,7 @@ type (
 	InvalidStateTransitionError = sandboxtypes.InvalidStateTransitionError
 	LimitExceededError          = sandboxtypes.LimitExceededError
 	NotRunningError             = sandboxtypes.NotRunningError
+	PauseQueueExhaustedError    = sandboxtypes.PauseQueueExhaustedError
 )
 
 // State constants.
@@ -54,6 +55,7 @@ var (
 	ErrEvictionInProgress = sandboxtypes.ErrEvictionInProgress
 	ErrEvictionNotNeeded  = sandboxtypes.ErrEvictionNotNeeded
 	ErrExecutionMismatch  = sandboxtypes.ErrExecutionMismatch
+	ErrTransitionRestored = sandboxtypes.ErrTransitionRestored
 
 	AllowedTransitions = sandboxtypes.AllowedTransitions
 

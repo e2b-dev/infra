@@ -93,8 +93,10 @@ type RemoveOpts struct {
 }
 
 var AllowedTransitions = map[State]map[State]bool{
-	StateRunning:      {StatePausing: true, StateKilling: true, StateSnapshotting: true},
-	StatePausing:      {StateKilling: true},
+	StateRunning: {StatePausing: true, StateKilling: true, StateSnapshotting: true},
+	// Pausing→Running is legal only as the restore of a retryably refused
+	// pause (the node declined the snapshot; the sandbox never stopped).
+	StatePausing:      {StateKilling: true, StateRunning: true},
 	StateSnapshotting: {StateRunning: true, StateKilling: true, StatePausing: true},
 }
 

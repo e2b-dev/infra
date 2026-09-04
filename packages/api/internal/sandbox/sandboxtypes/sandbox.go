@@ -113,6 +113,13 @@ type Sandbox struct {
 	NodeID                     string    `json:"nodeID"`
 	ClusterID                  uuid.UUID `json:"clusterID"`
 	AutoPause                  bool      `json:"autoPause"`
+	// RefusedUntil holds a node-refused, restored auto-pause out of every
+	// replica's eviction sweep until it passes.
+	RefusedUntil time.Time `json:"refusedUntil,omitzero"`
+	// RefusedSince is when the node first refused this sandbox's pause in the
+	// current refusal episode (see RefusalEpisodeStart); the evictor's retry
+	// budget counts from here.
+	RefusedSince time.Time `json:"refusedSince,omitzero"`
 	// AutoPauseFilesystemOnly makes a timeout auto-pause take a filesystem-only
 	// snapshot (no memory) instead of a full memory snapshot. Only consulted when
 	// AutoPause is true; read by the evictor at pause time.
@@ -184,4 +191,20 @@ func (s Sandbox) ToNodeSandbox() NodeSandbox {
 		VCpu:        s.VCpu,
 		RamMB:       s.RamMB,
 	}
+}
+
+// RefusalEpisodeGap is how long after a retry window ended a further refusal
+// still belongs to the same episode. The evictor retries within seconds of the
+// window, so a refusal any later than this is a new episode: a stamp left by
+// a refused user pause hours ago must not count against a fresh one.
+const RefusalEpisodeGap = 30 * time.Second
+
+// RefusalEpisodeStart is when the current refusal episode began: the stamped
+// first refusal while the episode is alive, otherwise now.
+func (s Sandbox) RefusalEpisodeStart(now time.Time) time.Time {
+	if s.RefusedSince.IsZero() || now.After(s.RefusedUntil.Add(RefusalEpisodeGap)) {
+		return now
+	}
+
+	return s.RefusedSince
 }

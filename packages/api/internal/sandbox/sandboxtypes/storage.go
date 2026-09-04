@@ -2,6 +2,7 @@ package sandboxtypes
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -21,9 +22,16 @@ type Storage interface {
 	TeamsWithSandboxCount(ctx context.Context) (map[uuid.UUID]int64, error)
 
 	Update(ctx context.Context, teamID uuid.UUID, sandboxID string, updateFunc func(sandbox Sandbox) (Sandbox, error)) (Sandbox, error)
-	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
-	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
+	StateTransitions
 	Reconcile(ctx context.Context, sandboxes []NodeSandbox, nodeID string) []NodeSandbox
+}
+
+// StateTransitions is the removal state machine: start a transition, undo one
+// the node refused, or wait one out.
+type StateTransitions interface {
+	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (Sandbox, bool, func(context.Context, error), error)
+	RestoreRunning(ctx context.Context, teamID uuid.UUID, sandboxID string, fromState State, retryAfter time.Duration) (Sandbox, error)
+	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 
 // ReservationStorage tracks per-team sandbox-start reservations to enforce

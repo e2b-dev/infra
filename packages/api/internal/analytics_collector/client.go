@@ -31,6 +31,12 @@ type Analytics struct {
 // useTLS must be false for collectors that speak plaintext gRPC, such as the
 // one running in local development; the per-RPC API key is then sent over an
 // unencrypted connection, so only do that on loopback.
+// NewAnalyticsWithClient wraps an existing collector client — tests inject a
+// recording client through it.
+func NewAnalyticsWithClient(client AnalyticsCollectorClient) *Analytics {
+	return &Analytics{client: client}
+}
+
 func NewAnalytics(host, grpcAPIKey string, useTLS bool) (*Analytics, error) {
 	var client AnalyticsCollectorClient
 	var connection *grpc.ClientConn

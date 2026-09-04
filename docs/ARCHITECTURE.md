@@ -418,7 +418,18 @@ sequenceDiagram
   the request is rejected with an explicit error, never silently downgraded to a memory restore.
   The disk has crash-recovery semantics (unflushed pre-pause writes are lost), nothing durable
   is mutated (the memory snapshot survives untouched), and auto-resume never takes this path —
-  traffic always memory-resumes.
+  traffic always memory-resumes. The one way a memory-preferring sandbox ends up with a
+  filesystem-only snapshot is at pause time, not resume time: when the node keeps refusing a
+  timeout auto-pause (its parent memfile header still deduplicating after the admission grace)
+  for longer than the retry budget counted from the first refusal
+  (`auto-pause-overstay-budget-milliseconds`, 120 s by default; 0 degrades at the first
+  refusal, negative never degrades), the evictor requests a filesystem-only snapshot instead, so
+  the sandbox stops overstaying its expiry; the next resume of that snapshot is a cold boot. The
+  degrade is only ever decided on a refusal in the same sweep, so eviction lag alone never
+  degrades anything, and refusals only survive with `pause-refusal-restore` on. On a
+  BYOC cluster that flag also needs every edge replica on a release that restores the route
+  after a refusal: roll the edge fully first, and turn the flag off for the cluster before any
+  edge rollback — nothing in the cluster model can check the edge's version.
 - **Pre-boot filesystem recovery**: every cold boot of a rootfs that was not frozen at pause
   (`fs_quiesced` false/absent) runs a jailed `e2fsck -p -E journal_only` before the VM starts —
   journal replay only, the same recovery the guest kernel would do at mount — so a `memory: false`

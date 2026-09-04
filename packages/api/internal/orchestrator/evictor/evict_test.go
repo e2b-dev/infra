@@ -2,14 +2,20 @@ package evictor
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
@@ -36,6 +42,7 @@ func TestEvictSandbox_ReasonByAction(t *testing.T) {
 		e := &Evictor{
 			featureFlags:           flags,
 			fsOnlyAutoPauseCounter: counter,
+			degradedCounter:        counter,
 			removeSandbox: func(
 				_ context.Context,
 				_ uuid.UUID,
@@ -222,4 +229,205 @@ func TestIsGone(t *testing.T) {
 	assert.True(t, isGone(sandbox.ErrExecutionMismatch))
 	assert.True(t, isKnownEvictionError(sandbox.ErrExecutionMismatch, sandbox.StateRunning))
 	assert.False(t, isGone(sandbox.ErrEvictionNotNeeded))
+}
+
+// With no retry budget a node's refusal degrades on the spot: the very next
+// request asks for a filesystem-only snapshot, which the node cannot refuse
+// for a pending memory parent, and the degrade is counted once it lands.
+// A record's retry window keeps every replica's sweep off a held sandbox.
+func TestRefusalHeld(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	sbx := sandbox.Sandbox{SandboxID: "sbx-held"}
+	assert.False(t, refusalHeld(sbx, now), "a record with no retry window is swept")
+	sbx.RefusedUntil = now.Add(10 * time.Second)
+	assert.True(t, refusalHeld(sbx, now), "inside the window the sweep skips it")
+	assert.True(t, refusalHeld(sbx, now.Add(10*time.Second-time.Millisecond)))
+	assert.False(t, refusalHeld(sbx, now.Add(10*time.Second)), "at the window's end the sweep retries")
+}
+
+// The degrade is decided only on a refusal in the same sweep, against the
+// budget counted from the first refusal of the current episode.
+func TestEvictSandbox_DegradeDecision(t *testing.T) {
+	t.Parallel()
+
+	refusal := fmt.Errorf("failed to auto pause sandbox: %w", sandbox.PauseQueueExhaustedError{})
+
+	// run sweeps one auto-pause sandbox; memoryErr is the node's answer to the
+	// memory pause, fsOnlyErr to a filesystem-only one. refusedFor is how long
+	// ago the current episode's first refusal was stamped (zero: never), and
+	// stale moves that stamp's retry window hours into the past.
+	type sweep struct {
+		budgetMs   *int
+		refusedFor time.Duration
+		stale      bool
+		memoryErr  error
+		fsOnlyErr  error
+	}
+	run := func(t *testing.T, sw sweep) ([]bool, map[string]int64) {
+		t.Helper()
+
+		reader := sdkmetric.NewManualReader()
+		meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator/evictor")
+		fsOnly, err := telemetry.GetCounter(meter, telemetry.ApiEvictorFsOnlyAutoPause)
+		require.NoError(t, err)
+		degraded, err := telemetry.GetCounter(meter, telemetry.ApiEvictorAutoPauseDegraded)
+		require.NoError(t, err)
+
+		var flags *featureflags.Client
+		if sw.budgetMs == nil {
+			flags, err = featureflags.NewClientWithLogLevel(ldlog.Error)
+		} else {
+			td := ldtestdata.DataSource()
+			td.Update(td.Flag(featureflags.AutoPauseOverstayBudgetMs.Key()).ValueForAll(ldvalue.Int(*sw.budgetMs)))
+			flags, err = featureflags.NewClientWithDatasource(td)
+		}
+		require.NoError(t, err)
+		t.Cleanup(func() { _ = flags.Close(context.WithoutCancel(t.Context())) })
+
+		var requests []bool
+		e := &Evictor{
+			featureFlags:           flags,
+			fsOnlyAutoPauseCounter: fsOnly,
+			degradedCounter:        degraded,
+			removeSandbox: func(_ context.Context, _ uuid.UUID, _ string, opts sandbox.RemoveOpts) error {
+				requests = append(requests, opts.FilesystemOnly)
+				if opts.FilesystemOnly {
+					return sw.fsOnlyErr
+				}
+
+				return sw.memoryErr
+			},
+		}
+		now := time.Now()
+		sbx := sandbox.Sandbox{State: sandbox.StateRunning, SandboxID: "sbx", TeamID: uuid.New(), AutoPause: true, EndTime: now.Add(-time.Hour)}
+		if sw.refusedFor > 0 {
+			sbx.RefusedSince = now.Add(-sw.refusedFor)
+			sbx.RefusedUntil = sbx.RefusedSince.Add(10 * time.Second)
+			if sw.stale {
+				sbx.RefusedSince = now.Add(-3 * time.Hour)
+				sbx.RefusedUntil = sbx.RefusedSince.Add(10 * time.Second)
+			}
+		}
+		e.evictSandbox(t.Context(), sbx)
+
+		return requests, counterByCause(t, reader, telemetry.ApiEvictorAutoPauseDegraded)
+	}
+	ms := func(v int) *int { return &v }
+
+	t.Run("zero budget: the first refusal degrades in the same sweep", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(0), memoryErr: refusal})
+
+		assert.Equal(t, []bool{false, true}, requests)
+		assert.Equal(t, map[string]int64{"admission_refused": 1}, degraded)
+	})
+
+	t.Run("positive budget: a refusal inside it is retried later", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(60000), refusedFor: 5 * time.Second, memoryErr: refusal})
+
+		assert.Equal(t, []bool{false}, requests, "the only request this sweep was the memory pause")
+		assert.Empty(t, degraded)
+	})
+
+	t.Run("positive budget: a refusal past it degrades in the same sweep", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(1000), refusedFor: 5 * time.Second, memoryErr: refusal})
+
+		assert.Equal(t, []bool{false, true}, requests)
+		assert.Equal(t, map[string]int64{"overstay_budget": 1}, degraded)
+	})
+
+	t.Run("a stale stamp from an old episode does not count against a fresh refusal", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(1000), refusedFor: 5 * time.Second, stale: true, memoryErr: refusal})
+
+		assert.Equal(t, []bool{false}, requests, "a new episode starts now, so the budget has not run out")
+		assert.Empty(t, degraded)
+	})
+
+	t.Run("a stale stamp and no refusal this sweep degrades nothing", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(1000), refusedFor: 5 * time.Second, stale: true})
+
+		assert.Equal(t, []bool{false}, requests, "the node took the memory snapshot")
+		assert.Empty(t, degraded)
+	})
+
+	t.Run("an exhausted budget and no refusal this sweep degrades nothing", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(1000), refusedFor: 5 * time.Second})
+
+		assert.Equal(t, []bool{false}, requests)
+		assert.Empty(t, degraded)
+	})
+
+	t.Run("negative budget never degrades", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(-1), refusedFor: 3 * time.Hour, memoryErr: refusal})
+
+		assert.Equal(t, []bool{false}, requests)
+		assert.Empty(t, degraded)
+	})
+
+	t.Run("the default budget degrades nothing without a refusal", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{})
+
+		assert.Equal(t, []bool{false}, requests)
+		assert.Empty(t, degraded)
+	})
+
+	t.Run("the default budget retries a fresh refusal", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{memoryErr: refusal})
+
+		assert.Equal(t, []bool{false}, requests)
+		assert.Empty(t, degraded)
+	})
+
+	t.Run("a degraded pause that fails is requested but not counted", func(t *testing.T) {
+		t.Parallel()
+
+		requests, degraded := run(t, sweep{budgetMs: ms(0), memoryErr: refusal, fsOnlyErr: errors.New("node unreachable")})
+
+		assert.Equal(t, []bool{false, true}, requests)
+		assert.Empty(t, degraded, "nothing landed, so nothing is counted")
+	})
+}
+
+// counterByCause returns the counter's datapoints keyed by their cause attribute.
+func counterByCause(t *testing.T, reader *sdkmetric.ManualReader, name telemetry.CounterType) map[string]int64 {
+	t.Helper()
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(t.Context(), &rm))
+
+	out := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			if m.Name != string(name) {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, dp := range sum.DataPoints {
+				cause, _ := dp.Attributes.Value("cause")
+				out[cause.Emit()] += dp.Value
+			}
+		}
+	}
+
+	return out
 }

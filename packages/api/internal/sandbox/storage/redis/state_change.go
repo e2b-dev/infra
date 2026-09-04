@@ -248,6 +248,52 @@ func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandbo
 	return err
 }
 
+// RestoreRunning undoes StartRemoving for a sandbox still in fromState: state
+// back to Running and EndTime back to the expiry StartRemoving clamped, read
+// from the expiration index, which StartRemoving leaves untouched. A positive
+// retryAfter records when the eviction sweep may take the sandbox again and
+// moves the sandbox's index score there, so a held sandbox leaves the expired
+// scan window instead of occupying a slot on every tick.
+func (s *Storage) RestoreRunning(ctx context.Context, teamID uuid.UUID, sandboxID string, fromState sandboxtypes.State, retryAfter time.Duration) (sandboxtypes.Sandbox, error) {
+	restored, err := s.Update(ctx, teamID, sandboxID, func(sbx sandboxtypes.Sandbox) (sandboxtypes.Sandbox, error) {
+		if sbx.State != fromState {
+			return sbx, fmt.Errorf("sandbox is in state %q, not %q", sbx.State, fromState)
+		}
+
+		// A missing member (the state the index healer repairs) fails the
+		// restore on purpose: the caller falls back to today's removal rather
+		// than restoring the record with an invented expiry.
+		score, err := s.redisClient.ZScore(ctx, globalExpirationSet, sandboxExpirationMember(sbx)).Result()
+		if err != nil {
+			return sbx, fmt.Errorf("failed to read the sandbox expiry from the expiration index: %w", err)
+		}
+
+		sbx.State = sandboxtypes.StateRunning
+		sbx.EndTime = time.UnixMilli(int64(score))
+		if retryAfter > 0 {
+			now := time.Now()
+			sbx.RefusedSince = sbx.RefusalEpisodeStart(now)
+			sbx.RefusedUntil = now.Add(retryAfter)
+		}
+
+		return sbx, nil
+	})
+	// The retry window only ever moves a member forward: an expired sandbox
+	// leaves the sweep's window until the retry, a live one keeps its expiry.
+	if err != nil || !restored.RefusedUntil.After(restored.EndTime) {
+		return restored, err
+	}
+
+	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+		Score:  float64(restored.RefusedUntil.UnixMilli()),
+		Member: sandboxExpirationMember(restored),
+	}).Err(); err != nil {
+		return restored, fmt.Errorf("failed to move the sandbox in the expiration index to its retry window: %w", err)
+	}
+
+	return restored, nil
+}
+
 // WaitForStateChange waits for a sandbox state transition to complete.
 func (s *Storage) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {
 	transitionKey := getTransitionKey(teamID.String(), sandboxID)
@@ -323,6 +369,10 @@ func (s *Storage) checkTransitionResult(ctx context.Context, resultKey string) e
 		return fmt.Errorf("failed to check transition result: %w", err)
 	}
 
+	if result == sandboxtypes.ErrTransitionRestored.Error() {
+		return sandboxtypes.ErrTransitionRestored
+	}
+
 	if result != "" {
 		return fmt.Errorf("transition failed: %s", result)
 	}
@@ -360,6 +410,11 @@ func (s *Storage) handleExistingTransition(
 			zap.String("state", string(newState)))
 
 		err := s.waitForTransition(ctx, teamID, sbx.SandboxID, transactionID)
+		if errors.Is(err, sandboxtypes.ErrTransitionRestored) {
+			// The pause the joiner rode was refused and the sandbox is running
+			// again: the joiner gets the same retryable refusal, not a success.
+			return sbx, false, nil, sandboxtypes.PauseQueueExhaustedError{}
+		}
 		if err != nil {
 			return sbx, false, nil, fmt.Errorf("failed waiting for transition: %w", err)
 		}
@@ -373,7 +428,7 @@ func (s *Storage) handleExistingTransition(
 	}
 
 	err := s.waitForTransition(ctx, teamID, sbx.SandboxID, transactionID)
-	if err != nil {
+	if err != nil && !errors.Is(err, sandboxtypes.ErrTransitionRestored) {
 		return sbx, false, nil, fmt.Errorf("failed waiting for transition: %w", err)
 	}
 

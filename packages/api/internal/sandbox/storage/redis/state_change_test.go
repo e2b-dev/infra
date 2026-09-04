@@ -1269,3 +1269,175 @@ func TestStartRemoving_CompletedTransitionAllowsNewTransition(t *testing.T) {
 
 	callback2(ctx, nil)
 }
+
+func TestRestoreRunning_ReinstatesClampedExpiry(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := t.Context()
+
+	sbx := createTestSandbox("restore-running")
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	clamped, _, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
+	require.NoError(t, err)
+	require.True(t, clamped.EndTime.Before(sbx.EndTime), "a pause clamps a live sandbox's expiry to now")
+
+	restored, err := storage.RestoreRunning(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.StatePausing, 10*time.Second)
+	require.NoError(t, err)
+	assert.Equal(t, sandboxtypes.StateRunning, restored.State)
+	assert.WithinDuration(t, sbx.EndTime, restored.EndTime, time.Millisecond)
+	assert.WithinDuration(t, time.Now().Add(10*time.Second), restored.RefusedUntil, time.Second, "the retry window is stamped on the record")
+	assert.WithinDuration(t, time.Now(), restored.RefusedSince, time.Second, "the first refusal is stamped on the record")
+
+	stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+	require.NoError(t, err)
+	assert.Equal(t, sandboxtypes.StateRunning, stored.State)
+	assert.WithinDuration(t, sbx.EndTime, stored.EndTime, time.Millisecond)
+
+	score, err := storage.redisClient.ZScore(ctx, globalExpirationSet, sandboxExpirationMember(stored)).Result()
+	require.NoError(t, err)
+	assert.WithinDuration(t, sbx.EndTime, time.UnixMilli(int64(score)), time.Millisecond, "a live sandbox keeps its real expiry as its index score, never the nearer retry window")
+
+	callback(ctx, errors.New("refused"))
+
+	// A second refusal keeps the first refusal's stamp.
+	_, _, callback, err = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
+	require.NoError(t, err)
+	again, err := storage.RestoreRunning(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.StatePausing, 10*time.Second)
+	require.NoError(t, err)
+	assert.WithinDuration(t, restored.RefusedSince, again.RefusedSince, time.Millisecond, "a second refusal keeps the first stamp")
+	callback(ctx, errors.New("refused"))
+
+	// A refusal long after the previous window ended starts a new episode.
+	_, err = storage.Update(ctx, sbx.TeamID, sbx.SandboxID, func(s sandboxtypes.Sandbox) (sandboxtypes.Sandbox, error) {
+		s.RefusedSince = time.Now().Add(-3 * time.Hour)
+		s.RefusedUntil = s.RefusedSince.Add(10 * time.Second)
+
+		return s, nil
+	})
+	require.NoError(t, err)
+	_, _, callback, err = storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
+	require.NoError(t, err)
+	fresh, err := storage.RestoreRunning(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.StatePausing, 10*time.Second)
+	require.NoError(t, err)
+	assert.WithinDuration(t, time.Now(), fresh.RefusedSince, time.Second, "a stale stamp is replaced, not counted against the new episode")
+	callback(ctx, errors.New("refused"))
+}
+
+func TestRestoreRunning_RefusesOtherStates(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := t.Context()
+
+	sbx := createTestSandbox("restore-running-killing")
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	_, _, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
+	require.NoError(t, err)
+	defer callback(ctx, nil)
+
+	_, err = storage.RestoreRunning(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.StatePausing, 10*time.Second)
+	require.Error(t, err)
+
+	stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+	require.NoError(t, err)
+	assert.Equal(t, sandboxtypes.StateKilling, stored.State, "a mismatched state leaves the record untouched")
+}
+
+// A pause transition finished with ErrTransitionRestored reaches its waiters
+// typed: a plain waiter learns the state changed back, a joining pause gets
+// the retryable refusal instead of a success, and a joining kill proceeds.
+func TestRestoredTransition_WaitersJoinersAndKillers(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := t.Context()
+
+	sbx := createTestSandbox("restored-waiters")
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	_, _, finish, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
+	require.NoError(t, err)
+
+	waiter := make(chan error, 1)
+	go func() { waiter <- storage.WaitForStateChange(ctx, sbx.TeamID, sbx.SandboxID) }()
+	joiner := make(chan error, 1)
+	go func() {
+		_, _, _, jerr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
+		joiner <- jerr
+	}()
+	killer := make(chan error, 1)
+	go func() {
+		_, _, kfinish, kerr := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionKill})
+		if kerr == nil {
+			kfinish(ctx, nil)
+		}
+		killer <- kerr
+	}()
+	time.Sleep(200 * time.Millisecond)
+
+	_, err = storage.RestoreRunning(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.StatePausing, 0)
+	require.NoError(t, err)
+	finish(ctx, sandboxtypes.ErrTransitionRestored)
+
+	select {
+	case werr := <-waiter:
+		require.ErrorIs(t, werr, sandboxtypes.ErrTransitionRestored)
+	case <-time.After(5 * time.Second):
+		t.Fatal("waiter did not wake")
+	}
+	select {
+	case jerr := <-joiner:
+		require.ErrorIs(t, jerr, sandboxtypes.PauseQueueExhaustedError{}, "a joining pause must see the refusal, never a success")
+	case <-time.After(5 * time.Second):
+		t.Fatal("joiner did not wake")
+	}
+	select {
+	case kerr := <-killer:
+		require.NoError(t, kerr, "a joining kill retries against the restored Running record")
+	case <-time.After(5 * time.Second):
+		t.Fatal("killer did not wake")
+	}
+}
+
+// A held sandbox must not occupy the expired scan window: the restore moves
+// its index score to the retry time, and it comes back once that passes.
+func TestRestoreRunning_HeldSandboxLeavesTheExpiredWindow(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := t.Context()
+
+	sbx := createTestSandbox("restore-held")
+	sbx.EndTime = time.Now().Add(-time.Minute) // already expired, as an evicted sandbox is
+	require.NoError(t, storage.Add(ctx, sbx))
+
+	_, _, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionPause})
+	require.NoError(t, err)
+
+	_, err = storage.RestoreRunning(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.StatePausing, 400*time.Millisecond)
+	require.NoError(t, err)
+	callback(ctx, errors.New("refused"))
+
+	items, err := storage.ExpiredItems(ctx)
+	require.NoError(t, err)
+	for _, it := range items {
+		assert.NotEqual(t, sbx.SandboxID, it.SandboxID, "inside its retry window the sandbox is out of the expired set")
+	}
+
+	require.Eventually(t, func() bool {
+		items, err := storage.ExpiredItems(ctx)
+		if err != nil {
+			return false
+		}
+		for _, it := range items {
+			if it.SandboxID == sbx.SandboxID {
+				return true
+			}
+		}
+
+		return false
+	}, 3*time.Second, 50*time.Millisecond, "once the window passes the sandbox is expired again")
+}

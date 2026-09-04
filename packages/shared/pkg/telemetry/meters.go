@@ -21,11 +21,21 @@ type (
 const (
 	ApiOrchestratorCreatedSandboxes      CounterType = "api.orchestrator.created_sandboxes"
 	ApiOrchestratorResumeOriginNodeRemap CounterType = "api.orchestrator.resume_origin_node_remapped"
+	// ApiOrchestratorPauseRefusalRestore counts what became of a pause the
+	// node refused retryably: outcome restored | restore_failed |
+	// route_restore_failed, caller request | eviction.
+	ApiOrchestratorPauseRefusalRestore CounterType = "api.orchestrator.pause_refusal_restore"
 	// ApiEvictorFsOnlyAutoPause counts timeout auto-pauses whose policy asked
 	// for a filesystem-only snapshot. Unlabeled since the fs-only version
 	// gate was dropped: every counted eviction takes the fs-only path.
 	ApiEvictorFsOnlyAutoPause CounterType = "api.evictor.fs_only_auto_pause"
-	SandboxCreateMeterName    CounterType = "api.env.instance.started"
+	// ApiEvictorAutoPauseDegraded counts timeout auto-pauses the evictor
+	// downgraded to a filesystem-only snapshot after the node refused the
+	// memory one, by cause: admission_refused (no retry budget, degraded at
+	// the first refusal) or overstay_budget (the retry budget since the first
+	// refusal ran out); a subset of ApiEvictorFsOnlyAutoPause.
+	ApiEvictorAutoPauseDegraded CounterType = "api.evictor.auto_pause_degraded"
+	SandboxCreateMeterName      CounterType = "api.env.instance.started"
 
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
@@ -459,7 +469,9 @@ var counterDesc = map[CounterType]string{
 	SandboxCreateMeterName:                       "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes:              "Number of successfully created sandboxes",
 	ApiEvictorFsOnlyAutoPause:                    "Timeout auto-pauses with a filesystem-only policy.",
+	ApiEvictorAutoPauseDegraded:                  "Timeout auto-pauses degraded to filesystem-only after a node refusal, by cause (admission_refused | overstay_budget).",
 	ApiOrchestratorResumeOriginNodeRemap:         "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
+	ApiOrchestratorPauseRefusalRestore:           "Outcomes of restoring a sandbox whose pause the node refused retryably, by outcome and caller.",
 	BuildResultCounterName:                       "Number of template build results",
 	BuildCacheResultCounterName:                  "Number of build cache results",
 	TeamSandboxCreated:                           "Counter of started sandboxes for the team in the interval",
@@ -511,7 +523,9 @@ var counterUnits = map[CounterType]string{
 	SandboxCreateMeterName:                       "{sandbox}",
 	ApiOrchestratorCreatedSandboxes:              "{sandbox}",
 	ApiEvictorFsOnlyAutoPause:                    "{pause}",
+	ApiEvictorAutoPauseDegraded:                  "{pause}",
 	ApiOrchestratorResumeOriginNodeRemap:         "{snapshot}",
+	ApiOrchestratorPauseRefusalRestore:           "{pause}",
 	BuildResultCounterName:                       "{build}",
 	BuildCacheResultCounterName:                  "{layer}",
 	TeamSandboxCreated:                           "{sandbox}",

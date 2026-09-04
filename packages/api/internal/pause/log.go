@@ -23,7 +23,8 @@ const (
 	SkipReasonNotFound      SkipReason = "not_found"
 	// SkipReasonStateChanged: the sandbox moved, between the expiry scan and
 	// the removal, into a state pause cannot start from.
-	SkipReasonStateChanged SkipReason = "state_changed"
+	SkipReasonStateChanged     SkipReason = "state_changed"
+	SkipReasonAdmissionRefused SkipReason = "admission_refused"
 )
 
 // fsOnly rides on every pause event so the snapshot kind can be joined to the
@@ -64,6 +65,17 @@ func LogFailure(ctx context.Context, sandboxID string, teamID string, reason Rea
 	}
 
 	logger.L().Warn(ctx, "sandbox_pause_result", fields...)
+}
+
+// LogRefused is not a result: the node refused a memory snapshot and the same
+// sweep goes on to request a filesystem-only one, whose result row follows.
+func LogRefused(ctx context.Context, sandboxID string, teamID string, reason Reason, fsOnly bool) {
+	logger.L().Info(ctx, "sandbox_pause_refused",
+		logger.WithSandboxID(sandboxID),
+		logger.WithTeamID(teamID),
+		zap.String("pause_reason", string(reason)),
+		zap.Bool("fs_only", fsOnly),
+	)
 }
 
 func LogSkipped(ctx context.Context, sandboxID string, teamID string, reason Reason, skipReason SkipReason, fsOnly bool) {

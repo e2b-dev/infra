@@ -58,6 +58,7 @@ type Orchestrator struct {
 	sandboxCountGaugeRegistration metric.Registration
 	createdSandboxesCounter       metric.Int64Counter
 	resumeOriginNodeRemapCounter  metric.Int64Counter
+	pauseRefusalRestoreCounter    metric.Int64Counter
 	teamMetricsObserver           *metrics.TeamObserver
 	accessTokenGenerator          *sandbox.AccessTokenGenerator
 	createdCounter                metric.Int64Counter
@@ -186,7 +187,7 @@ func New(
 		redisStorage,
 		redisreservations.NewReservationStorage(redisClient, redisStorage.Notifier()),
 		sandbox.Callbacks{
-			AddSandboxToRoutingTable: o.addSandboxToRoutingTable,
+			AddSandboxToRoutingTable: o.addSandboxToRoutingTableOrLog,
 			AsyncNewlyCreatedSandbox: o.handleNewlyCreatedSandbox,
 			KillOrphanSandbox:        o.killOrphanSandbox,
 		},

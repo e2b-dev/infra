@@ -59,14 +59,15 @@ func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.Sandbo
 	return n.client, appendMetadataCtx(ctx, md)
 }
 
-func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string) (*clusters.GRPCClient, context.Context) {
+func (n *Node) GetSandboxDeleteCtx(ctx context.Context, sandboxID string, executionID string, restoreOnRefusal bool) (*clusters.GRPCClient, context.Context) {
 	md := metadata.MD{}
 
 	if n.IsClusterNode() {
 		md = edge.SerializeSandboxCatalogDeleteEvent(
 			edge.SandboxCatalogDeleteEvent{
-				SandboxID:   sandboxID,
-				ExecutionID: executionID,
+				SandboxID:        sandboxID,
+				ExecutionID:      executionID,
+				RestoreOnRefusal: restoreOnRefusal,
 			},
 		)
 	}

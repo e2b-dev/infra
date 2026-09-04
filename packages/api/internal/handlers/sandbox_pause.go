@@ -109,6 +109,12 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' cannot be paused while in '%s' state", sandboxID, transErr.CurrentState))
 
 		return
+	// Reached only after the API restored the sandbox, so the retry can succeed.
+	case errors.Is(err, orchestrator.PauseQueueExhaustedError{}):
+		pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonAdmissionRefused, filesystemOnly)
+		a.sendAPIStoreError(c, http.StatusServiceUnavailable, fmt.Sprintf("Sandbox '%s' cannot be paused right now because its node is busy, please retry", sandboxID))
+
+		return
 	default:
 		pause.LogFailure(ctx, sandboxID, teamID.String(), pause.ReasonRequest, filesystemOnly, err)
 		telemetry.ReportError(ctx, "error pausing sandbox", err)

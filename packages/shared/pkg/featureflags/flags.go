@@ -433,7 +433,14 @@ var (
 	// pre-flight, in milliseconds. Negative (default) disables the pre-flight;
 	// 0 probes the parent header's readiness without waiting; a positive value
 	// waits up to that long before refusing retryably.
-	PauseAdmissionGraceMs         = NewIntFlag("pause-admission-grace-milliseconds", -1)
+	PauseAdmissionGraceMs = NewIntFlag("pause-admission-grace-milliseconds", -1)
+	// PauseRefusalRestoreFlag gates the API-side restore of a retryably
+	// refused pause: record kept, routing re-registered, state back to
+	// Running. Off (default), a refused pause still ends today's way — the
+	// record is removed, the live sandbox is reaped as an orphan shortly
+	// after, and the pause endpoint answers today's generic error rather than
+	// a 503 whose retry could not succeed.
+	PauseRefusalRestoreFlag       = NewBoolFlag("pause-refusal-restore", false)
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
@@ -543,6 +550,17 @@ var (
 	// and are picked up by the next eviction tick. Must be > 0; non-positive
 	// values are ignored at refresh time.
 	MaxConcurrentEvictions = NewIntFlag("max-concurrent-evictions", 256)
+
+	// AutoPauseOverstayBudgetMs is how long the evictor keeps retrying a memory
+	// snapshot for an expired auto-pause sandbox the node refuses, counted from
+	// the first refusal of the current episode, before it requests a
+	// filesystem-only snapshot instead (no memory parent, so it cannot be
+	// refused for one). Same sign convention as PauseAdmissionGraceMs:
+	// negative = never degrade (retry for as long as the node refuses), 0 = no
+	// retries (degrade at the first refusal), positive = the budget. Only ever
+	// consulted on a refusal, and refusals only reach the evictor with
+	// PauseRefusalRestoreFlag on, so it is inert until that flag is.
+	AutoPauseOverstayBudgetMs = NewIntFlag("auto-pause-overstay-budget-milliseconds", 120000)
 
 	// MaxConcurrentSnapshotUpserts limits concurrent UpsertSnapshot calls (pause + snapshot template paths).
 	// 0 or negative disables throttling (unlimited concurrency).

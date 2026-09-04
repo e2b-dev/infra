@@ -107,7 +107,7 @@ func TestPauseSandbox_FailsBuildWhenPauseRPCFails(t *testing.T) {
 
 	o, db, node, sbx := newPauseFixture(t, errors.New("node exploded"))
 
-	err := o.pauseSandbox(t.Context(), node, sbx, false)
+	err := o.pauseSandbox(t.Context(), node, sbx, false, false)
 	require.Error(t, err)
 
 	buildStatus, hasFinishedAt := snapshotBuildStatus(t, db, sbx.SandboxID)
@@ -121,7 +121,7 @@ func TestPauseSandbox_FailsBuildWhenPauseQueueExhausted(t *testing.T) {
 
 	o, db, node, sbx := newPauseFixture(t, status.Error(codes.ResourceExhausted, "queue full"))
 
-	err := o.pauseSandbox(t.Context(), node, sbx, false)
+	err := o.pauseSandbox(t.Context(), node, sbx, false, false)
 	require.ErrorIs(t, err, PauseQueueExhaustedError{})
 
 	buildStatus, hasFinishedAt := snapshotBuildStatus(t, db, sbx.SandboxID)
