@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -32,6 +33,12 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// buildLimiterRefreshInterval is how often the template build limit is refreshed.
+const buildLimiterRefreshInterval = 30 * time.Second
+
+// buildLimiterUnboundedLimit disables the template build cap.
+const buildLimiterUnboundedLimit = math.MaxInt32
+
 type closeable interface {
 	Close() error
 }
@@ -55,6 +62,11 @@ type ServerStore struct {
 
 	wg           *sync.WaitGroup // wait group for running builds
 	activeBuilds atomic.Int64    // counter for active builds (for debugging)
+
+	// buildLimiter bounds concurrent template builds on this node.
+	buildLimiter *utils.AdjustableSemaphore
+	// buildLimitEnabled gates the limiter acquire path.
+	buildLimitEnabled atomic.Bool
 
 	closers []closeable
 }
@@ -154,6 +166,18 @@ func New(
 		uploads,
 	)
 
+	// Use the service context so the node-wide cap is not team-targeted.
+	flagLimit := featureFlags.IntFlag(ctx, featureflags.MaxConcurrentTemplateBuilds)
+	enabled := flagLimit > 0
+	initialLimit := int64(flagLimit)
+	if !enabled {
+		initialLimit = buildLimiterUnboundedLimit
+	}
+	buildLimiter, err := utils.NewAdjustableSemaphore(initialLimit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create build limiter: %w", err)
+	}
+
 	store := &ServerStore{
 		logger:            logger,
 		builder:           builder,
@@ -164,10 +188,42 @@ func New(
 		templateStorage:   templatePersistence,
 		buildStorage:      buildPersistence,
 		wg:                &sync.WaitGroup{},
+		buildLimiter:      buildLimiter,
 		closers:           closers,
 	}
+	store.buildLimitEnabled.Store(enabled)
+
+	go store.refreshBuildLimit(ctx)
 
 	return store, nil
+}
+
+// refreshBuildLimit keeps the template build cap in sync with the feature flag.
+func (s *ServerStore) refreshBuildLimit(ctx context.Context) {
+	ticker := time.NewTicker(buildLimiterRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			flagLimit := s.featureFlags.IntFlag(ctx, featureflags.MaxConcurrentTemplateBuilds)
+
+			limit := int64(flagLimit)
+			enabled := flagLimit > 0
+			if !enabled {
+				limit = buildLimiterUnboundedLimit
+			}
+
+			if err := s.buildLimiter.SetLimit(limit); err != nil {
+				s.logger.Error(ctx, "failed to adjust build limiter",
+					zap.Int64("limit", limit), zap.Bool("enabled", enabled), zap.Error(err))
+				continue
+			}
+			s.buildLimitEnabled.Store(enabled)
+		}
+	}
 }
 
 func (s *ServerStore) Close(ctx context.Context) error {
