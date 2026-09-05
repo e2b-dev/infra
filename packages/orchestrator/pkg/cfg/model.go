@@ -94,6 +94,11 @@ type Config struct {
 	NFSProxyRecordHandleCalls   bool              `env:"NFS_PROXY_RECORD_HANDLE_CALLS" envDefault:"false"`
 	NFSProxyRecordStatCalls     bool              `env:"NFS_PROXY_RECORD_STAT_CALLS"   envDefault:"false"`
 	NFSProxyLogLevel            nfs.LogLevel      `env:"NFS_PROXY_LOG_LEVEL"           envDefault:"info"`
+	// NFSProxyCacheLimit controls the LRU size for NFS file-handle mappings.
+	// Too small a value causes ESTALE errors when a sandbox creates more files than
+	// the cache can hold simultaneously (e.g. large npm/pip installs).
+	// Each entry is ~150 bytes; 16384 entries ≈ 2.4 MB per orchestrator node.
+	NFSProxyCacheLimit          int               `env:"NFS_PROXY_CACHE_LIMIT"         envDefault:"16384"`
 	ProxyPort                   uint16            `env:"PROXY_PORT"                    envDefault:"5007"`
 	RedisClusterURL             string            `env:"REDIS_CLUSTER_URL"`
 	RedisTLSCABase64            string            `env:"REDIS_TLS_CA_BASE64"`
