@@ -93,7 +93,7 @@ func (s *APIStore) createCluster(ctx context.Context, registration clusterRegist
 func (s *APIStore) DeleteAdminClustersClusterID(c *gin.Context, clusterID api.ClusterID) {
 	ctx := c.Request.Context()
 
-	_, err := s.db.Dashboard.DeleteCluster(ctx, clusterID)
+	err := s.deleteCluster(ctx, clusterID)
 	if err != nil {
 		if dberrors.IsForeignKeyViolation(err) {
 			s.sendAPIStoreError(c, http.StatusConflict, "Cluster is still referenced by a team or environment")
@@ -106,6 +106,26 @@ func (s *APIStore) DeleteAdminClustersClusterID(c *gin.Context, clusterID api.Cl
 
 	logger.L().Info(ctx, "admin cluster deleted", logger.WithClusterID(clusterID))
 	c.Status(http.StatusNoContent)
+}
+
+func (s *APIStore) deleteCluster(ctx context.Context, clusterID uuid.UUID) error {
+	db, tx, err := s.db.WithTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin cluster deletion: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+
+	if err := db.Dashboard.DetachDeletedTemplatesFromCluster(ctx, clusterID); err != nil {
+		return fmt.Errorf("detach deleted templates: %w", err)
+	}
+	if _, err := db.Dashboard.DeleteCluster(ctx, clusterID); err != nil {
+		return fmt.Errorf("delete cluster: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit cluster deletion: %w", err)
+	}
+
+	return nil
 }
 
 func (s *APIStore) GetAdminTeamsTeamIDCluster(c *gin.Context, teamID api.TeamID) {

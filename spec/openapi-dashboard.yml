@@ -1761,7 +1761,7 @@ paths:
   /admin/clusters/{clusterID}:
     delete:
       summary: Delete an unreferenced cluster
-      description: Deletes a cluster only after all team assignments are detached and no environment history references it. Repeating a completed deletion succeeds.
+      description: Deletes a cluster after all team assignments are detached and no active environment references remain. Releases soft-deleted environment references in the same transaction while preserving environment and build history. Repeating a completed deletion succeeds.
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
@@ -1777,6 +1777,32 @@ paths:
           $ref: "#/components/responses/401"
         "409":
           $ref: "#/components/responses/409"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /v1/management/clusters/{clusterID}/destroy-readiness:
+    get:
+      operationId: managementClusterDestroyReadiness
+      summary: Check cluster destroy readiness
+      description: Checks whether this exact cluster has active templates or snapshots. Soft-deleted history and team assignments do not block this check. Returns success if the cluster is absent. This read does not change resources or prevent later template creation.
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/clusterID"
+      responses:
+        "204":
+          description: No active templates or snapshots reference the cluster.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          description: Active templates or snapshots must be deleted before destroying the cluster.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/500"
 
@@ -2590,6 +2616,7 @@ paths:
     delete:
       operationId: managementDeleteCluster
       summary: Delete an unreferenced cluster (v1).
+      description: Deletes a cluster after all team assignments are detached and no active environment references remain. Releases soft-deleted environment references in the same transaction while preserving environment and build history. Repeating a completed deletion succeeds.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []

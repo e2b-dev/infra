@@ -27,6 +27,18 @@ WHERE clusters.name = EXCLUDED.name
   AND clusters.auth_org_id IS NOT DISTINCT FROM EXCLUDED.auth_org_id
 RETURNING id;
 
+-- name: ClusterHasActiveEnvironments :one
+SELECT EXISTS (
+    SELECT FROM public.active_envs
+    WHERE cluster_id = sqlc.arg(cluster_id)::uuid
+);
+
+-- name: DetachDeletedTemplatesFromCluster :exec
+UPDATE public.envs
+SET cluster_id = NULL
+WHERE cluster_id = sqlc.arg(cluster_id)::uuid
+  AND deleted_at IS NOT NULL;
+
 -- name: DeleteCluster :execrows
 DELETE FROM public.clusters
 WHERE id = sqlc.arg(cluster_id)::uuid;

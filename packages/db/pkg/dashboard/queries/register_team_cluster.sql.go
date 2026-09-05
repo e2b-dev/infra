@@ -53,6 +53,20 @@ func (q *Queries) AssignTeamCluster(ctx context.Context, arg AssignTeamClusterPa
 	return i, err
 }
 
+const clusterHasActiveEnvironments = `-- name: ClusterHasActiveEnvironments :one
+SELECT EXISTS (
+    SELECT FROM public.active_envs
+    WHERE cluster_id = $1::uuid
+)
+`
+
+func (q *Queries) ClusterHasActiveEnvironments(ctx context.Context, clusterID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, clusterHasActiveEnvironments, clusterID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const createCluster = `-- name: CreateCluster :one
 INSERT INTO public.clusters (
     id,
@@ -119,6 +133,18 @@ func (q *Queries) DeleteCluster(ctx context.Context, clusterID uuid.UUID) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const detachDeletedTemplatesFromCluster = `-- name: DetachDeletedTemplatesFromCluster :exec
+UPDATE public.envs
+SET cluster_id = NULL
+WHERE cluster_id = $1::uuid
+  AND deleted_at IS NOT NULL
+`
+
+func (q *Queries) DetachDeletedTemplatesFromCluster(ctx context.Context, clusterID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, detachDeletedTemplatesFromCluster, clusterID)
+	return err
 }
 
 const detachTeamCluster = `-- name: DetachTeamCluster :one
