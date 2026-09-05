@@ -2,6 +2,9 @@
 
 Instructions for AI agents working in this repository.
 
+Also read [CLAUDE.md](CLAUDE.md) for development commands and package
+conventions if it is not already in context. It applies to all agents.
+
 ## Understanding the repository
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) before working on or reviewing code here. It describes what each service does, how services interact (sandbox creation, traffic routing, pause/resume, template builds), the data stores, and the deployment topology — it is the fastest way to build correct context about this codebase.
