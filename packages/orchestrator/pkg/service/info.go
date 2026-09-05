@@ -91,7 +91,12 @@ func NewInfoContainer(clientId string, version string, commit string, instanceID
 		ClientId:  clientId,
 		ServiceId: instanceID,
 
-		status: ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Healthy, ChangedAt: startup},
+		// Start Unhealthy: the /health endpoint and gRPC port may bind before the
+		// sandbox runtime finishes initializing (startup reclaim, network pool
+		// populate). Reporting Unhealthy until the gRPC server is actually serving
+		// keeps the edge/service discovery from routing new work to a node that is
+		// still coming up; run.go flips this to Healthy once wiring completes.
+		status: ServiceStatus{Status: orchestratorinfo.ServiceInfoStatus_Unhealthy, ChangedAt: startup},
 
 		Startup:     startup,
 		Roles:       serviceRoles,
