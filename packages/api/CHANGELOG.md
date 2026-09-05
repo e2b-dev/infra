@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.11.0 (2026-09-04)
+
+
+### Features
+
+* **api:** optional LOKI_URL and a LOGS_READ_CONFIG override for deployments without LaunchDarkly (6a6edf5)
+* **api:** restore a refused pause to running and bound auto-pause overstay (flag-gated) (cc07fd6)
+
+
+### Bug Fixes
+
+* **api:** stagger Redis lock-release retries (5f3e739)
+
+
+### Miscellaneous Chores
+
+* **api:** drop x-not-implemented from the filesystem-only resume field (103e11f)
+
 ## 0.10.0 (2026-09-03)
 
 
