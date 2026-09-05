@@ -60,7 +60,8 @@ func (s *ServiceInfo) OverrideStatus(ctx context.Context, status orchestratorinf
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
-	if s.status.Status == orchestratorinfo.ServiceInfoStatus_Draining && status == orchestratorinfo.ServiceInfoStatus_Standby {
+	if s.status.Status == orchestratorinfo.ServiceInfoStatus_Draining &&
+		(status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby) {
 		return false
 	}
 
