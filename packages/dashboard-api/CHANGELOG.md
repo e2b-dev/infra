@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.0 (2026-09-06)
+
+
+### Features
+
+* **dashboard-api:** check cluster teardown readiness and preserve history (25f6582)
+
 ## 0.6.0 (2026-09-04)
 
 
