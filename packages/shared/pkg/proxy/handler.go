@@ -12,11 +12,22 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/cors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/template"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Destination, error), connLimitConfig *ConnectionLimitConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
+		l := logger.L()
+
+		edgeTraceID, hasEdgeTraceID := telemetry.ParseEdgeTraceID(
+			r.Header.Get(telemetry.GCPTraceContextHeader),
+			r.Header.Get(telemetry.AWSTraceContextHeader),
+		)
+		if hasEdgeTraceID {
+			l = l.With(zap.String("edge_trace_id", edgeTraceID))
+		}
+
 		d, err := getDestination(r)
 
 		// With no destination there is nobody upstream to answer the preflight,
@@ -27,21 +38,21 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var mhe MissingHeaderError
 		if errors.As(err, &mhe) {
-			logger.L().Warn(ctx, "missing header", zap.Error(mhe))
+			l.Warn(ctx, "missing header", zap.Error(mhe))
 			cors.Error(w, "missing header", http.StatusBadRequest)
 
 			return
 		}
 
 		if errors.Is(err, ErrInvalidHost) {
-			logger.L().Warn(ctx, "invalid host", zap.String("host", r.Host))
+			l.Warn(ctx, "invalid host", zap.String("host", r.Host))
 			cors.Error(w, "Invalid host", http.StatusBadRequest)
 
 			return
 		}
 
 		if errors.Is(err, ErrInvalidSandboxID) {
-			logger.L().Warn(ctx, "invalid sandbox ID", zap.String("host", r.Host))
+			l.Warn(ctx, "invalid sandbox ID", zap.String("host", r.Host))
 			cors.Error(w, "Invalid sandbox ID", http.StatusBadRequest)
 
 			return
@@ -49,7 +60,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var invalidPortErr *InvalidSandboxPortError
 		if errors.As(err, &invalidPortErr) {
-			logger.L().Warn(ctx, "invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
+			l.Warn(ctx, "invalid sandbox port", zap.String("host", r.Host), zap.String("port", invalidPortErr.Port))
 			cors.Error(w, "Invalid sandbox port", http.StatusBadRequest)
 
 			return
@@ -57,7 +68,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var notFoundErr *SandboxNotFoundError
 		if errors.As(err, &notFoundErr) {
-			logger.L().Warn(ctx, "sandbox not found",
+			l.Warn(ctx, "sandbox not found",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(notFoundErr.SandboxId))
 
@@ -65,7 +76,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				NewSandboxNotFoundError(notFoundErr.SandboxId, r.Host).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle sandbox not found error", zap.Error(err), logger.WithSandboxID(notFoundErr.SandboxId))
+				l.Error(ctx, "failed to handle sandbox not found error", zap.Error(err), logger.WithSandboxID(notFoundErr.SandboxId))
 				cors.Error(w, "Failed to handle sandbox not found error", http.StatusInternalServerError)
 
 				return
@@ -76,7 +87,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var resumeDeniedErr *SandboxResumePermissionDeniedError
 		if errors.As(err, &resumeDeniedErr) {
-			logger.L().Warn(ctx, "sandbox resume permission denied",
+			l.Warn(ctx, "sandbox resume permission denied",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(resumeDeniedErr.SandboxId))
 
@@ -84,7 +95,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				NewSandboxResumePermissionDeniedError(resumeDeniedErr.SandboxId, r.Host).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle sandbox resume permission denied error", zap.Error(err), logger.WithSandboxID(resumeDeniedErr.SandboxId))
+				l.Error(ctx, "failed to handle sandbox resume permission denied error", zap.Error(err), logger.WithSandboxID(resumeDeniedErr.SandboxId))
 				cors.Error(w, "Failed to handle sandbox resume permission denied error", http.StatusInternalServerError)
 
 				return
@@ -95,7 +106,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var stillTransitioningErr *SandboxStillTransitioningError
 		if errors.As(err, &stillTransitioningErr) {
-			logger.L().Warn(ctx, "sandbox still transitioning",
+			l.Warn(ctx, "sandbox still transitioning",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(stillTransitioningErr.SandboxId))
 
@@ -103,7 +114,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				NewSandboxStillTransitioningError(stillTransitioningErr.SandboxId, r.Host).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle sandbox still transitioning error", zap.Error(err), logger.WithSandboxID(stillTransitioningErr.SandboxId))
+				l.Error(ctx, "failed to handle sandbox still transitioning error", zap.Error(err), logger.WithSandboxID(stillTransitioningErr.SandboxId))
 				cors.Error(w, "Failed to handle sandbox still transitioning error", http.StatusInternalServerError)
 
 				return
@@ -114,7 +125,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var internalRouteErr *InternalRouteError
 		if errors.As(err, &internalRouteErr) {
-			logger.L().Warn(ctx, "internal route requested through the proxy",
+			l.Warn(ctx, "internal route requested through the proxy",
 				zap.String("host", r.Host),
 				zap.String("path", internalRouteErr.Path),
 				logger.WithSandboxID(internalRouteErr.SandboxId))
@@ -123,7 +134,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				NewInternalRouteError(r.Host, internalRouteErr.Path).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle internal route error", zap.Error(err), logger.WithSandboxID(internalRouteErr.SandboxId))
+				l.Error(ctx, "failed to handle internal route error", zap.Error(err), logger.WithSandboxID(internalRouteErr.SandboxId))
 				cors.Error(w, "Failed to handle internal route error", http.StatusInternalServerError)
 
 				return
@@ -134,7 +145,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var resourceExhaustedErr *SandboxResourceExhaustedError
 		if errors.As(err, &resourceExhaustedErr) {
-			logger.L().Warn(ctx, "team sandbox limit reached",
+			l.Warn(ctx, "team sandbox limit reached",
 				zap.String("host", r.Host),
 				logger.WithSandboxID(resourceExhaustedErr.SandboxId))
 
@@ -142,7 +153,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				NewTeamSandboxLimitError(resourceExhaustedErr.SandboxId, r.Host, resourceExhaustedErr.Message).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle team sandbox limit error", zap.Error(err), logger.WithSandboxID(resourceExhaustedErr.SandboxId))
+				l.Error(ctx, "failed to handle team sandbox limit error", zap.Error(err), logger.WithSandboxID(resourceExhaustedErr.SandboxId))
 				cors.Error(w, "Failed to handle team sandbox limit error", http.StatusInternalServerError)
 
 				return
@@ -153,13 +164,13 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var trafficMissingTokenErr *MissingTrafficAccessTokenError
 		if errors.As(err, &trafficMissingTokenErr) {
-			logger.L().Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))
+			l.Warn(ctx, "traffic access token is missing", zap.String("host", r.Host))
 
 			err = template.
 				NewTrafficAccessTokenMissingHeader(trafficMissingTokenErr.SandboxId, r.Host, trafficMissingTokenErr.Header).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle traffic missing traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficMissingTokenErr.SandboxId))
+				l.Error(ctx, "failed to handle traffic missing traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficMissingTokenErr.SandboxId))
 				cors.Error(w, "Failed to handle invalid missing access token header error", http.StatusInternalServerError)
 
 				return
@@ -170,13 +181,13 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 
 		var trafficInvalidTokenErr *InvalidTrafficAccessTokenError
 		if errors.As(err, &trafficInvalidTokenErr) {
-			logger.L().Warn(ctx, "traffic access token is invalid", zap.String("host", r.Host))
+			l.Warn(ctx, "traffic access token is invalid", zap.String("host", r.Host))
 
 			err = template.
 				NewTrafficAccessTokenInvalidHeader(trafficInvalidTokenErr.SandboxId, r.Host, trafficInvalidTokenErr.Header).
 				HandleError(w, r)
 			if err != nil {
-				logger.L().Error(ctx, "failed to handle traffic invalid traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficInvalidTokenErr.SandboxId))
+				l.Error(ctx, "failed to handle traffic invalid traffic access token header error", zap.Error(err), logger.WithSandboxID(trafficInvalidTokenErr.SandboxId))
 				cors.Error(w, "Failed to handle invalid traffic access token header error", http.StatusInternalServerError)
 
 				return
@@ -186,10 +197,17 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 		}
 
 		if err != nil {
-			logger.L().Error(ctx, "failed to route request", zap.Error(err), zap.String("host", r.Host))
+			l.Error(ctx, "failed to route request", zap.Error(err), zap.String("host", r.Host))
 			cors.Error(w, fmt.Sprintf("Unexpected error when routing request: %s", err), http.StatusInternalServerError)
 
 			return
+		}
+
+		if hasEdgeTraceID {
+			// Do not mutate destinations that a resolver reuses across requests.
+			destination := *d
+			destination.RequestLogger = d.RequestLogger.With(zap.String("edge_trace_id", edgeTraceID))
+			d = &destination
 		}
 
 		// Connection limiting
@@ -197,7 +215,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			maxLimit := connLimitConfig.GetMaxLimit(ctx)
 			count, acquired := connLimitConfig.Limiter.TryAcquire(d.ConnectionKey, maxLimit)
 			if !acquired {
-				logger.L().Warn(ctx, "sandbox too many incoming connections",
+				l.Warn(ctx, "sandbox too many incoming connections",
 					zap.String("host", r.Host),
 					logger.WithSandboxID(d.SandboxId),
 					zap.Int("connection_limit", maxLimit))
@@ -216,7 +234,7 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 					NewSandboxTooManyConnectionsError(d.SandboxId, r.Host, maxLimit).
 					HandleError(w, r)
 				if err != nil {
-					logger.L().Error(ctx, "failed to handle too many connections error", zap.Error(err), logger.WithSandboxID(d.SandboxId))
+					l.Error(ctx, "failed to handle too many connections error", zap.Error(err), logger.WithSandboxID(d.SandboxId))
 					cors.Error(w, "Failed to handle too many connections error", http.StatusInternalServerError)
 
 					return
