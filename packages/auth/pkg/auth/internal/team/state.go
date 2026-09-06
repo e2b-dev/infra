@@ -22,9 +22,7 @@ func CheckTeamBanned(team authqueries.Team) error {
 // Called inline at any handler that creates or mutates a billable resource.
 // Each service decides for itself which endpoints need it.
 //
-// Takes a pointer so handlers can pass the result of GetTeamInfo directly
-// without a nil-check — admin / access-token paths have no team and return
-// nil here (no-op).
+// Handlers without team context are allowed through.
 func CheckTeamBlocked(team *types.Team) error {
 	if team == nil || team.Team == nil || !team.IsBlocked {
 		return nil

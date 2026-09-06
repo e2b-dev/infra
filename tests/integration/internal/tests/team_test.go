@@ -47,9 +47,7 @@ UPDATE teams SET is_banned = $1 WHERE id = $2
 
 // TestBlockedTeam verifies the blocked-team enforcement performed by
 // middleware.EnforceBlockedTeam against the route allowlist
-// (see packages/api/internal/middleware/blocked_team.go). Late-team-
-// resolution paths (access-token auth) get the same check via
-// APIStore.GetTeam / resolveTemplateAndTeam.
+// (see packages/api/internal/middleware/blocked_team.go).
 //
 // Blocked teams are:
 //   - allowed for read and delete operations (recovery + cleanup)
