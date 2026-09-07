@@ -385,10 +385,10 @@ sequenceDiagram
 
     U->>API: POST /volumes (create) or GET /volumes/{id}
     API->>PG: persist / load volume row
-    API->>API: mint JWT (aud = https://api.&lt;domain&gt;)<br/>resolve domain
+    API->>API: mint JWT (aud = https://api.#lt;domain#gt;)<br/>resolve domain
     API-->>U: { volumeID, name, token, domain? }
-    Note over U: domain is returned only for BYOC teams;<br/>SDK stores it and falls back to api.&lt;E2B_DOMAIN&gt; otherwise
-    U->>VC: /volumecontent/{id}/... at api.&lt;domain&gt;<br/>Authorization: Bearer token
+    Note over U: domain is returned only for BYOC teams#59;<br/>SDK stores it and falls back to api.#lt;E2B_DOMAIN#gt; otherwise
+    U->>VC: /volumecontent/{id}/... at api.#lt;domain#gt;<br/>Authorization: Bearer token
     VC->>VC: verify token (audience must match its own origin)
     VC-->>U: file content
 ```
