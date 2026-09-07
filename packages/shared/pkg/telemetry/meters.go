@@ -99,6 +99,44 @@ const (
 	// a ramp. The reasons are the resolver's and the gates' own vocabulary; read them
 	// off `sum by (reason)` rather than from a list here, which would go stale.
 	OrchestratorEnvdUpgradeGated CounterType = "orchestrator.envd.upgrade.gated"
+	// OrchestratorEnvdBinaryCacheReads counts LOOKUPS of the host envd binary on
+	// the resume path, by what the lookup found (hit|miss) and which upgrade path
+	// asked (live|offline). Exactly one per resolution, so hit/total is the cache's
+	// effectiveness. A standing "miss" means warms are not landing -- pair it with
+	// binary_cache.warms{result="failed"} to see why.
+	OrchestratorEnvdBinaryCacheReads CounterType = "orchestrator.envd.binary_cache.reads"
+	// OrchestratorEnvdBinaryCacheDeliveries counts what a caller actually read, by
+	// outcome (copy|stale). Separate from reads because its denominator is
+	// different: only resolutions that go on to read the bytes reach it, and
+	// counting both on one series would make hit/total exceed the number of
+	// resolutions. "copy" is the cached file, which is the only thing an upgrade
+	// ever delivers -- an upgrade whose binary is not cached is deferred rather than
+	// served from the mount. "stale" is a refusal: the copy that carried the
+	// resolved version was gone by delivery, so the read was skipped rather than
+	// satisfied from a source whose bytes were never verified against it.
+	OrchestratorEnvdBinaryCacheDeliveries CounterType = "orchestrator.envd.binary_cache.deliveries"
+	// OrchestratorEnvdBinaryCacheWarms counts attempts to populate the host envd
+	// binary cache, by result. Almost all of them are the background warmer's; the
+	// exception is a lookup whose own source stat failed, which is reported here
+	// rather than by the warm it makes no sense to spawn. "ok" means the binary is cached afterwards;
+	// "superseded" that the warm completed but a promotion during it left nothing to
+	// publish, which needs no retry because the next miss warms the new generation;
+	// "suppressed" that the post-failure backoff declined to copy, and clears within
+	// the minute; "pinned" that these exact bytes have already been judged unusable,
+	// which lasts until a promotion changes them; "already_warming" that a warm of
+	// the same bytes was already in flight; "bad_target" that the bytes copied but
+	// would not run, which is a property of the promoted binary rather than of this
+	// node; "failed" that it genuinely could not copy.
+	//
+	// "already_warming" rising while "ok" stays flat is a source that has stopped
+	// answering mid-copy: the slot is held by a read that is not finishing, which no
+	// other series can tell apart from a node that has simply not warmed yet.
+	//
+	// "bad_target" is the one to alert on. With the cache enabled the resolver never
+	// probes the source, so a truncated or corrupt promotion is detectable here and
+	// nowhere else -- at the upgrade call sites it arrives as the same
+	// gated{reason="binary_not_cached"} a node that merely has not warmed yet emits.
+	OrchestratorEnvdBinaryCacheWarms CounterType = "orchestrator.envd.binary_cache.warms"
 	// OrchestratorEnvdUpgradeHandover counts live-upgrade handover items by item
 	// (proc|retained|watcher) and result (ok|failed), reported back by the new
 	// envd on /init. failed/(ok+failed) is the handover error rate — the
@@ -152,8 +190,11 @@ const (
 	//	    so it must not be rewritten
 	//	same_version
 	//	    already on the target
-	//	not_staged | downgrade | invalid_target | getversion_failed
-	//	    the resolver refused the configured target
+	//	not_staged | downgrade | invalid_target | getversion_failed | binary_not_cached
+	//	    the resolver refused or deferred the configured target
+	//	copy_vanished
+	//	    a version was resolved and the copy carrying it was then retired, before
+	//	    anything was written to the rootfs
 	//
 	// Every no-op except flag-off is counted, so the eligible population adds up.
 	// Flag-off is deliberately absent: it is the whole filesystem-only population
@@ -313,6 +354,16 @@ const (
 	// live-upgrade (delivery + trigger + WaitForEnvd) = overhead added to the
 	// resume. Labeled by result.
 	OrchestratorEnvdUpgradeDurationName HistogramType = "orchestrator.envd.upgrade.duration"
+	// OrchestratorEnvdUpgradePhaseDurationName splits that wall-time by phase
+	// (resolve|deliver|ready). deliver and ready have INDEPENDENT budgets (30 s
+	// and 15 s) and the combined histogram above cannot say which one a slow
+	// upgrade is approaching, so a delivery running past its own deadline has to
+	// be reconstructed from log timestamps. resolve is not in the combined
+	// histogram at all -- it runs before it starts timing -- yet it is the largest
+	// cost on a cold node, because probing the target's version execs the binary
+	// off a network filesystem, which demand-pages it in small reads. Labeled by
+	// phase and result.
+	OrchestratorEnvdUpgradePhaseDurationName HistogramType = "orchestrator.envd.upgrade.phase.duration"
 
 	// OrchestratorEnvdOfflineUpgradeDurationName is the wall-time of the offline
 	// rootfs envd swap (jailed debugfs), recorded once per swap attempt. Catches
@@ -495,6 +546,9 @@ var counterDesc = map[CounterType]string{
 	OrchestratorFsRecoveryToolingUnsupported:     "Fires once per process when the host e2fsck rejects -E journal_only",
 	TemplateBuildCmdlineArgs:                     "Template builds by the guest kernel cmdline parameters applied",
 	OrchestratorEnvdUpgradeGated:                 "Resumes where the envd-upgrade-target flag named a target but a gate declined the upgrade, by reason",
+	OrchestratorEnvdBinaryCacheReads:             "Host envd binary cache lookups on the resume path, by what the lookup found (hit|miss) and upgrade path",
+	OrchestratorEnvdBinaryCacheDeliveries:        "Host envd binary reads at delivery time, by outcome (copy|stale) and upgrade path",
+	OrchestratorEnvdBinaryCacheWarms:             "Host envd binary cache warms, by result (ok|superseded|suppressed|pinned|already_warming|bad_target|failed)",
 	OrchestratorEnvdUpgradeHandover:              "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
 	PauseResumePrefetchHarvestAttempts:           "Pause-resume prefetch harvest attempts, by result",
 	TCPFirewallConnectionsTotal:                  "Total number of TCP firewall connections processed",
@@ -549,6 +603,9 @@ var counterUnits = map[CounterType]string{
 	OrchestratorFsRecoveryToolingUnsupported:     "{probe}",
 	TemplateBuildCmdlineArgs:                     "{build}",
 	OrchestratorEnvdUpgradeGated:                 "{sandbox}",
+	OrchestratorEnvdBinaryCacheReads:             "{read}",
+	OrchestratorEnvdBinaryCacheWarms:             "{warm}",
+	OrchestratorEnvdBinaryCacheDeliveries:        "{read}",
 	OrchestratorEnvdUpgradeHandover:              "{item}",
 	PauseResumePrefetchHarvestAttempts:           "{attempt}",
 	TCPFirewallConnectionsTotal:                  "{connection}",
@@ -717,6 +774,7 @@ var histogramDesc = map[HistogramType]string{
 	OrchestratorSandboxCreateDurationName:             "Time taken to create a sandbox",
 	OrchestratorSandboxExecutionDurationName:          "Time a single sandbox execution ran, from the guest being ready until it stopped executing, labeled by stop reason",
 	OrchestratorEnvdUpgradeDurationName:               "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
+	OrchestratorEnvdUpgradePhaseDurationName:          "Wall-time of one resume-time envd upgrade phase (resolve|deliver|ready); resolve is absent from the combined histogram",
 	WaitForEnvdDurationHistogramName:                  "Time taken for Envd to initialize successfully",
 	EnvdCollapseDurationHistogramName:                 "Time taken for the pre-pause envd heap collapse round-trip",
 	GuestSyncDurationHistogramName:                    "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
@@ -789,6 +847,7 @@ var histogramUnits = map[HistogramType]string{
 	OrchestratorSandboxCreateDurationName:             "ms",
 	OrchestratorSandboxExecutionDurationName:          "ms",
 	OrchestratorEnvdUpgradeDurationName:               "ms",
+	OrchestratorEnvdUpgradePhaseDurationName:          "ms",
 	OrchestratorEnvdOfflineUpgradeDurationName:        "ms",
 	OrchestratorFsRecoveryDurationName:                "ms",
 	WaitForEnvdDurationHistogramName:                  "ms",

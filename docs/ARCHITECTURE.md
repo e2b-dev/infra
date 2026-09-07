@@ -466,6 +466,21 @@ sequenceDiagram
   (a swap failure boots the original envd). Because the swap keys on the snapshot's *built-with*
   version, which it does not advance, it re-fires idempotently on each cold-boot resume until a
   re-pause re-bakes the running version.
+- **Both upgrade paths read the host envd binary through a node-local cache** (gated by the
+  `envd-binary-cache` flag): the version probe, the live delivery and the offline swap's staging
+  copy all read a local copy rather than the read-only artifact mount, which an `exec` would
+  otherwise demand-page in small random reads. The cache is why neither path performs bulk I/O
+  against that mount on the resume path.
+
+  It adds a third condition to both paths, so an eligible snapshot is not unconditionally
+  upgraded: an upgrade whose binary is not cached on this node is **deferred to a later resume**
+  rather than served from the mount, since reading it there would put tens of seconds on a path a
+  customer is waiting on. A node whose cache is cold — any miss, and in particular a ramp keyed on
+  sandbox or team, where the boot-time warm does not evaluate — defers that upgrade while a
+  background warm populates the cache; on a node-scoped rule the boot warm normally lands before
+  the first resume. Both upgrades are idempotent and re-fire per resume, so a deferral costs one
+  cycle. Ramp the flag on a node-scoped context kind — the cache is
+  shared by every sandbox on the node.
 - Auto-pause/auto-resume make sandboxes effectively serverless: idle sandboxes pause, traffic
   resumes them (see traffic flow above).
 

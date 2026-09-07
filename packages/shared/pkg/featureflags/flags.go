@@ -102,6 +102,24 @@ func (f BoolFlag) Fallback() bool {
 	return f.fallback
 }
 
+// envBoolOr reads key as a bool, falling back when it is unset or unparseable.
+// It exists so a bool flag's fallback can be overridden on a cluster with no
+// LaunchDarkly (dev), where a flag otherwise resolves to a value only a rebuild
+// can change — the same reason EnvdUpgradeTargetFlag reads its fallback from the
+// environment.
+func envBoolOr(key string, fallback bool) bool {
+	raw := env.GetEnv(key, "")
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseBool(raw)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
+}
+
 func NewBoolFlag(name string, fallback bool) BoolFlag {
 	flag := BoolFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
@@ -759,6 +777,36 @@ var (
 	// fallback is env-overridable (ENVD_OFFLINE_UPGRADE_TARGET) for dev, where there
 	// is no LD. Default off.
 	EnvdOfflineUpgradeTargetFlag = NewStringFlag("envd-offline-upgrade-target", env.GetEnv("ENVD_OFFLINE_UPGRADE_TARGET", "off"))
+
+	// EnvdBinaryCacheFlag serves the envd upgrade paths from a node-local copy of
+	// the host envd binary instead of re-reading it from the gcsfuse mount: the
+	// version probe, the live delivery to a running envd, and the offline rootfs
+	// swap's staging copy. Off keeps every one of those reading the source
+	// directly, which is the behaviour before this flag existed.
+	//
+	// It gates a caching optimisation, not a new mechanism, so the risk it
+	// isolates is the cache serving a stale binary — an upgrade delivering
+	// something other than the version it recorded. That is recoverable (the
+	// version arbiter refuses to record a success it cannot confirm) but worth a
+	// kill switch that needs no deploy. Falls back on in development, where there
+	// is no LD and the path would otherwise never be exercised.
+	// The fallback is env-overridable (ENVD_BINARY_CACHE) so the cached and
+	// uncached paths can be compared on a cluster with no LaunchDarkly, where the
+	// alternative is two binary deploys.
+	//
+	// Ramp it on a NODE-SCOPED key only: deployment (the domain, so effectively the
+	// cluster), instance-group, or orchestrator (the node, carrying its build as an
+	// attribute). Those are what the orchestrator attaches to every evaluation, so
+	// all three read sites agree on them. A sandbox- or team-keyed rule is absent
+	// at the startup warm, which runs before any sandbox exists -- such a rule
+	// still gates both upgrade paths but silently disables the pre-warm, so every
+	// node's first eligible resume defers. A template-keyed rule matches the
+	// offline path only, since the live path carries the template as an attribute
+	// of the sandbox context rather than as a context of its own. None of that is a
+	// limitation worth lifting: the subject of this flag is a cache shared by every
+	// sandbox on the node, so the node, its group and its cluster are the cohorts
+	// that mean anything.
+	EnvdBinaryCacheFlag = NewBoolFlag("envd-binary-cache", envBoolOr("ENVD_BINARY_CACHE", env.IsDevelopment()))
 	// FsOnlyResumeCPUModelFlag restricts where a filesystem-only snapshot may be
 	// resumed: placement keeps only nodes reporting this CPU model, on top of the
 	// build-compatibility rule every sandbox is already subject to. The value is
@@ -1166,10 +1214,11 @@ func ResolveFirecrackerVersion(ctx context.Context, ff *Client, buildVersion str
 // holding, a same-version binary swap would be skipped and this must switch to
 // comparing by git SHA.
 // It returns the target binary's path and baked version ("" path = no upgrade),
-// plus a reason for the no-upgrade case — off | not_staged | getversion_failed |
-// same_version | downgrade, and "" when an upgrade IS returned — so the caller
-// can tell a benign no-op (off / same_version) from a misconfigured target
-// (not_staged from a bad SHA, getversion_failed, a refused downgrade).
+// plus a reason for the no-upgrade case — off | not_staged | invalid_target |
+// getversion_failed | same_version | downgrade, and "" when an upgrade IS returned
+// — so the caller can tell a benign no-op (off / same_version) from a
+// misconfigured target (not_staged from a bad SHA, a target that is not a bare
+// identifier, getversion_failed, a refused downgrade).
 func ResolveEnvdUpgrade(
 	ctx context.Context,
 	target string,
@@ -1234,45 +1283,9 @@ func resolveEnvdUpgradePath(
 	hostEnvdPath string,
 	getVersion func(context.Context, string) (string, error),
 ) (path, version, reason string) {
-	var candidate string
-	if EnvdUpgradeTargetDisabled(target) {
-		return "", "", "off"
-	}
-	switch target {
-	case "promoted":
-		candidate = hostEnvdPath
-	default:
-		// A concrete version id -> the staged binary next to the promoted one,
-		// in either layout: the flat "envd.<id>" sibling or the release
-		// bucket's "<id>/envd" directory. The flag value becomes both a
-		// filesystem path and an exec target (version probing runs
-		// `<candidate> -version`), so reject anything that isn't a bare
-		// identifier: a value with path separators (e.g. "../../bin/sh") would
-		// otherwise escape the staging directory and run an arbitrary host
-		// binary.
-		if !envdUpgradeTargetRe.MatchString(target) {
-			return "", "", "invalid_target"
-		}
-		dir := filepath.Dir(hostEnvdPath)
-		for _, c := range []string{filepath.Join(dir, "envd."+target), filepath.Join(dir, target, "envd")} {
-			if _, err := os.Stat(c); err == nil {
-				candidate = c
-
-				break
-			}
-		}
-	}
-
-	if candidate == "" {
-		// Not staged on this node in either layout — e.g. a bad target /
-		// rubbish flag value, or a node that has not fetched the target yet.
-		return "", "", "not_staged"
-	}
-
-	if _, err := os.Stat(candidate); err != nil {
-		// The promoted binary is absent (e.g. a version-free central mount
-		// with no unversioned object).
-		return "", "", "not_staged"
+	candidate, reason := EnvdUpgradeCandidate(target, hostEnvdPath)
+	if reason != "" {
+		return "", "", reason
 	}
 
 	targetVersion, err := getVersion(ctx, candidate)
@@ -1291,6 +1304,61 @@ func resolveEnvdUpgradePath(
 	}
 
 	return candidate, targetVersion, ""
+}
+
+// EnvdUpgradeCandidate maps an upgrade-target flag value to the binary it names,
+// without probing it. Split out so the node-local binary cache can pre-warm the
+// path a resume will actually ask for: a target naming a concrete version resolves
+// to a staged sibling, not to hostEnvdPath, so warming hostEnvdPath alone leaves a
+// version-pinned ramp with no pre-warm at all while still paying for one.
+//
+// Returns ("", reason) when no upgrade applies -- the same reason strings
+// resolveEnvdUpgradePath reports -- and (candidate, "") when there is a binary to
+// probe. Everything past this point costs an exec of that binary, which is what
+// the caller may want to keep off its critical path.
+func EnvdUpgradeCandidate(target, hostEnvdPath string) (candidate, reason string) {
+	if EnvdUpgradeTargetDisabled(target) {
+		return "", "off"
+	}
+
+	switch target {
+	case "promoted":
+		candidate = hostEnvdPath
+	default:
+		// A concrete version id -> the staged binary next to the promoted one,
+		// in either layout: the flat "envd.<id>" sibling or the release
+		// bucket's "<id>/envd" directory. The flag value becomes both a
+		// filesystem path and an exec target (version probing runs
+		// `<candidate> -version`), so reject anything that isn't a bare
+		// identifier: a value with path separators (e.g. "../../bin/sh") would
+		// otherwise escape the staging directory and run an arbitrary host
+		// binary.
+		if !envdUpgradeTargetRe.MatchString(target) {
+			return "", "invalid_target"
+		}
+		dir := filepath.Dir(hostEnvdPath)
+		for _, c := range []string{filepath.Join(dir, "envd."+target), filepath.Join(dir, target, "envd")} {
+			if _, err := os.Stat(c); err == nil {
+				candidate = c
+
+				break
+			}
+		}
+	}
+
+	if candidate == "" {
+		// Not staged on this node in either layout — e.g. a bad target /
+		// rubbish flag value, or a node that has not fetched the target yet.
+		return "", "not_staged"
+	}
+
+	if _, err := os.Stat(candidate); err != nil {
+		// The promoted binary is absent (e.g. a version-free central mount
+		// with no unversioned object).
+		return "", "not_staged"
+	}
+
+	return candidate, ""
 }
 
 // defaultTrackedTemplates is the default map of template aliases tracked for metrics.

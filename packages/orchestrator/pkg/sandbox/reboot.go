@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envdbin"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -269,9 +271,14 @@ const offlineNoopNotQuiesced = "not_quiesced"
 //
 //   - flag off (off / no reason)                            -> no swap, silent, uncounted
 //   - no upgrade, already on target (same_version)          -> no swap, count it
-//   - no upgrade, misconfig (not_staged / downgrade / ...)   -> no swap, count AND log
+//   - no upgrade, binary not cached yet (binary_not_cached) -> no swap, count it
+//   - no upgrade, misconfig (not_staged / downgrade / ...)  -> no swap, count AND log
 //   - upgrade wanted but rootfs not frozen                  -> no swap, count not_quiesced
 //   - upgrade wanted and rootfs frozen                      -> swap
+//
+// A resolver reason is handled on its own terms, frozen or not: no target was
+// resolved, so no upgrade is known to be wanted, and only a resolved target is
+// gated on the rootfs being frozen.
 //
 // Every no-op except `off` is counted, so the eligible population adds up: a cold boot
 // that did not upgrade is either counted here or counted as an attempt below, and a ramp
@@ -287,6 +294,18 @@ func decideOfflineSwap(resolverPath, reason string, fsQuiesced bool) offlineSwap
 		case "same_version":
 			// Expected, and the goal state of a ramp — counted so it is visible, not
 			// logged because it recurs on every cold boot of an upgraded snapshot.
+			return offlineSwapDecision{countResult: reason}
+		case envdbin.ReasonNotCached:
+			// The binary is not on local disk yet, so the swap is deferred rather than
+			// paying for the mount during a boot. Counted, not logged: the background
+			// warm makes this a one-resume state, and it is not an operator error.
+			//
+			// Reported even when the rootfs was not frozen, because on this arm no
+			// version was ever obtained: a miss is refused upstream of the same_version
+			// and downgrade comparisons, so an upgrade is not known to be wanted and
+			// not_quiesced would be asserting one. The frozen state is a durable
+			// property of the snapshot and is still there to report on the next cold
+			// boot, once a warm has landed and a target has actually been resolved.
 			return offlineSwapDecision{countResult: reason}
 		default:
 			// not_staged / downgrade / invalid_target / getversion_failed, and anything
@@ -428,17 +447,49 @@ func (f *Factory) fsRecoverPreBoot(
 	}
 }
 
+// resolveOfflineTarget resolves the offline upgrade target and returns the
+// resolver that did it, so the caller can honour the same entry at delivery.
+//
+// Extracted so the reason is observable: the relabel below is the difference
+// between "this node has not warmed yet" and "this target cannot be read", and a
+// test that can only see whether a swap happened cannot tell the two apart —
+// dropping the relabel leaves such a test green while the operator-facing signal
+// is silently wrong.
+func (f *Factory) resolveOfflineTarget(
+	ctx context.Context,
+	from string,
+	sbCtx, tmplCtx ldcontext.Context,
+) (path, toVersion, reason string, binCache *envdbin.Resolver) {
+	getVersion := buildenvd.GetEnvdVersion
+	// The nil check is not redundant with the flag: a Factory built as a struct
+	// literal (as tests do) has no cache.
+	if f.envdBinCache != nil && f.featureFlags.BoolFlag(ctx, featureflags.EnvdBinaryCacheFlag, sbCtx, tmplCtx) {
+		binCache = envdbin.NewResolver(f.envdBinCache, envdbin.OpOffline)
+		getVersion = binCache.Version
+	}
+
+	path, toVersion, reason = featureflags.ResolveEnvdOfflineUpgrade(
+		ctx, f.featureFlags, from, f.config.HostEnvdPath, getVersion, sbCtx, tmplCtx,
+	)
+
+	return path, toVersion, envdbin.GatedReason(reason, binCache.DeferralOutcome()), binCache
+}
+
 // envdOfflineUpgradePreBoot returns a PreBootFn that rewrites the rootfs envd
-// binary before the cold boot, or nil when no upgrade applies. It
-// resolves the target through the shared envd-upgrade decision (ResolveEnvdOfflineUpgrade,
+// binary before the cold boot, or nil when no upgrade applies. It resolves the
+// target through the shared envd-upgrade decision (ResolveEnvdOfflineUpgrade,
 // sibling flag envd-offline-upgrade-target) keyed on the snapshot's built-with
 // version — there is no running envd at cold-boot swap time, so unlike the live
 // path there is no LiveEnvdVersion to key on, and the built-with never advances
 // across an upgrade, so the swap re-fires idempotently on every resume until a
 // re-pause re-bakes the version. The swap runs only when the snapshot's rootfs
 // was frozen at pause (fs_quiesced): a legacy/sync-fallback snapshot is left on
-// its current envd and becomes eligible after its next freezing pause. Fully
-// best-effort — any failure boots the ORIGINAL envd, never aborting the boot.
+// its current envd and becomes eligible after its next freezing pause.
+//
+// Best-effort with one exception: a failure that left the rootfs without a usable
+// envd (rootfs.ErrOfflineSwapUnrecoverable) fails the boot, so CreateSandbox tears
+// down and the dirty overlay is discarded. Every other failure boots the ORIGINAL
+// envd.
 func (f *Factory) envdOfflineUpgradePreBoot(
 	ctx context.Context,
 	config *Config,
@@ -449,9 +500,10 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 
 	sbCtx := featureflags.SandboxContext(runtime.SandboxID)
 	tmplCtx := featureflags.TemplateContext(runtime.TemplateID)
-	path, toVersion, reason := featureflags.ResolveEnvdOfflineUpgrade(
-		ctx, f.featureFlags, from, f.config.HostEnvdPath, buildenvd.GetEnvdVersion, sbCtx, tmplCtx,
-	)
+	// Same binary cache as the live path, and the same rule: a hit answers from a
+	// local copy, a miss defers the swap to a later resume rather than reading the
+	// mount. Off, it is the direct fork+exec of the source, unchanged.
+	path, toVersion, reason, binCache := f.resolveOfflineTarget(ctx, from, sbCtx, tmplCtx)
 	dec := decideOfflineSwap(path, reason, fsQuiesced)
 	if !dec.swap {
 		// A misconfigured / unstaged target is worth a logged signal on a ramp;
@@ -487,6 +539,38 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 
 	return func(ctx context.Context, rootfsPath string) error {
 		start := time.Now()
+		// The swap stages its source into a directory bound into the jail, a copy
+		// that is read off the gcsfuse mount unless the cache holds it. Resolved
+		// here rather than where the version was, because this runs at boot,
+		// arbitrarily later, and SourcePath re-checks that the copy is still on
+		// disk. An entry evicted in between skips the swap: the source is not an
+		// alternative, since reading it would be the mount cost this cache exists to
+		// avoid and bytes whose version was never verified against them.
+		swapSrc, swappable := binCache.SourcePath(ctx, path)
+		if !swappable {
+			// The copy that carried the resolved version is gone, so nothing on local
+			// disk holds the bytes that version describes. Boot the original, which is
+			// this path's best-effort default anyway, and let a later resume retry
+			// once a warm has republished the copy.
+			runtime.Logger().Warn(ctx, "skipping offline envd upgrade: cached binary went away after its version was resolved",
+				zap.String("target", path),
+				zap.String("built_with", from),
+			)
+			// Counted, not just logged. This returns before the attempt counter
+			// below, so without this the refusal is invisible in the metric an
+			// operator reads to account for the eligible population. This series is
+			// the offline path's single vocabulary for what a boot did, so a no-op
+			// belongs on it beside not_quiesced and not_staged; the live path, which has a
+			// separate gated series, reports the same event there instead.
+			envdOfflineUpgradeAttempts.Add(ctx, 1, metric.WithAttributes(
+				attribute.String("result", envdbin.ReasonCopyVanished),
+				attribute.String("from_version", from),
+				attribute.String("to_version", toVersion),
+			))
+
+			return nil
+		}
+
 		// Cancel-free but time-bounded: a request cancellation must not kill
 		// debugfs mid-write (a half-written inode would break the boot/export that
 		// follows), yet a hung tool must not stall the boot forever. The budget is
@@ -494,7 +578,7 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 		// debugfs runs, and bounding the whole of it at one run's timeout lets a slow
 		// backup starve the phases after it (see EnvdSwapBudget).
 		swapCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), rootfs.EnvdSwapBudget)
-		swapped, err := rootfs.SwapEnvdBinary(swapCtx, rootfsPath, path)
+		swapped, err := f.offlineSwap()(swapCtx, rootfsPath, swapSrc)
 		cancel()
 
 		// An unrecoverable swap (failed AND the original was not restored) may leave
@@ -547,6 +631,25 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 		case unrecoverable:
 			result = "unrecoverable"
 			runtime.Logger().Error(ctx, "offline envd swap left the rootfs without a usable envd; failing boot to discard the overlay",
+				zap.String("target", path),
+				zap.String("built_with", from),
+				zap.Error(err),
+			)
+		case binCache != nil && errors.Is(err, rootfs.ErrSwapSourceMissing):
+			// A promotion can retire the staged copy between SourcePath's stat and the
+			// swap's read of it. Nothing was written to the rootfs, so this is the same
+			// deferral the stat above reports and not swap breakage: the guest boots
+			// its own envd and a later resume retries once a warm has republished.
+			// Placed after the unrecoverable case so a half-finished swap still wins.
+			//
+			// Keyed on the swap's own sentinel, not on fs.ErrNotExist: the swap raises
+			// ENOENT from a vanished TMPDIR, an unwritable backup target and a missing
+			// stage directory too, and those are host faults that must stay Error and
+			// swap_failed. And gated on the cache being engaged, because with the flag
+			// off the source IS what the swap reads, so a genuinely missing promoted
+			// binary would be relabelled as a cache event on a node with no cache.
+			result = envdbin.ReasonCopyVanished
+			runtime.Logger().Warn(ctx, "skipping offline envd upgrade: cached binary went away before the swap read it",
 				zap.String("target", path),
 				zap.String("built_with", from),
 				zap.Error(err),
