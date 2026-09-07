@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envdbin"
 )
 
 // TestDecideOfflineSwap pins the cold-boot envd-swap gate: it must swap only when
@@ -41,6 +43,23 @@ func TestDecideOfflineSwap(t *testing.T) {
 		{"downgrade refused", "", "downgrade", true, false, "downgrade", true},
 		{"invalid_target", "", "invalid_target", true, false, "invalid_target", true},
 		{"getversion_failed", "", "getversion_failed", true, false, "getversion_failed", true},
+		// The binary is not on local disk, so the swap is deferred to keep the mount
+		// off the boot path. Counted like same_version and NOT logged: it is the cache
+		// working as designed on a node that has not warmed, and the background warm
+		// clears it within a resume — logging it would be per-resume noise on every
+		// freshly booted node, and folding it into getversion_failed would hide a real
+		// misconfiguration behind an expected state.
+		{"binary_not_cached", "", envdbin.ReasonNotCached, true, false, envdbin.ReasonNotCached, false},
+		// A miss on a snapshot whose rootfs was NOT frozen still reports the miss. Both
+		// no-ops are true of this boot, and they answer different questions: not_quiesced
+		// is what an operator sizes the fs-quiesce backlog from, and it claims an upgrade
+		// was wanted — which a miss cannot establish, because it is refused upstream of
+		// the same_version and downgrade comparisons. The frozen state is durable and is
+		// reported on the next cold boot, once a target has actually been resolved.
+		{"binary_not_cached, not frozen", "", envdbin.ReasonNotCached, false, false, envdbin.ReasonNotCached, false},
+		// The same rule for the other benign no-op: a resolver outcome is reported on its
+		// own terms, and only a resolved target is gated on the rootfs being frozen.
+		{"same_version, not frozen", "", "same_version", false, false, "same_version", false},
 		// An unrecognised reason must not vanish: the resolver's vocabulary can grow,
 		// and a new reason silently counted as nothing is a hole in the rollout view.
 		{"unknown future reason", "", "unresolvable_frobnicator", true, false, "unresolvable_frobnicator", true},

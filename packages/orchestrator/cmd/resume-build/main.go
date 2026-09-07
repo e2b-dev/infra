@@ -85,6 +85,7 @@ func main() {
 	fphTimeoutMs := flag.Int("fph-timeout-ms", 0, "override free-page-hinting-config pause timeout LD flag (0 = use LD default)")
 	reclaim := flag.Bool("reclaim", false, "enable pre-pause reclaim chain (fstrim 500ms, sync 500ms, drop_caches 200ms, compact 1s)")
 	collapseEnvdHeap := flag.Bool("collapse-envd-heap", false, "collapse envd's heap before pause (overrides the collapse-envd-heap flag)")
+	envdBinCache := flag.Bool("envd-binary-cache", false, "cache the host envd binary on local disk and gate the resume-time upgrade on a cache hit (overrides the envd-binary-cache flag; -envd-binary-cache=false forces it off)")
 	prebootFsRecovery := flag.Bool("preboot-fs-recovery", false, "run the jailed pre-boot filesystem recovery (journal replay) before a cold boot (overrides the preboot-fs-recovery flag; -reboot/-force-reboot on a non-quiesced snapshot)")
 
 	fphBench := flag.Bool("fph-bench", false, "compare pause memfile size with vs without FPH; requires -cmd-pause workload, uses -iterations (default 3), forces FPR on")
@@ -134,6 +135,16 @@ func main() {
 	if *trackerDirty {
 		featureflags.OverrideBoolFlag(featureflags.SyncWPTrackerDirtyFlag, true)
 	}
+
+	// Overridden in BOTH directions, and only when it was actually passed. This
+	// flag's code fallback is on in development, so a "true means override" form
+	// would make the option a no-op here and leave the off arm of a local A/B
+	// unreachable -- the opposite of every sibling above, whose fallback is off.
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "envd-binary-cache" {
+			featureflags.OverrideBoolFlag(featureflags.EnvdBinaryCacheFlag, *envdBinCache)
+		}
+	})
 
 	if *collapseEnvdHeap {
 		featureflags.OverrideBoolFlag(featureflags.CollapseEnvdHeapFlag, true)
@@ -1294,7 +1305,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 	if verbose {
 		fmt.Println("🔧 Creating sandbox factory...")
 	}
-	factory := sandbox.NewFactory(config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), egressProxy, sandbox.NoopNetworkAssignHook{}, sandboxes)
+	factory := sandbox.NewFactory(ctx, config.BuilderConfig, networkPool, devicePool, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), egressProxy, sandbox.NoopNetworkAssignHook{}, sandboxes)
 
 	fmt.Printf("📦 Loading %s...\n", buildID)
 	tmpl, err := cache.GetTemplate(ctx, buildID, false, false)

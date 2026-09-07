@@ -104,3 +104,33 @@ func TestResolveEnvdUpgradePath_VersionError(t *testing.T) {
 	assert.Empty(t, gotVersion)
 	assert.Equal(t, "getversion_failed", gotReason)
 }
+
+// The cache's delivery refusal — an engaged resolver holding no entry for the
+// path — is unreachable only while this resolution asks for the version exactly
+// once, on the string it goes on to return: a lookup that hit here cannot miss at
+// delivery time. Nothing else pins that. A second call, or a normalisation
+// applied to the returned path but not to the probed one, would put a mount read
+// back on the resume path and deliver bytes whose version was never verified,
+// with no other test failing.
+func TestTheUpgradeResolutionProbesExactlyOnceOnThePathItReturns(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	host := filepath.Join(dir, "envd")
+	require.NoError(t, os.WriteFile(host, []byte("binary"), 0o755))
+
+	var asked []string
+	getVersion := func(_ context.Context, path string) (string, error) {
+		asked = append(asked, path)
+
+		return "0.7.0", nil
+	}
+
+	path, version, reason := resolveEnvdUpgradePath(t.Context(), "promoted", "0.6.0", host, getVersion)
+
+	require.Empty(t, reason)
+	require.Equal(t, "0.7.0", version)
+	require.Len(t, asked, 1, "exactly one probe, or the delivery refusal becomes reachable")
+	require.Equal(t, path, asked[0],
+		"the version must be probed on the very string the caller later delivers")
+}

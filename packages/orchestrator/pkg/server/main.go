@@ -88,6 +88,7 @@ type Server struct {
 	envdUpgradeGated         metric.Int64Counter
 	envdUpgradeHandover      metric.Int64Counter
 	envdUpgradeDuration      metric.Int64Histogram
+	envdUpgradePhaseDuration metric.Int64Histogram
 
 	pauseAdmissionCounter      metric.Int64Counter
 	pauseAdmissionWaitDuration metric.Int64Histogram
@@ -221,6 +222,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register envd upgrade duration histogram: %w", err)
 	}
 	server.envdUpgradeDuration = envdUpgradeDuration
+
+	envdUpgradePhaseDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorEnvdUpgradePhaseDurationName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register envd upgrade phase duration histogram: %w", err)
+	}
+	server.envdUpgradePhaseDuration = envdUpgradePhaseDuration
 
 	_, err = telemetry.GetObservableUpDownCounter(meter, telemetry.OrchestratorSandboxCountMeterName, func(_ context.Context, observer metric.Int64Observer) error {
 		observer.Observe(int64(server.sandboxFactory.Sandboxes.Count()))

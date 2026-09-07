@@ -264,6 +264,7 @@ func BenchmarkConcurrentResume(b *testing.B) {
 
 	sandboxes := sandbox.NewSandboxesMap()
 	sandboxFactory := sandbox.NewFactory(
+		b.Context(),
 		config.BuilderConfig, networkPool, devicePool,
 		featureFlags, hoststats.NewNoopDelivery(), cgroupManager, network.NewNoopEgressProxy(), sandbox.NoopNetworkAssignHook{}, sandboxes,
 	)

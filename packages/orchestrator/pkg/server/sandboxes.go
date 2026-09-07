@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"maps"
 	"slices"
 	"time"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envdbin"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/rootfs"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
@@ -1686,6 +1688,84 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 	)
 }
 
+// recordUpgradePhase records one live-upgrade phase's wall-time. The phases hold
+// independent budgets, so the combined upgrade.duration histogram cannot say
+// which of them a slow upgrade is approaching; this can. result is the phase's
+// own outcome, not the upgrade's.
+//
+// It covers `resolve` as well as the two budgeted phases, because resolve is
+// where the target's version is probed and that probe is the largest cost on a
+// cold node: exec'ing the binary off the gcsfuse mount demand-pages it in small
+// reads, which costs far more than reading the same bytes sequentially. It also
+// sits BEFORE the combined histogram starts timing, so without
+// this phase the dominant cost of a cold upgrade appears in no metric at all.
+func (s *Server) recordUpgradePhase(ctx context.Context, phase, result string, start time.Time) {
+	s.envdUpgradePhaseDuration.Record(ctx, time.Since(start).Milliseconds(),
+		metric.WithAttributes(
+			attribute.String("phase", phase),
+			attribute.String("result", result),
+		))
+}
+
+// resolvePhaseResult labels the resolve phase, and reports whether it is worth
+// recording at all.
+//
+// recorded is false for the reasons the resolver returns WITHOUT calling
+// getVersion: those samples time a string comparison and a stat, and mixing them
+// with the ones that paid for an exec off the mount makes the distribution
+// meaningless. Every reason that did probe -- or that deliberately did not, having
+// consulted the cache -- is labelled as itself, so the series can be cut by what
+// actually happened.
+func resolvePhaseResult(path, reason string) (string, bool) {
+	if path != "" {
+		return "success", true
+	}
+	switch reason {
+	case "off", "not_staged", "invalid_target":
+		// Returned before getVersion; nothing was measured.
+		return "", false
+	default:
+		// same_version, downgrade, getversion_failed all probed; binary_not_cached
+		// consulted the cache and deliberately did not.
+		return reason, true
+	}
+}
+
+// phaseResult labels a phase by whether it errored.
+func phaseResult(err error) string {
+	if err != nil {
+		return "failed"
+	}
+
+	return "success"
+}
+
+// recordDeliveryPhase records the delivery phase. It takes CallEnvdUpgrade's two
+// return values rather than a label, so the delivery phase cannot be recorded
+// with the two-outcome phaseResult -- which read an expired budget as a success
+// and hid the one stall this phase was added to expose. The mistake is now a
+// compile error rather than something a test has to catch.
+func (s *Server) recordDeliveryPhase(ctx context.Context, execConfirmed bool, err error, start time.Time) {
+	s.recordUpgradePhase(ctx, "deliver", deliveryResult(execConfirmed, err), start)
+}
+
+// deliveryResult labels the delivery phase, which has three outcomes rather than
+// two. CallEnvdUpgrade returns a nil error when the deadline fired or the parent
+// was cancelled -- deliberately, because envd may still be mid-handover, so the
+// caller must keep a follow-up not-ready recoverable. Labelling that "success"
+// would hide the exact stall this phase exists to expose: a delivery that ran out
+// its budget looks identical to one that finished.
+func deliveryResult(execConfirmed bool, err error) string {
+	switch {
+	case err != nil:
+		return "failed"
+	case !execConfirmed:
+		return "unconfirmed"
+	default:
+		return "success"
+	}
+}
+
 // maybeUpgradeEnvd is the orchestrator's resume-time envd live-upgrade trigger
 // . At resume it asks EnvdUpgradeTargetFlag whether the sandbox's envd
 // should be swapped for a newer node-local build and, if so, delivers that
@@ -1698,7 +1778,9 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 //
 // It returns whether an upgrade actually completed (for the resume-latency
 // label) and emits the rollout metrics: orchestrator.envd.upgrade.attempts
-// {result,from_version,to_version}, .duration{result}, and .gated{reason}.
+// {result,from_version,to_version}, .duration{result}, .gated{reason}, and
+// .phase.duration{phase,result}, which splits the duration into the resolve,
+// deliver and ready phases so a stalled delivery is not read as a slow probe.
 func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (upgraded bool, fatalErr error) {
 	// Decide, label, and confirm against the version the running envd actually
 	// reports (captured on the resume-path /init) — not the template built-with,
@@ -1748,7 +1830,10 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 	// Ahead of the resolver because it is a comparison against a version already in memory.
 	// It also makes the counter mean what its comment says: behind the resolver, a not_staged
 	// node or an already-current sandbox pre-empted this label, so the "gated population" it
-	// claims to size was systematically undercounted.
+	// claims to size was systematically undercounted. With the binary cache in front of the
+	// probe there is a second reason: resolving first would let a transient cache miss report
+	// binary_not_cached for this whole population, so the series an operator reads to size the
+	// too-old cohort would go to zero on a cold node while nothing about that cohort changed.
 	if ok, err := utils.IsGTEVersion(from, utils.MinEnvdVersionForUpgrade); err != nil || !ok {
 		s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "old_envd")))
 
@@ -1757,9 +1842,12 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 
 	// Resolve the target: "" path => no upgrade, with a reason. off / same_version are the
 	// expected per-resume no-op (a re-resume of an already-upgraded sandbox), deliberately
-	// not counted as noise; the rest (not_staged — e.g. a bad SHA / rubbish flag value,
-	// getversion_failed, downgrade) are misconfigurations worth a counted, logged signal so
-	// a broken target is distinguishable from "already current".
+	// not counted as noise; the misconfigurations (not_staged — e.g. a bad SHA / rubbish flag
+	// value, invalid_target, getversion_failed, downgrade) are worth a counted, logged signal
+	// so a broken target is distinguishable from "already current". binary_not_cached is in
+	// the same set but is counted WITHOUT a line: it is this node's own expected state on a
+	// cold cache rather than anything an operator can fix, and it recurs on every resume
+	// until a warm lands -- see the case below.
 	//
 	// This has to precede the exec-context gate below, even though that gate needs nothing
 	// from it. The offline swap advances a sandbox's envd to the promoted binary at cold
@@ -1767,12 +1855,57 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 	// not gated by anything, they simply have nowhere to upgrade to. Declining them first
 	// would count every one of their resumes as an exec-context decline and make that
 	// counter a measure of the fleet rather than of the population the gate holds back.
-	path, tv, reason := featureflags.ResolveEnvdUpgrade(ctx, target, from, s.config.HostEnvdPath, buildenvd.GetEnvdVersion)
+	//
+	// Probe the target's version through the node-local binary cache when
+	// enabled. Uncached, the probe is a fork+exec of a 13 MB binary on the gcsfuse
+	// mount, and it runs on every sampled resume before any decision is made. That
+	// is far more expensive than its size suggests on a cold node: exec
+	// demand-pages the binary in small reads, each one a round trip to the mount,
+	// which is more than an order of magnitude slower than reading the same bytes
+	// sequentially off a cold mount.
+	//
+	// So a hit answers from a local copy, and a MISS DEFERS THE UPGRADE rather than
+	// reading the source. That is the point of the cache and not a limitation of
+	// it: the probe carries no budget of its own beyond the resume's own deadline,
+	// and delivery carries 30 s, so an upgrade that reaches the mount can add tens
+	// of seconds to a resume a customer is waiting on. The warm lands in the
+	// background, the upgrade is idempotent and re-fires on the next resume, so
+	// deferring costs one cycle. Off, it is the direct fork+exec, unchanged.
+	resolveStart := time.Now()
+	getVersion := buildenvd.GetEnvdVersion
+	var binCache *envdbin.Resolver
+	// The nil check is not redundant with the flag: a Factory built as a struct
+	// literal (as tests do) has no cache.
+	if cache := s.sandboxFactory.EnvdBinCache(); cache != nil && s.featureFlags.BoolFlag(ctx, featureflags.EnvdBinaryCacheFlag) {
+		binCache = envdbin.NewResolver(cache, envdbin.OpLive)
+		getVersion = binCache.Version
+	}
+
+	path, tv, reason := featureflags.ResolveEnvdUpgrade(ctx, target, from, s.config.HostEnvdPath, getVersion)
+	reason = envdbin.GatedReason(reason, binCache.DeferralOutcome())
+	// Labelled by the resolver's own reason, not by success/no_upgrade, and skipped
+	// entirely where the resolver returned before probing anything.
+	//
+	// This histogram exists to expose the version probe, which is the dominant cost
+	// of a cold upgrade and is invisible to the combined duration histogram. A
+	// success/no_upgrade label defeats that: "off" and "not_staged" return before
+	// getVersion is called and so measure nothing, while "same_version" -- the
+	// steady-state majority -- returns after paying for it in full. Averaged
+	// together the series is dominated by samples where no probe ran, and cannot
+	// answer the one question it was added for.
+	if resolveResult, recorded := resolvePhaseResult(path, reason); recorded {
+		s.recordUpgradePhase(ctx, "resolve", resolveResult, resolveStart)
+	}
 	toVersion = tv
 	if path == "" {
 		switch reason {
 		case "off", "same_version":
 			// expected no-op — not counted
+		case envdbin.ReasonNotCached:
+			// Counted, because it is the cost side of gating on the cache, but not
+			// warned: on a node that has just booted this is the expected state for
+			// one resume, and the background warm clears it.
+			s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reason)))
 		default:
 			s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", reason)))
 			sbxlogger.I(sbx).Warn(ctx, "envd auto-upgrade: target not resolved",
@@ -1823,6 +1956,28 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 		return false, nil
 	}
 
+	// Resolved before the attempt is marked, so a refusal is counted as the
+	// deferral it is rather than as an upgrade that was tried and failed. Delivery
+	// hands back the very bytes the resolver decided on: when the cache holds them
+	// this reads local disk instead of streaming 13 MB off gcsfuse, which is what
+	// pushed delivery past its budget on a contended node, and it removes the
+	// second independent read of the source, so a promotion landing mid-upgrade can
+	// no longer deliver a binary whose version was never the one recorded.
+	deliverPath, deliverable := binCache.SourcePath(ctx, path)
+	if !deliverable {
+		// The copy that carried the resolved version is gone, so nothing on local
+		// disk holds the bytes that version describes. Skip rather than read the
+		// source: that would be the mount cost this cache exists to avoid,
+		// delivering bytes whose version was never verified against them. Nothing
+		// has been sent to the guest, so this is a deferral -- counted beside the
+		// other reasons a resume chose not to upgrade -- and the next resume retries.
+		s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", envdbin.ReasonCopyVanished)))
+		sbxlogger.I(sbx).Warn(ctx, "envd auto-upgrade: cached binary went away after its version was resolved; deferring",
+			zap.String("from", from), zap.String("to", toVersion), zap.String("path", path))
+
+		return false, nil
+	}
+
 	attempted = true
 	start = time.Now()
 
@@ -1841,13 +1996,45 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 	)
 
 	sbxlogger.I(sbx).Info(upCtx, "envd auto-upgrade: delivering+triggering",
-		zap.String("from", from), zap.String("to", toVersion), zap.String("path", path))
+		zap.String("from", from), zap.String("to", toVersion), zap.String("path", path),
+		zap.String("bin_cache", string(binCache.Outcome())))
 
 	// Stream the new binary over the authenticated /upgrade endpoint (delivery
 	// + trigger in one call) and let envd same-PID re-exec into it. NB: not the
 	// build-time /files CopyFile path — a live, post-/init sandbox rejects that.
-	execConfirmed, err := sbx.CallEnvdUpgrade(upCtx, path, "/usr/bin/envd.next", deliverTimeout)
+	deliverStart := time.Now()
+	execConfirmed, err := sbx.CallEnvdUpgrade(upCtx, deliverPath, "/usr/bin/envd.next", deliverTimeout)
+	// A retired copy is a deferral, not a delivery, so it gets no phase sample:
+	// the open fails in microseconds, and a ~0 ms observation would drag down the
+	// quantiles of the histogram added to expose delivery STALLS -- while the
+	// attempts series deliberately records nothing for it, so deliver{failed}
+	// would also outnumber the attempts it is read against.
+	deferredCopyGone := binCache != nil && errors.Is(err, fs.ErrNotExist)
+	if !deferredCopyGone {
+		s.recordDeliveryPhase(ctx, execConfirmed, err, deliverStart)
+	}
 	if err != nil {
+		// A promotion can retire the copy between the resolver's stat and this
+		// open. Nothing reached the guest, so that is the same deferral the stat
+		// reports and not a failed delivery: labelling it delivery_failed would say
+		// the trigger failed when no byte was ever sent.
+		// Gated on the cache being ENGAGED, not just on the errno. With the flag off
+		// deliverPath is the source itself, so a genuinely missing promoted binary
+		// would take this branch: relabelled as a cache event that cannot happen
+		// without a cache, dropped from the attempts series, and demoted from Error
+		// to Warn. That is the flag-off path changing behaviour, which it must not.
+		if deferredCopyGone {
+			// Nothing was attempted, so the deferred recorder must not count an
+			// attempt or a duration for it -- that is what keeps the attempts series
+			// free of a population that delivered nothing.
+			attempted = false
+			s.envdUpgradeGated.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", envdbin.ReasonCopyVanished)))
+			sbxlogger.I(sbx).Warn(upCtx, "envd auto-upgrade: cached binary went away before delivery; deferring",
+				zap.String("from", from), zap.String("to", toVersion), zap.String("path", path))
+
+			return false, nil
+		}
+
 		result = "delivery_failed"
 		span.RecordError(err)
 		sbxlogger.I(sbx).Error(upCtx, "envd auto-upgrade: trigger failed", zap.Error(err))
@@ -1866,10 +2053,13 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 	// exec'd envd never gets its auth/env restored). Version confirmation below
 	// then correctly distinguishes an actual exec from an untouched old envd.
 	readyCtx := context.WithoutCancel(upCtx)
-	if err := sbx.WaitForEnvd(readyCtx, sandbox.StartTypeResume, readyTimeout); err != nil {
+	readyStart := time.Now()
+	readyErr := sbx.WaitForEnvd(readyCtx, sandbox.StartTypeResume, readyTimeout)
+	s.recordUpgradePhase(ctx, "ready", phaseResult(readyErr), readyStart)
+	if readyErr != nil {
 		result = "not_ready"
-		span.RecordError(err)
-		sbxlogger.I(sbx).Error(upCtx, "envd auto-upgrade: envd not ready after upgrade", zap.Error(err))
+		span.RecordError(readyErr)
+		sbxlogger.I(sbx).Error(upCtx, "envd auto-upgrade: envd not ready after upgrade", zap.Error(readyErr))
 
 		if !execConfirmed {
 			// The delivery deadline fired without a confirmed exec — envd may
@@ -1885,7 +2075,7 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 		// WithAuthorization handover gate fail-closes every RPC. It can't be made
 		// both usable and secure without /init, so fail the resume (unrecoverable)
 		// rather than return a live-but-permanently-bricked sandbox.
-		return false, fmt.Errorf("envd live-upgrade left the sandbox uninitialized (post-upgrade /init failed): %w", err)
+		return false, fmt.Errorf("envd live-upgrade left the sandbox uninitialized (post-upgrade /init failed): %w", readyErr)
 	}
 
 	// Confirm by ground truth: the running envd must now report the target

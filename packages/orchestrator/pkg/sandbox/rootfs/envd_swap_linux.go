@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,6 +92,16 @@ var ErrEnvdMissing = errors.New("rootfs has no /usr/bin/envd to swap")
 // an e2fsprogs wording change is itself a failure mode worth catching, so keying
 // on those strings would break silently exactly when it is needed.
 var ErrStatUnparseable = errors.New("debugfs stat output has no parseable size")
+
+// ErrSwapSourceMissing marks the one step whose ENOENT means the binary to install
+// is gone: staging the target into the jail-readable directory. It exists because
+// the caller has to tell that apart from every other ENOENT this function can
+// produce -- a vanished TMPDIR, an unwritable backup target, a stage directory
+// pulled out from under it -- all of which are host faults that must page someone,
+// while a retired source is a benign deferral. errors.Is(err, fs.ErrNotExist) on
+// the returned error cannot make that distinction, since nothing was written to
+// the rootfs in either case.
+var ErrSwapSourceMissing = errors.New("envd binary to install is no longer on disk")
 
 // SwapResult reports what the swap observed about the rootfs, for telemetry the
 // caller emits. It is returned on every path, including failures, and its zero
@@ -191,6 +202,15 @@ func swapEnvd(ctx context.Context, dbg swapIO, srcPath string) (res SwapResult, 
 	stage := dbg.stageDir
 	stagedNew := filepath.Join(stage, "envd.new")
 	if err := copyFile(srcPath, stagedNew, 0o755); err != nil {
+		// A missing SOURCE is named, so the caller can treat a retired binary as a
+		// deferral without also swallowing the host faults that raise ENOENT here.
+		// Keyed on the source's own stat rather than on the copy's error, because
+		// the destination is inside a directory this function just created and its
+		// ENOENT means something quite different.
+		if _, serr := os.Stat(srcPath); errors.Is(serr, fs.ErrNotExist) {
+			return res, fmt.Errorf("%w: %q: %w", ErrSwapSourceMissing, srcPath, err)
+		}
+
 		return res, fmt.Errorf("stage target envd %q: %w", srcPath, err)
 	}
 	// The jailed debugfs runs as an unprivileged DynamicUser with no

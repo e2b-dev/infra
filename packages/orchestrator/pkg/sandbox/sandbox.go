@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envdbin"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -36,6 +38,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/prefetch"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/scheduling"
+	buildenvd "github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/envd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -603,9 +606,32 @@ type Factory struct {
 	cgroupManager     cgroup.Manager
 	egressProxy       network.EgressProxy
 	networkAssignHook NetworkAssignHook
+	envdBinCache      *envdbin.Cache
+
+	// swapEnvdBinary is the offline envd upgrade's one call into the host. Nil
+	// means rootfs.SwapEnvdBinary; a test substitutes it to drive the decision
+	// flow around the call -- which refusal defers, which failure still boots the
+	// original, which one fails the boot -- without debugfs, NBD, systemd or
+	// privileges. It mirrors the seam rootfs.swapIO provides one layer down, and
+	// for the same reason: every one of those outcomes returns the same nil to the
+	// resume, so nothing else can tell them apart.
+	swapEnvdBinary func(ctx context.Context, rootfsPath, srcPath string) (rootfs.SwapResult, error)
 }
 
+// offlineSwap is the offline swap implementation this Factory should use.
+func (f *Factory) offlineSwap() func(ctx context.Context, rootfsPath, srcPath string) (rootfs.SwapResult, error) {
+	if f.swapEnvdBinary != nil {
+		return f.swapEnvdBinary
+	}
+
+	return rootfs.SwapEnvdBinary
+}
+
+// NewFactory builds the sandbox factory. It takes a context because it does
+// context-carrying work of its own: it resolves the envd-binary-cache flag and,
+// when that is on, starts the background warm of the promoted envd binary.
 func NewFactory(
+	ctx context.Context,
 	config cfg.BuilderConfig,
 	networkPool network.PoolInterface,
 	devicePool *nbd.DevicePool,
@@ -620,7 +646,7 @@ func NewFactory(
 		networkAssignHook = NoopNetworkAssignHook{}
 	}
 
-	return &Factory{
+	f := &Factory{
 		Sandboxes:         sandboxes,
 		config:            config,
 		networkPool:       networkPool,
@@ -630,7 +656,137 @@ func NewFactory(
 		cgroupManager:     cgroupManager,
 		egressProxy:       egressProxy,
 		networkAssignHook: networkAssignHook,
+		// Constructed from config rather than injected: its only inputs are the
+		// cache directory and the version probe, so every caller would pass the
+		// same thing. It touches no filesystem until first used.
+		//
+		// nil when there is no directory to put copies in, so the call sites'
+		// existing `cache != nil` guard disengages the resolver. A cache built on an
+		// empty dir would instead pass that guard and then miss forever while
+		// WarmAsync returned before it could even count the attempt -- both upgrade
+		// paths silently off, with warms{} flat at zero, which is the one state the
+		// warm counter exists to make distinguishable from a working node.
+		envdBinCache: newEnvdBinCache(config.OrchestratorBaseDir),
 	}
+
+	// Warm the promoted binary now rather than leaving it to the first resume that
+	// wants it. A node boots long before it resumes anything, so this is where the
+	// 13 MB read belongs: nothing waits on it here, and by the time an upgrade
+	// needs the version the copy is already local.
+	//
+	// Gated, because with the flag off this would still read 13 MB and create a
+	// directory on every node at boot -- small, but an observable difference where
+	// there should be none. The cost of gating it is one DEFERRED upgrade per node
+	// when the flag is first enabled: that first resume misses, skips the upgrade,
+	// and the warm it kicks off makes the next one a hit.
+	//
+	// WarmAsync strips ctx's cancellation and gives the work its own deadline, so
+	// the warm outlives whatever built the factory.
+	//
+	// Deciding WHAT to warm is on the same side of that boundary as the copy
+	// itself, and deliberately so: resolving a version-pinned target stats the
+	// artifact mount, which is the one thing here that can block for as long as
+	// the mount wants to. This constructor runs on the orchestrator's startup
+	// path, so doing it inline would let a wedged mount hold startup open with no
+	// deadline -- the same read this cache exists to keep off the paths that wait.
+	// Nothing consumes the result, so nothing needs it before the node starts.
+	if featureFlags != nil {
+		go func() {
+			ctx := context.WithoutCancel(ctx)
+			if !featureFlags.BoolFlag(ctx, featureflags.EnvdBinaryCacheFlag) {
+				return
+			}
+			for _, p := range envdWarmTargets(ctx, featureFlags, config.HostEnvdPath) {
+				f.envdBinCache.WarmAsync(ctx, p)
+			}
+		}()
+	}
+
+	return f
+}
+
+// envdBinCacheDir is where the host envd binary's node-local copies live. It is
+// derived rather than configured: the directory is bounded and disposable, so
+// nothing needs to relocate it independently of the orchestrator's base path.
+//
+// An unset base yields no directory rather than a relative one — filepath.Join
+// would return "envdbin", a path under whatever the process's working
+// directory happens to be, and a Factory built from a zero-value config (as
+// tests do) would then create it.
+func envdBinCacheDir(base string) string {
+	if base == "" {
+		return ""
+	}
+
+	return filepath.Join(base, "envdbin")
+}
+
+// envdWarmTargets is what the boot warm should prime: the binaries the two
+// upgrade paths will actually ask for, deduplicated.
+//
+// Not simply HostEnvdPath. Either flag may name a concrete version, which resolves
+// to a staged sibling (envd.<id>, or <id>/envd) rather than to the promoted path --
+// and pinning a version is the normal way to canary a build. Warming only the
+// promoted path on such a ramp gives it no pre-warm at all, while still paying a
+// warm's cost and holding one of the cache's four slots for bytes nobody asks for.
+//
+// Resolved through the same helper the resolver uses, so the two cannot disagree
+// about what a target names, and deliberately WITHOUT probing: the version does
+// not matter here, only which file to copy.
+//
+// The promoted path is always included, even when both targets are off. It is what
+// a target flag turning on will most often name, so warming it is what makes that
+// first upgrade a hit instead of a deferral -- and the flags can ramp long after
+// this node booted, when nothing re-runs this.
+func envdWarmTargets(ctx context.Context, ff *featureflags.Client, hostEnvdPath string) []string {
+	seen := map[string]struct{}{hostEnvdPath: {}}
+	targets := []string{hostEnvdPath}
+	for _, flag := range []featureflags.StringFlag{
+		featureflags.EnvdUpgradeTargetFlag,
+		featureflags.EnvdOfflineUpgradeTargetFlag,
+	} {
+		target := ff.StringFlag(ctx, flag)
+		// Only a version-pinned target can name a file this list does not already
+		// hold: "" and "off" name nothing, and "promoted" resolves to hostEnvdPath.
+		// Skipped rather than resolved, because resolving stats the mount to
+		// establish what these three values already tell us.
+		switch target {
+		case "", "off", "promoted":
+			continue
+		}
+
+		candidate, _ := featureflags.EnvdUpgradeCandidate(target, hostEnvdPath)
+		if candidate == "" {
+			continue
+		}
+		if _, dup := seen[candidate]; dup {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		targets = append(targets, candidate)
+	}
+
+	return targets
+}
+
+// newEnvdBinCache returns the node-local envd binary cache, or nil when there is
+// no base path to derive a directory from -- a Config built as a struct literal,
+// or ORCHESTRATOR_BASE_PATH set to the empty string, which env parsing treats as
+// a value rather than as absent and so does not replace with the default.
+func newEnvdBinCache(base string) *envdbin.Cache {
+	dir := envdBinCacheDir(base)
+	if dir == "" {
+		return nil
+	}
+
+	return envdbin.NewCache(dir, buildenvd.GetEnvdVersion)
+}
+
+// EnvdBinCache is the node-local cache of the host envd binary, shared by the
+// live-upgrade path (which delivers the binary to a running envd) and the
+// offline swap path (which stages it into a rootfs before boot).
+func (f *Factory) EnvdBinCache() *envdbin.Cache {
+	return f.envdBinCache
 }
 
 // runNetworkAssignHook calls the configured NetworkAssignHook.OnNetworkAssign
