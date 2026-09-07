@@ -166,6 +166,12 @@ gRPC services on :5008 (`pkg/server/`, `pkg/service/`, `pkg/template/server/`, `
 - **InfoService** — node identity, roles, capacity, health status (used by API node discovery).
 - **ChunkService / VolumeService** — peer-to-peer template chunk serving; persistent volumes.
 
+Process shutdown, triggered by `SIGINT`, `SIGTERM`, `SIGUSR1`, or a service failure, moves
+the node to `ShuttingDown` before draining builds and sandboxes. Like `Draining`, this excludes new
+placement while existing work stays reachable, and `/health` returns HTTP 200 with status
+`draining`. Unlike reversible `Draining`, `ShuttingDown` is terminal for the process;
+status overrides cannot enter or leave it. `FORCE_STOP` skips waiting for sandboxes to exit.
+
 Key mechanisms (all under `pkg/sandbox/`):
 
 - **Firecracker** (`fc/`): each sandbox is one Firecracker process in its own cgroup and network

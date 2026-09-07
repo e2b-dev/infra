@@ -143,7 +143,7 @@ func convertMachineInfo(machineInfo machineinfo.MachineInfo) *orchestratorinfo.M
 func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinfo.ServiceStatusChangeRequest) (*emptypb.Empty, error) {
 	logger.L().Info(ctx, "service status override request received", zap.String("status", req.GetServiceStatus().String()))
 	if !s.info.OverrideStatus(ctx, req.GetServiceStatus()) {
-		return nil, status.Error(codes.FailedPrecondition, "cannot change node status from draining to healthy or standby")
+		return nil, status.Errorf(codes.FailedPrecondition, "cannot override node status to %s", req.GetServiceStatus())
 	}
 
 	return &emptypb.Empty{}, nil

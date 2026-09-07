@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
+	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
@@ -44,6 +45,34 @@ func TestGetTemplateBuilderByNodeID_ResolvesAPersistedMachine(t *testing.T) {
 	got, err := c.GetTemplateBuilderByNodeID("node-b")
 	require.NoError(t, err)
 	assert.Same(t, wanted, got)
+}
+
+func TestTemplateBuilder_DrainingStatusesOnlyServeExistingWork(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range []infogrpc.ServiceInfoStatus{
+		infogrpc.ServiceInfoStatus_Draining,
+		infogrpc.ServiceInfoStatus_ShuttingDown,
+	} {
+		t.Run(status.String(), func(t *testing.T) {
+			t.Parallel()
+
+			builder := builderOn("node-a", "alloc-1")
+			builder.status = status
+			c := clusterWithInstances(t, builder)
+
+			got, err := c.GetTemplateBuilderByNodeID("node-a")
+			require.NoError(t, err)
+			assert.Same(t, builder, got)
+
+			got, found := instanceOnNode(c.instances, "node-a")
+			require.True(t, found)
+			assert.Same(t, builder, got)
+
+			_, err = c.GetAvailableTemplateBuilder(t.Context(), machineinfo.MachineInfo{})
+			require.ErrorIs(t, err, ErrAvailableTemplateBuilderNotFound)
+		})
+	}
 }
 
 // After a restart the machine is the same and the process is not, which is the

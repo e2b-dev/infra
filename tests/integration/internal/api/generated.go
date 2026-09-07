@@ -126,11 +126,12 @@ func (e LogsSource) Valid() bool {
 
 // Defines values for NodeStatus.
 const (
-	NodeStatusConnecting NodeStatus = "connecting"
-	NodeStatusDraining   NodeStatus = "draining"
-	NodeStatusReady      NodeStatus = "ready"
-	NodeStatusStandby    NodeStatus = "standby"
-	NodeStatusUnhealthy  NodeStatus = "unhealthy"
+	NodeStatusConnecting   NodeStatus = "connecting"
+	NodeStatusDraining     NodeStatus = "draining"
+	NodeStatusReady        NodeStatus = "ready"
+	NodeStatusShuttingDown NodeStatus = "shutting_down"
+	NodeStatusStandby      NodeStatus = "standby"
+	NodeStatusUnhealthy    NodeStatus = "unhealthy"
 )
 
 // Valid indicates whether the value is a known member of the NodeStatus enum.
@@ -141,6 +142,8 @@ func (e NodeStatus) Valid() bool {
 	case NodeStatusDraining:
 		return true
 	case NodeStatusReady:
+		return true
+	case NodeStatusShuttingDown:
 		return true
 	case NodeStatusStandby:
 		return true
@@ -636,7 +639,6 @@ type Node struct {
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
 	// Status Status of the node.
-	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
@@ -675,7 +677,6 @@ type NodeDetail struct {
 	ServiceInstanceID string `json:"serviceInstanceID"`
 
 	// Status Status of the node.
-	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 
@@ -723,7 +724,6 @@ type NodeMetrics struct {
 }
 
 // NodeStatus Status of the node.
-// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 // - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 type NodeStatus string
 
@@ -733,7 +733,6 @@ type NodeStatusChange struct {
 	ClusterID *openapi_types.UUID `json:"clusterID,omitempty"`
 
 	// Status Status of the node.
-	// - draining: the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
 	// - standby: the node is not actively used, but it can return to ready and continue serving traffic.
 	Status NodeStatus `json:"status"`
 }

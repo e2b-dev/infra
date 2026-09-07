@@ -1062,16 +1062,12 @@ func run(config cfg.Config, opts Options) (success bool) {
 		cancelCloseCtx()
 	}
 
-	// Mark service draining if not already.
-	// If service stats was previously changed via API, we don't want to override it.
 	logger.L().Info(ctx, "Starting drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-	if status := serviceInfo.GetStatus().Status; status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby {
-		serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_Draining)
+	serviceInfo.SetStatus(ctx, orchestratorinfo.ServiceInfoStatus_ShuttingDown)
 
-		// Wait for draining state to propagate to all consumers
-		if !env.IsLocal() {
-			time.Sleep(15 * time.Second)
-		}
+	// Consumers must stop assigning work before services drain.
+	if !env.IsLocal() {
+		time.Sleep(15 * time.Second)
 	}
 
 	// Wait for services to be drained before closing them

@@ -79,12 +79,20 @@ components:
 
     ClusterNodeStatus:
       type: string
-      description: State of the cluster node
+      description: |
+        State of the cluster node.
       enum:
         - healthy
         - draining
         - unhealthy
         - standby
+        - shutting_down
+      x-enum-varnames:
+        - Healthy
+        - Draining
+        - Unhealthy
+        - Standby
+        - ShuttingDown
 
     ClusterOrchestratorRole:
       type: string

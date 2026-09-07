@@ -10,11 +10,12 @@ func TestServiceInfoStatusCanAcceptNewRequests(t *testing.T) {
 	t.Parallel()
 
 	cases := map[ServiceInfoStatus]bool{
-		ServiceInfoStatus_Healthy:   true,
-		ServiceInfoStatus_Draining:  false,
-		ServiceInfoStatus_Standby:   false,
-		ServiceInfoStatus_Unhealthy: false,
-		ServiceInfoStatus(9999):     false,
+		ServiceInfoStatus_Healthy:      true,
+		ServiceInfoStatus_Draining:     false,
+		ServiceInfoStatus_Standby:      false,
+		ServiceInfoStatus_Unhealthy:    false,
+		ServiceInfoStatus_ShuttingDown: false,
+		ServiceInfoStatus(9999):        false,
 	}
 
 	for status, expected := range cases {

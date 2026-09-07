@@ -28,11 +28,13 @@ type ServiceInfoStatus int32
 
 const (
 	ServiceInfoStatus_Healthy ServiceInfoStatus = 0
-	// Draining means the node is bound to be shut down. It will not accept new sandboxes and will stop once all existing sandboxes are done.
+	// Draining excludes new work while existing work finishes; it can return to Healthy.
 	ServiceInfoStatus_Draining  ServiceInfoStatus = 1
 	ServiceInfoStatus_Unhealthy ServiceInfoStatus = 2
 	// Standby means the node is not actively used, but it can return to Healthy and continues serving traffic.
 	ServiceInfoStatus_Standby ServiceInfoStatus = 3
+	// ShuttingDown drains existing work before process exit and cannot be reversed.
+	ServiceInfoStatus_ShuttingDown ServiceInfoStatus = 4
 )
 
 // Enum value maps for ServiceInfoStatus.
@@ -42,12 +44,14 @@ var (
 		1: "Draining",
 		2: "Unhealthy",
 		3: "Standby",
+		4: "ShuttingDown",
 	}
 	ServiceInfoStatus_value = map[string]int32{
-		"Healthy":   0,
-		"Draining":  1,
-		"Unhealthy": 2,
-		"Standby":   3,
+		"Healthy":      0,
+		"Draining":     1,
+		"Unhealthy":    2,
+		"Standby":      3,
+		"ShuttingDown": 4,
 	}
 )
 
@@ -627,12 +631,13 @@ const file_info_proto_rawDesc = "" +
 	"\x19metric_hugepages_reserved\x18t \x01(\x04R\x17metricHugepagesReserved\x12;\n" +
 	"\x1ametric_hugepage_size_bytes\x18u \x01(\x04R\x17metricHugepageSizeBytes\"W\n" +
 	"\x1aServiceStatusChangeRequest\x129\n" +
-	"\x0eservice_status\x18\x02 \x01(\x0e2\x12.ServiceInfoStatusR\rserviceStatus*J\n" +
+	"\x0eservice_status\x18\x02 \x01(\x0e2\x12.ServiceInfoStatusR\rserviceStatus*\\\n" +
 	"\x11ServiceInfoStatus\x12\v\n" +
 	"\aHealthy\x10\x00\x12\f\n" +
 	"\bDraining\x10\x01\x12\r\n" +
 	"\tUnhealthy\x10\x02\x12\v\n" +
-	"\aStandby\x10\x03*8\n" +
+	"\aStandby\x10\x03\x12\x10\n" +
+	"\fShuttingDown\x10\x04*8\n" +
 	"\x0fServiceInfoRole\x12\x13\n" +
 	"\x0fTemplateBuilder\x10\x00\x12\x10\n" +
 	"\fOrchestrator\x10\x012\x98\x01\n" +

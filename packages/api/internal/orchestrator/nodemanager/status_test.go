@@ -9,6 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
+	"google.golang.org/grpc/codes"
+	grpcstatus "google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
@@ -23,6 +25,7 @@ func TestNodeCanAcceptNewRequests(t *testing.T) {
 		api.NodeStatusReady:        true,
 		api.NodeStatusConnecting:   false,
 		api.NodeStatusDraining:     false,
+		api.NodeStatusShuttingDown: false,
 		api.NodeStatusStandby:      false,
 		api.NodeStatusUnhealthy:    false,
 		api.NodeStatus("nonsense"): false,
@@ -39,6 +42,15 @@ func TestNodeCanAcceptNewRequests(t *testing.T) {
 	}
 }
 
+func TestSendStatusChangeRejectsShuttingDown(t *testing.T) {
+	t.Parallel()
+
+	node := &Node{ID: "test-node"}
+	err := node.SendStatusChange(t.Context(), api.NodeStatusShuttingDown)
+	require.Equal(t, codes.FailedPrecondition, grpcstatus.Code(err))
+	require.Equal(t, "shutting_down can only be entered during process shutdown", grpcstatus.Convert(err).Message())
+}
+
 // Every status the orchestrator can report needs an api.NodeStatus counterpart.
 // Node construction and sync fall back to api.NodeStatusUnhealthy for statuses
 // they don't recognize, so a value added to the proto enum without a mapping
@@ -51,6 +63,14 @@ func TestOrchestratorToApiNodeStateMapperCoversEveryProtoStatus(t *testing.T) {
 
 	require.NotEmpty(t, orchestratorinfo.ServiceInfoStatus_name)
 
+	expectedWireValues := map[orchestratorinfo.ServiceInfoStatus]string{
+		orchestratorinfo.ServiceInfoStatus_Healthy:      "ready",
+		orchestratorinfo.ServiceInfoStatus_Draining:     "draining",
+		orchestratorinfo.ServiceInfoStatus_Unhealthy:    "unhealthy",
+		orchestratorinfo.ServiceInfoStatus_Standby:      "standby",
+		orchestratorinfo.ServiceInfoStatus_ShuttingDown: "shutting_down",
+	}
+
 	for value, name := range orchestratorinfo.ServiceInfoStatus_name {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -60,6 +80,9 @@ func TestOrchestratorToApiNodeStateMapperCoversEveryProtoStatus(t *testing.T) {
 			apiStatus, ok := OrchestratorToApiNodeStateMapper[orchStatus]
 			require.Truef(t, ok, "no api.NodeStatus mapped for orchestrator status %s", name)
 			assert.Truef(t, apiStatus.Valid(), "orchestrator status %s maps to %q, which is not a member of the api.NodeStatus enum", name, apiStatus)
+			expected, ok := expectedWireValues[orchStatus]
+			require.Truef(t, ok, "no expected wire value for orchestrator status %s", name)
+			assert.Equal(t, expected, string(apiStatus))
 		})
 	}
 }

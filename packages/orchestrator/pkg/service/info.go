@@ -60,21 +60,29 @@ func (s *ServiceInfo) OverrideStatus(ctx context.Context, status orchestratorinf
 	s.statusMu.Lock()
 	defer s.statusMu.Unlock()
 
-	if s.status.Status == orchestratorinfo.ServiceInfoStatus_Draining &&
-		(status == orchestratorinfo.ServiceInfoStatus_Healthy || status == orchestratorinfo.ServiceInfoStatus_Standby) {
+	// Only process shutdown may enter ShuttingDown.
+	if status == orchestratorinfo.ServiceInfoStatus_ShuttingDown {
 		return false
 	}
 
-	s.setStatus(ctx, status)
+	if s.status.Status == orchestratorinfo.ServiceInfoStatus_Draining && status == orchestratorinfo.ServiceInfoStatus_Standby {
+		return false
+	}
 
-	return true
+	return s.setStatus(ctx, status)
 }
 
-func (s *ServiceInfo) setStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {
+func (s *ServiceInfo) setStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) bool {
+	if s.status.Status == orchestratorinfo.ServiceInfoStatus_ShuttingDown && status != s.status.Status {
+		return false
+	}
+
 	if s.status.Status != status {
 		logger.L().Info(ctx, "Service status changed", zap.String("status", status.String()))
 		s.status = ServiceStatus{Status: status, ChangedAt: time.Now()}
 	}
+
+	return true
 }
 
 func NewInfoContainer(clientId string, version string, commit string, instanceID string, machineInfo machineinfo.MachineInfo, config cfg.Config) *ServiceInfo {

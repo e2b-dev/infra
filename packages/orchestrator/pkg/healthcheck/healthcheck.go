@@ -41,7 +41,7 @@ func (h *Healthcheck) getStatus() e2bHealth.Status {
 	switch h.info.GetStatus().Status {
 	case e2borchestratorinfo.ServiceInfoStatus_Healthy:
 		return e2bHealth.Healthy
-	case e2borchestratorinfo.ServiceInfoStatus_Draining, e2borchestratorinfo.ServiceInfoStatus_Standby:
+	case e2borchestratorinfo.ServiceInfoStatus_Draining, e2borchestratorinfo.ServiceInfoStatus_Standby, e2borchestratorinfo.ServiceInfoStatus_ShuttingDown:
 		return e2bHealth.Draining
 	}
 

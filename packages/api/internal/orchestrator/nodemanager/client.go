@@ -17,10 +17,11 @@ import (
 )
 
 var OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]api.NodeStatus{
-	orchestratorinfo.ServiceInfoStatus_Healthy:   api.NodeStatusReady,
-	orchestratorinfo.ServiceInfoStatus_Draining:  api.NodeStatusDraining,
-	orchestratorinfo.ServiceInfoStatus_Unhealthy: api.NodeStatusUnhealthy,
-	orchestratorinfo.ServiceInfoStatus_Standby:   api.NodeStatusStandby,
+	orchestratorinfo.ServiceInfoStatus_Healthy:      api.NodeStatusReady,
+	orchestratorinfo.ServiceInfoStatus_Draining:     api.NodeStatusDraining,
+	orchestratorinfo.ServiceInfoStatus_Unhealthy:    api.NodeStatusUnhealthy,
+	orchestratorinfo.ServiceInfoStatus_Standby:      api.NodeStatusStandby,
+	orchestratorinfo.ServiceInfoStatus_ShuttingDown: api.NodeStatusShuttingDown,
 }
 
 func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*clusters.GRPCClient, error) {

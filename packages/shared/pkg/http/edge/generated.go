@@ -19,10 +19,11 @@ import (
 
 // Defines values for ClusterNodeStatus.
 const (
-	Draining  ClusterNodeStatus = "draining"
-	Healthy   ClusterNodeStatus = "healthy"
-	Standby   ClusterNodeStatus = "standby"
-	Unhealthy ClusterNodeStatus = "unhealthy"
+	Draining     ClusterNodeStatus = "draining"
+	Healthy      ClusterNodeStatus = "healthy"
+	ShuttingDown ClusterNodeStatus = "shutting_down"
+	Standby      ClusterNodeStatus = "standby"
+	Unhealthy    ClusterNodeStatus = "unhealthy"
 )
 
 // Valid indicates whether the value is a known member of the ClusterNodeStatus enum.
@@ -31,6 +32,8 @@ func (e ClusterNodeStatus) Valid() bool {
 	case Draining:
 		return true
 	case Healthy:
+		return true
+	case ShuttingDown:
 		return true
 	case Standby:
 		return true
@@ -144,7 +147,7 @@ type ClusterNodeInfo struct {
 	// ServiceStartup Time when the node started
 	ServiceStartup time.Time `json:"serviceStartup"`
 
-	// ServiceStatus State of the cluster node
+	// ServiceStatus State of the cluster node.
 	ServiceStatus ClusterNodeStatus `json:"serviceStatus"`
 
 	// ServiceVersion Version of the service
@@ -154,7 +157,7 @@ type ClusterNodeInfo struct {
 	ServiceVersionCommit string `json:"serviceVersionCommit"`
 }
 
-// ClusterNodeStatus State of the cluster node
+// ClusterNodeStatus State of the cluster node.
 type ClusterNodeStatus string
 
 // ClusterOrchestratorNode defines model for ClusterOrchestratorNode.
@@ -172,7 +175,7 @@ type ClusterOrchestratorNode struct {
 	// ServiceStartedAt Time when the node was registered
 	ServiceStartedAt time.Time `json:"serviceStartedAt"`
 
-	// ServiceStatus State of the cluster node
+	// ServiceStatus State of the cluster node.
 	ServiceStatus ClusterNodeStatus `json:"serviceStatus"`
 
 	// ServiceVersion Service Version
