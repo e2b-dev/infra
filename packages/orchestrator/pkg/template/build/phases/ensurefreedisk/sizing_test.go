@@ -21,7 +21,14 @@ func TestComputeGrownSize(t *testing.T) {
 
 	size, err = computeGrownSize(currentSize, units.MBToBytes(512), -oneMiB)
 	require.NoError(t, err)
-	require.Equal(t, currentSize+units.MBToBytes(513), size)
+	require.Equal(t, currentSize+units.MBToBytes(565), size)
+
+	size, err = computeGrownSize(currentSize, units.MBToBytes(15666), 0)
+	require.NoError(t, err)
+	require.Equal(t, currentSize+units.MBToBytes(17233), size)
+
+	_, err = computeGrownSize(currentSize, math.MaxInt64, 0)
+	require.Error(t, err)
 
 	_, err = computeGrownSize(math.MaxInt64, 1, 0)
 	require.Error(t, err)

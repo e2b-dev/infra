@@ -173,7 +173,8 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		build.FirecrackerVersion,
 		body.StartCmd,
 		build.Vcpu,
-		build.FreeDiskSizeMb,
+		team.Limits.DiskMb,   // Build-time working space available before customer steps run.
+		build.FreeDiskSizeMb, // Customer's free-space target after customer steps run.
 		build.RamMb,
 		body.ReadyCmd,
 		body.FromImage,

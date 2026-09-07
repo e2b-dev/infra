@@ -480,7 +480,7 @@ sequenceDiagram
     participant FC as Firecracker build VMs
     participant OS as Object storage
 
-    C->>API: POST /v3/templates (register build: cpu, ram) → Postgres env_builds
+    C->>API: POST /v3/templates (register build: cpu, ram, free-disk target) → Postgres env_builds
     C->>API: POST /v2/templates/{id}/builds/{buildID} (recipe: steps, start/ready cmd)
     API->>TM: gRPC TemplateCreate(TemplateConfig)
     TM->>TM: pull image → inject envd/provisioning → extract ext4 rootfs

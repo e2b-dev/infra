@@ -23,16 +23,23 @@ func Observe0(ctx context.Context, tracer trace.Tracer, name string, fn func(con
 }
 
 // Observe1 records one synchronous operation returning one value and an error.
-func Observe1[T any](ctx context.Context, tracer trace.Tracer, name string, fn func(context.Context) (T, error), opts ...trace.SpanStartOption) (T, error) {
+func Observe1[T any, E interface {
+	error
+	comparable
+}](ctx context.Context, tracer trace.Tracer, name string, fn func(context.Context) (T, E), opts ...trace.SpanStartOption) (T, E) {
 	return observe(ctx, tracer, name, fn, opts...)
 }
 
-func observe[T any](ctx context.Context, tracer trace.Tracer, name string, fn func(context.Context) (T, error), opts ...trace.SpanStartOption) (T, error) {
+func observe[T any, E interface {
+	error
+	comparable
+}](ctx context.Context, tracer trace.Tracer, name string, fn func(context.Context) (T, E), opts ...trace.SpanStartOption) (T, E) {
 	ctx, span := tracer.Start(ctx, name, opts...)
 	defer span.End()
 
 	value, err := fn(ctx)
-	if err != nil {
+	var zero E
+	if err != zero {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 	} else {

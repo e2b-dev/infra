@@ -131,4 +131,42 @@ func TestLimitResources(t *testing.T) {
 		require.Nil(t, apiErr)
 		assert.Equal(t, constants.DefaultTemplateMemory, memResult)
 	})
+
+	t.Run("free disk size", func(t *testing.T) {
+		t.Parallel()
+
+		limits := &types.TeamLimits{
+			DefaultFreeDiskSizeMb: 10240,
+			MaxFreeDiskSizeMb:     25600,
+		}
+		tests := []struct {
+			name      string
+			requested *int32
+			want      int64
+			wantError bool
+		}{
+			{name: "omitted uses the default", want: 10240},
+			{name: "zero disables growth", requested: new(int32(0))},
+			{name: "ceiling is accepted", requested: new(int32(25600)), want: 25600},
+			{name: "negative is rejected", requested: new(int32(-1)), wantError: true},
+			{name: "above ceiling is rejected", requested: new(int32(25601)), wantError: true},
+		}
+
+		for _, test := range tests {
+			t.Run(test.name, func(t *testing.T) {
+				t.Parallel()
+
+				got, apiErr := LimitFreeDiskSize(limits, test.requested)
+				if test.wantError {
+					require.NotNil(t, apiErr)
+					assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+
+					return
+				}
+
+				require.Nil(t, apiErr)
+				assert.Equal(t, test.want, got)
+			})
+		}
+	})
 }

@@ -39,6 +39,10 @@ type RegisterBuildData struct {
 	MemoryMB   *int32
 	Version    string
 
+	// The requested free-space growth target, or nil for the team's default.
+	// Zero disables requested growth and reaches the row as zero.
+	FreeDiskSpaceMB *int32
+
 	// TODO(ENG-3852): Remove once the template manager resolves the kernel and firecracker versions itself.
 	//
 	// Deprecated: Template manager should use its own.
@@ -61,8 +65,47 @@ func RegisterBuild(
 	db *sqlcdb.Client,
 	data RegisterBuildData,
 ) (*RegisterBuildResponse, *api.APIError) {
-	ctx, span := tracer.Start(ctx, "register build")
-	defer span.End()
+	return telemetry.Observe1(ctx, tracer, "register build", func(ctx context.Context) (*RegisterBuildResponse, *api.APIError) {
+		return registerBuild(ctx, templateCache, db, data)
+	})
+}
+
+func registerBuild(
+	ctx context.Context,
+	templateCache *templatecache.TemplateCache,
+	db *sqlcdb.Client,
+	data RegisterBuildData,
+) (*RegisterBuildResponse, *api.APIError) {
+	// On the span before the free-disk resolution below can return, so a refused
+	// registration still says whose request was refused.
+	telemetry.SetAttributes(ctx,
+		telemetry.WithTeamID(data.Team.ID.String()),
+		telemetry.WithTemplateID(data.TemplateID),
+	)
+
+	// Ahead of the concurrency check and the transaction, so a target this team
+	// may not request is refused as the client's error either way, and the value
+	// that reaches the row is the allowance as it stood at registration.
+	freeDiskSizeMB, apiError := team.LimitFreeDiskSize(data.Team.Limits, data.FreeDiskSpaceMB)
+
+	freeDiskAttrs := []attribute.KeyValue{
+		attribute.Int64("build.free_disk.default_mb", data.Team.Limits.DefaultFreeDiskSizeMb),
+		attribute.Int64("build.free_disk.max_mb", data.Team.Limits.MaxFreeDiskSizeMb),
+	}
+	if data.FreeDiskSpaceMB != nil {
+		freeDiskAttrs = append(freeDiskAttrs,
+			attribute.Int64("build.free_disk.requested_mb", int64(*data.FreeDiskSpaceMB)))
+	}
+	telemetry.SetAttributes(ctx, freeDiskAttrs...)
+
+	if apiError != nil {
+		telemetry.ReportErrorByCode(ctx, apiError.Code, "free disk space request refused", apiError.Err,
+			telemetry.WithTeamID(data.Team.ID.String()))
+
+		return nil, apiError
+	}
+
+	telemetry.SetAttributes(ctx, attribute.Int64("build.free_disk.mb", freeDiskSizeMB))
 
 	// Add default tag if no tags are present
 	tags := data.Tags
@@ -113,7 +156,6 @@ func RegisterBuild(
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", data.Team.ID.String()),
 		attribute.String("env.team.name", data.Team.Name),
-		telemetry.WithTemplateID(data.TemplateID),
 		attribute.String("env.team.tier", data.Team.Tier),
 		telemetry.WithBuildID(buildID.String()),
 		attribute.String("env.dockerfile", data.Dockerfile),
@@ -223,7 +265,7 @@ func RegisterBuild(
 		Vcpu:               cpuCount,
 		KernelVersion:      data.KernelVersion,
 		FirecrackerVersion: data.FirecrackerVersion,
-		FreeDiskSizeMb:     data.Team.Limits.DiskMb,
+		FreeDiskSizeMb:     freeDiskSizeMB,
 		StartCmd:           data.StartCmd,
 		ReadyCmd:           data.ReadyCmd,
 		Dockerfile:         new(data.Dockerfile),

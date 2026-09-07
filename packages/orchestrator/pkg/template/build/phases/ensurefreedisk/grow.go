@@ -93,7 +93,7 @@ func (b *EnsureFreeDiskBuilder) growAndExport(
 		return &build.NoDiff{}, noChangeHeader, result, nil
 	}
 
-	// Grow once by the measured deficit, rounded up to a whole MiB.
+	// Grow once by the measured deficit plus the ext4 overhead allowance, rounded up to a whole MiB.
 	newSize, err := computeGrownSize(sourceSize, target, freeBefore)
 	if err != nil {
 		return nil, nil, growResult{}, err

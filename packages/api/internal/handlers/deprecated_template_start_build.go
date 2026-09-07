@@ -210,7 +210,8 @@ func (a *APIStore) PostTemplatesTemplateIDBuildsBuildID(c *gin.Context, template
 		build.FirecrackerVersion,
 		build.StartCmd,
 		build.Vcpu,
-		build.FreeDiskSizeMb,
+		team.Limits.DiskMb,   // Build-time working space available before customer steps run.
+		build.FreeDiskSizeMb, // Customer's free-space target after customer steps run.
 		build.RamMb,
 		build.ReadyCmd,
 		&fromImage,

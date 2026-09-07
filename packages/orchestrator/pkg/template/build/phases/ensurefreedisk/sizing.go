@@ -27,11 +27,21 @@ func computeGrownSize(currentSize, targetFree, freeBefore int64) (int64, error) 
 	}
 
 	shortage := targetFree - freeBefore
-	if currentSize > math.MaxInt64-shortage {
+	// resize2fs uses some new capacity for ext4 metadata, so allow 10% on the
+	// measured shortage. The post-resize free-space measurement is authoritative.
+	extraGrowth := shortage / 10
+	if shortage%10 != 0 {
+		extraGrowth++
+	}
+	if shortage > math.MaxInt64-extraGrowth {
+		return 0, errors.New("free-space growth overflows")
+	}
+	growth := shortage + extraGrowth
+	if currentSize > math.MaxInt64-growth {
 		return 0, errors.New("grown size overflows")
 	}
 
-	size := currentSize + shortage
+	size := currentSize + growth
 	resizeUnit := units.MBToBytes(1)
 	if remainder := size % resizeUnit; remainder != 0 {
 		add := resizeUnit - remainder
