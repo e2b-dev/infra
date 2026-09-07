@@ -9,11 +9,7 @@ import (
 	"os"
 
 	tmpl "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
-
-// chunkSendSize is the maximum number of bytes per Send call.
-const chunkSendSize = storage.MemoryChunkSize
 
 var _ BlobSource = (*fileSource)(nil)
 
@@ -71,41 +67,4 @@ func (f *fileSource) Stream(ctx context.Context, sender Sender) error {
 	}
 
 	return w.flush()
-}
-
-// chunkWriter buffers writes and forwards them to a Sender in chunkSendSize-bounded calls.
-type chunkWriter struct {
-	sender Sender
-	buf    []byte
-}
-
-func (w *chunkWriter) Write(p []byte) (int, error) {
-	total := 0
-
-	for len(p) > 0 {
-		space := chunkSendSize - len(w.buf)
-		take := min(len(p), space)
-		w.buf = append(w.buf, p[:take]...)
-		p = p[take:]
-		total += take
-
-		if len(w.buf) == chunkSendSize {
-			if err := w.flush(); err != nil {
-				return total, err
-			}
-		}
-	}
-
-	return total, nil
-}
-
-func (w *chunkWriter) flush() error {
-	if len(w.buf) == 0 {
-		return nil
-	}
-
-	chunk := w.buf
-	w.buf = nil
-
-	return w.sender.Send(chunk)
 }

@@ -39,5 +39,5 @@ func (f *metadataSource) Stream(ctx context.Context, sender Sender) error {
 		return fmt.Errorf("serialize metadata: %w", err)
 	}
 
-	return sender.Send(data)
+	return sendChunked(sender, data)
 }

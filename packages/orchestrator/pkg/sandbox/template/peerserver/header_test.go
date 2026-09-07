@@ -6,6 +6,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -100,6 +101,76 @@ func TestHeaderSource_Stream_ServesDurableHeader(t *testing.T) {
 	sender := &collectSender{}
 	require.NoError(t, src.Stream(t.Context(), sender))
 	assert.NotEmpty(t, sender.data)
+}
+
+// A header on a heavily fragmented build serializes past the transport's
+// per-message limit. It must reach the peer as several bounded messages that
+// reassemble into the original, not as one oversized message the receiver
+// refuses.
+func TestHeaderSource_Stream_ChunksOversizedHeader(t *testing.T) {
+	t.Parallel()
+
+	h := oversizedHeader(t)
+
+	dev := blockmocks.NewMockReadonlyDevice(t)
+	dev.EXPECT().Header().Return(h)
+
+	tmplMock := templatemocks.NewMockTemplate(t)
+	tmplMock.EXPECT().Memfile(mock.Anything).Return(dev, nil)
+
+	cache := peerservermocks.NewMockCache(t)
+	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
+
+	src, err := ResolveBlob(cache, "build-1", storage.MemfileName+storage.HeaderSuffix)
+	require.NoError(t, err)
+
+	sender := &collectSender{}
+	require.NoError(t, src.Stream(t.Context(), sender))
+
+	require.Greater(t, len(sender.data), sendChunkSize,
+		"fixture is too small to exercise chunking")
+	assert.Greater(t, len(sender.sends), 1)
+	for i, n := range sender.sends {
+		assert.LessOrEqual(t, n, sendChunkSize, "send %d exceeds the per-message bound", i)
+	}
+
+	// The split must be transparent: what the peer reassembles is the header.
+	got, err := storageheader.DeserializeBytes(sender.data)
+	require.NoError(t, err)
+	assert.Equal(t, h.Mapping.Len(), got.Mapping.Len())
+	assert.Equal(t, h.Metadata.Size, got.Metadata.Size)
+}
+
+// oversizedHeader builds a header that serializes past sendChunkSize. The V5
+// mapping section is LZ4-compressed, so uniform mappings collapse to almost
+// nothing; distinct random build IDs are what make it incompressible, and the
+// build-ID table is the bulk of the result.
+func oversizedHeader(t *testing.T) *storageheader.Header {
+	t.Helper()
+
+	const (
+		blockSize = storageheader.PageSize
+		entries   = 65535 // the per-header cap on distinct build IDs
+	)
+
+	mappings := make([]storageheader.BuildMap, entries)
+	for i := range mappings {
+		mappings[i] = storageheader.BuildMap{
+			Offset:             uint64(i) * blockSize,
+			Length:             blockSize,
+			BuildId:            uuid.New(),
+			BuildStorageOffset: uint64(i) * blockSize,
+		}
+	}
+
+	h, err := storageheader.NewHeader(&storageheader.Metadata{
+		Version:   3,
+		BlockSize: blockSize,
+		Size:      uint64(entries) * blockSize,
+	}, mappings)
+	require.NoError(t, err)
+
+	return h
 }
 
 func TestHeaderSource_Stream_Rootfs(t *testing.T) {

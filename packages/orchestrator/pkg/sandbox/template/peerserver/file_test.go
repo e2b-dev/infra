@@ -3,6 +3,7 @@
 package peerserver
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -79,6 +80,35 @@ func TestFileSource_Stream_FileOnDisk(t *testing.T) {
 
 	require.NoError(t, src.Stream(t.Context(), sender))
 	assert.Equal(t, content, string(sender.data))
+}
+
+// A snapfile larger than the bound has to reach the peer as several bounded
+// messages. This covers chunkWriter's call site, which the in-memory sources
+// bypass.
+func TestFileSource_Stream_ChunksLargeFile(t *testing.T) {
+	t.Parallel()
+
+	content := bytes.Repeat([]byte("s"), 2*sendChunkSize+7)
+	path := filepath.Join(t.TempDir(), "file")
+	require.NoError(t, os.WriteFile(path, content, 0o600))
+
+	f := templatemocks.NewMockFile(t)
+	f.EXPECT().Path().Return(path)
+
+	tmplMock := templatemocks.NewMockTemplate(t)
+	tmplMock.EXPECT().Snapfile().Return(f, nil)
+
+	cache := peerservermocks.NewMockCache(t)
+	cache.EXPECT().GetCachedTemplate("build-1").Return(tmplMock, true)
+
+	src, err := ResolveBlob(cache, "build-1", storage.SnapfileName)
+	require.NoError(t, err)
+
+	sender := &collectSender{}
+	require.NoError(t, src.Stream(t.Context(), sender))
+
+	assert.Equal(t, []int{sendChunkSize, sendChunkSize, 7}, sender.sends)
+	assert.Equal(t, content, sender.data)
 }
 
 func TestFileSource_Stream_FileNotOnDisk(t *testing.T) {

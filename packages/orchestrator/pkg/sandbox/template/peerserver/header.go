@@ -67,5 +67,5 @@ func (f *headerSource) Stream(ctx context.Context, sender Sender) error {
 		return fmt.Errorf("serialize header: %w", err)
 	}
 
-	return sender.Send(data)
+	return sendChunked(sender, data)
 }
