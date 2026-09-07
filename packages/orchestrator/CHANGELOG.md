@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.13.0 (2026-09-07)
+
+
+### Features
+
+* **orchestrator:** snapshot-admission pre-flight for pause and checkpoint (flag-gated) (b47217c)
+* **templates:** configure free disk targets (b88aab9)
+* **templates:** separate build and free disk targets (432ab9a)
+
+
+### Bug Fixes
+
+* **envd:** stop counting a vanished cgroup as a freeze or thaw failure (9c5f26e)
+* **orchestrator:** guard draining status transitions (faf3d8a)
+* **orch:** re-send a sandbox's default user so a live envd upgrade cannot lose it (366ea8f)
+
+
+### Performance Improvements
+
+* **orch:** cache the host envd binary instead of re-reading it per resume (0ab5687)
+
+
+### Code Refactoring
+
+* **orchestrator:** derive sandbox log fields from the runtime metadata (b8a47d3)
+
 ## 0.12.0 (2026-09-02)
 
 
