@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0 (2026-09-07)
+
+
+### Features
+
+* **orchestrator:** add shutting-down status (c7bb7eb)
+* **templates:** configure free disk targets (b88aab9)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.1 [security] (27006d5)
+
 ## 0.11.0 (2026-09-04)
 
 
