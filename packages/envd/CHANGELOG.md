@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 (2026-09-07)
+
+
+### Features
+
+* **envd:** name versioned uploads and promotes by release version (0887574)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.1 [security] (27006d5)
+* **envd:** flush logs before pause snapshots (f924188)
+* **envd:** report process-start resource exhaustion as resource_exhausted (4e4ca69)
+* **envd:** stop counting a vanished cgroup as a freeze or thaw failure (9c5f26e)
+* **orch:** re-send a sandbox's default user so a live envd upgrade cannot lose it (366ea8f)
+
 ## 0.7.0 (2026-08-24)
 
 
