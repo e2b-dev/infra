@@ -367,6 +367,71 @@ sequenceDiagram
     E-->>U: response
 ```
 
+### Network egress control and sandbox metadata (MMDS)
+
+Two independent mechanisms decide what a sandbox can reach. They operate at
+different layers, and conflating them is a common source of confusion (see the
+note on MMDS below).
+
+**Egress filtering (`denyOut` / `allowPublicTraffic`).** A sandbox's outbound
+traffic is filtered only *after* it leaves the guest through the tap interface
+into the host network namespace. The nftables filter chain
+(`packages/orchestrator/pkg/sandbox/network/firewall.go`) and the host-netns TCP
+proxy (`packages/orchestrator/pkg/tcpfirewall/`) split by protocol:
+
+- **TCP** is REDIRECTed to the TCP proxy, which enforces the team's `denyOut`
+  rules plus a built-in `DeniedSandboxCIDRs` baseline
+  (`packages/shared/pkg/sandbox-network/firewall.go`) that always denies internal
+  and link-local ranges, including `169.254.0.0/16`. The proxy re-checks the
+  *resolved* destination IP in a pre-`connect()` hook, so a hostname that resolves
+  into a denied range is blocked before the TCP handshake (DNS-rebinding guard).
+- **Non-TCP** is matched directly by the nftables chain against the predefined
+  deny set and the user allow/deny sets.
+- `allowPublicTraffic:false` is equivalent to `denyOut` of `0.0.0.0/0`.
+- **BYOP** (bring-your-own-proxy) mode only changes the nftables Rule 3 to drop
+  *non-TCP* to the denied ranges (TCP is handled by the user's in-guest proxy);
+  it does not change anything about MMDS.
+- **BYOP endpoint validation.** A configured SOCKS5 egress proxy is rejected if
+  its address resolves into `DeniedSandboxCIDRs`
+  (`sandbox_network.ValidateEgressProxy`), so the proxy endpoint itself cannot be
+  pointed at internal infrastructure.
+
+**Sandbox metadata (MMDS) is *not* on the filtered path.** The address
+`169.254.169.254` inside a sandbox is served by **Firecracker's per-microVM
+Metadata Service (MMDS v2)**, configured per-sandbox by the orchestrator
+(`packages/orchestrator/pkg/sandbox/fc/client.go`, `PutMmdsConfig` / `setMmds`).
+Those packets are handled by the VMM's virtio-net device and **never egress the
+tap**, so no egress control observes them:
+
+- `denyOut:["169.254.169.254/32"]`, `allowPublicTraffic:false`, and even a full
+  deny-egress rebuild have **no effect** on MMDS reachability — it is reachable by
+  design so that envd can complete `/init`.
+- envd pins a `RETURN` rule for `169.254.169.254:80` at the top of the guest's
+  nat `PREROUTING`/`OUTPUT` chains
+  (`packages/envd/internal/host/mmds_route_linux.go`), self-healing on lookup
+  failure (`packages/envd/internal/api/init.go`), so a user-installed redirect in
+  the same netns cannot shadow it.
+- **Contents are sandbox-scoped.** MMDS returns exactly the four keys the
+  orchestrator writes — `instanceID`, `envID`, `address`, `accessTokenHash`
+  (`packages/orchestrator/pkg/sandbox/fc/mmds.go`). It does **not** proxy the
+  host's or cloud provider's instance metadata (IMDS) or any IAM/service-account
+  credentials. The host's real IMDS lives in the host network namespace; the
+  guest's identically-numbered address is intercepted by the VMM and cannot reach
+  it, and tap-egress to `169.254.0.0/16` is denied anyway. This last property is
+  partly a **deployment contract**: it also requires that the guest tap is not
+  bridged onto a network where a real IMDS is routable.
+- `accessTokenHash` is the **hash** of the sandbox access token, not the token.
+  It gates `/init` authorization (`packages/envd/internal/api/init.go`); a
+  workload reading its own sandbox's hash cannot forge `/init` with it, and it is
+  reading metadata about the sandbox it already controls.
+
+**Consequence for users.** There is currently no supported knob to deny a user
+workload access to MMDS while preserving envd initialization: MMDS is reachable
+by any process in the guest, and envd needs it for `/init` verification and
+metadata polling. To block *outbound* access to a real cloud IMDS, rely on
+`denyOut` / the `DeniedSandboxCIDRs` baseline (which already covers
+`169.254.0.0/16`); this is independent of the in-guest MMDS endpoint.
+
 ### Volume content
 
 Persistent volumes (`packages/orchestrator/pkg/volumes/`) are managed through the control-plane
