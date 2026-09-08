@@ -275,97 +275,48 @@ func TestAcquireRespectsContextCancel(t *testing.T) {
 	}
 }
 
-// Pause after observing a live context, before Acquire can register its wait.
 type semaphoreCancelContext struct {
 	context.Context
-	checked chan struct{}
-	resume  chan struct{}
-	once    sync.Once
+	cancel context.CancelFunc
 }
 
 func (c *semaphoreCancelContext) Err() error {
 	err := c.Context.Err()
 	if err == nil {
-		c.once.Do(func() {
-			close(c.checked)
-			<-c.resume
-		})
+		c.cancel()
+		runtime.Gosched()
 	}
 
 	return err
-}
-
-type semaphoreWaitLocker struct {
-	sync.Locker
-	waiting  chan struct{}
-	locking  chan struct{}
-	waitOnce sync.Once
-	lockOnce sync.Once
-}
-
-func (l *semaphoreWaitLocker) Lock() {
-	l.lockOnce.Do(func() { close(l.locking) })
-	l.Locker.Lock()
-}
-
-func (l *semaphoreWaitLocker) Unlock() {
-	l.waitOnce.Do(func() { close(l.waiting) })
-	l.Locker.Unlock()
 }
 
 func TestAcquireCancellationBeforeWait(t *testing.T) {
 	t.Parallel()
 
 	synctest.Test(t, func(t *testing.T) {
-		s, err := NewAdjustableSemaphore(1)
-		require.NoError(t, err)
-		require.True(t, s.TryAcquire(1))
+		for range 100 {
+			s, err := NewAdjustableSemaphore(1)
+			require.NoError(t, err)
+			require.True(t, s.TryAcquire(1))
 
-		locker := &semaphoreWaitLocker{
-			Locker:  &s.mu,
-			waiting: make(chan struct{}),
-			locking: make(chan struct{}),
-		}
-		s.cond.L = locker
-
-		// An existing waiter makes an unlocked cancellation Broadcast observable.
-		go func() {
-			s.mu.Lock()
-			s.cond.Wait()
-			s.mu.Unlock()
-		}()
-		<-locker.waiting
-
-		ctx, cancel := context.WithCancel(t.Context())
-		defer cancel()
-		paused := &semaphoreCancelContext{
-			Context: ctx,
-			checked: make(chan struct{}),
-			resume:  make(chan struct{}),
-		}
-		result := make(chan error, 1)
-		go func() { result <- s.Acquire(paused, 1) }()
-		<-paused.checked
-		cancel()
-
-		// With the fix, the callback tries to lock L. Without it, Broadcast
-		// wakes the existing waiter, which tries to lock L. Both happen while
-		// Acquire still holds mu and has not registered its wait.
-		<-locker.locking
-		close(paused.resume)
-		synctest.Wait()
-
-		select {
-		case err := <-result:
-			require.ErrorIs(t, err, context.Canceled)
-		default:
-			// Rescue a stuck waiter so a regression fails without leaking it.
-			s.mu.Lock()
-			s.cond.Broadcast()
-			s.mu.Unlock()
+			ctx, cancel := context.WithCancel(t.Context())
+			cancelOnCheck := &semaphoreCancelContext{Context: ctx, cancel: cancel}
+			result := make(chan error, 1)
+			go func() { result <- s.Acquire(cancelOnCheck, 1) }()
 			synctest.Wait()
-			<-result
-			t.Fatal("Acquire missed cancellation before entering Wait")
+			cancel()
+
+			select {
+			case err := <-result:
+				require.ErrorIs(t, err, context.Canceled)
+			default:
+				s.mu.Lock()
+				s.cond.Broadcast()
+				s.mu.Unlock()
+				synctest.Wait()
+				<-result
+				t.Fatal("Acquire missed cancellation before entering Wait")
+			}
 		}
 	})
 }

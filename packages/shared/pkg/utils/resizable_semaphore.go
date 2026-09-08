@@ -41,8 +41,8 @@ func (s *AdjustableSemaphore) Acquire(ctx context.Context, n int64) error {
 
 	// Wake ->cond.Wait when ctx is canceled.
 	stop := context.AfterFunc(ctx, func() {
-		s.cond.L.Lock()
-		defer s.cond.L.Unlock()
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		s.cond.Broadcast()
 	})
 	defer stop() // ensure we don’t leak the callback
