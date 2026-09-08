@@ -123,6 +123,9 @@ func firecrackerSupports(ctx context.Context, sbx *sandbox.Sandbox, feature stri
 }
 
 func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequest) (_ *orchestrator.SandboxCreateResponse, createErr error) {
+	releaseWork := s.info.TrackWork()
+	defer releaseWork()
+
 	// set max request timeout for this request. The pre-boot journal replay runs
 	// within this budget (a successful replay is fast; the cancel-immune worst case
 	// is bounded well under it), so the orchestrator still times out before the
@@ -393,8 +396,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	}
 
 	teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
+	s.publishEventAsync(
+		ctx,
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
@@ -449,6 +452,9 @@ func createVolumeMountModelsFromAPI(volumeMounts []*orchestrator.SandboxVolumeMo
 }
 
 func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequest) (*emptypb.Empty, error) {
+	releaseWork := s.info.TrackWork()
+	defer releaseWork()
+
 	ctx, childSpan := tracer.Start(ctx, "sandbox-update")
 	defer childSpan.End()
 
@@ -545,8 +551,8 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 				}
 			}
 
-			go s.sbxEventsService.Publish(
-				context.WithoutCancel(ctx),
+			s.publishEventAsync(
+				ctx,
 				teamID,
 				events.SandboxEvent{
 					Version:   events.StructureVersionV2,
@@ -659,6 +665,9 @@ func (s *Server) List(ctx context.Context, _ *emptypb.Empty) (*orchestrator.Sand
 }
 
 func (s *Server) Delete(ctxConn context.Context, in *orchestrator.SandboxDeleteRequest) (*emptypb.Empty, error) {
+	releaseWork := s.info.TrackWork()
+	defer releaseWork()
+
 	ctx, cancel := context.WithTimeoutCause(ctxConn, requestTimeout, errors.New("request timed out"))
 	defer cancel()
 
@@ -736,8 +745,8 @@ func (s *Server) emitSandboxKilled(ctx context.Context, sbx *sandbox.Sandbox, ki
 	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 	addKillReason(eventData, killReason)
 	recordSandboxKill(ctx, s.sandboxKilledCounter, killReason)
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
+	s.publishEventAsync(
+		ctx,
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
@@ -809,6 +818,9 @@ func (s *Server) recordPauseAdmission(ctx context.Context, rpc string, outcome s
 }
 
 func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest) (resp *orchestrator.SandboxPauseResponse, err error) {
+	releaseWork := s.info.TrackWork()
+	defer releaseWork()
+
 	ctx, childSpan := tracer.Start(ctx, "sandbox-pause")
 	defer childSpan.End()
 
@@ -959,8 +971,8 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 	eventData[executionEventDataKey] = s.getSandboxExecutionData(sbx)
 
 	eventType := events.SandboxPausedEventPair
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
+	s.publishEventAsync(
+		ctx,
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
@@ -984,6 +996,9 @@ func (s *Server) Pause(ctx context.Context, in *orchestrator.SandboxPauseRequest
 }
 
 func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpointRequest) (*orchestrator.SandboxCheckpointResponse, error) {
+	releaseWork := s.info.TrackWork()
+	defer releaseWork()
+
 	ctx, childSpan := tracer.Start(ctx, "sandbox-checkpoint")
 	defer childSpan.End()
 
@@ -1572,8 +1587,10 @@ func (s *Server) uploadSnapshotAsync(ctx context.Context, sbx *sandbox.Sandbox, 
 	// rather than cancelling, so an in-flight snapshot isn't dropped on restart.
 	uploadCtx := context.WithoutCancel(ctx)
 
+	releaseWork := s.info.TrackWork()
 	s.uploadsInFlight.Add(1)
 	s.uploadsWG.Go(func() {
+		defer releaseWork()
 		defer s.uploadsInFlight.Add(-1)
 
 		spanCtx, span := tracer.Start(uploadCtx, "upload snapshot")
@@ -1617,7 +1634,10 @@ func (s *Server) markSandboxLive(ctx context.Context, sbx *sandbox.Sandbox) {
 }
 
 func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox) {
+	releaseWork := s.info.TrackWork()
 	go func() {
+		defer releaseWork()
+
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-lifecycle", trace.WithNewRoot())
 		defer childSpan.End()
 
@@ -1653,7 +1673,10 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 
 // stopSandboxAsync stops the sandbox in a background goroutine.
 func (s *Server) stopSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox) {
+	releaseWork := s.info.TrackWork()
 	go func() {
+		defer releaseWork()
+
 		ctx, childSpan := tracer.Start(context.WithoutCancel(ctx), "stop sandbox-async", trace.WithNewRoot())
 		defer childSpan.End()
 
@@ -1668,8 +1691,8 @@ func (s *Server) stopSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox) {
 func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, eventType string) {
 	teamID, buildId, eventsTTLDays, eventData := s.prepareSandboxEventData(ctx, sbx)
 
-	go s.sbxEventsService.Publish(
-		context.WithoutCancel(ctx),
+	s.publishEventAsync(
+		ctx,
 		teamID,
 		events.SandboxEvent{
 			Version:   events.StructureVersionV2,
@@ -1686,6 +1709,15 @@ func (s *Server) publishSandboxEvent(ctx context.Context, sbx *sandbox.Sandbox, 
 			EventsTTLDays:      eventsTTLDays,
 		},
 	)
+}
+
+func (s *Server) publishEventAsync(ctx context.Context, teamID uuid.UUID, event events.SandboxEvent) {
+	releaseWork := s.info.TrackWork()
+	go func() {
+		defer releaseWork()
+
+		s.sbxEventsService.Publish(context.WithoutCancel(ctx), teamID, event)
+	}()
 }
 
 // recordUpgradePhase records one live-upgrade phase's wall-time. The phases hold

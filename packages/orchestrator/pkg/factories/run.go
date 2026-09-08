@@ -944,6 +944,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		tmpl, err = tmplserver.New(
 			ctx,
 			config,
+			serviceInfo,
 			featureFlags,
 			tel.MeterProvider,
 			globalLogger,

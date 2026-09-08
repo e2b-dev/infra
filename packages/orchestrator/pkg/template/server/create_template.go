@@ -40,6 +40,9 @@ var (
 )
 
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
+	done := s.info.TrackWork()
+	defer done()
+
 	ctx, childSpan := tracer.Start(ctx, "template-create")
 	defer childSpan.End()
 
@@ -170,10 +173,13 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		}),
 	)
 
+	// Register child work before the foreground request releases its hold.
+	buildDone := s.info.TrackWork()
 	s.wg.Add(1)
 	s.activeBuilds.Add(1)
 	go func(ctx context.Context) {
 		defer s.wg.Done()
+		defer buildDone()
 		defer s.activeBuilds.Add(-1)
 
 		ctx, cancel := context.WithCancel(ctx)

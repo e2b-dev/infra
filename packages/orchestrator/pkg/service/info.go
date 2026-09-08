@@ -33,8 +33,9 @@ type ServiceInfo struct {
 	Labels      []string
 	MachineInfo machineinfo.MachineInfo
 
-	status   ServiceStatus
-	statusMu sync.RWMutex
+	status          ServiceStatus
+	statusMu        sync.RWMutex
+	outstandingWork int64
 }
 
 var serviceRolesMapper = map[cfg.ServiceType]orchestratorinfo.ServiceInfoRole{
@@ -47,6 +48,29 @@ func (s *ServiceInfo) GetStatus() ServiceStatus {
 	defer s.statusMu.RUnlock()
 
 	return s.status
+}
+
+// Child work must be registered before its parent releases ownership.
+func (s *ServiceInfo) TrackWork() func() {
+	s.statusMu.Lock()
+	s.outstandingWork++
+	s.statusMu.Unlock()
+
+	return s.finishWork
+}
+
+func (s *ServiceInfo) finishWork() {
+	s.statusMu.Lock()
+	defer s.statusMu.Unlock()
+
+	s.outstandingWork--
+}
+
+func (s *ServiceInfo) OutstandingWork() int64 {
+	s.statusMu.RLock()
+	defer s.statusMu.RUnlock()
+
+	return s.outstandingWork
 }
 
 func (s *ServiceInfo) SetStatus(ctx context.Context, status orchestratorinfo.ServiceInfoStatus) {

@@ -199,6 +199,10 @@ Key mechanisms (all under `pkg/sandbox/`):
   collector remains the fallback primary destination, and configured shadow destinations can mirror
   writes during collector/storage migrations without changing sandbox behavior.
 
+Detached sandbox-event publication holds node work until the publisher returns. This covers
+delivery attempts, not end-to-end delivery: the ClickHouse target enqueues into an in-memory
+batcher, whose flushing remains part of shutdown.
+
 ### Envd (`packages/envd`)
 
 The agent inside every VM (started by systemd very early in boot), port 49983, chi + Connect RPC.
@@ -518,6 +522,11 @@ resize disk → finalize → optimize. Each layer is hashed and cached, so rebui
 steps. Resize disk grows the quiescent rootfs on the host; the other non-cached phases run in a real
 Firecracker VM and their pause-diffs become layers. The optimize phase records which memory pages a
 fresh resume touches, producing prefetch hints that speed up future sandbox starts.
+
+Template creation holds node work through foreground setup and asynchronous build completion,
+including layer uploads, synchronous cleanup, and final status publication. Cancellation can mark
+a build failed before execution finishes; the work hold remains until execution unwinds. Template
+deletion owns a separate hold until artifact cleanup returns.
 
 ## Deployment topology
 

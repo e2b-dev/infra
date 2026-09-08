@@ -211,7 +211,10 @@ func (s *Server) harvestResumePrefetchAsync(
 	consume := s.featureFlags.BoolFlag(ctx, featureflags.PauseResumePrefetchConsumeFlag)
 	harvester := s.newPrefetchHarvester()
 
+	releaseWork := s.info.TrackWork()
 	go func() {
+		defer releaseWork()
+
 		// Detach from the request (Pause has returned) but keep the LD context
 		// values; bound the whole harvest so a stuck resume can't pin the slot.
 		hCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Duration(timeoutMs)*time.Millisecond)

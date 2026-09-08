@@ -7,6 +7,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -25,6 +26,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
@@ -113,6 +115,7 @@ func admissionTestServer(t *testing.T, graceMs *int) *Server {
 	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
 
 	return &Server{
+		info:                       &service.ServiceInfo{},
 		sandboxFactory:             &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()},
 		startingSandboxes:          utils.Must(utils.NewAdjustableSemaphore(1)),
 		sandboxPauseDuration:       utils.Must(telemetry.GetHistogram(meter, telemetry.PauseDurationHistogramName)),
@@ -311,10 +314,12 @@ func TestPause_AdmissionCallerCancelIsNotARefusal(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
 		<-admissionWaitBegun(sbx)
+		assert.Equal(t, int64(1), s.info.OutstandingWork())
 		cancel()
 	}()
 
 	_, pauseErr := s.Pause(ctx, &orchestrator.SandboxPauseRequest{SandboxId: "sbx-admission-cancel"})
+	assert.Zero(t, s.info.OutstandingWork())
 
 	require.Error(t, pauseErr)
 	st, ok := status.FromError(pauseErr)
@@ -386,10 +391,12 @@ func TestCheckpoint_AdmissionCallerCancelIsNotARefusal(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	go func() {
 		<-admissionWaitBegun(sbx)
+		assert.Equal(t, int64(1), s.info.OutstandingWork())
 		cancel()
 	}()
 
 	_, ckptErr := s.Checkpoint(ctx, &orchestrator.SandboxCheckpointRequest{SandboxId: "sbx-admission-ckpt-cancel"})
+	assert.Zero(t, s.info.OutstandingWork())
 
 	require.Error(t, ckptErr)
 	st, ok := status.FromError(ckptErr)
@@ -451,6 +458,7 @@ func admissionMetricsServer(t *testing.T, graceMs int) (*Server, *sdkmetric.Manu
 	meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
 
 	return &Server{
+		info:                       &service.ServiceInfo{},
 		sandboxFactory:             &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()},
 		sandboxPauseDuration:       utils.Must(telemetry.GetHistogram(meter, telemetry.PauseDurationHistogramName)),
 		pauseAdmissionCounter:      utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxPauseAdmissionCounterName)),
@@ -519,24 +527,26 @@ func TestPauseAdmissionMetrics_RefusedPause(t *testing.T) {
 	t.Parallel()
 
 	s, reader := admissionMetricsServer(t, 30)
-	sbx := admissionTestSandbox(t, "sbx-metrics-refused", 21, utils.NewSetOnce[*header.Header]())
-	s.sandboxFactory.Sandboxes.MarkRunning(t.Context(), sbx)
+	synctest.Test(t, func(t *testing.T) {
+		sbx := admissionTestSandbox(t, "sbx-metrics-refused", 21, utils.NewSetOnce[*header.Header]())
+		s.sandboxFactory.Sandboxes.MarkRunning(t.Context(), sbx)
 
-	_, pauseErr := s.Pause(t.Context(), &orchestrator.SandboxPauseRequest{SandboxId: "sbx-metrics-refused"})
-	require.Error(t, pauseErr)
+		_, pauseErr := s.Pause(t.Context(), &orchestrator.SandboxPauseRequest{SandboxId: "sbx-metrics-refused"})
+		require.Error(t, pauseErr)
 
-	points := admissionCounterPoints(t, reader)
-	require.Len(t, points, 1)
-	assert.EqualValues(t, 1, points[0].Value)
-	assert.Equal(t, map[string]string{"outcome": "refused", "rpc": "pause"}, attrsAsMap(t, points[0].Attributes),
-		"counter attributes must be exactly outcome+rpc")
+		points := admissionCounterPoints(t, reader)
+		require.Len(t, points, 1)
+		assert.EqualValues(t, 1, points[0].Value)
+		assert.Equal(t, map[string]string{"outcome": "refused", "rpc": "pause"}, attrsAsMap(t, points[0].Attributes),
+			"counter attributes must be exactly outcome+rpc")
 
-	waits := admissionWaitPoints(t, reader)
-	require.Len(t, waits, 1)
-	require.EqualValues(t, 1, waits[0].Count)
-	assert.Equal(t, map[string]string{"outcome": "refused"}, attrsAsMap(t, waits[0].Attributes),
-		"wait histogram attribute must be exactly outcome")
-	assert.GreaterOrEqual(t, waits[0].Sum, int64(30))
+		waits := admissionWaitPoints(t, reader)
+		require.Len(t, waits, 1)
+		require.EqualValues(t, 1, waits[0].Count)
+		assert.Equal(t, map[string]string{"outcome": "refused"}, attrsAsMap(t, waits[0].Attributes),
+			"wait histogram attribute must be exactly outcome")
+		assert.Equal(t, int64(30), waits[0].Sum)
+	})
 }
 
 func TestPauseAdmissionMetrics_RefusedCheckpoint(t *testing.T) {
@@ -606,10 +616,9 @@ func TestPauseAdmissionMetrics_ReadyOutcomes(t *testing.T) {
 			_, _ = s.Pause(context.WithoutCancel(t.Context()), &orchestrator.SandboxPauseRequest{SandboxId: "sbx-metrics-raw"})
 		}()
 
+		// The paused state follows completion of admission metric recording.
 		require.Eventually(t, func() bool {
-			points := admissionCounterPoints(t, reader)
-
-			return len(points) == 1
+			return sbx.GetStopReason() == sandbox.StopReasonPaused
 		}, 5*time.Second, 5*time.Millisecond)
 
 		points := admissionCounterPoints(t, reader)
@@ -639,10 +648,11 @@ func TestPauseAdmissionMetrics_ReadyOutcomes(t *testing.T) {
 		}()
 
 		require.Eventually(t, func() bool {
-			return len(admissionCounterPoints(t, reader)) == 1
+			return sbx.GetStopReason() == sandbox.StopReasonPaused
 		}, 5*time.Second, 5*time.Millisecond)
 
 		points := admissionCounterPoints(t, reader)
+		require.Len(t, points, 1)
 		assert.Equal(t, map[string]string{"outcome": "ready", "rpc": "pause"}, attrsAsMap(t, points[0].Attributes))
 		assert.Empty(t, admissionWaitPoints(t, reader), "a no-wait admission must not sample the wait histogram")
 	})
