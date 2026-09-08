@@ -52,6 +52,9 @@ message ServiceInfoResponse {
   repeated string labels = 55;
   google.protobuf.Timestamp service_status_changed_at = 56;
 
+  // Missing means unknown, not idle.
+  optional uint64 outstanding_work = 58;
+
   int64 metric_vcpu_used = 101 [deprecated = true];
   int64 metric_memory_used_mb = 102 [deprecated = true];
   int64 metric_disk_mb = 103 [deprecated = true];

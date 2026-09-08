@@ -172,6 +172,11 @@ placement while existing work stays reachable, and `/health` returns HTTP 200 wi
 `draining`. Unlike reversible `Draining`, `ShuttingDown` is terminal for the process;
 status overrides cannot enter or leave it. `FORCE_STOP` skips waiting for sandboxes to exit.
 
+`InfoService.ServiceInfo` reports optional `outstanding_work` for sandbox, template-builder, and
+mixed-role nodes. It counts overlapping work holds, not distinct sandboxes or builds, and includes
+tracked background persistence and cleanup. Reporting nodes send an explicit zero when idle;
+an absent field means unknown. This observational count does not authorize node deletion.
+
 Key mechanisms (all under `pkg/sandbox/`):
 
 - **Firecracker** (`fc/`): each sandbox is one Firecracker process in its own cgroup and network
