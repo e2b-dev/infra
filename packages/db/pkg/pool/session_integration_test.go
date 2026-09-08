@@ -18,6 +18,36 @@ import (
 
 const testPostgresImage = "postgres:18-alpine"
 
+func TestSerializableRetryDelay(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		attempt int
+		minimum time.Duration
+		maximum time.Duration
+	}{
+		{1, 10 * time.Millisecond, 20 * time.Millisecond},
+		{2, 20 * time.Millisecond, 40 * time.Millisecond},
+		{3, 40 * time.Millisecond, 80 * time.Millisecond},
+		{5, 160 * time.Millisecond, 320 * time.Millisecond},
+		{6, 250 * time.Millisecond, 500 * time.Millisecond},
+		{9, 250 * time.Millisecond, 500 * time.Millisecond},
+	} {
+		t.Run(fmt.Sprintf("attempt-%d", tc.attempt), func(t *testing.T) {
+			t.Parallel()
+
+			delays := make(map[time.Duration]struct{})
+			for range 32 {
+				delay := serializableRetryDelay(tc.attempt)
+				require.GreaterOrEqual(t, delay, tc.minimum)
+				require.Less(t, delay, tc.maximum)
+				delays[delay] = struct{}{}
+			}
+			assert.Greater(t, len(delays), 1, "retries must not use a deterministic delay")
+		})
+	}
+}
+
 func TestConnectChecksAndConfiguresPool(t *testing.T) {
 	t.Parallel()
 
@@ -96,6 +126,9 @@ func TestAdvisoryLockRetriesSerializableTransactionOnItsSession(t *testing.T) {
 	attempts := 0
 	result, err := InSerializableTxReturn1(t.Context(), lock, func(ctx context.Context, tx pgx.Tx) (transactionResult, error) {
 		attempts++
+		deadline, ok := ctx.Deadline()
+		require.True(t, ok, "transaction attempts must have a deadline")
+		assert.LessOrEqual(t, time.Until(deadline), 5*time.Second)
 
 		var value int
 		var backend int
@@ -193,6 +226,17 @@ func TestSerializableTransactionCleansUpAndBoundsReplays(t *testing.T) {
 		"SELECT value FROM counters WHERE id = 1",
 	).Scan(&value))
 	assert.Equal(t, 3, value)
+
+	deadline := time.Now().Add(time.Second)
+	shorter, cancelShorter := context.WithDeadline(t.Context(), deadline)
+	defer cancelShorter()
+	require.NoError(t, lock.InSerializableTx(shorter, func(ctx context.Context, _ pgx.Tx) error {
+		actual, ok := ctx.Deadline()
+		require.True(t, ok)
+		assert.Equal(t, deadline, actual, "transaction budget must not extend the caller's deadline")
+
+		return nil
+	}))
 
 	attempts := 0
 	err = lock.InSerializableTx(t.Context(), func(context.Context, pgx.Tx) error {

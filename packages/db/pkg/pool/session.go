@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	"github.com/jackc/pgerrcode"
@@ -13,9 +14,11 @@ import (
 )
 
 const (
-	sessionReleaseTimeout = 5 * time.Second
-	serializableAttempts  = 10
-	serializableRetryStep = 5 * time.Millisecond
+	sessionReleaseTimeout    = 5 * time.Second
+	serializableAttempts     = 10
+	serializableRetryBase    = 10 * time.Millisecond
+	serializableRetryMax     = 500 * time.Millisecond
+	serializableRetryTimeout = 5 * time.Second
 )
 
 var (
@@ -92,6 +95,7 @@ func (l *AdvisoryLock) InSerializableTx(ctx context.Context, fn func(context.Con
 // InSerializableTxReturn1 runs fn in a SERIALIZABLE transaction on the session
 // that holds the lock. Serialization failures and deadlocks replay the whole
 // callback; only the value produced by the attempt that commits is returned.
+// Attempts and backoff share a five-second budget, bounded by the caller's deadline.
 func InSerializableTxReturn1[T any](
 	ctx context.Context,
 	lock *AdvisoryLock,
@@ -102,8 +106,15 @@ func InSerializableTxReturn1[T any](
 		return zero, errLockReleased
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, serializableRetryTimeout)
+	defer cancel()
+
 	var conflict error
 	for attempt := 1; attempt <= serializableAttempts; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return zero, errors.Join(err, conflict)
+		}
+
 		value, err := runInTxReturn1(ctx, lock.conn, fn)
 		switch {
 		case err == nil:
@@ -165,7 +176,7 @@ func isSerializationConflict(err error) bool {
 }
 
 func waitToReplay(ctx context.Context, attempt int) error {
-	timer := time.NewTimer(serializableRetryStep * time.Duration(attempt))
+	timer := time.NewTimer(serializableRetryDelay(attempt))
 	defer timer.Stop()
 
 	select {
@@ -174,6 +185,14 @@ func waitToReplay(ctx context.Context, attempt int) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+func serializableRetryDelay(attempt int) time.Duration {
+	// Equal jitter keeps retries apart without allowing an immediate replay.
+	// attempt is bounded by serializableAttempts, so the shift cannot overflow.
+	window := min(2*serializableRetryBase<<(attempt-1), serializableRetryMax)
+
+	return window/2 + rand.N(window/2)
 }
 
 // Release unlocks the session and returns its connection to the pool. It is
