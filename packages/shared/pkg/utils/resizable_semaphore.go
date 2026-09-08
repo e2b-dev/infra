@@ -39,7 +39,7 @@ func (s *AdjustableSemaphore) Acquire(ctx context.Context, n int64) error {
 		return fmt.Errorf("acquiring less than or equal to 0 elements is not supported, got: %d", n)
 	}
 
-	// Hold mu so cancellation cannot broadcast between the context check and Wait.
+	// Wake ->cond.Wait when ctx is canceled.
 	stop := context.AfterFunc(ctx, func() {
 		s.cond.L.Lock()
 		defer s.cond.L.Unlock()
