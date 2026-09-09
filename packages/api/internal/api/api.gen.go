@@ -11908,6 +11908,8 @@ type PostTemplatesResponse struct {
 	JSON400 *N400
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -11925,6 +11927,11 @@ func (r PostTemplatesResponse) GetJSON400() *N400 {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostTemplatesResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostTemplatesResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -12333,6 +12340,8 @@ type PostTemplatesTemplateIDResponse struct {
 	JSON202 *TemplateLegacy
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -12345,6 +12354,11 @@ func (r PostTemplatesTemplateIDResponse) GetJSON202() *TemplateLegacy {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostTemplatesTemplateIDResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostTemplatesTemplateIDResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -12908,6 +12922,8 @@ type PostV2TemplatesResponse struct {
 	JSON400 *N400
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -12925,6 +12941,11 @@ func (r PostV2TemplatesResponse) GetJSON400() *N400 {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostV2TemplatesResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostV2TemplatesResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -13082,6 +13103,8 @@ type PostV3TemplatesResponse struct {
 	JSON401 *N401
 	// JSON403 the response for an HTTP 403 `application/json` response
 	JSON403 *N403
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -13104,6 +13127,11 @@ func (r PostV3TemplatesResponse) GetJSON401() *N401 {
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
 func (r PostV3TemplatesResponse) GetJSON403() *N403 {
 	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostV3TemplatesResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -17202,6 +17230,13 @@ func ParsePostTemplatesResponse(rsp *http.Response) (*PostTemplatesResponse, err
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -17531,6 +17566,13 @@ func ParsePostTemplatesTemplateIDResponse(rsp *http.Response) (*PostTemplatesTem
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -17998,6 +18040,13 @@ func ParsePostV2TemplatesResponse(rsp *http.Response) (*PostV2TemplatesResponse,
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -18134,6 +18183,13 @@ func ParsePostV3TemplatesResponse(rsp *http.Response) (*PostV3TemplatesResponse,
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -20851,34 +20907,34 @@ var swaggerSpec = []string{
 	"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",
-	"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",
-	"75JunZNF4x0blej/Xctc9di2gcX1p+v/FwAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

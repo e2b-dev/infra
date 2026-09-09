@@ -11903,6 +11903,8 @@ type PostTemplatesResponse struct {
 	JSON400 *N400
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -11920,6 +11922,11 @@ func (r PostTemplatesResponse) GetJSON400() *N400 {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostTemplatesResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostTemplatesResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -12328,6 +12335,8 @@ type PostTemplatesTemplateIDResponse struct {
 	JSON202 *TemplateLegacy
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -12340,6 +12349,11 @@ func (r PostTemplatesTemplateIDResponse) GetJSON202() *TemplateLegacy {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostTemplatesTemplateIDResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostTemplatesTemplateIDResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -12903,6 +12917,8 @@ type PostV2TemplatesResponse struct {
 	JSON400 *N400
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -12920,6 +12936,11 @@ func (r PostV2TemplatesResponse) GetJSON400() *N400 {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostV2TemplatesResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostV2TemplatesResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -13077,6 +13098,8 @@ type PostV3TemplatesResponse struct {
 	JSON401 *N401
 	// JSON403 the response for an HTTP 403 `application/json` response
 	JSON403 *N403
+	// JSON409 the response for an HTTP 409 `application/json` response
+	JSON409 *N409
 	// JSON500 the response for an HTTP 500 `application/json` response
 	JSON500 *N500
 }
@@ -13099,6 +13122,11 @@ func (r PostV3TemplatesResponse) GetJSON401() *N401 {
 // GetJSON403 returns the response for an HTTP 403 `application/json` response
 func (r PostV3TemplatesResponse) GetJSON403() *N403 {
 	return r.JSON403
+}
+
+// GetJSON409 returns the response for an HTTP 409 `application/json` response
+func (r PostV3TemplatesResponse) GetJSON409() *N409 {
+	return r.JSON409
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
@@ -17197,6 +17225,13 @@ func ParsePostTemplatesResponse(rsp *http.Response) (*PostTemplatesResponse, err
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -17526,6 +17561,13 @@ func ParsePostTemplatesTemplateIDResponse(rsp *http.Response) (*PostTemplatesTem
 			return nil, err
 		}
 		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
@@ -17993,6 +18035,13 @@ func ParsePostV2TemplatesResponse(rsp *http.Response) (*PostV2TemplatesResponse,
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -18129,6 +18178,13 @@ func ParsePostV3TemplatesResponse(rsp *http.Response) (*PostV3TemplatesResponse,
 			return nil, err
 		}
 		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest N409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest N500

@@ -17,6 +17,25 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 )
 
+func TestTemplateRegistrationConflictContract(t *testing.T) {
+	t.Parallel()
+
+	spec, err := GetSpec()
+	require.NoError(t, err)
+	for _, path := range []string{"/v3/templates", "/v2/templates", "/templates", "/templates/{templateID}"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			response := spec.Paths.Value(path).Post.Responses.Status(http.StatusConflict)
+			require.NotNil(t, response, "registration conflicts must be declared for generated callers")
+			require.NoError(t, response.Value.Content["application/json"].Schema.Value.VisitJSON(map[string]any{
+				"code":    float64(http.StatusConflict),
+				"message": "The team's cluster changed; retry the template build request",
+			}))
+		})
+	}
+}
+
 // TestSpecSecuritySchemeHeaderNames asserts that the OpenAPI spec's security
 // scheme header names stay in sync with the constants defined in the shared
 // auth package. A drift between the two leads to silent authentication

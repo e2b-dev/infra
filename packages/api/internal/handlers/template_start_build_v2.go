@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	templatecache "github.com/e2b-dev/infra/packages/api/internal/cache/templates"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
@@ -88,6 +89,22 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
+	currentCluster, err := a.sqlcDB.GetTeamClusterForTemplateBuild(ctx, team.ID)
+	if err != nil {
+		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when checking the team's cluster")
+		telemetry.ReportCriticalError(ctx, "error when getting team cluster", err)
+
+		return
+	}
+	clusterID := clusters.WithClusterFallback(templateBuildDB.ActiveEnv.ClusterID)
+	if clusterID != clusters.WithClusterFallback(currentCluster) {
+		apiErr := templatecache.ErrorToAPIError(templatecache.ErrClusterMismatch, templateID)
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		telemetry.ReportErrorByCode(ctx, apiErr.Code, "template build start cluster mismatch", apiErr.Err, telemetry.WithTemplateID(templateID))
+
+		return
+	}
+
 	telemetry.SetAttributes(ctx,
 		telemetry.WithTeamID(team.ID.String()),
 		telemetry.WithTemplateID(templateID),
@@ -97,7 +114,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 	ctx = featureflags.AddToContext(ctx, featureflags.TemplateContext(templateID))
 
 	// Check and cancel concurrent builds
-	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, clusters.WithClusterFallback(team.ClusterID)); err != nil {
+	if err := a.CheckAndCancelConcurrentBuilds(ctx, templateID, buildUUID, clusterID); err != nil {
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error during template build request")
 
 		return
@@ -134,7 +151,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		return
 	}
 
-	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, clusters.WithClusterFallback(team.ClusterID))
+	builderNode, err := a.templateManager.GetAvailableBuildClient(ctx, clusterID)
 	if err != nil {
 		a.sendAPIStoreError(c, http.StatusServiceUnavailable, "Error when getting available build client")
 		telemetry.ReportCriticalError(ctx, "error when getting available build client", err, telemetry.WithTemplateID(templateID))
@@ -182,7 +199,7 @@ func (a *APIStore) PostV2TemplatesTemplateIDBuildsBuildID(c *gin.Context, templa
 		body.FromImageRegistry,
 		body.Force,
 		body.Steps,
-		clusters.WithClusterFallback(team.ClusterID),
+		clusterID,
 		builderNode.NodeID,
 		version,
 	)
