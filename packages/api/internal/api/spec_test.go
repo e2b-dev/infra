@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -13,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 )
 
 // TestSpecSecuritySchemeHeaderNames asserts that the OpenAPI spec's security
@@ -230,35 +232,65 @@ func TestTemplateBuildMinimumFreeDiskContract(t *testing.T) {
 
 	spec, err := GetSpec()
 	require.NoError(t, err)
-	properties := spec.Components.Schemas["TemplateBuildRequestV3"].Value.Properties
-	for _, field := range []string{"minFreeDiskMb", "freeDiskSpaceMB"} {
-		schema := properties[field].Value
-		require.Equal(t, "int32", schema.Format)
-		require.Zero(t, *schema.Min)
-		require.Equal(t, field == "freeDiskSpaceMB", schema.Deprecated)
-		require.NotContains(t, spec.Components.Schemas["TemplateBuildRequestV3"].Value.Required, field)
-	}
+	spec.Servers = nil
+	requestSchema := spec.Components.Schemas["TemplateBuildRequestV3"].Value
+	schema := requestSchema.Properties["minFreeDiskMb"].Value
+	require.Equal(t, "int32", schema.Format)
+	require.Zero(t, *schema.Min)
+	require.False(t, schema.Deprecated)
+	require.NotContains(t, requestSchema.Required, "minFreeDiskMb")
+	require.NotContains(t, requestSchema.Properties, "freeDiskSpaceMB")
+	require.NotContains(t, spec.Components.Schemas, "FreeDiskSpaceMB")
+
+	router := gin.New()
+	router.Use(middleware.OapiRequestValidatorWithOptions(spec, &middleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: openapi3filter.NoopAuthenticationFunc,
+			MultiError:         true,
+		},
+	}))
+	router.POST("/v3/templates", func(c *gin.Context) {
+		body, parseErr := ginutils.ParseBody[TemplateBuildRequestV3](c.Request.Context(), c)
+		if parseErr != nil {
+			return
+		}
+		c.JSON(http.StatusOK, body)
+	})
 
 	for _, tc := range []struct {
-		body      string
-		preferred *int32
-		legacy    *int32
+		body    string
+		encoded string
+		minimum *int32
+		invalid bool
 	}{
-		{body: `{}`},
-		{body: `{"minFreeDiskMb":0}`, preferred: new(int32(0))},
-		{body: `{"minFreeDiskMb":20480}`, preferred: new(int32(20480))},
-		{body: `{"freeDiskSpaceMB":0}`, legacy: new(int32(0))},
-		{body: `{"minFreeDiskMb":0,"freeDiskSpaceMB":0}`, preferred: new(int32(0)), legacy: new(int32(0))},
+		{body: `{}`, encoded: `{}`},
+		{body: `{"minFreeDiskMb":0}`, encoded: `{"minFreeDiskMb":0}`, minimum: new(int32(0))},
+		{body: `{"minFreeDiskMb":20480}`, encoded: `{"minFreeDiskMb":20480}`, minimum: new(int32(20480))},
+		{body: `{"freeDiskSpaceMB":0}`, encoded: `{}`},
+		{body: `{"freeDiskSpaceMB":1024}`, encoded: `{}`},
+		{body: `{"minFreeDiskMb":0,"freeDiskSpaceMB":1024}`, encoded: `{"minFreeDiskMb":0}`, minimum: new(int32(0))},
+		// The retired name is an unknown property, so its former validation no longer applies.
+		{body: `{"freeDiskSpaceMB":-1}`, encoded: `{}`},
+		{body: `{"freeDiskSpaceMB":"ignored"}`, encoded: `{}`},
+		{body: `{"minFreeDiskMb":-1,"freeDiskSpaceMB":0}`, invalid: true},
+		{body: `{"minFreeDiskMb":"invalid"}`, invalid: true},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
 			t.Parallel()
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/v3/templates", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, req)
+			if tc.invalid {
+				require.Equal(t, http.StatusBadRequest, response.Code, response.Body.String())
+
+				return
+			}
+			require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+			require.JSONEq(t, tc.encoded, response.Body.String())
 			var body TemplateBuildRequestV3
-			require.NoError(t, json.Unmarshal([]byte(tc.body), &body))
-			require.Equal(t, tc.preferred, body.MinFreeDiskMb)
-			require.Equal(t, tc.legacy, body.FreeDiskSpaceMB)
-			encoded, err := json.Marshal(body)
-			require.NoError(t, err)
-			require.JSONEq(t, tc.body, string(encoded))
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+			require.Equal(t, tc.minimum, body.MinFreeDiskMb)
 		})
 	}
 }

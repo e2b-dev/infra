@@ -416,11 +416,6 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// FreeDiskSpaceMB Deprecated and ignored. Use minFreeDiskMb instead. If minFreeDiskMb is omitted, the team's default applies even when freeDiskSpaceMB is provided.
-//
-// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-type FreeDiskSpaceMB = int32
-
 // FromImageRegistry defines model for FromImageRegistry.
 type FromImageRegistry struct {
 	union json.RawMessage
@@ -1403,10 +1398,6 @@ type TemplateBuildRequestV3 struct {
 
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
-
-	// FreeDiskSpaceMB Deprecated and ignored. Use minFreeDiskMb instead. If minFreeDiskMb is omitted, the team's default applies even when freeDiskSpaceMB is provided.
-	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
-	FreeDiskSpaceMB *FreeDiskSpaceMB `json:"freeDiskSpaceMB,omitempty"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`

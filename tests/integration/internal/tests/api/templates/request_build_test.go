@@ -1,7 +1,9 @@
 package api_templates
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
@@ -45,13 +47,20 @@ func TestRequestTemplateBuild(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			resp, err := c.PostV3TemplatesWithResponse(t.Context(), api.TemplateBuildRequestV3{
-				Name:            new("test-request-build-" + test.name),
-				CpuCount:        new(api.CPUCount(2)),
-				MemoryMB:        new(api.MemoryMB(1024)),
-				MinFreeDiskMb:   test.preferred,
-				FreeDiskSpaceMB: test.legacy,
-			}, setup.WithAPIKey())
+			body := map[string]any{
+				"name":     "test-request-build-" + test.name,
+				"cpuCount": 2,
+				"memoryMB": 1024,
+			}
+			if test.preferred != nil {
+				body["minFreeDiskMb"] = *test.preferred
+			}
+			if test.legacy != nil {
+				body["freeDiskSpaceMB"] = *test.legacy
+			}
+			encoded, err := json.Marshal(body)
+			require.NoError(t, err)
+			resp, err := c.PostV3TemplatesWithBodyWithResponse(t.Context(), "application/json", bytes.NewReader(encoded), setup.WithAPIKey())
 			require.NoError(t, err)
 			if test.wantError != "" {
 				require.Equal(t, http.StatusBadRequest, resp.StatusCode())
