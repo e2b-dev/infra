@@ -627,6 +627,9 @@ type Node struct {
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
+	// OutstandingWork Observed work holds on the node. Omitted when unknown; zero does not authorize deletion.
+	OutstandingWork *uint64 `json:"outstandingWork,omitempty"`
+
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount uint32 `json:"sandboxCount"`
 
@@ -667,6 +670,9 @@ type NodeDetail struct {
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
+
+	// OutstandingWork Observed work holds on the node. Omitted when unknown; zero does not authorize deletion.
+	OutstandingWork *uint64 `json:"outstandingWork,omitempty"`
 
 	// SandboxCount Number of sandboxes running on the node
 	SandboxCount uint32 `json:"sandboxCount"`

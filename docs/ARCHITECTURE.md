@@ -175,7 +175,9 @@ status overrides cannot enter or leave it. `FORCE_STOP` skips waiting for sandbo
 `InfoService.ServiceInfo` reports optional `outstanding_work` for sandbox, template-builder, and
 mixed-role nodes. It counts overlapping work holds, not distinct sandboxes or builds, and includes
 tracked background persistence and cleanup. Reporting nodes send an explicit zero when idle;
-an absent field means unknown. This observational count does not authorize node deletion.
+an absent field means unknown. The API caches this report and exposes it as optional top-level
+`outstandingWork` in admin node list and detail responses, preserving explicit zero and omitting
+unknown counts. This observational count does not authorize node deletion.
 
 Key mechanisms (all under `pkg/sandbox/`):
 
