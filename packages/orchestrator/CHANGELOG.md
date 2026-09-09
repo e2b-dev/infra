@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.14.0 (2026-09-09)
+
+
+### Features
+
+* **orchestrator:** add shutting-down status (c7bb7eb)
+* **orchestrator:** report outstanding work (b51e116)
+
+
+### Bug Fixes
+
+* **deps:** update module google.golang.org/grpc to v1.83.1 [security] (27006d5)
+* **orchestrator:** bound peer blob sends below the receive limit (4e98e00)
+
+
+### Code Refactoring
+
+* **orchestrator:** track outstanding node work (ffab524)
+
 ## 0.13.0 (2026-09-07)
 
 
