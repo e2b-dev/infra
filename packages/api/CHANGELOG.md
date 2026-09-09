@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.1 (2026-09-09)
+
+
+### Bug Fixes
+
+* **api:** rebuild template aliases on the current cluster (c74f369)
+
 ## 0.14.0 (2026-09-09)
 
 
