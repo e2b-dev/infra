@@ -39,9 +39,9 @@ type RegisterBuildData struct {
 	MemoryMB   *int32
 	Version    string
 
-	// The requested free-space growth target, or nil for the team's default.
+	// The requested minimum free space after build steps, or nil for the team's default.
 	// Zero disables requested growth and reaches the row as zero.
-	FreeDiskSpaceMB *int32
+	MinFreeDiskMb *int32
 
 	// TODO(ENG-3852): Remove once the template manager resolves the kernel and firecracker versions itself.
 	//
@@ -86,15 +86,15 @@ func registerBuild(
 	// Ahead of the concurrency check and the transaction, so a target this team
 	// may not request is refused as the client's error either way, and the value
 	// that reaches the row is the allowance as it stood at registration.
-	freeDiskSizeMB, apiError := team.LimitFreeDiskSize(data.Team.Limits, data.FreeDiskSpaceMB)
+	freeDiskSizeMB, apiError := team.LimitFreeDiskSize(data.Team.Limits, data.MinFreeDiskMb)
 
 	freeDiskAttrs := []attribute.KeyValue{
 		attribute.Int64("build.free_disk.default_mb", data.Team.Limits.DefaultFreeDiskSizeMb),
 		attribute.Int64("build.free_disk.max_mb", data.Team.Limits.MaxFreeDiskSizeMb),
 	}
-	if data.FreeDiskSpaceMB != nil {
+	if data.MinFreeDiskMb != nil {
 		freeDiskAttrs = append(freeDiskAttrs,
-			attribute.Int64("build.free_disk.requested_mb", int64(*data.FreeDiskSpaceMB)))
+			attribute.Int64("build.free_disk.requested_mb", int64(*data.MinFreeDiskMb)))
 	}
 	telemetry.SetAttributes(ctx, freeDiskAttrs...)
 

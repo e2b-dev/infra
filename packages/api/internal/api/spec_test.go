@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -222,4 +223,42 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code, "request with admin JWT and team header should pass auth (body: %s)", rr.Body.String())
 	require.Equal(t, []string{"AdminJWTAuth", "AdminTeamAuth"}, adminSchemeOrder)
+}
+
+func TestTemplateBuildMinimumFreeDiskContract(t *testing.T) {
+	t.Parallel()
+
+	spec, err := GetSpec()
+	require.NoError(t, err)
+	properties := spec.Components.Schemas["TemplateBuildRequestV3"].Value.Properties
+	for _, field := range []string{"minFreeDiskMb", "freeDiskSpaceMB"} {
+		schema := properties[field].Value
+		require.Equal(t, "int32", schema.Format)
+		require.Zero(t, *schema.Min)
+		require.Equal(t, field == "freeDiskSpaceMB", schema.Deprecated)
+		require.NotContains(t, spec.Components.Schemas["TemplateBuildRequestV3"].Value.Required, field)
+	}
+
+	for _, tc := range []struct {
+		body      string
+		preferred *int32
+		legacy    *int32
+	}{
+		{body: `{}`},
+		{body: `{"minFreeDiskMb":0}`, preferred: new(int32(0))},
+		{body: `{"minFreeDiskMb":20480}`, preferred: new(int32(20480))},
+		{body: `{"freeDiskSpaceMB":0}`, legacy: new(int32(0))},
+		{body: `{"minFreeDiskMb":0,"freeDiskSpaceMB":0}`, preferred: new(int32(0)), legacy: new(int32(0))},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			t.Parallel()
+			var body TemplateBuildRequestV3
+			require.NoError(t, json.Unmarshal([]byte(tc.body), &body))
+			require.Equal(t, tc.preferred, body.MinFreeDiskMb)
+			require.Equal(t, tc.legacy, body.FreeDiskSpaceMB)
+			encoded, err := json.Marshal(body)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.body, string(encoded))
+		})
+	}
 }

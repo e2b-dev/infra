@@ -416,9 +416,9 @@ type Error struct {
 	Message string `json:"message"`
 }
 
-// FreeDiskSpaceMB Free-space growth target for the template's filesystem, in MiB, evaluated after your build steps have run. A filesystem holding less free space than this is grown toward the target on a best-effort basis and may end up short of it. The filesystem is never shrunk, so free space it already holds is kept even when that exceeds the target.
+// FreeDiskSpaceMB Deprecated and ignored. Use minFreeDiskMb instead. If minFreeDiskMb is omitted, the team's default applies even when freeDiskSpaceMB is provided.
 //
-// Omit the field to use your team's default free-space growth target. Send 0 to request no growth. The value must not exceed your team's maximum free-disk target.
+// Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type FreeDiskSpaceMB = int32
 
 // FromImageRegistry defines model for FromImageRegistry.
@@ -549,6 +549,9 @@ type Mcp map[string]interface{}
 
 // MemoryMB Memory for the sandbox in MiB
 type MemoryMB = int32
+
+// MinFreeDiskMb Requested minimum free space after the template's build steps, in MiB. Omit to use the team's default. Set to 0 to request no minimum free-disk growth. The filesystem is never shrunk, including inherited or already-larger filesystems. Growth is best effort, so filesystem metadata can leave the available space slightly below the requested minimum.
+type MinFreeDiskMb = int32
 
 // NewSandbox defines model for NewSandbox.
 type NewSandbox struct {
@@ -1401,13 +1404,15 @@ type TemplateBuildRequestV3 struct {
 	// CpuCount CPU cores for the sandbox
 	CpuCount *CPUCount `json:"cpuCount,omitempty"`
 
-	// FreeDiskSpaceMB Free-space growth target for the template's filesystem, in MiB, evaluated after your build steps have run. A filesystem holding less free space than this is grown toward the target on a best-effort basis and may end up short of it. The filesystem is never shrunk, so free space it already holds is kept even when that exceeds the target.
-	//
-	// Omit the field to use your team's default free-space growth target. Send 0 to request no growth. The value must not exceed your team's maximum free-disk target.
+	// FreeDiskSpaceMB Deprecated and ignored. Use minFreeDiskMb instead. If minFreeDiskMb is omitted, the team's default applies even when freeDiskSpaceMB is provided.
+	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	FreeDiskSpaceMB *FreeDiskSpaceMB `json:"freeDiskSpaceMB,omitempty"`
 
 	// MemoryMB Memory for the sandbox in MiB
 	MemoryMB *MemoryMB `json:"memoryMB,omitempty"`
+
+	// MinFreeDiskMb Requested minimum free space after the template's build steps, in MiB. Omit to use the team's default. Set to 0 to request no minimum free-disk growth. The filesystem is never shrunk, including inherited or already-larger filesystems. Growth is best effort, so filesystem metadata can leave the available space slightly below the requested minimum.
+	MinFreeDiskMb *MinFreeDiskMb `json:"minFreeDiskMb,omitempty"`
 
 	// Name Name of the template. Can include a tag with colon separator (e.g. "my-template" or "my-template:v1"). If tag is included, it will be treated as if the tag was provided in the tags array.
 	Name *string `json:"name,omitempty"`
