@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.0 (2026-09-09)
+
+
+### Features
+
+* **api:** expose outstanding node work (045df33)
+
+
+### Code Refactoring
+
+* **api:** remove ignored free disk request field (53b8e04)
+
 ## 0.13.0 (2026-09-09)
 
 
