@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.0 (2026-09-09)
+
+
+### Features
+
+* **api:** add minimum free disk request name (b03cd83)
+
 ## 0.12.0 (2026-09-07)
 
 
