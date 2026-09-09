@@ -44,6 +44,7 @@ import (
 	nfscfg "github.com/e2b-dev/infra/packages/orchestrator/pkg/nfsproxy/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/portmap"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/routing"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
@@ -70,6 +71,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -669,6 +671,23 @@ func run(config cfg.Config, opts Options) (success bool) {
 	if redisClient != nil {
 		sbxEventsDeliveryRedis := event.NewRedisStreamsDelivery[event.SandboxEvent](redisClient, event.SandboxEventsStreamName)
 		sbxEventsDeliveryTargets = append(sbxEventsDeliveryTargets, sbxEventsDeliveryRedis)
+	}
+
+	// Orchestrator-owned sandbox routing record (sandbox:routing:{id}), flag-gated inside the publisher.
+	if redisClient != nil {
+		routingPublisher, err := routing.New(
+			tel.MeterProvider,
+			sandboxcatalog.NewRedisSandboxRoutingCatalog(redisClient),
+			featureFlags,
+			serviceInstanceID,
+			config.NodeIP,
+		)
+		if err != nil {
+			logger.L().Fatal(ctx, "failed to create sandbox routing publisher", zap.Error(err))
+		}
+		sandboxes.Subscribe(routingPublisher)
+	} else {
+		logger.L().Warn(ctx, "redis disabled; orchestrator sandbox routing records are not published")
 	}
 
 	// Wrapper closers run before per-driver closers (deliveries write through the drivers).

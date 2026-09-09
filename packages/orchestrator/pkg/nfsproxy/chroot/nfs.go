@@ -92,6 +92,9 @@ func NewNFSHandler(
 
 func (h *NFSHandler) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
+// OnStopping is called when a sandbox leaves the live registry.
+func (h *NFSHandler) OnStopping(_ context.Context, _ *sandbox.Sandbox) {}
+
 func (h *NFSHandler) OnNetworkRelease(ctx context.Context, sbx *sandbox.Sandbox) {
 	lifecycleID := sbx.LifecycleID
 

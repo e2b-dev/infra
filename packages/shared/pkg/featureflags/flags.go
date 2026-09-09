@@ -459,8 +459,17 @@ var (
 	// record is removed, the live sandbox is reaped as an orphan shortly
 	// after, and the pause endpoint answers today's generic error rather than
 	// a 503 whose retry could not succeed.
-	PauseRefusalRestoreFlag       = NewBoolFlag("pause-refusal-restore", false)
-	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
+	PauseRefusalRestoreFlag = NewBoolFlag("pause-refusal-restore", false)
+	// OrchestratorRoutingPublishFlag makes the orchestrator write the sandbox
+	// routing record (sandbox:routing:{id}) on MarkRunning and delete it on
+	// MarkStopping. Runs next to the API-owned sandbox:catalog:{id} record.
+	OrchestratorRoutingPublishFlag = NewBoolFlag("orchestrator-routing-publish", false)
+	// OrchestratorRoutingPrioritizedFlag makes client-proxy resolve the node
+	// from the orchestrator-owned sandbox:routing:{id} record instead of the
+	// API-owned sandbox:catalog:{id} record. Turn on only after
+	// OrchestratorRoutingPublishFlag has been on for one max sandbox length.
+	OrchestratorRoutingPrioritizedFlag = NewBoolFlag("orchestrator-routing-prioritized", false)
+	MaxCacheWriterConcurrencyFlag      = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage
 	// that can be used before the cache starts evicting items.

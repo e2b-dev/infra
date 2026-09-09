@@ -21,6 +21,8 @@ import (
 type MapSubscriber interface {
 	// OnInsert is triggered when a sandbox transitions to the running state.
 	OnInsert(ctx context.Context, sandbox *Sandbox)
+	// OnStopping is triggered when a sandbox leaves the live registry (MarkStopping).
+	OnStopping(ctx context.Context, sandbox *Sandbox)
 	// OnNetworkRelease is triggered when a sandbox's network slot is released.
 	OnNetworkRelease(ctx context.Context, sbx *Sandbox)
 }
@@ -187,10 +189,10 @@ func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) {
 	)
 }
 
-// MarkStopping removes the sandbox from live queries (Get, Items, Count).
+// MarkStopping removes the sandbox from live queries (Get, Items, Count) and notifies OnStopping subscribers.
 // Returns true if the sandbox was successfully removed.
 func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) bool {
-	stopped := false
+	var stopped *Sandbox
 
 	m.live.RemoveCb(sandboxID, func(_ string, sbx *Sandbox, exists bool) bool {
 		if !exists {
@@ -206,12 +208,20 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
-		stopped = true
+		stopped = sbx
 
 		return true
 	})
 
-	return stopped
+	if stopped == nil {
+		return false
+	}
+
+	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
+		s.OnStopping(ctx, stopped)
+	})
+
+	return true
 }
 
 func (m *Map) MarkStopped(ctx context.Context, sbx *Sandbox) {

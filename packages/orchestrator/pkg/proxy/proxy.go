@@ -246,6 +246,9 @@ func (p *SandboxProxy) GetAddr() string {
 // OnInsert is called when a sandbox is inserted into the map.
 func (p *SandboxProxy) OnInsert(_ context.Context, _ *sandbox.Sandbox) {}
 
+// OnStopping is called when a sandbox leaves the live registry.
+func (p *SandboxProxy) OnStopping(_ context.Context, _ *sandbox.Sandbox) {}
+
 // OnNetworkRelease is called when a sandbox's network slot is released.
 // Keyed by LifecycleID so the removal is scoped to this sandbox lifecycle.
 func (p *SandboxProxy) OnNetworkRelease(_ context.Context, sbx *sandbox.Sandbox) {

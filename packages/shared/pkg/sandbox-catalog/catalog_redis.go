@@ -44,15 +44,33 @@ end
 return 2
 `)
 
+const (
+	// catalogKeyPrefix is the API-owned routing record.
+	catalogKeyPrefix = "sandbox:catalog:"
+	// routingKeyPrefix is the orchestrator-owned routing record.
+	routingKeyPrefix = "sandbox:routing:"
+)
+
 type RedisSandboxCatalog struct {
 	redisClient redis.UniversalClient
+	keyPrefix   string
 }
 
 var _ SandboxesCatalog = (*RedisSandboxCatalog)(nil)
 
+// NewRedisSandboxCatalog reads and writes the API-owned sandbox:catalog:{sandboxID} record.
 func NewRedisSandboxCatalog(redisClient redis.UniversalClient) *RedisSandboxCatalog {
 	return &RedisSandboxCatalog{
 		redisClient: redisClient,
+		keyPrefix:   catalogKeyPrefix,
+	}
+}
+
+// NewRedisSandboxRoutingCatalog reads and writes the orchestrator-owned sandbox:routing:{sandboxID} record.
+func NewRedisSandboxRoutingCatalog(redisClient redis.UniversalClient) *RedisSandboxCatalog {
+	return &RedisSandboxCatalog{
+		redisClient: redisClient,
+		keyPrefix:   routingKeyPrefix,
 	}
 }
 
@@ -105,7 +123,20 @@ func (c *RedisSandboxCatalog) StoreSandbox(ctx context.Context, sandboxID string
 	return nil
 }
 
+// DeleteSandbox is best-effort: a Redis error is logged and swallowed, the entry then expires via TTL.
+// Callers that must know whether the delete reached Redis use DeleteSandboxStrict.
 func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID string, executionID string) error {
+	err := c.DeleteSandboxStrict(ctx, sandboxID, executionID)
+	if err != nil {
+		logger.L().Warn(ctx, "sandbox catalog delete did not complete; entry will expire via TTL", logger.WithSandboxID(sandboxID), zap.Error(err))
+	}
+
+	return nil
+}
+
+// DeleteSandboxStrict deletes the entry if its execution ID matches and returns the Redis error, if any.
+// A mismatch, an unreadable value or an absent key are not errors.
+func (c *RedisSandboxCatalog) DeleteSandboxStrict(ctx context.Context, sandboxID string, executionID string) error {
 	spanCtx, span := tracer.Start(ctx, "sandbox-catalog-delete")
 	defer span.End()
 
@@ -114,10 +145,9 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 
 	outcome, err := deleteIfSameExecution.Run(ctx, c.redisClient, []string{c.getCatalogKey(sandboxID)}, executionID).Int()
 	if err != nil {
-		// Best-effort cleanup — never fail the caller (as the original did not); the entry has a TTL.
-		logger.L().Warn(ctx, "sandbox catalog delete did not complete; entry will expire via TTL", logger.WithSandboxID(sandboxID), zap.Error(err))
+		span.RecordError(err)
 
-		return nil
+		return fmt.Errorf("failed to delete sandbox info from redis: %w", err)
 	}
 
 	switch outcome {
@@ -142,7 +172,7 @@ func (c *RedisSandboxCatalog) DeleteSandbox(ctx context.Context, sandboxID strin
 }
 
 func (c *RedisSandboxCatalog) getCatalogKey(sandboxID string) string {
-	return fmt.Sprintf("sandbox:catalog:%s", sandboxID)
+	return c.keyPrefix + sandboxID
 }
 
 func (c *RedisSandboxCatalog) Close(_ context.Context) error {

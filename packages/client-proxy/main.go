@@ -128,6 +128,7 @@ func run() int {
 	}()
 
 	catalog := e2bcatalog.NewRedisSandboxCatalog(redisClient)
+	orchestratorCatalog := e2bcatalog.NewRedisSandboxRoutingCatalog(redisClient)
 
 	info := &internal.ServiceInfo{}
 	info.SetStatus(ctx, internal.Healthy)
@@ -166,6 +167,7 @@ func run() int {
 		config.ProxyPort,
 		config.OrchestratorProxyPort,
 		catalog,
+		orchestratorCatalog,
 		pausedSandboxResumer,
 		featureFlagsClient,
 	)

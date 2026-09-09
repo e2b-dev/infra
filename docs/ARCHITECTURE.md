@@ -120,8 +120,10 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   (`internal/orchestrator/placement/`): sample K ready nodes, score by CPU
   commitment/usage, pick the lowest; retry on exhausted nodes. Tunable live via feature flags.
 - **State**: writes sandbox records to Redis (source of truth for *running* sandboxes) and the
-  sandbox→node **routing catalog** in Redis that client-proxy reads. Persistent entities
-  (templates, builds, snapshots, teams) live in Postgres.
+  sandbox→node **routing catalog** (`sandbox:catalog:{id}`) in Redis that client-proxy reads. This
+  API-written record is the default routing source; the orchestrator-written
+  `sandbox:routing:{id}` is a flag-gated alternative (see "Sandbox routing records"). Persistent
+  entities (templates, builds, snapshots, teams) live in Postgres.
 - **Secrets**: `/secrets` is the only public surface for secret management (create, list, get,
   update, delete). The API authenticates the caller with the customer alternatives above, converts
   the authenticated team UUID to the project UUID the backend knows, checks the `customer-secrets`
@@ -246,10 +248,13 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
 
 The stateless edge for all sandbox traffic (port 3002; health on 3003). Terminates
 `https://<port>-<sandboxID>.<domain>` requests (host parsing in `packages/shared/pkg/proxy/host.go`),
-looks the sandbox up in the Redis routing catalog to find the owning node, and reverse-proxies to
+looks the sandbox up in the Redis routing record to find the owning node, and reverse-proxies to
 that node's orchestrator proxy on :5007 by default. `ORCHESTRATOR_PROXY_PORT` selects a
-different downstream port when the node proxy listens elsewhere. If the sandbox is not in the catalog (paused), it calls
+different downstream port when the node proxy listens elsewhere. If the sandbox is not in the record (paused), it calls
 the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparently on traffic.
+By default the record is the API-owned `sandbox:catalog:{id}`; the `orchestrator-routing-prioritized`
+flag switches the read to the orchestrator-owned `sandbox:routing:{id}` (see "Sandbox routing
+records" below).
 
 ### Dashboard API (`packages/dashboard-api`)
 
@@ -377,6 +382,40 @@ sequenceDiagram
     OP->>E: http://slotIP:3000 (via veth/tap into VM)
     E-->>U: response
 ```
+
+### Sandbox routing records
+
+client-proxy resolves the node IP of a sandbox from a routing record in Redis. Two records exist
+today. Both have the same JSON shape (`sandbox_catalog.SandboxInfo` in
+`packages/shared/pkg/sandbox-catalog`): `orchestrator_id`, `orchestrator_ip`, `execution_id`,
+`sandbox_started_at`, `sandbox_max_length_in_hours`.
+
+| Record | Key | Writer | Written | Deleted |
+|---|---|---|---|---|
+| API-owned (default) | `sandbox:catalog:{sandboxID}` | API (cloud) or the cluster edge from gRPC metadata (BYOC) | after `Create` returns | before `Pause`/`Kill` is sent to the node |
+| Orchestrator-owned (v1, flag-gated) | `sandbox:routing:{sandboxID}` | orchestrator, `packages/orchestrator/pkg/routing` | on `MarkRunning` (sandbox enters the live map, envd is ready) | on `MarkStopping` (kill, pause, checkpoint, crash) |
+
+**The API-owned record is still the source of truth.** client-proxy reads `sandbox:catalog:{id}`
+unless the `orchestrator-routing-prioritized` flag is on. The orchestrator-owned record is a v1
+test path. It runs next to the API path and does not replace it yet.
+
+Two feature flags in `packages/shared/pkg/featureflags` control the new path:
+
+- `orchestrator-routing-publish` (orchestrator): write `sandbox:routing:{id}` on `MarkRunning` and
+  delete it on `MarkStopping`. A failed write is logged and counted
+  (`orchestrator.routing.publish.total{result=error}`); the sandbox keeps running. Build sandboxes
+  are skipped. The delete is guarded by `execution_id` in a Lua script, so a stale lifecycle never
+  removes the record of a newer execution.
+- `orchestrator-routing-prioritized` (client-proxy): resolve the node from `sandbox:routing:{id}`
+  instead of `sandbox:catalog:{id}`. There is no fallback to the API-owned record on a miss. A miss
+  goes to the auto-resume path (`ResumeSandbox` gRPC to the API), same as today.
+
+Rollout order: turn on `orchestrator-routing-publish` first and wait one maximum sandbox length,
+so every live sandbox has a record. Then turn on `orchestrator-routing-prioritized`. To roll back,
+turn off `orchestrator-routing-prioritized`; the API path is untouched.
+
+The TTL of both records is `sandbox_max_length_in_hours` from the write time. The record is
+deleted earlier in every normal stop path.
 
 ### Volume content
 

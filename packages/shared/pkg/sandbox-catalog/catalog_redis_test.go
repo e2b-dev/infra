@@ -77,6 +77,37 @@ func TestRedisSandboxCatalog(t *testing.T) {
 
 		require.NoError(t, catalog.DeleteSandbox(ctx, "sbx-never-stored", "exec-1"))
 	})
+
+	t.Run("routing catalog uses its own key space", func(t *testing.T) {
+		t.Parallel()
+
+		routing := NewRedisSandboxRoutingCatalog(client)
+		id := "sbx-routing-isolated"
+		require.Equal(t, "sandbox:catalog:"+id, catalog.getCatalogKey(id))
+		require.Equal(t, "sandbox:routing:"+id, routing.getCatalogKey(id))
+
+		require.NoError(t, routing.StoreSandbox(ctx, id, testSandboxInfo("exec-1", "orch-A"), time.Minute))
+
+		_, err := catalog.GetSandbox(ctx, id)
+		require.ErrorIs(t, err, ErrSandboxNotFound)
+
+		got, err := routing.GetSandbox(ctx, id)
+		require.NoError(t, err)
+		require.Equal(t, "exec-1", got.ExecutionID)
+	})
+}
+
+func TestDeleteSandboxStrictReturnsRedisError(t *testing.T) {
+	t.Parallel()
+
+	client := redis_utils.SetupInstance(t)
+	require.NoError(t, client.Close())
+	broken := NewRedisSandboxCatalog(client)
+	ctx := t.Context()
+
+	// Strict surfaces the failure; the best-effort variant keeps its old contract.
+	require.Error(t, broken.DeleteSandboxStrict(ctx, "sbx-closed", "exec-1"))
+	require.NoError(t, broken.DeleteSandbox(ctx, "sbx-closed", "exec-1"))
 }
 
 func TestDeleteIfSameExecutionOutcomes(t *testing.T) {
