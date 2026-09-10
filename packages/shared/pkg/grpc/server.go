@@ -22,8 +22,10 @@ type ServerOption func(*serverOptions)
 
 type serverOptions struct {
 	withSandboxResumeMetrics bool
+	withoutPayloadLogging    bool
 	recoveryHandler          recovery.RecoveryHandlerFunc
 	unaryDeadline            grpc.UnaryServerInterceptor
+	unaryInterceptors        []grpc.UnaryServerInterceptor
 }
 
 // WithSandboxResumeMetrics adds sandbox.resume attribute to otelgrpc metrics,
@@ -35,6 +37,17 @@ func WithSandboxResumeMetrics() ServerOption {
 // WithRecoveryHandler configures the unary panic recovery handler.
 func WithRecoveryHandler(handler recovery.RecoveryHandlerFunc) ServerOption {
 	return func(o *serverOptions) { o.recoveryHandler = handler }
+}
+
+// WithoutPayloadLogging omits request and response payloads from server logs.
+func WithoutPayloadLogging() ServerOption {
+	return func(o *serverOptions) { o.withoutPayloadLogging = true }
+}
+
+// WithUnaryInterceptors appends interceptors after recovery, logging, and the
+// unary deadline, so they run with a bounded context and inside the recovery.
+func WithUnaryInterceptors(interceptors ...grpc.UnaryServerInterceptor) ServerOption {
+	return func(o *serverOptions) { o.unaryInterceptors = append(o.unaryInterceptors, interceptors...) }
 }
 
 // WithUnaryDeadline bounds unary requests while preserving an earlier caller deadline.
@@ -55,8 +68,12 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 		o(&cfg)
 	}
 
+	logEvents := []logging.LoggableEvent{logging.StartCall, logging.FinishCall}
+	if !cfg.withoutPayloadLogging {
+		logEvents = append(logEvents, logging.PayloadReceived, logging.PayloadSent)
+	}
 	logOpts := []logging.Option{
-		logging.WithLogOnEvents(logging.StartCall, logging.PayloadReceived, logging.PayloadSent, logging.FinishCall),
+		logging.WithLogOnEvents(logEvents...),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
 		logging.WithFieldsFromContext(logging.ExtractFields),
 	}
@@ -91,6 +108,7 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 	if cfg.unaryDeadline != nil {
 		unaryInterceptors = append(unaryInterceptors, cfg.unaryDeadline)
 	}
+	unaryInterceptors = append(unaryInterceptors, cfg.unaryInterceptors...)
 
 	return grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(keepalive.EnforcementPolicy{

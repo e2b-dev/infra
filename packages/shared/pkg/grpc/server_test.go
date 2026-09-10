@@ -34,11 +34,19 @@ func (panickingService) ResumeSandbox(context.Context, *proxygrpc.SandboxResumeR
 	panic(panicSentinel)
 }
 
+type respondingService struct {
+	proxygrpc.UnimplementedSandboxServiceServer
+}
+
+func (respondingService) ResumeSandbox(context.Context, *proxygrpc.SandboxResumeRequest) (*proxygrpc.SandboxResumeResponse, error) {
+	return &proxygrpc.SandboxResumeResponse{}, nil
+}
+
 //nolint:paralleltest // the middleware logs through the global logger, which this test replaces
 func TestNewGRPCServerRecoveryHandler(t *testing.T) {
 	logs := captureLogs(t)
 
-	client := servePanickingService(t, WithRecoveryHandler(func(any) error {
+	client := serveSandboxService(t, panickingService{}, WithRecoveryHandler(func(any) error {
 		return status.Error(codes.Internal, fixedPanicMessage)
 	}))
 
@@ -50,14 +58,41 @@ func TestNewGRPCServerRecoveryHandler(t *testing.T) {
 	require.NotContains(t, flattenLogs(logs), panicSentinel)
 }
 
-func servePanickingService(t *testing.T, opts ...ServerOption) proxygrpc.SandboxServiceClient {
+//nolint:paralleltest // the middleware logs through the global logger, which this test replaces
+func TestNewGRPCServerWithoutPayloadLogging(t *testing.T) {
+	logs := captureLogs(t)
+	client := serveSandboxService(t, respondingService{}, WithoutPayloadLogging())
+
+	_, err := client.ResumeSandbox(t.Context(), &proxygrpc.SandboxResumeRequest{SandboxId: panicSentinel})
+
+	require.NoError(t, err)
+	require.NotContains(t, flattenLogs(logs), panicSentinel)
+}
+
+//nolint:paralleltest // the middleware logs through the global logger, which this test replaces
+func TestNewGRPCServerWithUnaryInterceptors(t *testing.T) {
+	captureLogs(t)
+	rejected := status.Error(codes.InvalidArgument, "rejected by interceptor")
+	client := serveSandboxService(t, respondingService{}, WithUnaryInterceptors(
+		func(context.Context, any, *grpc.UnaryServerInfo, grpc.UnaryHandler) (any, error) {
+			return nil, rejected
+		},
+	))
+
+	_, err := client.ResumeSandbox(t.Context(), &proxygrpc.SandboxResumeRequest{})
+
+	require.Equal(t, codes.InvalidArgument, status.Code(err))
+	require.Equal(t, "rejected by interceptor", status.Convert(err).Message())
+}
+
+func serveSandboxService(t *testing.T, service proxygrpc.SandboxServiceServer, opts ...ServerOption) proxygrpc.SandboxServiceClient {
 	t.Helper()
 
 	server := NewGRPCServer(&telemetry.Client{
 		TracerProvider: tracenoop.NewTracerProvider(),
 		MeterProvider:  metricnoop.NewMeterProvider(),
 	}, opts...)
-	proxygrpc.RegisterSandboxServiceServer(server, panickingService{})
+	proxygrpc.RegisterSandboxServiceServer(server, service)
 
 	var listenConfig net.ListenConfig
 	listener, err := listenConfig.Listen(t.Context(), "tcp", "127.0.0.1:0")
