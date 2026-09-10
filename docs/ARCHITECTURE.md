@@ -173,6 +173,11 @@ placement while existing work stays reachable, and `/health` returns HTTP 200 wi
 `draining`. Unlike reversible `Draining`, `ShuttingDown` is terminal for the process;
 status overrides cannot enter or leave it. `FORCE_STOP` skips waiting for sandboxes to exit.
 
+After sandbox drain and snapshot uploads complete, sandbox proxy cleanup attempts graceful HTTP
+server shutdown with a separate deadline, then forces server closure if needed. Successful forced
+closure recovers graceful deadline expiry; other server errors still propagate. Pprof stays
+available through service teardown; its final shutdown also has a deadline and forced-close fallback.
+
 `InfoService.ServiceInfo` reports optional `outstanding_work` for sandbox, template-builder, and
 mixed-role nodes. It counts overlapping work holds, not distinct sandboxes or builds, and includes
 tracked background persistence and cleanup. Reporting nodes send an explicit zero when idle;

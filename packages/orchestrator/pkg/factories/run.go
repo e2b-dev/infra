@@ -541,6 +541,19 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	var closers []closer
 
+	pprofServer := telemetry.NewPprofServer()
+	go func() {
+		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.PprofPort()))
+
+		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.L().Error(ctx, "pprof server encountered error", zap.Error(err))
+		}
+	}()
+	// Closers run in reverse order; retain diagnostics through service teardown.
+	closers = append(closers, closer{"pprof server", func(ctx context.Context) error {
+		return closePprofServer(ctx, pprofServer)
+	}})
+
 	// The sandbox map is shared between the server and the proxy
 	// to propagate information about sandbox routing.
 	sandboxes := sandbox.NewSandboxesMap()
@@ -1019,17 +1032,6 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 		return nil
 	}})
-
-	pprofServer := telemetry.NewPprofServer()
-	// We handle the pprof in a separate goroutine to prevent any interaction with the main server.
-	go func() {
-		logger.L().Info(ctx, "pprof server starting", zap.Int("port", telemetry.PprofPort()))
-
-		if err := pprofServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.L().Error(ctx, "pprof server encountered error", zap.Error(err))
-		}
-	}()
-	closers = append(closers, closer{"pprof server", pprofServer.Shutdown})
 
 	// http server
 	healthcheck, err := e2bhealthcheck.NewHealthcheck(serviceInfo)
