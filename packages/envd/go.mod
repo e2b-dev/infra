@@ -23,7 +23,7 @@ require (
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/stretchr/testify v1.12.1
-	github.com/txn2/txeh v1.7.0
+	github.com/txn2/txeh v1.8.1
 	golang.org/x/sync v0.22.0
 	golang.org/x/sys v0.47.0
 	google.golang.org/protobuf v1.36.12
