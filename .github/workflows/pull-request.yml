@@ -27,10 +27,6 @@ jobs:
         uses: dorny/paths-filter@v4
         with:
           filters: |
-            iac:
-              - 'iac/**'
-              - '.github/**'
-              - '.tool-versions'
             test-inputs:
               - 'packages/**'
               - 'tests/**'
@@ -123,11 +119,6 @@ jobs:
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-  terraform-validation:
-    needs: [detect-changes]
-    uses: ./.github/workflows/validate-iac.yml
-    with:
-      run-validation: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'iac') }}
   arm64-tests:
     needs: [detect-changes]
     uses: ./.github/workflows/pr-tests-arm64.yml

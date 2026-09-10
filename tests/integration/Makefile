@@ -149,14 +149,3 @@ test/%:
 	if [ -n "$${RUN}" ]; then set -- -run "$${RUN}"; else set --; fi; \
 	go tool gotestsum --rerun-fails=1 --packages="$${PACKAGES}" --format standard-verbose --junitfile=test-results.xml \
 		-- -count=1 -parallel=$(TEST_PARALLELISM) -timeout=20m "$$@"
-
-.PHONY: connect-orchestrator
-connect-orchestrator:
-	CLIENT_IG=$$(gcloud compute instance-groups list \
-		--project=$(GCP_PROJECT_ID) \
-		--filter="name~'^.*client.*'" \
-		--format='value(name)' | head -n1) && \
-	INSTANCE_INFO=$$(gcloud compute instance-groups list-instances "$$CLIENT_IG" --project=$(GCP_PROJECT_ID) --region=$(GCP_REGION) --format='value(instance,ZONE)' | head -n1) && \
-	INSTANCE_ID=$$(echo "$$INSTANCE_INFO" | awk '{print $$1}') && \
-	INSTANCE_ZONE=$$(echo "$$INSTANCE_INFO" | awk '{print $$2}') && \
-	gcloud compute ssh "$$INSTANCE_ID" --project=$(GCP_PROJECT_ID) --zone="$$INSTANCE_ZONE" -- -NL 5008:localhost:5008 -o PermitLocalCommand=yes -o LocalCommand="echo 'SSH tunnel established'"

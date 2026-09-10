@@ -6,7 +6,7 @@ Package for defining integration tests. Currently, there is a setup for API and 
 
 1. Setup env variables in the root folder `infra/.env` file
 2. If you made changes to the `api` or `envd` protobuf spec, run `make generate` from this folder (and don't forget to generate it in `envd` if changes apply there too).
-3. If necessary, run `make connect-orchestrator` to create a tunnel to one orchestrator client VM in GCP (you may need to run `make setup-ssh` the first time)
+3. If the orchestrator is not reachable directly, tunnel its gRPC port (`TESTS_ORCHESTRATOR_HOST`, e.g. `localhost:5008`) to a sandbox node before running the tests
 4. Run `make test` in this folder or `make test-integration` from the root `infra/` folder.
 
 Narrow the run with `make test/<path under internal/tests>`, e.g. `make test/api/templates`
