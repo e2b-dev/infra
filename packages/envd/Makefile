@@ -48,9 +48,8 @@ VERSION := v$(shell sed -n 's/.*Version = "\(.*\)".*/\1/p' pkg/version.go)
 # The version this run operates on: the released version when ENVD_VERSION is
 # set (released-artifact flow below), else the checkout's own version.
 # A legacy commit-SHA input is truncated to the fixed 7-char short SHA the old
-# uploads were named with (envd.<7-char-sha>), so the full-length SHAs the
-# promote workflow's legacy arm accepts still find their object; release
-# versions (v-prefixed) pass through verbatim.
+# uploads were named with (envd.<7-char-sha>); release versions (v-prefixed)
+# pass through verbatim.
 RAW_UPLOAD_VERSION = $(or $(ENVD_VERSION),$(VERSION))
 UPLOAD_VERSION = $(if $(filter v%,$(RAW_UPLOAD_VERSION)),$(RAW_UPLOAD_VERSION),$(shell printf '%.7s' "$(RAW_UPLOAD_VERSION)"))
 
@@ -85,22 +84,6 @@ ifeq ($(ENVD_UPLOAD_MODE),versioned)
 else
 	gcloud storage cp --cache-control="no-cache, max-age=0" bin/envd "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif
-endif
-
-# Copies the staged versioned object over the promoted `envd` in place, so
-# every node's live /fc-envd mount picks it up without rotation. Promotes
-# UPLOAD_VERSION: pass ENVD_VERSION=v0.7.0 to select a version explicitly
-# (a legacy suffix like ENVD_VERSION=1f95888 still promotes an old envd.<sha>
-# object while those age out); with no ENVD_VERSION it promotes the
-# checkout's own pkg/version.go version — what CI just uploaded.
-.PHONY: promote
-promote:
-ifeq ($(PROVIDER),aws)
-	aws s3 cp "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd.$(UPLOAD_VERSION)" "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/envd" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
-else ifeq ($(PROVIDER),azure)
-	az storage blob copy start --requires-sync true --auth-mode login --account-name $(AZURE_STORAGE_ACCOUNT_NAME) --source-container $(AZURE_BUCKET_PREFIX)fc-env-pipeline --source-blob envd.$(UPLOAD_VERSION) --destination-container $(AZURE_BUCKET_PREFIX)fc-env-pipeline --destination-blob envd
-else
-	gcloud storage cp --cache-control="no-cache, max-age=0" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd.$(UPLOAD_VERSION)" "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/envd"
 endif
 
 build:
