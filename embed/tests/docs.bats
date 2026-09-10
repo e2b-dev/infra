@@ -11,6 +11,36 @@ setup() {
   cd "$BATS_TEST_DIRNAME/.." || return 1
 }
 
+# try_it_snippet <guide>: the body of the first fenced python block under that
+# guide's `## Try it` heading. The search stops at the next `## ` heading, so a
+# guide whose Try-it section lost its snippet fails here rather than quietly
+# comparing a block from somewhere else on the page.
+try_it_snippet() {
+  python3 - "$1" <<'PY'
+import sys
+
+path = sys.argv[1]
+lines = open(path).read().splitlines()
+start = next((i for i, l in enumerate(lines) if l.strip() == "## Try it"), None)
+if start is None:
+    sys.exit("%s has no '## Try it' heading" % path)
+end = next((i for i in range(start + 1, len(lines))
+            if lines[i].startswith("## ")), len(lines))
+open_at = next((i for i in range(start + 1, end)
+                if lines[i].strip() == "```python"), None)
+if open_at is None:
+    sys.exit("%s has no python block under '## Try it'" % path)
+body = []
+for line in lines[open_at + 1:end]:
+    if line.strip() == "```":
+        break
+    body.append(line)
+else:
+    sys.exit("%s: the python block under '## Try it' never closes" % path)
+sys.stdout.write("\n".join(body) + "\n")
+PY
+}
+
 @test "overview.svg carries one dark-scheme style block" {
   [ "$(grep -c '<style' docs/overview.svg)" -eq 1 ]
   grep -q 'prefers-color-scheme: dark' docs/overview.svg
@@ -152,4 +182,26 @@ PY
   done
   # A regex that stopped matching would pass every README vacuously.
   [ "$checked" -gt 0 ]
+}
+
+# The three install guides each end in the same Try-it snippet: the shapes
+# differ in how the reader gets the SDK variables into their shell, but the
+# sandbox they then create is deliberately the same few lines, so someone who
+# has run one shape recognises it in the next. Kept byte-identical here
+# because nothing else compares them, and a snippet edited in one guide alone
+# reads as a difference between the shapes that does not exist.
+@test "the three guides' Try-it snippets are one snippet" {
+  local guide out first=""
+  for guide in compose/README.md terraform/gcp/README.md kubernetes/README.md; do
+    out="$BATS_TEST_TMPDIR/${guide//\//_}"
+    try_it_snippet "$guide" > "$out" || return 1
+    [ -s "$out" ] || { echo "$guide: the Try-it snippet came out empty" >&2; return 1; }
+    if [ -z "$first" ]; then first="$out"; continue; fi
+    run diff -u "$first" "$out"
+    [ "$status" -eq 0 ] || {
+      echo "compose/README.md's snippet (-) against $guide's (+):" >&2
+      echo "$output" >&2
+      return 1
+    }
+  done
 }

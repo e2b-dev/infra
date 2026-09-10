@@ -76,6 +76,28 @@ ready_body() {
 
 env_value() { sed -n "s/^$1=\([^ #]*\).*/\1/p" compose/.env; }
 
+# compose.yaml reads a handful of knobs from the invoking shell as
+# ${VAR:-default} (the team key, hugepages, preflight's free-space floor,
+# FORCE_REBUILD, the two api secrets). A value exported in the developer's
+# shell would change the render and fail a comparison for reasons that are not
+# drift, so the parity test renders with every such knob unset. The list is
+# derived from compose.yaml, so a new knob is covered without editing this
+# file; `$${` is the wrapper's escaped shell and is not a knob.
+compose_knobs() {
+  # The pattern is literal (SC2016); comment lines are dropped first so prose
+  # like "${VAR:-default}" is not taken for a knob.
+  # shellcheck disable=SC2016
+  grep -v '^[[:space:]]*#' compose/compose.yaml | grep -o '[^$]${[A-Z_][A-Z_0-9]*:-' | sed -E 's/.*\$\{([A-Z_0-9]+):-/\1/' | sort -u
+}
+
+compose_config_json_clean() {
+  local knobs args=()
+  knobs="$(compose_knobs)"
+  [ "$(printf '%s\n' "$knobs" | grep -c .)" -ge 4 ] || { echo "compose_knobs found fewer than four knobs; the grep no longer matches compose.yaml" >&2; return 1; }
+  while IFS= read -r k; do args+=(-u "$k"); done <<<"$knobs"
+  env "${args[@]}" docker compose --project-directory compose config --format json
+}
+
 @test "kustomization renders" {
   [ -n "$RENDERED" ]
 }
@@ -245,4 +267,219 @@ env_value() { sed -n "s/^$1=\([^ #]*\).*/\1/p" compose/.env; }
   [ -s "$BATS_TEST_TMPDIR/compose-ready" ]
   run sh -n "$BATS_TEST_TMPDIR/compose-ready"
   [ "$status" -eq 0 ] || { echo "compose's ready script does not parse:"; echo "$output"; return 1; }
+}
+
+# compose.yaml and the StatefulSet configure the same processes, so a variable
+# one shape sets and the other does not, or sets to a different value, is a
+# behavioural difference between two installs meant to be the same stack.
+# Every difference that is deliberate is written out below as the exact pair
+# of values the two sides carry, so a drift on either side fails here, and an
+# entry that stops being needed fails as unused rather than quietly excusing a
+# key forever.
+#
+# The manifest is read as text again (see the note at the top of this file).
+# An `envFrom` is folded in and a `configMapKeyRef` resolved against the
+# generated ConfigMap, so the versions the pod takes from e2b-versions compare
+# as the literals compose sets. A `secretKeyRef` and a `fieldRef` have no
+# literal to resolve to and compare as a marker naming the source.
+@test "the pod's env blocks are compose's" {
+  printf '%s\n' "$RENDERED" > "$BATS_TEST_TMPDIR/rendered.yaml"
+  # The api's two secrets are generated per install, so a value in the
+  # operator's own shell would otherwise be substituted into the render and
+  # compared against the pod's Secret reference.
+  compose_config_json_clean \
+    > "$BATS_TEST_TMPDIR/compose.json"
+  run python3 - "$BATS_TEST_TMPDIR/rendered.yaml" "$BATS_TEST_TMPDIR/compose.json" <<'PY'
+import json, re, sys
+
+# The deliberate differences, each as (what compose has, what the pod has).
+# None on a side means any value, and is used only where another test already
+# pins that side.
+ALLOWED = {
+    # The api's two secrets are per install. Under compose the api-secrets
+    # service generates the pair into the seed-state volume and the api's
+    # entrypoint reads it from there, which leaves both empty in the render;
+    # the pod takes them from the e2b-api Secret instead.
+    ("api", "ADMIN_TOKEN"):
+        ("", "<secret:e2b-api/ADMIN_TOKEN>"),
+    ("api", "SANDBOX_ACCESS_TOKEN_HASH_SEED"):
+        ("", "<secret:e2b-api/SANDBOX_ACCESS_TOKEN_HASH_SEED>"),
+
+    # Vector's HTTP source listens on 30006 under compose and on 20006 in the
+    # pod: 30006 is inside the default NodePort range, and a NodePort that
+    # allocated it would DNAT the pod's own loopback log POSTs away from
+    # Vector. The loopback test above holds the manifest to 20006.
+    ("api", "LOGS_COLLECTOR_ADDRESS"):
+        ("http://127.0.0.1:30006", "http://127.0.0.1:20006"),
+    ("orchestrator", "LOGS_COLLECTOR_ADDRESS"):
+        ("http://127.0.0.1:30006", "http://127.0.0.1:20006"),
+
+    # compose leaves these three on its own network, so they address the
+    # stores by compose service name. Every container in the pod shares the
+    # host's network namespace and reaches the stores on loopback -- and so do
+    # the compose services that already run with network_mode: host, which is
+    # why the api, the orchestrator and client-proxy need no entry here.
+    ("db-migrator", "POSTGRES_CONNECTION_STRING"): (
+        "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable",
+        "postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"),
+    ("seed", "POSTGRES_CONNECTION_STRING"): (
+        "postgres://postgres:postgres@postgres:5432/postgres?sslmode=disable",
+        "postgres://postgres:postgres@127.0.0.1:5432/postgres?sslmode=disable"),
+    ("clickhouse-migrator", "GOOSE_DBSTRING"): (
+        "clickhouse://clickhouse:clickhouse@clickhouse:9000/default",
+        "clickhouse://clickhouse:clickhouse@127.0.0.1:9000/default"),
+
+    # The two stamps are inert; they exist so that `up` recreates a container
+    # whose inline config changed, which compose does not do on its own.
+    # kustomize content-hashes the ConfigMap names instead, so the pod rolls
+    # without them. The compose side is a hash of a file, and
+    # tests/config-hashes.bats is what keeps it right.
+    ("clickhouse", "CLICKHOUSE_CONFIG_SHA256"): (None, "<absent>"),
+    ("vector", "VECTOR_CONFIG_SHA256"): (None, "<absent>"),
+
+    # compose gives the orchestrator `cgroup: host`, so the launcher's sweep
+    # finds the sandbox cgroups at its own default, /sys/fs/cgroup/e2b. The
+    # pod reaches the same host tree through the /host-cgroup mount.
+    ("orchestrator", "OL_CGROUP_ROOT"): ("<absent>", "/host-cgroup/e2b"),
+
+    # The SDK variables ready writes have to name an address its reader can
+    # reach: localhost for compose, the node's own IP for a pod on the host
+    # network. That assignment is the prologue the ready-script test above
+    # excludes, for the same reason.
+    ("ready", "NODE_IP"): ("<absent>", "<field:status.hostIP>"),
+}
+
+manifest = open(sys.argv[1]).read().splitlines()
+compose = json.load(open(sys.argv[2]))["services"]
+
+# The generated ConfigMaps, keyed by the rendered (hash-suffixed) name.
+maps, data, i = {}, None, 0
+while i < len(manifest):
+    if manifest[i] == "data:":
+        data, i = {}, i + 1
+        while i < len(manifest) and re.match(r"^  \S", manifest[i]):
+            m = re.match(r"^  ([A-Za-z0-9_.-]+): (.*)$", manifest[i])
+            if m:
+                data[m.group(1)] = m.group(2)
+            i += 1
+        continue
+    m = re.match(r"^  name: (\S+)$", manifest[i])
+    if m and data is not None:
+        maps[m.group(1)], data = data, None
+    i += 1
+
+# A container is a list item under containers:/initContainers:, so it opens
+# with `      - <key>:`. kustomize puts a sequence at its parent key's
+# indentation, so both the container's own keys and its env entries sit at
+# eight spaces; only the entries carry the `- `.
+blocks, cur = [], None
+for line in manifest:
+    if re.match(r"^      - \S", line):
+        cur = ["        " + line[8:]]
+        blocks.append(cur)
+    elif re.match(r"^ {0,7}\S", line):
+        cur = None
+    elif cur is not None:
+        cur.append(line)
+
+
+def section(block, key):
+    """The lines under this container's eight-space `key:`."""
+    out = []
+    for i, line in enumerate(block):
+        if line != "        " + key + ":":
+            continue
+        for nxt in block[i + 1:]:
+            if re.match(r"^ {8}[A-Za-z]", nxt):
+                break
+            out.append(nxt)
+    return out
+
+
+def unquote(text):
+    if len(text) > 1 and text[0] == text[-1] and text[0] in "\"'":
+        return text[1:-1]
+    return text
+
+
+def value_of(chunk):
+    """The literal an env entry carries, or a marker for what it points at."""
+    for line in chunk:
+        m = re.match(r"^ {10}value: (.*)$", line)
+        if m:
+            return unquote(m.group(1))
+    ref = {}
+    for line in chunk:
+        m = re.match(r"^ {14}(key|name|fieldPath): (\S+)$", line)
+        if m:
+            ref[m.group(1)] = m.group(2)
+    body = "\n".join(chunk)
+    if "configMapKeyRef" in body:
+        return maps.get(ref.get("name"), {}).get(ref.get("key"), "<configmap?>")
+    if "secretKeyRef" in body:
+        return "<secret:%s/%s>" % (ref.get("name"), ref.get("key"))
+    if "fieldRef" in body:
+        return "<field:%s>" % ref.get("fieldPath")
+    return "<?>"
+
+
+containers = {}
+for block in blocks:
+    if not any(re.match(r"^ {8}image: ", l) for l in block):
+        continue                      # a volume, not a container
+    name = next((m.group(1) for m in
+                 (re.match(r"^ {8}name: (\S+)$", l) for l in block) if m), None)
+    env = {}
+    for line in section(block, "envFrom"):
+        m = re.match(r"^ {12}name: (\S+)$", line)
+        if m:
+            env.update(maps.get(m.group(1), {}))
+    lines, i = section(block, "env"), 0
+    while i < len(lines):
+        m = re.match(r"^ {8}- name: (\S+)$", lines[i])
+        if not m:
+            i += 1
+            continue
+        key, i, chunk = m.group(1), i + 1, []
+        while i < len(lines) and not re.match(r"^ {8}- name: ", lines[i]):
+            chunk.append(lines[i])
+            i += 1
+        env[key] = value_of(chunk)
+    containers[name] = env
+
+problems, used = [], set()
+for name in sorted(set(containers) & set(compose)):
+    pod = containers[name]
+    yml = dict((k, "" if v is None else str(v))
+               for k, v in (compose[name].get("environment") or {}).items())
+    for key in sorted(set(pod) | set(yml)):
+        here, there = yml.get(key, "<absent>"), pod.get(key, "<absent>")
+        if here == there:
+            continue
+        if (name, key) not in ALLOWED:
+            problems.append("%s %s: compose says %r, the manifest %r"
+                            % (name, key, here, there))
+            continue
+        used.add((name, key))
+        want_here, want_there = ALLOWED[(name, key)]
+        if (want_here is not None and want_here != here) or \
+           (want_there is not None and want_there != there):
+            problems.append(
+                "%s %s: the allowed difference is %r against %r, the files now "
+                "say %r against %r" % (name, key, want_here, want_there,
+                                       here, there))
+for name, key in sorted(set(ALLOWED) - used):
+    problems.append("%s %s is allowlisted but the two shapes agree on it now; "
+                    "drop the entry" % (name, key))
+
+# A parser that stopped matching would pass every container vacuously.
+for name in ("api", "orchestrator", "client-proxy", "postgres", "clickhouse",
+             "vector", "ready"):
+    if name not in containers:
+        problems.append("no %s container was parsed out of the manifest" % name)
+
+if problems:
+    sys.exit("\n".join(problems))
+PY
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
 }

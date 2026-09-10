@@ -15,6 +15,10 @@ declare -gA SHA256=(
   ["firecrackers/v1.14-0.2.0/amd64/firecracker"]="ef22aec7cbffcf6cc44a8436a4db79f9e6fe5c52218c81af321dd20f10ad6e5d"
   ["kernels/vmlinux-6.1.177_5008931/amd64/vmlinux.bin"]="9191ced12d24e6e381753a7ab12ec850877524d453eae75c20aeb176f3b5ad05"
   ["busybox/1.36.1/amd64/busybox"]="d7cce939adb09a41a22a5f846d22ba8d576b38dbb2b46a5c77a3a3e27ec52520"
+  # The checksums ship inside the tools image, so the .env pins can only move
+  # to these two versions once a tools image carrying this table is published.
+  ["orchestrator/v0.15.0/orchestrator"]="b46e64241f830ceaedf91fccdf4598fcf818179ea156130def16946ce342ecc4"
+  ["envd/v0.9.0/envd"]="c42a31d738718b5cf7654e258e5b111308646a905331b266294cdcbeb0a02355"
 )
 
 goarch() {

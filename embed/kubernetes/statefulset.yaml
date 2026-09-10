@@ -59,7 +59,7 @@ spec:
         # --- stores: native sidecars, started in order, each waited for; every
         # probe carries the compose interval, retries and timeout ---
         - name: postgres
-          image: postgres:18-alpine
+          image: postgres:18.6-alpine
           restartPolicy: Always
           args: ["-c", "listen_addresses=127.0.0.1"]
           env:
@@ -103,7 +103,7 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 30
         - name: vector
-          image: timberio/vector:0.51.X-alpine
+          image: timberio/vector:0.51.1-alpine
           restartPolicy: Always
           env:
             - { name: VECTOR_CONFIG, value: /etc/vector/vector.toml }

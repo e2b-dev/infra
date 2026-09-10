@@ -36,7 +36,7 @@ terraform-validate:
 # Catches a broken remap or a misspelled sink option before a host does.
 vector-validate:
 	docker run --rm -v "$(CURDIR)/compose/config/vector/vector.toml:/etc/vector/vector.toml:ro" \
-	  timberio/vector:0.51.X-alpine validate --no-environment /etc/vector/vector.toml
+	  timberio/vector:0.51.1-alpine validate --no-environment /etc/vector/vector.toml
 
 # After editing compose/config/clickhouse/config.xml or
 # compose/config/vector/vector.toml: rewrite the inline copies in
