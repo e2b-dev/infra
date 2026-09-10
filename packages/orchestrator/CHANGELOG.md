@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.0 (2026-09-10)
+
+
+### Features
+
+* **orchestrator:** publish sandbox routing record behind feature flags (3bc98a0)
+* **orch:** grant envd's memory protection through a system.slice drop-in (90bf96d)
+* **orch:** report and record the memory protection on envd's cgroup chain per start (8a1809e)
+
 ## 0.14.0 (2026-09-09)
 
 
