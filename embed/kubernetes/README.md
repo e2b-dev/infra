@@ -65,6 +65,10 @@ kubectl -n e2b rollout status statefulset/e2b --timeout=15m
 kubectl -n e2b logs e2b-0 -c ready
 ```
 
+Ready takes about 3 minutes on `n4-standard-4`: 2 m 38 s from `apply -k` to
+Ready in the reference run, 49 s of it the `base` template build. The
+15-minute timeout above is a ceiling, not the expectation.
+
 The namespace and the Secret come before `apply -k` so the api never starts
 without them. Until the Secret exists the api container cannot be created:
 the pod sits at `Init:CreateContainerConfigError` with the event
@@ -102,14 +106,21 @@ sbx.kill()
 ```
 
 There is no `smoke` service here. To run the same check with the JavaScript
-SDK, run the image that carries it on the node. The image name comes out of
-the same kustomization the install applied, so this needs no checkout:
+SDK, which also reaches a port inside the sandbox through client-proxy, run
+the image that carries it on the node. The image name comes out of the same
+kustomization the install applied, so this needs no checkout:
 
 ```bash
 IMG="$(kubectl kustomize "https://github.com/e2b-dev/runtime//embed/kubernetes?ref=main" | awk '/image: .*node-e2b/{print $2; exit}')"
 kubectl -n e2b run smoke --rm -i --restart=Never --image="$IMG" --overrides='{"spec":{"hostNetwork":true}}' \
   --env E2B_API_URL="$E2B_API_URL" --env E2B_SANDBOX_URL="$E2B_SANDBOX_URL" --env E2B_API_KEY="$E2B_API_KEY" -- node /app/smoke.mjs
 ```
+
+`--env E2B_API_KEY=...` puts the team key in the pod spec, so for as long as
+the pod runs anyone who can read pods in the `e2b` namespace can read the key
+out of `kubectl -n e2b get pod smoke -o yaml`, and, on a cluster whose audit
+policy records request bodies, it lands in the API server's audit log. `--rm`
+removes the pod when the test ends.
 
 ## Remove
 

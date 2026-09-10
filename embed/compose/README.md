@@ -87,7 +87,8 @@ sbx.kill()
 ```
 
 Or run the packaged smoke test, which does the same with the JavaScript SDK
-in a container:
+in a container and then reaches a port inside the sandbox through
+client-proxy:
 
 ```bash
 docker compose --profile test run --rm smoke
@@ -313,10 +314,13 @@ restarts; a single machine has nowhere to drain them to.
   a start.
 - **The smoke test failed.** Its output ends with `FIX: read the api,
   orchestrator and client-proxy logs`; read those three logs. If the last line
-  is instead `FIX: the sandbox could not be killed; read the api and
-  orchestrator logs`, the sandbox was created and ran the command but the
-  stack could not end it. That still fails the smoke test, and the sandbox may
-  still be running.
+  is instead `FIX: the exposed port could not be reached; read the
+  client-proxy and orchestrator logs`, the sandbox was created and ran the
+  command, but the listener the test started on port 8080 did not answer
+  through client-proxy within 15 seconds. If it is `FIX: the sandbox could not
+  be killed; read the api and orchestrator logs`, the sandbox was created and
+  ran the command but the stack could not end it. That still fails the smoke
+  test, and the sandbox may still be running.
 - **`Stopping orchestrator, success: false`** and `orchestrator-launch:
   orchestrator exited with status 1` at the end of the orchestrator's log
   after `docker compose stop` are the binary's normal SIGTERM path, not a

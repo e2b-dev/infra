@@ -87,8 +87,8 @@ not a broken install: wait a minute and run the snippet again.
 `curl -s -H "X-API-Key: $E2B_API_KEY" $E2B_API_URL/v2/templates` lists
 `base` from the moment its build starts rather than when it finishes, so a
 listing is not the go-ahead for the snippet above. Or run the packaged smoke
-test, which does the same with the JavaScript SDK in a container, on the
-instance itself:
+test on the instance itself: it does the same with the JavaScript SDK in a
+container, then reaches a port inside the sandbox through client-proxy:
 
 ```bash
 eval "$(terraform output -raw ssh_command)"
