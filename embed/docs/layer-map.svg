@@ -261,9 +261,9 @@
 
   <!-- legend -->
   <text x="568" y="718" class="band">Stripe = image</text>
-  <rect x="568" y="727" width="10" height="10" class="st-tools"/><text x="584" y="736" class="legend">compose/tools · 7 services</text>
-  <rect x="568" y="743" width="10" height="10" class="st-node"/><text x="584" y="752" class="legend">compose/node-e2b · 2</text>
-  <rect x="568" y="759" width="10" height="10" class="st-seed"/><text x="584" y="768" class="legend">compose/seed · 1</text>
+  <rect x="568" y="727" width="10" height="10" class="st-tools"/><text x="584" y="736" class="legend">embed/tools · 7 services</text>
+  <rect x="568" y="743" width="10" height="10" class="st-node"/><text x="584" y="752" class="legend">embed/node-e2b · 2</text>
+  <rect x="568" y="759" width="10" height="10" class="st-seed"/><text x="584" y="768" class="legend">embed/seed · 1</text>
   <rect x="568" y="775" width="10" height="10" class="st-e2b"/><text x="584" y="784" class="legend">e2b-artifacts release image · 4</text>
   <rect x="568" y="791" width="10" height="10" class="st-hub"/><text x="584" y="800" class="legend">Docker Hub image · 4</text>
 </svg>

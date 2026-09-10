@@ -9,13 +9,12 @@
 // directory, not against the bake file's own location, and the paths below are
 // written for this directory, where `make images` runs.
 //
-// The registry repository is still named `compose`; a dedicated one does
-// not exist yet. When it does, change this default, the three pins in
-// `compose/.env` and the three `newName`s in `kubernetes/kustomization.yaml`
-// together. `tests/pins.bats` reads this default and those six pins, and
-// fails when they disagree.
+// This default, the three pins in `compose/.env` and the three `newName`s
+// in `kubernetes/kustomization.yaml` all name the same registry repository,
+// so a rename has to change the seven together. `tests/pins.bats` reads this
+// default and those six pins, and fails when they disagree.
 variable "REGISTRY_PREFIX" {
-  default = "us-docker.pkg.dev/e2b-artifacts/compose"
+  default = "us-docker.pkg.dev/e2b-artifacts/embed"
 }
 variable "COMMIT_SHA" {
   default = ""

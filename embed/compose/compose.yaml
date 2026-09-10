@@ -428,7 +428,7 @@ services:
              (refuses to run while the orchestrator is up, so it needs step 2 first)'
         test -s /run/e2b/team-api-key || {
           echo "ready: the seed left no /run/e2b/team-api-key" >&2
-          echo "FIX: E2B_SEED_IMAGE must be a release whose seed knows SEED_TEAM_API_KEY_FILE (v0.3.0 or newer); run $$LOG_HINT" >&2
+          echo "FIX: E2B_SEED_IMAGE must be a release whose seed knows SEED_TEAM_API_KEY_FILE (the published seed images do); run $$LOG_HINT" >&2
           exit 1
         }
         last=""
@@ -473,7 +473,7 @@ services:
       - |
         test -s /run/e2b/team-api-key || {
           echo "build-base-template: the seed left no /run/e2b/team-api-key" >&2
-          echo "FIX: E2B_SEED_IMAGE must be a release whose seed knows SEED_TEAM_API_KEY_FILE (v0.3.0 or newer); run docker compose logs seed" >&2
+          echo "FIX: E2B_SEED_IMAGE must be a release whose seed knows SEED_TEAM_API_KEY_FILE (the published seed images do); run docker compose logs seed" >&2
           exit 2
         }
         E2B_API_KEY="$$(cat /run/e2b/team-api-key)" exec node /app/build-base-template.mjs
@@ -499,7 +499,7 @@ services:
       - |
         test -s /run/e2b/team-api-key || {
           echo "smoke: the seed left no /run/e2b/team-api-key" >&2
-          echo "FIX: E2B_SEED_IMAGE must be a release whose seed knows SEED_TEAM_API_KEY_FILE (v0.3.0 or newer); run docker compose logs seed" >&2
+          echo "FIX: E2B_SEED_IMAGE must be a release whose seed knows SEED_TEAM_API_KEY_FILE (the published seed images do); run docker compose logs seed" >&2
           exit 2
         }
         E2B_API_KEY="$$(cat /run/e2b/team-api-key)" exec node /app/smoke.mjs

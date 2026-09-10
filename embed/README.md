@@ -130,10 +130,9 @@ scripts, the SDK scripts and the database seeder), and the five
 Firecracker binaries. Terraform ships that file to the instance, and
 Kubernetes repeats its pins in
 [`kubernetes/kustomization.yaml`](kubernetes/kustomization.yaml). The three
-stack images live in the `compose` repository of the `e2b-artifacts` registry,
-published by the maintainers under the tag `compose/.env` pins, `v0.3.0`
-today. All of it is public and pulled anonymously; the stores come from Docker
-Hub.
+stack images live in the `embed` repository of the `e2b-artifacts` registry,
+published by the maintainers under the tag `compose/.env` pins. All of it is
+public and pulled anonymously; the stores come from Docker Hub.
 
 To pin an install, pin the commit. The Compose files come from raw URLs, so
 put the commit in place of `main` in their path; the Terraform `source` and the

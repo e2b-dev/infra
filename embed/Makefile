@@ -48,8 +48,8 @@ test:
 	@if [ -n "$$(ls tests/*.bats 2>/dev/null)" ]; then bats tests; else echo "no bats tests yet"; fi
 
 # Build the three project images locally under their published names, so a
-# compose.yaml that pins them runs before the registry exists. The seed builds
-# from the public runtime repository at the pinned commit.
+# compose.yaml that pins them runs the local build and pulls nothing. The
+# seed builds from the public runtime repository at the pinned commit.
 images:
 	set -a; . ./compose/.env; set +a; \
 	docker buildx bake --load \
@@ -97,7 +97,7 @@ stores-check:
 	test "$$($(COMPOSE) run --rm --no-deps --entrypoint cat api-secrets /run/e2b/api.env 2>/dev/null | grep -c -E '^GEN_(ADMIN_TOKEN|SANDBOX_ACCESS_TOKEN_HASH_SEED)=[0-9a-f]{64}$$')" = 2 \
 	  || fail "/run/e2b/api.env does not hold two 64-hex secrets" "the tools image's od/tr changed shape; re-run $(COMPOSE) run --rm --no-deps api-secrets and read the file"; \
 	key="$$($(COMPOSE) run --rm --no-deps --entrypoint cat seed /run/e2b/team-api-key 2>/dev/null)" && [ -n "$$key" ] \
-	  || fail "the seed left no /run/e2b/team-api-key" "the seed image must know SEED_TEAM_API_KEY_FILE (v0.3.0 or newer): for make images that is RUNTIME_COMMIT in compose/.env; read the seed output above"; \
+	  || fail "the seed left no /run/e2b/team-api-key" "the seed image must know SEED_TEAM_API_KEY_FILE (the published seed images do): for make images that is RUNTIME_COMMIT in compose/.env; read the seed output above"; \
 	test "$$($(COMPOSE) exec -T postgres psql -U postgres -d postgres -tAc "SELECT count(*) FROM team_api_keys WHERE team_id='0b8a3ded-4489-4722-afd1-1d82e64ec2d5' AND api_key_hash = '\$$sha256\$$' || rtrim(encode(sha256(decode('$${key#e2b_}','hex')),'base64'),'=')")" = 1 \
 	  || fail "the seeded api key is not the one in /run/e2b/team-api-key" "re-run $(COMPOSE) run --rm seed and compare its masked key with the file"; \
 	test "$$($(COMPOSE) exec -T postgres psql -U postgres -d postgres -tAc "SELECT count(*) FROM team_api_keys WHERE team_id='0b8a3ded-4489-4722-afd1-1d82e64ec2d5'")" = 1 \
