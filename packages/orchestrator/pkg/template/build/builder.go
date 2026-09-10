@@ -290,9 +290,24 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		CacheScope:     cacheScope,
 		IsV1Build:      isV1Build,
 		Version:        cfg.Version,
+		Rootfs:         resolveRootfsOptions(ctx, b.featureFlags, cfg),
 	}
 
 	return runBuild(ctx, l, buildContext, b)
+}
+
+// resolveRootfsOptions evaluates, once per build, the flags that shape the
+// baked rootfs files; buildcontext.RootfsOptions says why once. It uses the
+// template and team contexts, as the provision version does.
+func resolveRootfsOptions(ctx context.Context, featureFlags *featureflags.Client, cfg config.TemplateConfig) buildcontext.RootfsOptions {
+	return buildcontext.RootfsOptions{
+		EnvdMemoryProtection: featureFlags.BoolFlag(
+			ctx,
+			featureflags.BuildEnvdMemoryProtection,
+			featureflags.TemplateContext(cfg.TemplateID),
+			featureflags.TeamContext(cfg.TeamID),
+		),
+	}
 }
 
 func (b *Builder) useNFSCache(ctx context.Context) (string, bool) {

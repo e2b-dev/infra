@@ -476,6 +476,22 @@ var (
 	BuildCacheMaxUsagePercentage = NewIntFlag("build-cache-max-usage-percentage", 85)
 	BuildProvisionVersion        = NewIntFlag("build-provision-version", 0)
 
+	// BuildEnvdMemoryProtection, when enabled at build time, renders a fixed
+	// memory.min/memory.low request for envd, the same on every template, and
+	// installs a system.slice drop-in requesting the same, so the kernel grants
+	// envd's protection instead of prorating it to nothing. Evaluated once per
+	// build with the template and team contexts. When on, the request it
+	// renders enters the base-layer cache key of every build that renders the
+	// rootfs files, so such a build never reuses a layer built off, and off
+	// keeps the key those layers are already stored under wherever
+	// BuildProvisionVersion is set explicitly (a build from another template
+	// inherits its parent's layer and files, whatever its own flag). Where that
+	// flag is at its fallback the provision version is a hash of the baked
+	// files, which the drop-in template changes once, so those deployments
+	// rebuild their base layers on landing whatever this flag says.
+	// Disabled by default: the unit keeps the request it carries today.
+	BuildEnvdMemoryProtection = NewBoolFlag("build-envd-memory-protection", false)
+
 	// NBDConnectionsPerDevice the number of NBD socket connections per device
 	NBDConnectionsPerDevice = NewIntFlag("nbd-connections-per-device", 1)
 

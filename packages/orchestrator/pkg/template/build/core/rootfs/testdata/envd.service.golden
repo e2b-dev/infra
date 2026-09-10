@@ -1,6 +1,3 @@
-{{- /*gotype:github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/rootfs.templateModel*/ -}}
-{{ .WriteFile "/etc/systemd/system/envd.service" 0o644 }}
-
 [Unit]
 Description=Env Daemon Service
 # Start as early as possible on cold boot: envd only needs journald's socket
@@ -55,16 +52,11 @@ IOSchedulingClass=realtime
 IOSchedulingPriority=4
 OOMPolicy=continue
 OOMScoreAdjust=-1000
-Environment="GOMEMLIMIT={{ .MemoryLimit }}MiB"
+Environment="GOMEMLIMIT=512MiB"
 
 Delegate=yes
-{{- if .EnvdMemoryProtection }}
-MemoryMin={{ .EnvdMemoryMinMiB }}M
-MemoryLow={{ .EnvdMemoryLowMiB }}M
-{{- else }}
 MemoryMin=50M
 MemoryLow=100M
-{{- end }}
 CPUAccounting=yes
 CPUWeight=1000
 IOAccounting=yes
