@@ -1,0 +1,52 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: e2b
+resources:
+  - namespace.yaml
+  - service.yaml
+  - statefulset.yaml
+
+# Pins. Every tag here is hand-edited together with compose/.env
+# (tests/kubernetes.bats and tests/pins.bats keep them equal).
+images:
+  - name: E2B_API_IMAGE
+    newName: us-docker.pkg.dev/e2b-artifacts/api/api
+    newTag: v0.11.0
+  - name: E2B_DB_MIGRATOR_IMAGE
+    newName: us-docker.pkg.dev/e2b-artifacts/api/db-migrator
+    newTag: v0.11.0
+  - name: E2B_CLIENT_PROXY_IMAGE
+    newName: us-docker.pkg.dev/e2b-artifacts/client-proxy/client-proxy
+    newTag: v0.2.1
+  - name: E2B_CLICKHOUSE_MIGRATOR_IMAGE
+    newName: us-docker.pkg.dev/e2b-artifacts/clickhouse-migrator/clickhouse-migrator
+    newTag: v0.4.0
+  - name: E2B_TOOLS_IMAGE
+    newName: us-docker.pkg.dev/e2b-artifacts/compose/tools
+    newTag: v0.3.0
+  - name: E2B_NODE_E2B_IMAGE
+    newName: us-docker.pkg.dev/e2b-artifacts/compose/node-e2b
+    newTag: v0.3.0
+  - name: E2B_SEED_IMAGE
+    newName: us-docker.pkg.dev/e2b-artifacts/compose/seed
+    newTag: v0.3.0
+
+# Content-hashed names: a changed literal or file renames the map and rolls the
+# pod. Older maps are left behind (kustomize does not prune); delete them by
+# name if they bother you.
+configMapGenerator:
+  - name: e2b-versions
+    literals:
+      - E2B_ORCHESTRATOR_VERSION=v0.11.0
+      - E2B_ENVD_VERSION=v0.7.0
+      - E2B_KERNEL_VERSION=vmlinux-6.1.177_5008931
+      - E2B_FIRECRACKER_VERSION=v1.14-0.2.0
+      - E2B_BUSYBOX_VERSION=1.36.1
+  - name: clickhouse-config
+    files:
+      - config.xml=config/clickhouse-config.xml
+      # An empty <clickhouse/> mounted over the image's file that adds 0.0.0.0.
+      - docker_related_config.xml=config/clickhouse-docker-related-config.xml
+  - name: vector-config
+    files:
+      - vector.toml=config/vector.toml
