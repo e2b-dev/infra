@@ -238,6 +238,20 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox count metric: %w", err)
 	}
 
+	sandboxLimitGauge, err := telemetry.GetGaugeInt(meter, telemetry.OrchestratorSandboxLimitGaugeName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create sandbox limit gauge: %w", err)
+	}
+
+	_, err = meter.RegisterCallback(func(ctx context.Context, obs metric.Observer) error {
+		obs.ObserveInt64(sandboxLimitGauge, int64(server.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)))
+
+		return nil
+	}, sandboxLimitGauge)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register sandbox limit gauge: %w", err)
+	}
+
 	statusGauge, err := telemetry.GetGaugeInt(meter, telemetry.OrchestratorStatusGaugeName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create orchestrator status gauge: %w", err)

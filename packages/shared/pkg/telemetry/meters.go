@@ -509,8 +509,9 @@ const (
 )
 
 const (
-	ApiOrchestratorCountMeterName GaugeIntType = "api.orchestrator.status"
-	OrchestratorStatusGaugeName   GaugeIntType = "orchestrator.status"
+	ApiOrchestratorCountMeterName     GaugeIntType = "api.orchestrator.status"
+	OrchestratorStatusGaugeName       GaugeIntType = "orchestrator.status"
+	OrchestratorSandboxLimitGaugeName GaugeIntType = "orchestrator.sandbox.limit"
 
 	// Orchestrator node resources allocated to running sandboxes (sum across running sandboxes)
 	OrchestratorCpuAllocatedGaugeName    GaugeIntType = "orchestrator.sandbox.cpu.allocated"
@@ -707,6 +708,7 @@ var gaugeFloatUnits = map[GaugeFloatType]string{
 var gaugeIntDesc = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName:        "Counter of running orchestrators.",
 	OrchestratorStatusGaugeName:          "Self-reported orchestrator status (always 1, labelled with status and version).",
+	OrchestratorSandboxLimitGaugeName:    "Configured maximum number of running sandboxes on the orchestrator node.",
 	OrchestratorCpuAllocatedGaugeName:    "Total vCPUs allocated to running sandboxes on the orchestrator node.",
 	OrchestratorMemoryAllocatedGaugeName: "Total memory allocated to running sandboxes on the orchestrator node.",
 	OrchestratorDiskAllocatedGaugeName:   "Total disk space allocated to running sandboxes on the orchestrator node.",
@@ -723,6 +725,7 @@ var gaugeIntDesc = map[GaugeIntType]string{
 var gaugeIntUnits = map[GaugeIntType]string{
 	ApiOrchestratorCountMeterName:        "{orchestrator}",
 	OrchestratorStatusGaugeName:          "{orchestrator}",
+	OrchestratorSandboxLimitGaugeName:    "{sandbox}",
 	OrchestratorCpuAllocatedGaugeName:    "{count}",
 	OrchestratorMemoryAllocatedGaugeName: "{By}",
 	OrchestratorDiskAllocatedGaugeName:   "{By}",
