@@ -1,6 +1,6 @@
 module github.com/e2b-dev/infra/packages/auth
 
-go 1.26.6
+go 1.26.8
 
 replace github.com/e2b-dev/infra/packages/db => ../db
 

@@ -56,7 +56,7 @@ target "seed" {
     SRC = SEED_SRC
   }
   dockerfile-inline = <<-DOCKERFILE
-    FROM golang:1.26.6-alpine3.24
+    FROM golang:1.26.8-alpine3.24
     ARG SRC=go/oss
     WORKDIR /src
     COPY $${SRC}/shared ./shared
