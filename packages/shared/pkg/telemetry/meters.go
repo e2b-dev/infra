@@ -219,7 +219,10 @@ const (
 	//	replayed
 	//	    the journal was replayed (or regenerated, or there was nothing to do);
 	//	    the fs is mountable and the boot proceeded — the expected outcome for
-	//	    the admitted population, NOT a corruption signal.
+	//	    the admitted population, NOT a corruption signal. The reason label
+	//	    splits it: journal_replayed (the superblock's needs_recovery bit was
+	//	    set before the run, or e2fsck applied a repair), nothing_to_do (the
+	//	    bit was clear), replay_unknown (the superblock could not be read).
 	//	failed_operational
 	//	    the run did not complete a clean replay AND e2fsck may have opened the
 	//	    device (an e2fsck non-replay exit, or a timeout that could have killed it
