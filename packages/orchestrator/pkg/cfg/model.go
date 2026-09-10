@@ -30,6 +30,7 @@ type BuilderConfig struct {
 	OrchestratorBaseDir    string `env:"ORCHESTRATOR_BASE_PATH"   envDefault:"/orchestrator"`
 	SandboxDir             string `env:"SANDBOX_DIR"              envDefault:"/fc-vm"`
 	SharedChunkCacheDir    string `env:"SHARED_CHUNK_CACHE_PATH"`
+	NetworkUsageJournalDir string `env:"NETWORK_USAGE_JOURNAL_DIR" envDefault:""`
 	TemplatesDir           string `env:"TEMPLATES_DIR,expand"     envDefault:"${ORCHESTRATOR_BASE_PATH}/build-templates"`
 
 	DefaultCacheDir string `env:"DEFAULT_CACHE_DIR,expand" envDefault:"${ORCHESTRATOR_BASE_PATH}/build"`
@@ -51,6 +52,7 @@ func makePathsAbsolute(c *BuilderConfig) error {
 		&c.StorageConfig.SandboxCacheDir,
 		&c.SandboxDir,
 		&c.SharedChunkCacheDir,
+		&c.NetworkUsageJournalDir,
 		&c.StorageConfig.SnapshotCacheDir,
 		&c.StorageConfig.TemplateCacheDir,
 		&c.TemplatesDir,

@@ -354,7 +354,9 @@ func (p *Process) Create(
 	// Start the metrics reader goroutine before calling setMetrics.
 	// The goroutine blocks on open(O_RDONLY) until Firecracker opens the write end,
 	// which happens when it processes PUT /metrics below.
-	p.startMetricsReader(ctx)
+	if err := p.startMetricsReader(ctx); err != nil {
+		return errors.Join(fmt.Errorf("initialize metrics evidence: %w", err), p.Stop(ctx))
+	}
 
 	err = p.client.setMetrics(ctx, p.metricsPath)
 	if err != nil {
@@ -592,7 +594,9 @@ func (p *Process) Resume(
 	}
 
 	// Start the metrics reader goroutine before calling setMetrics (same ordering as Create).
-	p.startMetricsReader(ctx)
+	if err := p.startMetricsReader(ctx); err != nil {
+		return errors.Join(fmt.Errorf("initialize metrics evidence: %w", err), p.Stop(ctx))
+	}
 
 	err = p.client.setMetrics(ctx, p.metricsPath)
 	if err != nil {

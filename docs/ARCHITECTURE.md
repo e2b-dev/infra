@@ -153,6 +153,13 @@ Key mechanisms (all under `pkg/sandbox/`):
 - **Firecracker** (`fc/`): each sandbox is one Firecracker process in its own cgroup and network
   namespace. The FC HTTP API (unix socket) configures machine, drives, network, and snapshots.
   Guest metadata (sandbox ID, envd access token hash) is passed via MMDS.
+- **Network observation journal** (`networkusage/`, opt-in): the existing Firecracker
+  metrics reader can persist per-flush TX/RX byte deltas in an operator-owned host
+  directory selected by `NETWORK_USAGE_JOURNAL_DIR`. Each process incarnation has
+  an exclusive file and monotonic sequence; append/sync errors latch and gaps stay
+  invalid. This is local evidence only: no remote delivery, retention service, or
+  complete terminal billing receipt is implied. Default configuration is disabled.
+  See the [specification, Dafny model, and linked tests](../specs/network-usage-journal.md).
 - **Lazy memory / UFFD** (`uffd/`): on resume, Firecracker restores the VM without loading
   memory; a userfaultfd handler serves page faults directly from the template's memfile, so only
   touched pages are read. An optional prefetcher warms known-hot pages.

@@ -17,6 +17,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/networkusage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -133,23 +134,23 @@ func monitorDirtyPageThrottle() {
 // Values are per-flush deltas; flush defaults to 60 s, additional flushes via FlushMetrics API.
 type firecrackerNetMetrics struct {
 	// TX
-	TxBytesCount            uint64 `json:"tx_bytes_count"`
-	TxPacketsCount          uint64 `json:"tx_packets_count"`
-	TxCount                 uint64 `json:"tx_count"`
-	TxFails                 uint64 `json:"tx_fails"`
-	TxRateLimiterThrottled  uint64 `json:"tx_rate_limiter_throttled"`
-	TxRateLimiterEventCount uint64 `json:"tx_rate_limiter_event_count"`
-	TxRemainingReqsCount    uint64 `json:"tx_remaining_reqs_count"`
-	NoTxAvailBuffer         uint64 `json:"no_tx_avail_buffer"`
-	TapWriteFails           uint64 `json:"tap_write_fails"`
+	TxBytesCount            *uint64 `json:"tx_bytes_count"`
+	TxPacketsCount          uint64  `json:"tx_packets_count"`
+	TxCount                 uint64  `json:"tx_count"`
+	TxFails                 uint64  `json:"tx_fails"`
+	TxRateLimiterThrottled  uint64  `json:"tx_rate_limiter_throttled"`
+	TxRateLimiterEventCount uint64  `json:"tx_rate_limiter_event_count"`
+	TxRemainingReqsCount    uint64  `json:"tx_remaining_reqs_count"`
+	NoTxAvailBuffer         uint64  `json:"no_tx_avail_buffer"`
+	TapWriteFails           uint64  `json:"tap_write_fails"`
 	// RX
-	RxBytesCount           uint64 `json:"rx_bytes_count"`
-	RxPacketsCount         uint64 `json:"rx_packets_count"`
-	RxCount                uint64 `json:"rx_count"`
-	RxFails                uint64 `json:"rx_fails"`
-	RxRateLimiterThrottled uint64 `json:"rx_rate_limiter_throttled"`
-	NoRxAvailBuffer        uint64 `json:"no_rx_avail_buffer"`
-	TapReadFails           uint64 `json:"tap_read_fails"`
+	RxBytesCount           *uint64 `json:"rx_bytes_count"`
+	RxPacketsCount         uint64  `json:"rx_packets_count"`
+	RxCount                uint64  `json:"rx_count"`
+	RxFails                uint64  `json:"rx_fails"`
+	RxRateLimiterThrottled uint64  `json:"rx_rate_limiter_throttled"`
+	NoRxAvailBuffer        uint64  `json:"no_rx_avail_buffer"`
+	TapReadFails           uint64  `json:"tap_read_fails"`
 }
 
 // firecrackerBlockMetrics is a subset of Firecracker's BlockDeviceMetrics we export via OTEL.
@@ -183,9 +184,23 @@ type firecrackerBalloonMetrics struct {
 
 // firecrackerMetrics is the top-level structure of one Firecracker metrics JSON line.
 type firecrackerMetrics struct {
-	Net     firecrackerNetMetrics     `json:"net"`
+	Net     *firecrackerNetMetrics    `json:"net"`
 	Block   firecrackerBlockMetrics   `json:"block"`
 	Balloon firecrackerBalloonMetrics `json:"balloon"`
+}
+
+// Missing counters are unknown evidence, even when the other direction is zero.
+func (n *firecrackerNetMetrics) byteDeltas() (tx, rx uint64, present bool) {
+	if n == nil {
+		return 0, 0, false
+	}
+	if n.TxBytesCount != nil {
+		tx = *n.TxBytesCount
+	}
+	if n.RxBytesCount != nil {
+		rx = *n.RxBytesCount
+	}
+	return tx, rx, n.TxBytesCount != nil && n.RxBytesCount != nil
 }
 
 // BalloonMetricsSnapshot is the cumulative-since-FC-start view of
@@ -267,12 +282,21 @@ func (p *Process) FlushAndReadBalloonMetrics(ctx context.Context) (BalloonMetric
 // Firecracker metrics lines and exports metrics via OTEL.
 // It must be called before setMetrics so that the FIFO is open for reading
 // before Firecracker opens the write end in response to PUT /metrics.
-func (p *Process) startMetricsReader(ctx context.Context) {
+func (p *Process) startMetricsReader(ctx context.Context) error {
 	// Detach from the request context so the goroutine runs for the VM's lifetime
 	// but still inherits trace values for logging.
 	ctx = context.WithoutCancel(ctx)
 	sandboxID := p.files.SandboxID
 	metricsPath := p.metricsPath
+	journal, err := networkusage.Open(p.config.NetworkUsageJournalDir, sandboxID)
+	if err != nil {
+		return err
+	}
+	journalError := func(err error) {
+		if err != nil {
+			logger.L().Error(ctx, "network usage journal incomplete", zap.Error(err), logger.WithSandboxID(sandboxID))
+		}
+	}
 
 	// Flusher: periodically triggers a Firecracker metrics flush so the reader receives
 	// fresh data at metricsFlushInterval instead of the default 60 s.
@@ -286,6 +310,7 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 				return
 			case <-ticker.C:
 				if err := p.client.flushMetrics(ctx); err != nil {
+					journalError(journal.Gap("flush_request_failed"))
 					logger.L().Warn(ctx, "failed to flush fc metrics",
 						zap.Error(err),
 						logger.WithSandboxID(sandboxID),
@@ -296,6 +321,7 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 	}()
 
 	go func() {
+		defer func() { journalError(journal.Close()) }()
 		// O_RDWR opens without blocking (no need to wait for a writer).
 		// We keep this FD solely to unblock the open; the scanner reads from
 		// a separate O_RDONLY FD below. On process exit we close the O_RDWR FD
@@ -303,6 +329,7 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 		// O_RDONLY read receives EOF and the goroutine exits cleanly.
 		rwFd, err := os.OpenFile(metricsPath, os.O_RDWR, os.ModeNamedPipe)
 		if err != nil {
+			journalError(journal.Gap("fifo_open_failed"))
 			logger.L().Warn(ctx, "failed to open fc metrics FIFO",
 				zap.Error(err),
 				logger.WithSandboxID(sandboxID),
@@ -315,6 +342,7 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 		rFd, err := os.OpenFile(metricsPath, os.O_RDONLY, os.ModeNamedPipe)
 		if err != nil {
 			rwFd.Close()
+			journalError(journal.Gap("fifo_read_open_failed"))
 			logger.L().Warn(ctx, "failed to open fc metrics FIFO for reading",
 				zap.Error(err),
 				logger.WithSandboxID(sandboxID),
@@ -336,6 +364,7 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 		for scanner.Scan() {
 			var m firecrackerMetrics
 			if err := json.Unmarshal(scanner.Bytes(), &m); err != nil {
+				journalError(journal.Gap("invalid_metrics_frame"))
 				logger.L().Warn(ctx, "failed to parse fc metrics line",
 					zap.Error(err),
 					logger.WithSandboxID(sandboxID),
@@ -344,10 +373,19 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 				continue
 			}
 
-			n := &m.Net
+			n := m.Net
+			txBytes, rxBytes, present := n.byteDeltas()
+			if n == nil {
+				n = &firecrackerNetMetrics{}
+			}
+			if !present {
+				journalError(journal.Gap("missing_network_counters"))
+			} else {
+				journalError(journal.Observe(txBytes, rxBytes))
+			}
 
 			// TX histograms — values are already per-flush deltas from Firecracker.
-			fcNetBytes.Record(ctx, int64(n.TxBytesCount), attrTX)
+			fcNetBytes.Record(ctx, int64(txBytes), attrTX)
 			fcNetPackets.Record(ctx, int64(n.TxPacketsCount), attrTX)
 			fcNetCount.Record(ctx, int64(n.TxCount), attrTX)
 			fcNetRateLimiterEventCount.Record(ctx, int64(n.TxRateLimiterEventCount), attrTX)
@@ -359,7 +397,7 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 			}
 
 			// RX histograms.
-			fcNetBytes.Record(ctx, int64(n.RxBytesCount), attrRX)
+			fcNetBytes.Record(ctx, int64(rxBytes), attrRX)
 			fcNetPackets.Record(ctx, int64(n.RxPacketsCount), attrRX)
 			fcNetCount.Record(ctx, int64(n.RxCount), attrRX)
 
@@ -418,6 +456,7 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 		}
 
 		if err := scanner.Err(); err != nil {
+			journalError(journal.Gap("metrics_reader_failed"))
 			if errors.Is(err, bufio.ErrTooLong) {
 				logger.L().Error(ctx, "fc metrics line exceeded buffer size, metrics reader stopped",
 					zap.Int("bufferSizeBytes", metricsReaderBufSize),
@@ -431,4 +470,5 @@ func (p *Process) startMetricsReader(ctx context.Context) {
 			}
 		}
 	}()
+	return nil
 }
