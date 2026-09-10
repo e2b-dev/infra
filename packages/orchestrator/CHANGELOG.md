@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.16.1 (2026-09-10)
+
+
+### Bug Fixes
+
+* **clean-nfs-cache:** install CA certificates (ec5bb0c)
+
 ## 0.16.0 (2026-09-10)
 
 
