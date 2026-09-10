@@ -60,6 +60,7 @@ var (
 	envdFreezeWaitHistogram       = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeWaitHistogramName))
 	envdFreezeVisitedHistogram    = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeVisitedHistogramName))
 	envdFreezeAuditHistogram      = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeAuditHistogramName))
+	envdMemoryProtectionHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdMemoryProtectionHistogramName))
 	envdDefaultsApplied           = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdDefaultsApplied))
 	envdDefaultsMismatch          = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdDefaultsMismatch))
 	envdDefaultsWorkdirWithheld   = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdDefaultsWorkdirWithheld))
@@ -402,6 +403,11 @@ type Sandbox struct {
 	// reported on its most recent /init (X-Envd-Handover header), or nil if the
 	// running envd did not boot from a handover.
 	handoverResult atomic.Pointer[EnvdHandoverResult]
+	// envdMemory is the memory protection the running envd most recently reported on
+	// its cgroup chain (X-Envd-Memory on /init); nil until a report has decoded, which a
+	// start that never got a response stays at. It is what the init instruments derive
+	// their protection cohort attribute from.
+	envdMemory atomic.Pointer[EnvdMemoryProtection]
 	// envdReportedDefaults is what the running envd said it is effectively serving
 	// with, from the X-Envd-Defaults header on its most recent /init. Nil means the
 	// running envd never reported any — which is a CAPABILITY signal, not an empty
@@ -464,9 +470,10 @@ type Sandbox struct {
 	rootfsSealDone *utils.SetOnce[struct{}]
 
 	// startupRecorded guards ALL first-WaitForEnvd recording — the envd-init
-	// duration + uffd.startup.* histograms, the envd-init call counter (in
-	// initEnvd), and SetStartedAt — so they fire only on the actual sandbox
-	// start. A later WaitForEnvd on the same handler (the post-upgrade readiness
+	// duration + uffd.startup.* histograms, the envd-init call counter and the
+	// envd memory-protection histogram (both in initEnvd), and SetStartedAt — so
+	// they fire only on the actual sandbox start. A later WaitForEnvd on the same
+	// handler (the post-upgrade readiness
 	// re-check, or the envd-binary swap + restart in a template build) re-runs
 	// /init to re-capture state but must not re-record these: ServeStats() is
 	// lifetime-cumulative, the duration/counter would double-count the resume
@@ -1144,7 +1151,10 @@ type resumeOptions struct {
 // skipStartupMetrics), the two envd-defaults volume counters recordEnvdDefaults emits,
 // builtin_fallback in compareEnvdDefaults, and the resume wp_mode counter. Deliberately NOT
 // the mismatch counter, which reports a defect rather than sizing a population — a defect on
-// a throwaway resume is still a defect.
+// a throwaway resume is still a defect. Also deliberately NOT the envd memory-protection
+// histogram, which follows the envd.init.calls predicate instead so that it can be divided
+// by that counter's exit_type=success series over the starts whose header decoded;
+// init.calls counts throwaways, so the histogram must too.
 func (o *resumeOptions) describesCustomerStart() bool {
 	return !o.skipLiveRegistration
 }
@@ -4101,8 +4111,9 @@ func (s *Sandbox) WaitForEnvd(
 	ctx, span := tracer.Start(ctx, "sandbox-wait-for-start")
 	defer span.End()
 
-	// Record the per-start KPIs, the envd-init counter, and StartedAt only on the
-	// FIRST WaitForEnvd for this handler (see startupRecorded). A later call — the
+	// Record the per-start KPIs, the envd-init counter and protection histogram,
+	// and StartedAt only on the FIRST WaitForEnvd for this handler (see
+	// startupRecorded). A later call — the
 	// post-upgrade readiness re-check, or the envd-binary swap during a template
 	// build — re-runs /init to re-capture state but must not re-record.
 	firstStart := s.startupRecorded.CompareAndSwap(false, true)
@@ -4120,14 +4131,8 @@ func (s *Sandbox) WaitForEnvd(
 		// cover its timing/size.
 		if !s.skipStartupMetrics {
 			duration := time.Since(start).Milliseconds()
-			// success is kept for backward compatibility until consumers move to exit_type.
-			waitForEnvdDurationHistogram.Record(ctx, duration, metric.WithAttributes(
-				telemetry.WithEnvdVersion(s.Config.Envd.Version),
-				attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
-				attribute.Bool("success", e == nil),
-				attribute.String("start_type", string(startType)),
-				attribute.String("exit_type", string(classifyEnvdInitExit(e))),
-			))
+			waitForEnvdDurationHistogram.Record(ctx, duration,
+				metric.WithAttributes(s.waitForEnvdDurationAttrs(startType, e)...))
 
 			// The demand-fault working set the guest needed to reach this point.
 			// ServeStats() is cumulative since resume, so at this instant it equals
@@ -4178,6 +4183,21 @@ func (s *Sandbox) WaitForEnvd(
 	telemetry.ReportEvent(ctx, fmt.Sprintf("[sandbox %s]: initialized new envd", s.Metadata.Runtime.SandboxID))
 
 	return nil
+}
+
+// waitForEnvdDurationAttrs is the attribute set the envd-init duration histogram is
+// recorded with, for a start of startType that ended with e.
+func (s *Sandbox) waitForEnvdDurationAttrs(startType StartType, e error) []attribute.KeyValue {
+	attrs := []attribute.KeyValue{
+		telemetry.WithEnvdVersion(s.Config.Envd.Version),
+		attribute.Int64("timeout_ms", s.internalConfig.EnvdInitRequestTimeout.Milliseconds()),
+		// success is kept for backward compatibility until consumers move to exit_type.
+		attribute.Bool("success", e == nil),
+		attribute.String("start_type", string(startType)),
+		attribute.String("exit_type", string(classifyEnvdInitExit(e))),
+	}
+
+	return append(attrs, s.envdProtectionAttrs()...)
 }
 
 func releaseCgroupFD(ctx context.Context, cgroupHandle *cgroup.CgroupHandle, sandboxID string) {

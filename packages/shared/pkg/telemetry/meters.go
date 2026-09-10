@@ -409,13 +409,24 @@ const (
 	// needed to reach a successful envd init, recorded once per start. Sampled
 	// per start (not per fault), so histogram_quantile yields per-sandbox
 	// percentiles.
-	EnvdFreezeDurationHistogramName     HistogramType = "orchestrator.sandbox.envd.freeze.duration"
-	EnvdFreezeSweepHistogramName        HistogramType = "orchestrator.sandbox.envd.freeze.sweep"
-	EnvdFreezeWaitHistogramName         HistogramType = "orchestrator.sandbox.envd.freeze.wait"
-	EnvdFreezeVisitedHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.visited"
-	EnvdFreezeAuditHistogramName        HistogramType = "orchestrator.sandbox.envd.freeze.audit"
-	EnvdFreezeCgroupsHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.cgroups"
-	EnvdUnfreezeDurationHistogramName   HistogramType = "orchestrator.sandbox.envd.unfreeze.duration"
+	EnvdFreezeDurationHistogramName   HistogramType = "orchestrator.sandbox.envd.freeze.duration"
+	EnvdFreezeSweepHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.sweep"
+	EnvdFreezeWaitHistogramName       HistogramType = "orchestrator.sandbox.envd.freeze.wait"
+	EnvdFreezeVisitedHistogramName    HistogramType = "orchestrator.sandbox.envd.freeze.visited"
+	EnvdFreezeAuditHistogramName      HistogramType = "orchestrator.sandbox.envd.freeze.audit"
+	EnvdFreezeCgroupsHistogramName    HistogramType = "orchestrator.sandbox.envd.freeze.cgroups"
+	EnvdUnfreezeDurationHistogramName HistogramType = "orchestrator.sandbox.envd.unfreeze.duration"
+	// Memory protection configured on the guest envd's cgroup chain, as envd reports it
+	// on /init, recorded at most once per start (when the first /init's header decodes):
+	// kind=request is envd's own memory.min, kind=floor the minimum over the chain below
+	// the root. In MiB, the unit the template renders the protection in, so the two compare
+	// without conversion; the truncation that costs is a setting below 1 MiB, which records
+	// as 0. Capped at the sandbox's RAM, so that one unbounded request cannot cost the whole
+	// series its bucket resolution: the exporter aggregates every histogram as base-2
+	// exponential at a scale it lowers only to fit the observed range, and discards
+	// per-instrument boundaries, so the range the series spans is the resolution every
+	// sample in it gets.
+	EnvdMemoryProtectionHistogramName   HistogramType = "orchestrator.sandbox.envd.memory.protection"
 	UffdStartupPagesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.pages"
 	UffdStartupSourcePagesHistogramName HistogramType = "orchestrator.sandbox.uffd.startup.source_pages"
 	UffdStartupBytesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.bytes"
@@ -811,6 +822,7 @@ var histogramDesc = map[HistogramType]string{
 	EnvdFreezeAuditHistogramName:        "Resume-time audit of the frozen cgroup set, by kind: escaped (ran through the snapshot, whether created after the sweep or missed by a truncated or failed one -- read alongside freeze.truncated and the failed outcome) and violations (a cgroup the resume depends on was frozen -- a bug, expected to be zero)",
 	EnvdFreezeCgroupsHistogramName:      "Cgroups affected by a pre-pause freeze, per pause, split by outcome",
 	EnvdUnfreezeDurationHistogramName:   "Round-trip duration of the pause-rollback workload thaw call, per rollback",
+	EnvdMemoryProtectionHistogramName:   "Memory protection configured on envd's cgroup chain as the guest reports it on /init, at most once per start (when the first /init's header decodes), by kind: request (envd's own memory.min) and floor (the minimum of memory.min over the chain below the root, envd's own cgroup included; 0 means some level carries none, there is no level at all because envd is in the root cgroup, or a value could not be read -- the init instruments' protection attribute is what tells the unreadable case apart, as unknown rather than unprotected). Values are truncated to MiB, so a setting below 1 MiB records as 0, and capped at the sandbox's own RAM, since nothing can protect more memory than the guest has: a sample equal to the sandbox's RAM means at least that, and an unbounded request (memory.min = max) is the extreme case that reaches it, though any request above the guest's RAM does; a sandbox whose RAM the recording does not know records the value uncapped. The exact byte count is on the envd-init span",
 	UffdStartupPagesHistogramName:       "Demand-fault pages a guest needed to reach a successful envd init, per start",
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
 	UffdStartupBytesHistogramName:       "Bytes faulted into a guest to reach a successful envd init, per start",
@@ -882,6 +894,7 @@ var histogramUnits = map[HistogramType]string{
 	EnvdFreezeAuditHistogramName:                      "{cgroup}",
 	EnvdFreezeCgroupsHistogramName:                    "{cgroup}",
 	EnvdUnfreezeDurationHistogramName:                 "ms",
+	EnvdMemoryProtectionHistogramName:                 "MiBy",
 	UffdStartupPagesHistogramName:                     "{page}",
 	UffdStartupSourcePagesHistogramName:               "{page}",
 	UffdStartupBytesHistogramName:                     "{By}",
