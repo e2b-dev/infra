@@ -865,7 +865,10 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 	sandboxFactory := sandbox.NewFactory(ctx, config.BuilderConfig, networkPool, devicePool, featureFlags, hostStatsDelivery, cgroupManager, egressSetup.Proxy, networkAssignHook, sandboxes)
 
-	// isolated filesystems cache (for nfs proxy)
+	// confined volume filesystems (for the volume service and nfs proxy)
+	if err := chrooted.CheckSupport(); err != nil {
+		logger.L().Fatal(ctx, "volume confinement prerequisites not met", zap.Error(err))
+	}
 	builder := chrooted.NewBuilder(config)
 	volumeService := volumes.New(config, builder)
 

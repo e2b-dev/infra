@@ -176,7 +176,7 @@ func (h *NFSHandler) getChroot(ctx context.Context, remoteAddr net.Addr, request
 		return nil, ErrVolumeID
 	}
 
-	fs, err := h.builder.Chroot(ctx, volumeMount.Type, teamID, volumeMount.ID)
+	fs, err := h.builder.Chroot(volumeMount.Type, teamID, volumeMount.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to mount %q: %w", volumeName, err)
 	}
