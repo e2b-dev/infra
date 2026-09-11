@@ -35,6 +35,7 @@ func TestCreateTracksWorkUntilCanceled(t *testing.T) {
 	t.Parallel()
 
 	s := admissionTestServer(t, nil)
+	s.info.MaxSandboxes.Store(int64(featureflags.MaxSandboxesPerNode.Fallback()))
 	s.sandboxCreateDuration = noop.Int64Histogram{}
 
 	synctest.Test(t, func(t *testing.T) {

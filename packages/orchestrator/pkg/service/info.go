@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -28,10 +29,11 @@ type ServiceInfo struct {
 	SourceVersion string
 	SourceCommit  string
 
-	Startup     time.Time
-	Roles       []orchestratorinfo.ServiceInfoRole
-	Labels      []string
-	MachineInfo machineinfo.MachineInfo
+	Startup      time.Time
+	Roles        []orchestratorinfo.ServiceInfoRole
+	Labels       []string
+	MachineInfo  machineinfo.MachineInfo
+	MaxSandboxes atomic.Int64
 
 	status          ServiceStatus
 	statusMu        sync.RWMutex

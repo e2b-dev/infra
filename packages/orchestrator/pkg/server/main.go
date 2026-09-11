@@ -39,6 +39,8 @@ const uploadedBuildsTTL = 1 * time.Hour
 // MaxStartingInstancesPerNode feature flag and resize the semaphore.
 const startingSandboxesLimitRefreshInterval = 30 * time.Second
 
+const maxSandboxesLimitRefreshInterval = 30 * time.Second
+
 // uploadDrainLogInterval is how often Close logs progress while waiting for
 // in-flight snapshot uploads to finish during shutdown.
 const uploadDrainLogInterval = 10 * time.Second
@@ -148,6 +150,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		uploads:           cfg.Uploads,
 		done:              make(chan struct{}),
 	}
+	server.updateMaxSandboxesLimit(ctx)
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
 
@@ -243,8 +246,8 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to create sandbox limit gauge: %w", err)
 	}
 
-	_, err = meter.RegisterCallback(func(ctx context.Context, obs metric.Observer) error {
-		obs.ObserveInt64(sandboxLimitGauge, int64(server.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)))
+	_, err = meter.RegisterCallback(func(_ context.Context, obs metric.Observer) error {
+		obs.ObserveInt64(sandboxLimitGauge, server.info.MaxSandboxes.Load())
 
 		return nil
 	}, sandboxLimitGauge)
@@ -311,6 +314,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 	}
 
 	go server.refreshStartingSandboxesLimit(ctx)
+	go server.refreshMaxSandboxesLimit(ctx)
 
 	return server, nil
 }
@@ -436,6 +440,26 @@ func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
 				logger.L().Error(ctx, "failed to adjust starting sandboxes semaphore",
 					zap.Int("limit", limit), zap.Error(err))
 			}
+		}
+	}
+}
+
+func (s *Server) updateMaxSandboxesLimit(ctx context.Context) {
+	s.info.MaxSandboxes.Store(int64(s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)))
+}
+
+func (s *Server) refreshMaxSandboxesLimit(ctx context.Context) {
+	ticker := time.NewTicker(maxSandboxesLimitRefreshInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.done:
+			return
+		case <-ticker.C:
+			s.updateMaxSandboxesLimit(ctx)
 		}
 	}
 }

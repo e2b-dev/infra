@@ -209,9 +209,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		}
 	}
 
-	maxRunningSandboxesPerNode := s.featureFlags.IntFlag(ctx, featureflags.MaxSandboxesPerNode)
+	maxRunningSandboxesPerNode := s.info.MaxSandboxes.Load()
 
-	runningSandboxes := s.sandboxFactory.Sandboxes.Count()
+	runningSandboxes := int64(s.sandboxFactory.Sandboxes.Count())
 	if runningSandboxes >= maxRunningSandboxesPerNode {
 		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
 
