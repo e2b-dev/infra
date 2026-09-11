@@ -1,7 +1,9 @@
-![E2B Infra Preview Light](/readme-assets/infra-light.png#gh-light-mode-only)
-![E2B Infra Preview Dark](/readme-assets/infra-dark.png#gh-dark-mode-only)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./.github/assets/e2b-runtime-dark.png">
+  <img alt="E2B Runtime" src="./.github/assets/e2b-runtime-light.png" width="100%">
+</picture>
 
-# E2B Infrastructure
+# E2B Runtime
 
 [E2B](https://e2b.dev/?utm_source=github&utm_medium=referral&utm_campaign=readme&utm_content=infra) is an open-source infrastructure for AI code interpreting. In our main repository [e2b-dev/e2b](https://github.com/e2b-dev/E2B) we are giving you SDKs and CLI to customize and manage environments and run your AI agents in the cloud.
 

@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../.github/assets/e2b-embed-dark.png">
+  <img alt="E2B Embed" src="../.github/assets/e2b-embed-light.png" width="100%">
+</picture>
+
 # E2B Embed
 
 E2B Embed is a complete E2B, sandboxes included, on one machine you own. Three
