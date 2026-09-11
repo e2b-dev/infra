@@ -348,6 +348,11 @@ var (
 
 	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
 
+	// EgressProxyInterceptTracingFlag turns on connection, request and upstream
+	// spans for a sandbox's TLS-intercepted egress. Target the sandbox or team
+	// context; the fallback keeps interception at its existing transform span.
+	EgressProxyInterceptTracingFlag = NewBoolFlag("egress-proxy-intercept-tracing", false)
+
 	// SandboxIamTokensFlag gates the sandbox IAM workload token configuration
 	// (iam.tokens) per team during beta.
 	SandboxIamTokensFlag = NewBoolFlag("enable-sandbox-iam-tokens", env.IsDevelopment())
