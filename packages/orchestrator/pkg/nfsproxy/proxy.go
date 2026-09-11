@@ -22,8 +22,6 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 )
 
-const cacheLimit = 1024
-
 var setLogLevelOnce sync.Once
 
 type Proxy struct {
@@ -47,7 +45,7 @@ func NewProxy(ctx context.Context, builder *chrooted.Builder, sandboxes *sandbox
 	}
 
 	// wrap the handler in middleware
-	handler = helpers.NewCachingHandler(handler, cacheLimit)
+	handler = helpers.NewCachingHandler(handler, config.CacheLimit)
 
 	if config.Tracing {
 		handler = tracing.WrapWithTracing(handler, config)
