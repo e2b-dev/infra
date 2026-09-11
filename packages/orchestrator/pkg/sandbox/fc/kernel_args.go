@@ -91,10 +91,20 @@ func buildKernelArgs(ipv4 string, options ProcessOptions) KernelArgs {
 		// Define kernel init path
 		"init": options.InitScriptPath,
 
-		// Networking IPv4 and IPv6
-		"ip":            ipv4,
-		"ipv6.disable":  "0",
-		"ipv6.autoconf": "1",
+		// Networking. The guest's IPv6 behaviour is determined by whether the host
+		// tap interface has an IPv6 router configured (see Slot.HasIPv6Router and
+		// ProcessOptions.IPv6RouterConfigured). Without a router, SLAAC produces
+		// only an unroutable fe80:: link-local address; leaving IPv6 enabled in
+		// that state causes the kernel to prefer AAAA records and attempt IPv6
+		// first on every outbound connection, adding a ~250 ms Happy Eyeballs
+		// penalty (RFC 8305) before falling back to IPv4.
+		"ip": ipv4,
+		"ipv6.disable": func() string {
+			if options.IPv6RouterConfigured {
+				return "0"
+			}
+			return "1"
+		}(),
 
 		// Wait 1 second before exiting FC after panic or reboot
 		"panic": "1",

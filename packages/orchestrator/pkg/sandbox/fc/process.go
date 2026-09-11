@@ -112,6 +112,14 @@ type ProcessOptions struct {
 	// filesystem-only snapshot. A memory resume never re-reads the command line.
 	CmdlineArgs map[string]string
 
+	// IPv6RouterConfigured reports whether the host-side tap interface for this
+	// slot has an IPv6 router configured (router advertisements + routable prefix).
+	// When false (the default) the guest kernel boots with ipv6.disable=1 so that
+	// the unroutable fe80:: link-local address produced by SLAAC does not trigger
+	// the Happy Eyeballs ~250 ms fallback on every dual-stack outbound connection.
+	// Set from Slot.HasIPv6Router() at boot time.
+	IPv6RouterConfigured bool
+
 	// AccessToken, when non-nil, makes Create write the guest MMDS metadata
 	// (sandbox/template IDs, logs address, and the access-token hash) before the
 	// VM boots, so a cold-booted envd can authenticate /init the same way it does
@@ -376,6 +384,7 @@ func (p *Process) Create(
 
 	// IPv4 configuration - format: [local_ip]::[gateway_ip]:[netmask]:hostname:iface:dhcp_option:[dns]
 	ipv4 := fmt.Sprintf("%s::%s:%s:instance:%s:off:%s", p.slot.NamespaceIP(), p.slot.TapIPString(), p.slot.TapMaskString(), p.slot.VpeerName(), p.slot.TapName())
+	options.IPv6RouterConfigured = p.slot.HasIPv6Router()
 	kernelArgs := buildKernelArgs(ipv4, options).String()
 	err = p.client.setBootSource(ctx, kernelArgs, p.kernelPath)
 	if err != nil {

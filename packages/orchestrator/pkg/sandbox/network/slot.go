@@ -230,6 +230,21 @@ func (s *Slot) TapMAC() string {
 	return tapMAC
 }
 
+// HasIPv6Router reports whether the host-side tap interface for this slot has
+// an IPv6 router configured (i.e. sends router advertisements so the guest can
+// obtain a routable IPv6 address via SLAAC).
+//
+// Today the host networking stack is IPv4-only — no RA is sent on the tap, so
+// SLAAC produces only an unroutable fe80:: link-local address inside the guest.
+// Returning false here causes the orchestrator to boot guests with
+// ipv6.disable=1, eliminating the ~250 ms Happy Eyeballs penalty that arises
+// when the guest tries IPv6 first and times out. When a full IPv6 stack is
+// added to the host networking layer, flip this to true (or derive it from the
+// slot's actual IPv6 configuration).
+func (s *Slot) HasIPv6Router() bool {
+	return false
+}
+
 func (s *Slot) InitializeFirewall() error {
 	if s.Firewall != nil {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
