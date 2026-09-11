@@ -49,6 +49,8 @@ RUN chmod +x /build/dashboard-api/bin/dashboard-api
 
 FROM alpine:${ALPINE_VERSION}
 
+RUN apk upgrade --no-cache
+
 COPY --from=builder /build/dashboard-api/bin/dashboard-api .
 
 ENTRYPOINT ["./dashboard-api"]

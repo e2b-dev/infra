@@ -39,6 +39,8 @@ RUN chmod +x /build/client-proxy/bin/client-proxy
 
 FROM alpine:${ALPINE_VERSION}
 
+RUN apk upgrade --no-cache
+
 COPY --from=builder /build/client-proxy/bin/client-proxy .
 
 ENTRYPOINT ["./client-proxy"]

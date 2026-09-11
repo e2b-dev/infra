@@ -21,6 +21,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /nomad-nodepool-apm .
 # Final stage - minimal image, but shared with builder
 FROM alpine:${ALPINE_VERSION}
 
+RUN apk upgrade --no-cache
+
 COPY --from=builder /nomad-nodepool-apm /nomad-nodepool-apm
 
 # The plugin binary will be extracted from this image

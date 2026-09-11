@@ -44,6 +44,8 @@ RUN chmod +x /build/api/bin/api
 
 FROM alpine:${ALPINE_VERSION}
 
+RUN apk upgrade --no-cache
+
 COPY --from=builder /build/api/bin/api .
 
 # Set Gin server to the production mode
