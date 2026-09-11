@@ -209,9 +209,9 @@ go test -race -v -run TestCreateSandbox ./internal/handlers
 - Code generation: `make generate/db` (regenerates sqlc code)
 
 ### Environment Variables
-- Environment configs: `.env.{prod,staging,dev}`
-- Templates: `.env.gcp.template`, `.env.aws.template`
-- Switch: `make switch-env ENV=staging`
+- Local development defaults: `packages/<service>/.env.local`; see [DEV-LOCAL.md](DEV-LOCAL.md).
+- Self-hosting configuration: [embed/compose/.env](embed/compose/.env); see [embed/README.md](embed/README.md).
+- Custom environment configs: `.env.<environment>`, selected with `make switch-env ENV=<environment>`.
 
 ### Firecracker & VM Management
 - Orchestrator requires **sudo** to run (Firecracker needs root)
