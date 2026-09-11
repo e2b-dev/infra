@@ -58,9 +58,9 @@ func (s *fsStorage) GetDetails() string {
 	return fmt.Sprintf("[Local file storage, base path set to %s]", s.basePath)
 }
 
-func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (UploadURL, error) {
 	if s.uploadURL == "" || s.hmacKey == nil {
-		return "", errors.New("file system storage does not support signed URLs (no local upload endpoint configured)")
+		return UploadURL{}, errors.New("file system storage does not support signed URLs (no local upload endpoint configured)")
 	}
 
 	expiresSec := time.Now().Add(ttl).Unix()
@@ -69,7 +69,7 @@ func (s *fsStorage) UploadSignedURL(_ context.Context, path string, ttl time.Dur
 	u := fmt.Sprintf("%s/upload?path=%s&expires=%d&token=%s",
 		s.uploadURL, url.QueryEscape(path), expiresSec, url.QueryEscape(token))
 
-	return u, nil
+	return UploadURL{URL: u}, nil
 }
 
 func (s *fsStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {

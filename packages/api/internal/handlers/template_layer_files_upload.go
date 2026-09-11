@@ -68,8 +68,13 @@ func (a *APIStore) GetTemplatesTemplateIDFilesHash(c *gin.Context, templateID ap
 		return
 	}
 
-	c.JSON(http.StatusCreated, &api.TemplateBuildFileUpload{
+	upload := api.TemplateBuildFileUpload{
 		Present: resp.GetPresent(),
 		Url:     resp.Url,
-	})
+	}
+	if headers := resp.GetUploadHeaders(); len(headers) > 0 {
+		upload.Headers = &headers
+	}
+
+	c.JSON(http.StatusCreated, &upload)
 }

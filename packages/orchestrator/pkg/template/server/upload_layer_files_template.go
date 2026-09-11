@@ -36,7 +36,7 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 		return nil, fmt.Errorf("failed to check if layer files exists: %w", err)
 	}
 
-	signedUrl, err := s.buildStorage.UploadSignedURL(ctx, path, signedUrlExpiration)
+	upload, err := s.buildStorage.UploadSignedURL(ctx, path, signedUrlExpiration)
 	if err != nil {
 		// A cache hit needs no upload URL, so a provider that cannot sign one is fatal
 		// only on a miss.
@@ -48,7 +48,8 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 	}
 
 	return &templatemanager.InitLayerFileUploadResponse{
-		Present: exists,
-		Url:     &signedUrl,
+		Present:       exists,
+		Url:           &upload.URL,
+		UploadHeaders: upload.Headers,
 	}, nil
 }

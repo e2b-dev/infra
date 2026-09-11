@@ -163,7 +163,7 @@ func (s *awsStorage) GetDetails() string {
 	return fmt.Sprintf("[AWS Storage, bucket set to %s]", s.bucketName)
 }
 
-func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (UploadURL, error) {
 	input := &s3.PutObjectInput{
 		Bucket: aws.String(s.bucketName),
 		Key:    aws.String(path),
@@ -172,10 +172,10 @@ func (s *awsStorage) UploadSignedURL(ctx context.Context, path string, ttl time.
 		opts.Expires = ttl
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to presign PUT URL: %w", err)
+		return UploadURL{}, fmt.Errorf("failed to presign PUT URL: %w", err)
 	}
 
-	return resp.URL, nil
+	return UploadURL{URL: resp.URL}, nil
 }
 
 func (s *awsStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {

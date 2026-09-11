@@ -1330,6 +1330,9 @@ type TemplateBuild struct {
 
 // TemplateBuildFileUpload defines model for TemplateBuildFileUpload.
 type TemplateBuildFileUpload struct {
+	// Headers Request headers that must be sent with the upload request
+	Headers *map[string]string `json:"headers,omitempty"`
+
 	// Present Whether the file is already present in the cache
 	Present bool `json:"present"`
 
