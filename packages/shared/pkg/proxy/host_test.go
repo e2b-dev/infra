@@ -78,6 +78,16 @@ func TestGetTargetFromRequest(t *testing.T) {
 			wantErrAs: InvalidSandboxPortError{},
 		},
 		{
+			name:      "sandbox-host-with-zero-port",
+			host:      "0-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantErrAs: InvalidSandboxPortError{},
+		},
+		{
+			name:      "sandbox-host-with-port-exceeding-max",
+			host:      "65536-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantErrAs: InvalidSandboxPortError{},
+		},
+		{
 			name:      "sandbox-host-without-domain",
 			host:      "49983-isv6ril5xadwn1k9t2jye",
 			wantID:    "isv6ril5xadwn1k9t2jye",
@@ -107,6 +117,24 @@ func TestGetTargetFromRequest(t *testing.T) {
 			},
 			wantID:   "isv6ril5xadwn1k9t2jye",
 			wantPort: 8080,
+		},
+		{
+			name: "headers: zero port",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"0"},
+			},
+			wantErrAs: InvalidSandboxPortError{},
+		},
+		{
+			name: "headers: port exceeding max",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"70000"},
+			},
+			wantErrAs: InvalidSandboxPortError{},
 		},
 		{
 			name: "headers: loopback IPv4",
@@ -235,7 +263,8 @@ func TestGetTargetFromRequest(t *testing.T) {
 			}
 
 			if tt.wantErrAs != nil {
-				require.ErrorAs(t, err, &tt.wantErrIs) //nolint:testifylint // doesn't need to
+				var targetErr InvalidSandboxPortError
+				require.ErrorAs(t, err, &targetErr)
 
 				return // no further checks when an error was expected
 			}
