@@ -339,7 +339,7 @@ func TestAzureIntegration(t *testing.T) {
 		// The interface method must fail loudly rather than return a URL an external
 		// client cannot use; see its doc comment.
 		_, err := provider.UploadSignedURL(ctx, "signed/refused.bin", time.Hour)
-		require.Error(t, err)
+		require.ErrorIs(t, err, ErrSignedUploadURLUnsupported)
 		assert.Contains(t, err.Error(), "x-ms-blob-type")
 	})
 

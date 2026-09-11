@@ -1,0 +1,100 @@
+//go:build linux
+
+package server
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/paths"
+	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+)
+
+const (
+	testTemplateID = "tmpl-init-layer-upload"
+	testFilesHash  = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+)
+
+func newInitLayerFileUploadServer(t *testing.T, exists bool, signedURL string, signErr error) *ServerStore {
+	t.Helper()
+
+	blob := storage.NewMockBlob(t)
+	blob.EXPECT().Exists(mock.Anything).Return(exists, nil)
+
+	provider := storage.NewMockStorageProvider(t)
+	path := paths.GetLayerFilesCachePath(testTemplateID, testFilesHash)
+	provider.EXPECT().OpenBlob(mock.Anything, path).Return(blob, nil)
+	provider.EXPECT().UploadSignedURL(mock.Anything, path, signedUrlExpiration).Return(signedURL, signErr)
+
+	return &ServerStore{buildStorage: provider}
+}
+
+func initLayerFileUploadRequest() *templatemanager.InitLayerFileUploadRequest {
+	return &templatemanager.InitLayerFileUploadRequest{
+		TemplateID: testTemplateID,
+		Hash:       testFilesHash,
+	}
+}
+
+func TestInitLayerFileUploadUnsignableProvider(t *testing.T) {
+	t.Parallel()
+
+	unsupported := fmt.Errorf("%w: test provider", storage.ErrSignedUploadURLUnsupported)
+
+	t.Run("cache hit reports present without a url", func(t *testing.T) {
+		t.Parallel()
+
+		s := newInitLayerFileUploadServer(t, true, "", unsupported)
+
+		resp, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
+		require.NoError(t, err)
+		assert.True(t, resp.GetPresent())
+		assert.Nil(t, resp.Url, "a cache hit must not hand back an unusable url")
+	})
+
+	t.Run("cache miss still fails", func(t *testing.T) {
+		t.Parallel()
+
+		s := newInitLayerFileUploadServer(t, false, "", unsupported)
+
+		_, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
+		require.ErrorIs(t, err, storage.ErrSignedUploadURLUnsupported)
+	})
+}
+
+// Signing failures that are not the "unsupported" sentinel stay fatal even on a cache hit:
+// tolerating them would hide a broken credential behind a green response.
+func TestInitLayerFileUploadSigningErrorOnCacheHit(t *testing.T) {
+	t.Parallel()
+
+	signErr := errors.New("failed to parse GCP service account")
+	s := newInitLayerFileUploadServer(t, true, "", signErr)
+
+	_, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
+	require.ErrorIs(t, err, signErr)
+}
+
+// The url is returned on a cache hit as well: the SDK gates forceUpload re-uploads on
+// url != nil, so dropping it there would silently turn forceUpload into a no-op.
+func TestInitLayerFileUploadKeepsURLOnCacheHit(t *testing.T) {
+	t.Parallel()
+
+	for _, exists := range []bool{true, false} {
+		t.Run(fmt.Sprintf("exists=%v", exists), func(t *testing.T) {
+			t.Parallel()
+
+			s := newInitLayerFileUploadServer(t, exists, "https://bucket.example/signed", nil)
+
+			resp, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
+			require.NoError(t, err)
+			assert.Equal(t, exists, resp.GetPresent())
+			assert.Equal(t, "https://bucket.example/signed", resp.GetUrl())
+		})
+	}
+}

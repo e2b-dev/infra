@@ -21,6 +21,10 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 
 var ErrObjectNotExist = errors.New("object does not exist")
 
+// ErrSignedUploadURLUnsupported means the provider cannot sign an upload URL usable by an
+// external client. Callers that only need the URL on a cache miss may tolerate it.
+var ErrSignedUploadURLUnsupported = errors.New("signed upload URLs are not supported by this storage provider")
+
 // ErrObjectRateLimited means per-object mutation rate limiting —
 // multiple concurrent writers racing to write the same content-addressed object.
 var ErrObjectRateLimited = errors.New("object access rate limited")
