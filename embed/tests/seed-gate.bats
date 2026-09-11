@@ -5,7 +5,7 @@
 # this stack started with (12ee9b10) ignores both and leaves no file, so
 # base-template refuses to start with a FIX line. The pin moved off it on
 # 2026-09-04, onto a runtime commit whose seed knows the file, and reads
-# fe1e4e31 today; this test keeps it from sliding back. Same shape as
+# 7278c2a3 today; this test keeps it from sliding back. Same shape as
 # pins.bats.
 
 setup() {

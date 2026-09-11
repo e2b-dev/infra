@@ -23,13 +23,13 @@ images:
     newTag: v0.4.0
   - name: E2B_TOOLS_IMAGE
     newName: us-docker.pkg.dev/e2b-artifacts/embed/tools
-    newTag: v0.3.202609102141-4e83bd6ac4a
+    newTag: v0.3.202609110002-08f7323aaa9
   - name: E2B_NODE_E2B_IMAGE
     newName: us-docker.pkg.dev/e2b-artifacts/embed/node-e2b
-    newTag: v0.3.202609102141-4e83bd6ac4a
+    newTag: v0.3.202609110002-08f7323aaa9
   - name: E2B_SEED_IMAGE
     newName: us-docker.pkg.dev/e2b-artifacts/embed/seed
-    newTag: v0.3.202609102141-4e83bd6ac4a
+    newTag: v0.3.202609110002-08f7323aaa9
 
 # Content-hashed names: a changed literal or file renames the map and rolls the
 # pod. Older maps are left behind (kustomize does not prune); delete them by
