@@ -624,6 +624,9 @@ type Node struct {
 	Id          string      `json:"id"`
 	MachineInfo MachineInfo `json:"machineInfo"`
 
+	// MaxSandboxes Node-scoped configured sandbox admission limit. Nonpositive values reject creation. Omitted when unknown or not an orchestrator.
+	MaxSandboxes *int64 `json:"maxSandboxes,omitempty"`
+
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`
 
@@ -667,6 +670,9 @@ type NodeDetail struct {
 	// Id Identifier of the node
 	Id          string      `json:"id"`
 	MachineInfo MachineInfo `json:"machineInfo"`
+
+	// MaxSandboxes Node-scoped configured sandbox admission limit. Nonpositive values reject creation. Omitted when unknown or not an orchestrator.
+	MaxSandboxes *int64 `json:"maxSandboxes,omitempty"`
 
 	// Metrics Node metrics
 	Metrics NodeMetrics `json:"metrics"`

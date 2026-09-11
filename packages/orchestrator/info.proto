@@ -55,6 +55,9 @@ message ServiceInfoResponse {
   // Missing means unknown, not idle.
   optional uint64 outstanding_work = 58;
 
+  // Node-scoped sandbox admission limit; absent when unsupported or not an orchestrator.
+  optional int64 max_sandboxes = 59;
+
   int64 metric_vcpu_used = 101 [deprecated = true];
   int64 metric_memory_used_mb = 102 [deprecated = true];
   int64 metric_disk_mb = 103 [deprecated = true];

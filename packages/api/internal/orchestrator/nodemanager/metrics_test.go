@@ -19,6 +19,29 @@ func TestMetricsOutstandingWork(t *testing.T) {
 	}
 }
 
+func TestMetricsMaxSandboxesSnapshotIsolation(t *testing.T) {
+	t.Parallel()
+
+	n := &Node{}
+	info := &orchestratorinfo.ServiceInfoResponse{MaxSandboxes: new(int64(200))}
+	n.UpdateMetricsFromServiceInfoResponse(info)
+	*info.MaxSandboxes = 300
+	require.Equal(t, new(int64(200)), n.Metrics().MaxSandboxes)
+
+	snapshot := n.Metrics()
+	*snapshot.MaxSandboxes = 400
+	require.Equal(t, new(int64(200)), n.Metrics().MaxSandboxes)
+
+	snapshot = n.Metrics()
+	n.UpdateMetricsFromServiceInfoResponse(info)
+	require.Equal(t, new(int64(200)), snapshot.MaxSandboxes)
+	require.Equal(t, new(int64(300)), n.Metrics().MaxSandboxes)
+
+	n.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{})
+	require.Nil(t, n.Metrics().MaxSandboxes)
+	require.Equal(t, new(int64(200)), snapshot.MaxSandboxes)
+}
+
 func TestMetricsOutstandingWorkSnapshotIsolation(t *testing.T) {
 	t.Parallel()
 

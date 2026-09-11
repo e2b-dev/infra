@@ -78,3 +78,54 @@ func TestAdminNodeOutstandingWorkSchema(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminNodesMaxSandboxes(t *testing.T) {
+	t.Parallel()
+
+	n := nodemanager.NewTestNode("node", api.NodeStatusReady, 0, 4)
+	client, _ := n.GetClient(t.Context())
+	t.Cleanup(func() { require.NoError(t, client.Close()) })
+	o := &Orchestrator{nodes: smap.New[*nodemanager.Node]()}
+	o.nodes.Insert(o.scopedNodeID(n.ClusterID, n.ID), n)
+
+	for _, limit := range []*int64{nil, new(int64(200)), new(int64(320)), new(int64(0)), new(int64(-1)), nil} {
+		n.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{MaxSandboxes: limit})
+		nodes, err := o.AdminNodes(n.ClusterID)
+		require.NoError(t, err)
+		require.Len(t, nodes, 1)
+		detail, err := o.AdminNodeDetail(n.ClusterID, n.ID)
+		require.NoError(t, err)
+
+		for _, response := range []any{nodes[0], detail} {
+			data, err := json.Marshal(response)
+			require.NoError(t, err)
+			var fields map[string]json.RawMessage
+			require.NoError(t, json.Unmarshal(data, &fields))
+			if limit == nil {
+				require.NotContains(t, fields, "maxSandboxes")
+			} else {
+				require.Equal(t, strconv.FormatInt(*limit, 10), string(fields["maxSandboxes"]))
+			}
+		}
+	}
+}
+
+func TestAdminNodeMaxSandboxesSchema(t *testing.T) {
+	t.Parallel()
+
+	spec, err := api.GetSpec()
+	require.NoError(t, err)
+	for _, name := range []string{"Node", "NodeDetail"} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			node := spec.Components.Schemas[name].Value
+			require.NotContains(t, node.Required, "maxSandboxes")
+			limit := node.Properties["maxSandboxes"].Value
+			require.True(t, limit.Type.Is("integer"))
+			require.Equal(t, "int64", limit.Format)
+			require.Nil(t, limit.Default)
+			require.False(t, limit.Nullable)
+		})
+	}
+}

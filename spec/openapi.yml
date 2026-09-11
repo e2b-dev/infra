@@ -1948,6 +1948,10 @@ components:
           type: integer
           format: uint32
           description: Number of sandboxes running on the node
+        maxSandboxes:
+          type: integer
+          format: int64
+          description: Node-scoped configured sandbox admission limit. Nonpositive values reject creation. Omitted when unknown or not an orchestrator.
         outstandingWork:
           type: integer
           format: uint64
@@ -2010,6 +2014,10 @@ components:
           type: integer
           format: uint32
           description: Number of sandboxes running on the node
+        maxSandboxes:
+          type: integer
+          format: int64
+          description: Node-scoped configured sandbox admission limit. Nonpositive values reject creation. Omitted when unknown or not an orchestrator.
         outstandingWork:
           type: integer
           format: uint64
