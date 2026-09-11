@@ -371,6 +371,197 @@ func TestPutAdminTeamsTeamIDClusterAssignsExistingCluster(t *testing.T) {
 	require.Equal(t, clusterID, assignedClusterID)
 }
 
+func TestPutAdminTeamsTeamIDClusterRejectsNonEnterpriseNewAssignmentWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	clusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token')`,
+		clusterID,
+	))
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`UPDATE public.teams SET tier = 'cluster_assignment_test' WHERE id = $1`,
+		teamID,
+	))
+
+	authService := &recordingCacheAuthService{}
+	store := &APIStore{db: db.SqlcClient, authService: authService}
+	response := callAssignCluster(t, store, teamID, api.AdminTeamClusterAssignmentRequest{ClusterId: clusterID})
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), enterpriseClusterAssignmentPolicyMessage)
+	require.Empty(t, authService.invalidated)
+
+	var assignedClusterID *uuid.UUID
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT cluster_id FROM public.teams WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&assignedClusterID)
+		},
+		teamID,
+	))
+	require.Nil(t, assignedClusterID)
+}
+
+func TestPutAdminTeamsTeamIDClusterRejectsNonEnterpriseReplacementWithoutMutation(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	existingClusterID := uuid.New()
+	replacementClusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token'), ($2, 'replacement', 'replacement.example.test:5008', true, 'token')`,
+		existingClusterID,
+		replacementClusterID,
+	))
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`UPDATE public.teams SET tier = 'cluster_assignment_test', cluster_id = $1 WHERE id = $2`,
+		existingClusterID,
+		teamID,
+	))
+
+	authService := &recordingCacheAuthService{}
+	store := &APIStore{db: db.SqlcClient, authService: authService}
+	response := callAssignCluster(t, store, teamID, api.AdminTeamClusterAssignmentRequest{ClusterId: replacementClusterID})
+	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+	require.Contains(t, response.Body.String(), enterpriseClusterAssignmentPolicyMessage)
+	require.Empty(t, authService.invalidated)
+
+	var assignedClusterID uuid.UUID
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT cluster_id FROM public.teams WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&assignedClusterID)
+		},
+		teamID,
+	))
+	require.Equal(t, existingClusterID, assignedClusterID)
+}
+
+func TestPutAdminTeamsTeamIDClusterReplaysSameAssignmentAfterTierDowngrade(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	clusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token')`,
+		clusterID,
+	))
+
+	authService := &recordingCacheAuthService{}
+	store := &APIStore{db: db.SqlcClient, authService: authService}
+	require.Equal(t, http.StatusNoContent,
+		callAssignCluster(t, store, teamID, api.AdminTeamClusterAssignmentRequest{ClusterId: clusterID}).Code)
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`UPDATE public.teams SET tier = 'cluster_assignment_test' WHERE id = $1`,
+		teamID,
+	))
+
+	preserveExisting := true
+	replayed := callAssignCluster(t, store, teamID, api.AdminTeamClusterAssignmentRequest{
+		ClusterId:        clusterID,
+		PreserveExisting: &preserveExisting,
+	})
+	require.Equal(t, http.StatusNoContent, replayed.Code, replayed.Body.String())
+	require.Equal(t, []uuid.UUID{teamID, teamID}, authService.invalidated)
+
+	var assignedClusterID uuid.UUID
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT cluster_id FROM public.teams WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&assignedClusterID)
+		},
+		teamID,
+	))
+	require.Equal(t, clusterID, assignedClusterID)
+}
+
+func TestPutAdminTeamsTeamIDClusterWaitsForConcurrentTierDowngradeBeforeReplacement(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	teamID := createClusterAssignmentTestTeam(t, db)
+	existingClusterID := uuid.New()
+	replacementClusterID := uuid.New()
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token'), ($2, 'replacement', 'replacement.example.test:5008', true, 'token')`,
+		existingClusterID,
+		replacementClusterID,
+	))
+	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
+		`UPDATE public.teams SET cluster_id = $1 WHERE id = $2`,
+		existingClusterID,
+		teamID,
+	))
+
+	_, downgradeTx, err := db.SqlcClient.WithTx(ctx)
+	require.NoError(t, err)
+	defer func() {
+		_ = downgradeTx.Rollback(t.Context())
+	}()
+	_, err = downgradeTx.Exec(ctx,
+		`UPDATE public.teams SET tier = 'cluster_assignment_test' WHERE id = $1`,
+		teamID,
+	)
+	require.NoError(t, err)
+
+	body, err := json.Marshal(api.AdminTeamClusterAssignmentRequest{ClusterId: replacementClusterID})
+	require.NoError(t, err)
+	httpRequest := httptest.NewRequestWithContext(ctx, http.MethodPut,
+		"/admin/teams/"+teamID.String()+"/cluster", bytes.NewReader(body))
+	httpRequest.Header.Set("Content-Type", "application/json")
+	authService := &recordingCacheAuthService{}
+	store := &APIStore{db: db.SqlcClient, authService: authService}
+	responseCh := make(chan *httptest.ResponseRecorder, 1)
+	assignmentStarted := make(chan struct{})
+	go func() {
+		close(assignmentStarted)
+		responseCh <- callAssignClusterRequest(store, teamID, httpRequest)
+	}()
+
+	<-assignmentStarted
+	select {
+	case response := <-responseCh:
+		require.FailNow(t, "assignment returned before the tier downgrade committed", response.Body.String())
+	case <-time.After(time.Second):
+	}
+
+	require.NoError(t, downgradeTx.Commit(ctx))
+	select {
+	case response := <-responseCh:
+		require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
+		require.Contains(t, response.Body.String(), enterpriseClusterAssignmentPolicyMessage)
+	case <-time.After(5 * time.Second):
+		require.FailNow(t, "assignment did not finish after the tier downgrade committed")
+	}
+	require.Empty(t, authService.invalidated)
+
+	var assignedClusterID uuid.UUID
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(ctx,
+		`SELECT cluster_id FROM public.teams WHERE id = $1`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&assignedClusterID)
+		},
+		teamID,
+	))
+	require.Equal(t, existingClusterID, assignedClusterID)
+}
+
 func TestPutAdminTeamsTeamIDClusterRetriesCacheInvalidation(t *testing.T) {
 	t.Parallel()
 
@@ -939,10 +1130,12 @@ func createClusterAssignmentTestTeam(t *testing.T, db *testutils.Database) uuid.
 			default_free_disk_size_mb,
 			max_disk_size_mb
 		)
-		VALUES ('cluster_assignment_test', 'Cluster assignment test', 512, 20, 1, 8, 8096, 20, 7, 512, 25512)
+		VALUES
+			('Enterprise_cluster_assignment_test', 'Enterprise cluster assignment test', 512, 20, 1, 8, 8096, 20, 7, 512, 25512),
+			('cluster_assignment_test', 'Cluster assignment test', 512, 20, 1, 8, 8096, 20, 7, 512, 25512)
 	`))
 	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
-		`INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, 'cluster_assignment_test', $3, $4)`,
+		`INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, 'Enterprise_cluster_assignment_test', $3, $4)`,
 		teamID,
 		"Cluster assignment test team",
 		"cluster-"+teamID.String()+"@example.com",

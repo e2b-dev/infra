@@ -1833,7 +1833,10 @@ paths:
           $ref: "#/components/responses/500"
     put:
       summary: Assign a cluster to a team
-      description: Updates the team's cluster reference to an existing cluster.
+      description: >-
+        Updates the team's cluster reference to an existing cluster. New and replacement
+        assignments require a tier identifier containing `enterprise`, case-insensitively.
+        Replaying the identical assignment succeeds even if the team's tier later changes.
       tags: [admin]
       security:
         - AdminApiKeyAuth: []
@@ -2637,6 +2640,10 @@ paths:
     put:
       operationId: managementAssignProjectCluster
       summary: Assign a cluster to a project (v1).
+      description: >-
+        Assigns the cluster only when the project's tier identifier contains `enterprise`,
+        case-insensitively. Replaying the identical assignment succeeds even if the project's
+        tier later changes.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []

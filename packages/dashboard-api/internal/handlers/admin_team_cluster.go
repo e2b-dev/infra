@@ -20,6 +20,8 @@ import (
 
 var errInvalidClusterRegistration = errors.New("invalid cluster registration")
 
+const enterpriseClusterAssignmentPolicyMessage = "only teams on an enterprise tier can be assigned to a BYOC cluster; upgrade the team to enterprise first"
+
 type clusterRegistration struct {
 	ClusterID          *uuid.UUID
 	Name               string
@@ -187,6 +189,11 @@ func (s *APIStore) assignTeamCluster(c *gin.Context, teamID, clusterID uuid.UUID
 		} else {
 			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to assign cluster to team")
 		}
+
+		return
+	}
+	if !result.AssignmentEligible {
+		s.sendAPIStoreError(c, http.StatusConflict, enterpriseClusterAssignmentPolicyMessage)
 
 		return
 	}
