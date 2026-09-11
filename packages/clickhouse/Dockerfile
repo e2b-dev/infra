@@ -9,6 +9,9 @@ RUN go install github.com/pressly/goose/v3/cmd/goose@v3.28.0
 
 # Final stage
 FROM alpine:${ALPINE_VERSION}
+# Bump this date to force a rebuild from here down, so the upgrade below
+# resolves against the current Alpine package index. Nothing reads the value.
+ENV LAST_FORCED_UPDATE=2026-09-11
 
 RUN apk upgrade --no-cache && apk add --no-cache bash ca-certificates
 

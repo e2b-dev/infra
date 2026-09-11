@@ -48,6 +48,9 @@ RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMM
 RUN chmod +x /build/dashboard-api/bin/dashboard-api
 
 FROM alpine:${ALPINE_VERSION}
+# Bump this date to force a rebuild from here down, so the upgrade below
+# resolves against the current Alpine package index. Nothing reads the value.
+ENV LAST_FORCED_UPDATE=2026-09-11
 
 RUN apk upgrade --no-cache
 

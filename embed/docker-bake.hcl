@@ -57,6 +57,12 @@ target "seed" {
   }
   dockerfile-inline = <<-DOCKERFILE
     FROM golang:1.26.8-alpine3.24
+    # The pinned tag freezes the Alpine packages at whatever the base image was
+    # built with, and this stage is also the published image; pull the release
+    # branch's current ones in. Bump the date to force a rebuild from here
+    # down, so that upgrade resolves against the current package index.
+    ENV LAST_FORCED_UPDATE=2026-09-11
+    RUN apk upgrade --no-cache
     ARG SRC=go/oss
     WORKDIR /src
     COPY $${SRC}/shared ./shared
