@@ -1651,6 +1651,11 @@ components:
         url:
           description: Url where the file should be uploaded to
           type: string
+        headers:
+          description: Request headers that must be sent with the upload request
+          type: object
+          additionalProperties:
+            type: string
 
     LogLevel:
       type: string

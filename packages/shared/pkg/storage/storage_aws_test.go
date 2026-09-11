@@ -690,3 +690,41 @@ func TestAWSDeleteObjectsWithPrefixRejectsEmptyPrefix(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty prefix")
 }
+
+// A presigned S3 PUT carries its authorization in the query string, so the upload client
+// must not be asked to add request headers — an Azure-shaped header map leaking into the
+// S3 or GCS response would break every upload that echoed it into the signature.
+func TestS3UploadSignedURLNeedsNoRequestHeaders(t *testing.T) {
+	t.Parallel()
+
+	backend := testBackend(t)
+	client := backend.newClient(t, nil)
+	provider := &awsStorage{
+		client:        client,
+		presignClient: s3.NewPresignClient(client),
+		bucketName:    backend.bucket,
+	}
+
+	key := testKey("presigned-upload.bin")
+	obj := backend.object(t, client, key)
+
+	upload, err := provider.UploadSignedURL(t.Context(), key, time.Hour)
+	require.NoError(t, err)
+	require.NotEmpty(t, upload.URL)
+	assert.Nil(t, upload.Headers)
+
+	body := []byte("presigned-upload-body")
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodPut, upload.URL, bytes.NewReader(body))
+	require.NoError(t, err)
+	req.ContentLength = int64(len(body))
+
+	res, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	require.NoError(t, res.Body.Close())
+	require.Equal(t, http.StatusOK, res.StatusCode)
+
+	var read bytes.Buffer
+	_, err = obj.WriteTo(t.Context(), &read)
+	require.NoError(t, err)
+	assert.Equal(t, body, read.Bytes())
+}

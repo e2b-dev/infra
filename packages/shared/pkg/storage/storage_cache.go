@@ -81,7 +81,7 @@ func (c cache) DeleteObjectsWithPrefix(ctx context.Context, prefix string) error
 	return c.inner.DeleteObjectsWithPrefix(ctx, prefix)
 }
 
-func (c cache) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (string, error) {
+func (c cache) UploadSignedURL(ctx context.Context, path string, ttl time.Duration) (UploadURL, error) {
 	return c.inner.UploadSignedURL(ctx, path, ttl)
 }
 

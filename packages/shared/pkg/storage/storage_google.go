@@ -122,10 +122,10 @@ func (s *gcpStorage) GetDetails() string {
 	return fmt.Sprintf("[GCP Storage, bucket set to %s]", s.bucket.BucketName())
 }
 
-func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (string, error) {
+func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Duration) (UploadURL, error) {
 	token, err := parseServiceAccountBase64(consts.GoogleServiceAccountSecret)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse GCP service account: %w", err)
+		return UploadURL{}, fmt.Errorf("failed to parse GCP service account: %w", err)
 	}
 
 	opts := &storage.SignedURLOptions{
@@ -137,10 +137,10 @@ func (s *gcpStorage) UploadSignedURL(_ context.Context, path string, ttl time.Du
 
 	url, err := storage.SignedURL(s.bucket.BucketName(), path, opts)
 	if err != nil {
-		return "", fmt.Errorf("failed to create signed URL for GCS object (%s): %w", path, err)
+		return UploadURL{}, fmt.Errorf("failed to create signed URL for GCS object (%s): %w", path, err)
 	}
 
-	return url, nil
+	return UploadURL{URL: url}, nil
 }
 
 func (s *gcpStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {

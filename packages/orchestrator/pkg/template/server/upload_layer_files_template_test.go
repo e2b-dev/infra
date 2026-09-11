@@ -21,7 +21,7 @@ const (
 	testFilesHash  = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 )
 
-func newInitLayerFileUploadServer(t *testing.T, exists bool, signedURL string, signErr error) *ServerStore {
+func newInitLayerFileUploadServer(t *testing.T, exists bool, upload storage.UploadURL, signErr error) *ServerStore {
 	t.Helper()
 
 	blob := storage.NewMockBlob(t)
@@ -30,7 +30,7 @@ func newInitLayerFileUploadServer(t *testing.T, exists bool, signedURL string, s
 	provider := storage.NewMockStorageProvider(t)
 	path := paths.GetLayerFilesCachePath(testTemplateID, testFilesHash)
 	provider.EXPECT().OpenBlob(mock.Anything, path).Return(blob, nil)
-	provider.EXPECT().UploadSignedURL(mock.Anything, path, signedUrlExpiration).Return(signedURL, signErr)
+	provider.EXPECT().UploadSignedURL(mock.Anything, path, signedUrlExpiration).Return(upload, signErr)
 
 	return &ServerStore{buildStorage: provider}
 }
@@ -50,7 +50,7 @@ func TestInitLayerFileUploadUnsignableProvider(t *testing.T) {
 	t.Run("cache hit reports present without a url", func(t *testing.T) {
 		t.Parallel()
 
-		s := newInitLayerFileUploadServer(t, true, "", unsupported)
+		s := newInitLayerFileUploadServer(t, true, storage.UploadURL{}, unsupported)
 
 		resp, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
 		require.NoError(t, err)
@@ -61,7 +61,7 @@ func TestInitLayerFileUploadUnsignableProvider(t *testing.T) {
 	t.Run("cache miss still fails", func(t *testing.T) {
 		t.Parallel()
 
-		s := newInitLayerFileUploadServer(t, false, "", unsupported)
+		s := newInitLayerFileUploadServer(t, false, storage.UploadURL{}, unsupported)
 
 		_, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
 		require.ErrorIs(t, err, storage.ErrSignedUploadURLUnsupported)
@@ -74,7 +74,7 @@ func TestInitLayerFileUploadSigningErrorOnCacheHit(t *testing.T) {
 	t.Parallel()
 
 	signErr := errors.New("failed to parse GCP service account")
-	s := newInitLayerFileUploadServer(t, true, "", signErr)
+	s := newInitLayerFileUploadServer(t, true, storage.UploadURL{}, signErr)
 
 	_, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
 	require.ErrorIs(t, err, signErr)
@@ -89,12 +89,24 @@ func TestInitLayerFileUploadKeepsURLOnCacheHit(t *testing.T) {
 		t.Run(fmt.Sprintf("exists=%v", exists), func(t *testing.T) {
 			t.Parallel()
 
-			s := newInitLayerFileUploadServer(t, exists, "https://bucket.example/signed", nil)
+			s := newInitLayerFileUploadServer(t, exists, storage.UploadURL{URL: "https://bucket.example/signed"}, nil)
 
 			resp, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
 			require.NoError(t, err)
 			assert.Equal(t, exists, resp.GetPresent())
 			assert.Equal(t, "https://bucket.example/signed", resp.GetUrl())
+			assert.Empty(t, resp.GetUploadHeaders(), "providers that need no request headers must not send any")
 		})
 	}
+}
+
+func TestInitLayerFileUploadForwardsUploadHeaders(t *testing.T) {
+	t.Parallel()
+
+	headers := map[string]string{"x-ms-blob-type": "BlockBlob"}
+	s := newInitLayerFileUploadServer(t, false, storage.UploadURL{URL: "https://account.example/signed", Headers: headers}, nil)
+
+	resp, err := s.InitLayerFileUpload(t.Context(), initLayerFileUploadRequest())
+	require.NoError(t, err)
+	assert.Equal(t, headers, resp.GetUploadHeaders())
 }
