@@ -44,16 +44,12 @@ jobs:
     uses: ./.github/workflows/pr-tests.yml
     with:
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   integration-tests:
     needs: [detect-changes]
     uses: ./.github/workflows/integration_tests.yml
     with:
       publish: true
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') }}
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
     needs:
       - detect-changes

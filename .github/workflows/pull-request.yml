@@ -117,15 +117,11 @@ jobs:
     uses: ./.github/workflows/pr-tests.yml
     with:
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   arm64-tests:
     needs: [detect-changes]
     uses: ./.github/workflows/pr-tests-arm64.yml
     with:
       run-tests: ${{ contains(fromJSON(needs.detect-changes.outputs.changed-scopes), 'test-inputs') && needs.detect-changes.outputs.docs-only != 'true' }}
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   integration-tests:
     needs: [detect-changes, out-of-order-migrations]
     uses: ./.github/workflows/integration_tests.yml
@@ -137,8 +133,6 @@ jobs:
       # for wall time (the compressed configs run their allow-list unsharded
       # either way); push to main runs all three configs unsharded.
       full-matrix: false
-    secrets:
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
   publish-test-results:
     needs:
       - detect-changes

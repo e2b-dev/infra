@@ -23,8 +23,6 @@ on:
         description: "When true (main), run all three compression configs unsharded. When false (PRs), split the full-suite uncompressed config into package shards on parallel runners to cut wall time; the compressed configs run their allow-list unsharded either way."
         required: false
         default: true
-    secrets:
-      CODECOV_TOKEN: { required: false }
 jobs:
   run:
     if: ${{ inputs.run-tests == true }}
@@ -74,8 +72,6 @@ jobs:
                   {"name": "lz4-other", "shard": "no-templates", "compress_enabled": "true", "compress_type": "lz4", "compress_level": "0", "compress_workers": "8", "dedup_mode": "direct_io", "disable_memfd": "false"}
                 ]') }}
     env:
-      # Surfaced as env so upload steps can gate on presence (skipped on fork PRs).
-      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       # Build race-instrumented but optimized binaries: nobody attaches a
       # debugger in CI, and -N -l slows both compilation and every test at
       # runtime. Set at the job level so the build-packages step and the
@@ -109,16 +105,6 @@ jobs:
         with:
           name: Integration Tests Results (${{ matrix.name }})
           path: ./tests/integration/test-results.xml
-
-      - name: Upload test results to Codecov
-        if: ${{ !cancelled() && env.CODECOV_TOKEN != '' && hashFiles('tests/integration/test-results.xml') != '' }}
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v6.0.2
-        with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          files: tests/integration/test-results.xml
-          flags: integration
-          disable_search: true
-          report_type: test_results
 
       - name: Upload Service Logs
         if: ${{ always() && inputs.publish == true }}
