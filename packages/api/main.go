@@ -52,7 +52,6 @@ import (
 )
 
 const (
-	serviceVersion     = "1.0.0"
 	serviceName        = "orchestration-api"
 	maxMultipartMemory = 1 << 23 // 8 MiB
 	maxUploadLimit     = 1 << 24 // 16 MiB
@@ -96,6 +95,7 @@ const (
 var (
 	commitSHA                  string
 	expectedMigrationTimestamp string
+	serviceVersion             = "0.14.1" // x-release-please-version
 )
 
 func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, adminJWTVerifier *auth.JWKSVerifier, redisClient redis.UniversalClient, ff *featureflags.Client, swagger *openapi3.T, port int) *http.Server {

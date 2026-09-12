@@ -45,6 +45,11 @@ BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 # the env file.
 API_VERSION := $(strip $(subst ",,$(API_VERSION)))
 
+VERSION_LDFLAGS :=
+ifneq ($(strip $(VERSION)),)
+VERSION_LDFLAGS := -X=main.serviceVersion=$(VERSION)
+endif
+
 .PHONY: generate
 generate:
 	go generate ./...
@@ -54,7 +59,7 @@ build:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
-	CGO_ENABLED=0 go build -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
+	CGO_ENABLED=0 go build -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP) $(VERSION_LDFLAGS)" .
 
 # Compiler flags for debug builds. The default disables optimizations and
 # inlining so binaries are debugger-friendly. CI overrides this with an empty
@@ -66,7 +71,7 @@ DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
 build-debug:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
 	$(eval EXPECTED_MIGRATION_TIMESTAMP ?= $(expectedMigration))
-	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP)" .
+	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/api -ldflags "-X=main.commitSHA=$(COMMIT_SHA) -X=main.expectedMigrationTimestamp=$(EXPECTED_MIGRATION_TIMESTAMP) $(VERSION_LDFLAGS)" .
 
 .PHONY: run
 run:

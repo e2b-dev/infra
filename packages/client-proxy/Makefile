@@ -38,11 +38,16 @@ E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/client-proxy/client-pr
 # command-line value always wins over the env file.
 CLIENT_PROXY_VERSION := $(strip $(subst ",,$(CLIENT_PROXY_VERSION)))
 
+VERSION_LDFLAGS :=
+ifneq ($(strip $(VERSION)),)
+VERSION_LDFLAGS := -X=main.version=$(VERSION)
+endif
+
 .PHONY: build
 build:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA) $(VERSION_LDFLAGS)" .
 
 # Compiler flags for debug builds. The default disables optimizations and
 # inlining so binaries are debugger-friendly. CI overrides this with an empty
@@ -53,7 +58,7 @@ DEBUG_GCFLAGS ?= -gcflags=all="-N -l"
 .PHONY: build-debug
 build-debug:
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
+	CGO_ENABLED=1 go build -race $(DEBUG_GCFLAGS) -o bin/client-proxy -ldflags "-X=main.commitSHA=$(COMMIT_SHA) $(VERSION_LDFLAGS)" .
 
 .PHONY: build-and-upload
 build-and-upload:

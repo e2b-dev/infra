@@ -38,8 +38,9 @@ COPY ./api/Makefile ./api/Makefile
 WORKDIR /build/api
 
 ARG COMMIT_SHA
+ARG VERSION
 ARG EXPECTED_MIGRATION_TIMESTAMP
-RUN --mount=type=cache,target=/root/.cache/go-build GOARCH=${TARGETARCH} make build COMMIT_SHA=${COMMIT_SHA} EXPECTED_MIGRATION_TIMESTAMP=${EXPECTED_MIGRATION_TIMESTAMP}
+RUN --mount=type=cache,target=/root/.cache/go-build GOARCH=${TARGETARCH} make build COMMIT_SHA=${COMMIT_SHA} VERSION=${VERSION} EXPECTED_MIGRATION_TIMESTAMP=${EXPECTED_MIGRATION_TIMESTAMP}
 
 RUN chmod +x /build/api/bin/api
 

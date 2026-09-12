@@ -47,6 +47,11 @@ BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
 BUSYBOX_VERSION ?= 1.36.1
 BUSYBOX_LOCAL := .busybox/$(BUSYBOX_VERSION)/$(BUILD_ARCH)/busybox
 
+VERSION_LDFLAGS :=
+ifneq ($(strip $(VERSION)),)
+VERSION_LDFLAGS := -X=github.com/e2b-dev/infra/packages/orchestrator/pkg/version.Version=$(VERSION)
+endif
+
 .PHONY: init
 init:
 	brew install protobuf
@@ -58,7 +63,7 @@ generate:
 .PHONY: build
 build:
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker build --platform $(BUILD_PLATFORM) --output=bin --build-arg COMMIT_SHA="$(COMMIT_SHA)" --build-arg VERSION="$(VERSION)" -f ./Dockerfile ..
 
 # Download busybox from GCS public builds bucket.
 # Skips if binary exists and version/arch match the stamp file.
@@ -70,8 +75,8 @@ fetch-busybox:
 build-local:
 	# Allow for passing commit sha directly for docker builds
 	$(eval COMMIT_SHA ?= $(shell git rev-parse --short HEAD))
-	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" .
-	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA)" ./cmd/clean-nfs-cache
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/orchestrator -ldflags "-X=main.commitSHA=$(COMMIT_SHA) $(VERSION_LDFLAGS)" .
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(BUILD_ARCH) go build -o bin/clean-nfs-cache -ldflags "-X=main.commitSHA=$(COMMIT_SHA) $(VERSION_LDFLAGS)" ./cmd/clean-nfs-cache
 
 # Compiler flags for debug builds. The default disables optimizations and
 # inlining so binaries are debugger-friendly. CI overrides this with an empty

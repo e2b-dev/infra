@@ -4,9 +4,15 @@ ENV := $(shell cat ../../.last_used_env || echo "not-set")
 # Short commit SHA, baked into the binary as main.commitSHA for provenance.
 # Upload objects are no longer named by it — see UPLOAD_VERSION below.
 BUILD := $(shell git rev-parse HEAD | cut -c1-7)
-LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD)"
-PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -s -w -buildid="
-DEBUG_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) -linkmode external -extldflags=-static"
+# LINK_VERSION is the identity baked into the binary. Distinct from VERSION,
+# which names the upload object (v-prefixed, derived from pkg/version.go).
+ifneq ($(strip $(LINK_VERSION)),)
+VERSION_LDFLAGS := -X=github.com/e2b-dev/infra/packages/envd/pkg.Version=$(LINK_VERSION)
+endif
+
+LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) $(VERSION_LDFLAGS)"
+PROD_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) $(VERSION_LDFLAGS) -s -w -buildid="
+DEBUG_LDFLAGS=-ldflags "-X=main.commitSHA=$(BUILD) $(VERSION_LDFLAGS) -linkmode external -extldflags=-static"
 
 # Compiler flags for debug builds. The default disables optimizations and
 # inlining so binaries are debugger-friendly. CI overrides this with an empty

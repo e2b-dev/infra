@@ -6,6 +6,10 @@ variable "COMMIT_SHA" {
   default = ""
 }
 
+variable "VERSION" {
+  default = ""
+}
+
 variable "EXPECTED_MIGRATION_TIMESTAMP" {
   default = ""
 }
@@ -28,6 +32,7 @@ target "api" {
   tags       = ["${REGISTRY_PREFIX}/api"]
   args = {
     COMMIT_SHA                   = COMMIT_SHA
+    VERSION                      = VERSION
     EXPECTED_MIGRATION_TIMESTAMP = EXPECTED_MIGRATION_TIMESTAMP
   }
 }

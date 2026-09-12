@@ -33,8 +33,9 @@ COPY ./client-proxy/Makefile ./client-proxy/Makefile
 WORKDIR /build/client-proxy
 
 ARG COMMIT_SHA
+ARG VERSION
 # Use Docker's TARGETARCH so GOARCH matches the container platform.
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} BUILD_ARCH=${TARGETARCH}
+RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} VERSION=${VERSION} BUILD_ARCH=${TARGETARCH}
 RUN chmod +x /build/client-proxy/bin/client-proxy
 
 FROM alpine:${ALPINE_VERSION}
