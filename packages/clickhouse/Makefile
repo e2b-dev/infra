@@ -69,16 +69,13 @@ migrate-host:
 
 .PHONY: build
 build:
-	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker build --platform $(BUILD_PLATFORM) --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" --tag "$(CLICKHOUSE_MIGRATOR_IMAGE):$(COMMIT_SHA)" .
+	@docker build --platform $(BUILD_PLATFORM) --tag "$(CLICKHOUSE_MIGRATOR_IMAGE)" .
 
 .PHONY: build-and-upload
 ifeq ($(strip $(CLICKHOUSE_MIGRATOR_VERSION)),)
 # Existing flow: build from source and push to the client's own core repo.
 build-and-upload:build
-	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE)"
-	@docker push "$(CLICKHOUSE_MIGRATOR_IMAGE):$(COMMIT_SHA)"
 else
 # Released-image flow: pull the prebuilt, versioned image from the E2B
 # artifacts registry and retag/push it into the client's own core repo.

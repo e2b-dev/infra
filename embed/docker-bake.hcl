@@ -16,9 +16,6 @@
 variable "REGISTRY_PREFIX" {
   default = "us-docker.pkg.dev/e2b-artifacts/embed"
 }
-variable "COMMIT_SHA" {
-  default = ""
-}
 // The seed builds from a source tree that has shared/, db/ and local-dev/
 // side by side. In the source monorepo that tree sits three levels above this
 // directory (the OSS tree that is exported as `packages/`); `make images`
@@ -43,14 +40,14 @@ target "tools" {
   context    = "compose"
   dockerfile = "docker/tools.Dockerfile"
   platforms  = ["linux/amd64", "linux/arm64"]
-  tags       = concat(["${REGISTRY_PREFIX}/tools"], COMMIT_SHA != "" ? ["${REGISTRY_PREFIX}/tools:${COMMIT_SHA}"] : [])
+  tags       = ["${REGISTRY_PREFIX}/tools"]
 }
 
 target "node-e2b" {
   context    = "compose"
   dockerfile = "docker/node-e2b.Dockerfile"
   platforms  = ["linux/amd64", "linux/arm64"]
-  tags       = concat(["${REGISTRY_PREFIX}/node-e2b"], COMMIT_SHA != "" ? ["${REGISTRY_PREFIX}/node-e2b:${COMMIT_SHA}"] : [])
+  tags       = ["${REGISTRY_PREFIX}/node-e2b"]
 }
 
 target "seed" {
@@ -81,5 +78,5 @@ target "seed" {
     COPY --from=builder /seed /seed
     ENTRYPOINT ["/seed"]
   DOCKERFILE
-  tags = concat(["${REGISTRY_PREFIX}/seed"], COMMIT_SHA != "" ? ["${REGISTRY_PREFIX}/seed:${COMMIT_SHA}"] : [])
+  tags = ["${REGISTRY_PREFIX}/seed"]
 }

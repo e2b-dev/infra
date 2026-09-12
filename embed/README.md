@@ -135,9 +135,20 @@ scripts, the SDK scripts and the database seeder), and the five
 Firecracker binaries. Terraform ships that file to the instance, and
 Kubernetes repeats its pins in
 [`kubernetes/kustomization.yaml`](kubernetes/kustomization.yaml). The three
-stack images live in the `embed` repository of the `e2b-artifacts` registry,
-published by the maintainers under the tag `compose/.env` pins. All of it is
-public and pulled anonymously; the stores come from Docker Hub.
+stack images live in the `embed` repository of the `e2b-artifacts` registry.
+
+Embed is released together with the platform at one version, and that
+release moves every platform pin in both files to it: api, db-migrator,
+client-proxy, clickhouse-migrator, the orchestrator and the three stack
+images (the lines carrying a release marker). A checkout at a release
+therefore names one version everywhere, and pulls exactly what that release
+published (see [RELEASING.md](../docs/RELEASING.md)). envd has its own
+release line, and the kernel, Firecracker and BusyBox are not released here,
+so those four are pinned by hand; a bump adds the binary's checksum to
+[`compose/scripts/fetch-artifacts.sh`](compose/scripts/fetch-artifacts.sh)
+first. The orchestrator needs no row: each release writes a `.sha256`
+beside the binary it publishes, and `fetch-artifacts` verifies against it.
+All of it is public and pulled anonymously; the stores come from Docker Hub.
 
 To pin an install, pin the commit. The Compose files come from raw URLs, so
 put the commit in place of `main` in their path; the Terraform `source` and the
@@ -257,8 +268,9 @@ machine.
   gated, not yet verified: no arm64 host has run this stack end to end. Until
   the seven pinned images are published as multi-arch tags, an arm64 host
   fails at the image pull (`no matching manifest for linux/arm64`); once they
-  are, `fetch-artifacts` stops with a `FIX:` line naming the missing
-  orchestrator or envd object until their first arm64 release.
+  are, `fetch-artifacts` verifies the arm64 orchestrator and envd against the
+  `.sha256` their first arm64 release writes beside the object. A pin with
+  no such object still stops with a `FIX:` line naming it.
 - Container-Optimized OS: the machine needs apt, a writable `/etc` and
   glibc 2.34 or newer.
 - No dashboard. Only the SDK and API paths are covered.

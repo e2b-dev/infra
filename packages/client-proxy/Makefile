@@ -60,7 +60,7 @@ build-and-upload:
 ifeq ($(strip $(CLIENT_PROXY_VERSION)),)
 	# Existing flow: build from source and push to the client's own core repo.
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker buildx build --platform $(BUILD_PLATFORM) --tag $(IMAGE_REGISTRY) --tag $(IMAGE_REGISTRY):$(COMMIT_SHA) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
+	@docker buildx build --platform $(BUILD_PLATFORM) --tag $(IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile ..
 else
 	# Released-image flow: pull the prebuilt, versioned image from the E2B
 	# artifacts registry and retag/push it into the client's own core repo.

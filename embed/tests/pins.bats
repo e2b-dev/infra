@@ -39,9 +39,10 @@ setup() {
 # The three stack-image variables, in the order the two install files list them.
 STACK_VARS=(E2B_TOOLS_IMAGE E2B_NODE_E2B_IMAGE E2B_SEED_IMAGE)
 
-# env_pin <variable>: the value compose/.env assigns it.
+# env_pin <variable>: the value compose/.env assigns it, without the trailing
+# release marker comment the stack-image lines carry.
 env_pin() {
-  sed -n "s|^$1=||p" compose/.env
+  sed -n "s|^$1=\([^ #]*\).*|\1|p" compose/.env
 }
 
 # k8s_pin <variable>: the newName:newTag the kustomization gives that image

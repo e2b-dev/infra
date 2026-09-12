@@ -18,8 +18,9 @@ the hub is [`../README.md`](../README.md).
   verified end to end: until the seven pinned images are published as
   multi-arch tags the pod fails at the image pull (`no matching manifest for
   linux/arm64`), and once they are, the `fetch-artifacts` init container
-  stops with a `FIX:` line naming the missing orchestrator or envd object
-  until their first arm64 release.
+  verifies the arm64 orchestrator and envd against the `.sha256` their first
+  arm64 release writes beside the object. A pin with no such object still
+  stops with a `FIX:` line naming it.
 - 4 GiB of 2 MiB hugepages, reserved before the kubelet starts, because it
   advertises only what it saw then. Every sandbox needs them, and the
   orchestrator's request is what stops the kubelet capping the pod at zero.

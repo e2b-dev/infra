@@ -17,8 +17,9 @@ the hub is [`../README.md`](../README.md).
   verified: no arm64 host has run this stack end to end. Until the seven
   pinned images are published as multi-arch tags, `up` fails at the image
   pull (`no matching manifest for linux/arm64`); once they are,
-  `fetch-artifacts` stops with a `FIX:` line naming the missing orchestrator
-  or envd object until their first arm64 release.
+  `fetch-artifacts` verifies the arm64 orchestrator and envd against the
+  `.sha256` their first arm64 release writes beside the object. A pin with
+  no such object still stops with a `FIX:` line naming it.
 - Ubuntu 24.04 is the recommended host: kernel 6.8 or newer, glibc 2.34 or
   newer (the released orchestrator's floor), cgroup v2 (systemd's default),
   and `iptables`, `rsync`, `e2fsprogs` and `iproute2` installed. Ubuntu

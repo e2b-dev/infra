@@ -5,7 +5,7 @@ inputs:
     description: "Target environment to promote envd in, e.g. staging"
     required: true
   version:
-    description: "Release version of the envd build to promote (e.g. v0.7.0); legacy commit-SHA suffixes are accepted while envd.<sha> objects age out"
+    description: "Release version of the envd build to promote (e.g. v0.7.0 or v0.7.202609100404-76e17e06ca6)"
     required: true
   infisical_machine_identity_id:
     description: "Infisical machine identity ID for accessing secrets"

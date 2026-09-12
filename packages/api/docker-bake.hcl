@@ -25,7 +25,7 @@ target "api" {
   context    = "."
   dockerfile = "api/Dockerfile"
   platforms  = split(",", PLATFORMS)
-  tags       = concat(["${REGISTRY_PREFIX}/api"], COMMIT_SHA != "" ? ["${REGISTRY_PREFIX}/api:${COMMIT_SHA}"] : [])
+  tags       = ["${REGISTRY_PREFIX}/api"]
   args = {
     COMMIT_SHA                   = COMMIT_SHA
     EXPECTED_MIGRATION_TIMESTAMP = EXPECTED_MIGRATION_TIMESTAMP
@@ -36,5 +36,5 @@ target "db-migrator" {
   context    = "."
   dockerfile = "db/Dockerfile"
   platforms  = split(",", PLATFORMS)
-  tags       = concat(["${REGISTRY_PREFIX}/db-migrator"], COMMIT_SHA != "" ? ["${REGISTRY_PREFIX}/db-migrator:${COMMIT_SHA}"] : [])
+  tags       = ["${REGISTRY_PREFIX}/db-migrator"]
 }

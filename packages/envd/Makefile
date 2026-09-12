@@ -38,20 +38,23 @@ E2B_ARTIFACT_BINARIES_URL ?= https://storage.googleapis.com/e2b-artifact-binarie
 ENVD_VERSION := $(strip $(subst ",,$(ENVD_VERSION)))
 
 # Release version from pkg/version.go (bumped by release-please). Versioned
-# uploads are named envd.$(UPLOAD_VERSION) — by release version, not commit
-# SHA — so the object name matches the envd-upgrade-target flag grammar and
-# the central bucket's envd/<version>/ release dirs. Rebuilds of an unchanged
-# version overwrite the same object; that is safe because pkg/version.go must
-# be bumped on any envd behavior change. Legacy envd.<sha> objects stay in the
-# buckets untouched and age out on their own.
+# uploads are named envd.$(UPLOAD_VERSION) with the same vMAJOR.MINOR…
+# schema as image tags, so the object name matches the envd-upgrade-target
+# flag grammar and the central bucket's envd/<version>/ release dirs.
+# Rebuilds of an unchanged version overwrite the same object; that is safe
+# because pkg/version.go must be bumped on any envd behavior change. Legacy
+# envd.<sha> objects stay in the buckets untouched and age out on their own.
 VERSION := v$(shell sed -n 's/.*Version = "\(.*\)".*/\1/p' pkg/version.go)
 # The version this run operates on: the released version when ENVD_VERSION is
 # set (released-artifact flow below), else the checkout's own version.
-# A legacy commit-SHA input is truncated to the fixed 7-char short SHA the old
-# uploads were named with (envd.<7-char-sha>); release versions (v-prefixed)
-# pass through verbatim.
-RAW_UPLOAD_VERSION = $(or $(ENVD_VERSION),$(VERSION))
-UPLOAD_VERSION = $(if $(filter v%,$(RAW_UPLOAD_VERSION)),$(RAW_UPLOAD_VERSION),$(shell printf '%.7s' "$(RAW_UPLOAD_VERSION)"))
+# A pin must carry the v prefix (v0.9.0 or an auto-deploy
+# v0.9.YYYYMMDDHHMM-<sha11>); a bare commit SHA is not a version.
+ifneq ($(strip $(ENVD_VERSION)),)
+ifeq ($(filter v%,$(ENVD_VERSION)),)
+$(error ENVD_VERSION must be a v-prefixed version (e.g. v0.9.0), not a commit SHA)
+endif
+endif
+UPLOAD_VERSION = $(or $(ENVD_VERSION),$(VERSION))
 
 # Architecture for builds. Defaults to amd64; override for ARM64 builds.
 # (e.g., BUILD_ARCH=arm64 make build-local)

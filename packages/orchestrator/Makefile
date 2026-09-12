@@ -27,6 +27,11 @@ E2B_ARTIFACT_BINARIES_URL ?= https://storage.googleapis.com/e2b-artifact-binarie
 # stripped so both `=v0.1.0` and `="v0.1.0"` work; a command-line value
 # always wins over the env file.
 ORCHESTRATOR_VERSION := $(strip $(subst ",,$(ORCHESTRATOR_VERSION)))
+ifneq ($(ORCHESTRATOR_VERSION),)
+ifeq ($(filter v%,$(ORCHESTRATOR_VERSION)),)
+$(error ORCHESTRATOR_VERSION must be a v-prefixed version (e.g. v0.15.0), not a commit SHA)
+endif
+endif
 
 HOSTNAME := $(shell hostname 2> /dev/null || hostnamectl hostname 2> /dev/null)
 $(if $(HOSTNAME),,$(error Failed to determine hostname: both 'hostname' and 'hostnamectl' failed))
@@ -119,14 +124,17 @@ run-local:
 
 .PHONY: upload/clean-nfs-cache
 upload/clean-nfs-cache:
-	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	chmod +x ./bin/clean-nfs-cache
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
-	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache.$(COMMIT_SHA)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+ifneq ($(strip $(ORCHESTRATOR_VERSION)),)
+	aws s3 cp ./bin/clean-nfs-cache "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache.$(ORCHESTRATOR_VERSION)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+endif
 else
 	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/clean-nfs-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache"
-	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/clean-nfs-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache.$(COMMIT_SHA)"
+ifneq ($(strip $(ORCHESTRATOR_VERSION)),)
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/clean-nfs-cache "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/clean-nfs-cache.$(ORCHESTRATOR_VERSION)"
+endif
 endif
 
 .PHONY: upload/orchestrator
@@ -134,20 +142,29 @@ upload/orchestrator:
 	chmod +x ./bin/orchestrator
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+ifneq ($(strip $(ORCHESTRATOR_VERSION)),)
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/orchestrator.$(ORCHESTRATOR_VERSION)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+endif
 else
 	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator"
+ifneq ($(strip $(ORCHESTRATOR_VERSION)),)
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/orchestrator.$(ORCHESTRATOR_VERSION)"
+endif
 endif
 
 .PHONY: upload/template-manager
 upload/template-manager:
-	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
 	chmod +x ./bin/orchestrator
 ifeq ($(PROVIDER),aws)
 	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
-	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager.$(COMMIT_SHA)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+ifneq ($(strip $(ORCHESTRATOR_VERSION)),)
+	aws s3 cp ./bin/orchestrator "s3://${AWS_BUCKET_PREFIX}fc-env-pipeline/template-manager.$(ORCHESTRATOR_VERSION)" --profile ${AWS_PROFILE} --cache-control "no-cache, max-age=0"
+endif
 else
 	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager"
-	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager.$(COMMIT_SHA)"
+ifneq ($(strip $(ORCHESTRATOR_VERSION)),)
+	gcloud storage cp --cache-control="no-cache, max-age=0" ./bin/orchestrator "gs://${GCP_BUCKET_PREFIX}fc-env-pipeline/template-manager.$(ORCHESTRATOR_VERSION)"
+endif
 endif
 
 # Released-artifact flow: download the prebuilt, versioned binaries from the
@@ -174,7 +191,7 @@ build-and-upload/clean-nfs-cache: $(BIN_SOURCE) upload/clean-nfs-cache
 .PHONY: build-and-upload/clean-nfs-cache-image
 build-and-upload/clean-nfs-cache-image: $(BIN_SOURCE)
 	$(eval COMMIT_SHA := $(shell git rev-parse --short HEAD))
-	@docker buildx build --platform $(BUILD_PLATFORM) --tag $(CLEAN_NFS_CACHE_IMAGE_REGISTRY) --tag $(CLEAN_NFS_CACHE_IMAGE_REGISTRY):$(COMMIT_SHA) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile.clean-nfs-cache .
+	@docker buildx build --platform $(BUILD_PLATFORM) --tag $(CLEAN_NFS_CACHE_IMAGE_REGISTRY) --push --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile.clean-nfs-cache .
 
 .PHONY: build-and-upload/orchestrator
 build-and-upload/orchestrator: $(BIN_SOURCE) upload/orchestrator
