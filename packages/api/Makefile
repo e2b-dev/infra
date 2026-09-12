@@ -22,6 +22,13 @@ endif
 # Published to by the release-please workflow on tagging a release.
 E2B_ARTIFACTS_REGISTRY ?= us-docker.pkg.dev/e2b-artifacts/api
 
+# Architecture for the image lanes. Defaults to amd64; override for arm64:
+#   BUILD_ARCH=arm64 make build-and-upload
+# or for both at once (from source only):
+#   BUILD_PLATFORM=linux/amd64,linux/arm64 make build-and-upload
+BUILD_ARCH ?= amd64
+BUILD_PLATFORM ?= linux/$(BUILD_ARCH)
+
 # Optional version "hook" for the released-image flow.
 # When empty (default), build-and-upload bakes both images from source and
 # pushes to the client's own core repo (the existing flow, unchanged).
@@ -111,14 +118,15 @@ ifeq ($(strip $(API_VERSION)),)
 	cd .. && REGISTRY_PREFIX=$(REGISTRY_PREFIX) \
 		COMMIT_SHA=$(COMMIT_SHA) \
 		EXPECTED_MIGRATION_TIMESTAMP=$(EXPECTED_MIGRATION_TIMESTAMP) \
+		PLATFORMS=$(BUILD_PLATFORM) \
 		docker buildx bake -f api/docker-bake.hcl --push
 else
 	# Released-image flow: pull the prebuilt, versioned api + db-migrator
 	# images from the E2B artifacts registry and retag/push them into the
 	# client's own core repo.
 	@echo "Using released api + db-migrator $(API_VERSION) from $(E2B_ARTIFACTS_REGISTRY)"
-	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION)
-	docker pull --platform linux/amd64 $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION)
+	docker pull --platform $(BUILD_PLATFORM) $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION)
+	docker pull --platform $(BUILD_PLATFORM) $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION)
 	docker tag $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION) $(REGISTRY_PREFIX)/api:latest
 	docker tag $(E2B_ARTIFACTS_REGISTRY)/api:$(API_VERSION) $(REGISTRY_PREFIX)/api:$(API_VERSION)
 	docker tag $(E2B_ARTIFACTS_REGISTRY)/db-migrator:$(API_VERSION) $(REGISTRY_PREFIX)/db-migrator:latest

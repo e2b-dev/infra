@@ -1,7 +1,8 @@
 ARG GOLANG_VERSION=1.26.8
 ARG ALPINE_VERSION=3.24
 
-FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
+FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
+ARG TARGETARCH
 
 RUN apk add --no-cache make
 
@@ -38,7 +39,7 @@ WORKDIR /build/api
 
 ARG COMMIT_SHA
 ARG EXPECTED_MIGRATION_TIMESTAMP
-RUN --mount=type=cache,target=/root/.cache/go-build make build COMMIT_SHA=${COMMIT_SHA} EXPECTED_MIGRATION_TIMESTAMP=${EXPECTED_MIGRATION_TIMESTAMP}
+RUN --mount=type=cache,target=/root/.cache/go-build GOARCH=${TARGETARCH} make build COMMIT_SHA=${COMMIT_SHA} EXPECTED_MIGRATION_TIMESTAMP=${EXPECTED_MIGRATION_TIMESTAMP}
 
 RUN chmod +x /build/api/bin/api
 

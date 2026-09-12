@@ -49,10 +49,12 @@ test:
 
 # Build the three project images locally under their published names, so a
 # compose.yaml that pins them runs the local build and pulls nothing. The
-# seed builds from the public runtime repository at the pinned commit.
+# seed builds from the public runtime repository at the pinned commit. The
+# bake file lists both architectures; --load needs exactly one, the daemon's.
 images:
 	set -a; . ./compose/.env; set +a; \
 	docker buildx bake --load \
+	  --set "*.platform=linux/$$(docker version -f '{{.Server.Arch}}')" \
 	  --set "seed.context=https://github.com/e2b-dev/runtime.git#$${RUNTIME_COMMIT}" \
 	  --set seed.args.SRC=packages \
 	  --set "tools.tags=$${E2B_TOOLS_IMAGE}" \

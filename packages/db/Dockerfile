@@ -2,7 +2,8 @@ ARG GOLANG_VERSION=1.26.8
 ARG ALPINE_VERSION=3.24
 
 # Builder stage
-FROM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
+FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
+ARG TARGETARCH
 
 # Cached golang dependencies
 WORKDIR /build/shared
@@ -23,7 +24,7 @@ COPY ./db/migrations/ ./db/migrations
 
 WORKDIR /build/db
 
-RUN go build -o ./bin/migrator ./scripts/migrator.go
+RUN CGO_ENABLED=0 GOARCH=${TARGETARCH} go build -o ./bin/migrator ./scripts/migrator.go
 RUN chmod +x ./bin/migrator
 
 FROM alpine:${ALPINE_VERSION}

@@ -5,6 +5,7 @@ package fc
 import (
 	"fmt"
 	"maps"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -78,10 +79,18 @@ func ValidateCmdlineArgs(args map[string]string) error {
 	return nil
 }
 
+// hostArch is the architecture the guest kernel boots on. Firecracker never emulates, so it
+// is the host's; a variable only so tests can boot the other one.
+var hostArch = runtime.GOARCH
+
 // buildKernelArgs assembles the guest kernel command line for a boot.
 //
 // ipv4 is the pre-formatted `ip=` value; everything else is derived from options.
 func buildKernelArgs(ipv4 string, options ProcessOptions) KernelArgs {
+	return buildKernelArgsFor(hostArch, ipv4, options)
+}
+
+func buildKernelArgsFor(arch string, ipv4 string, options ProcessOptions) KernelArgs {
 	args := KernelArgs{
 		// Disable kernel logs for production to speed the FC operations
 		// https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md#logging-and-performance
@@ -101,15 +110,22 @@ func buildKernelArgs(ipv4 string, options ProcessOptions) KernelArgs {
 
 		"reboot":           "k",
 		"pci":              "off",
-		"i8042.nokbd":      "",
-		"i8042.noaux":      "",
 		"random.trust_cpu": "on",
 
 		"rootflags": ext4RootFlags,
 	}
 
-	if options.KvmClock {
-		args["clocksource"] = "kvm-clock"
+	// The i8042 controller and kvm-clock exist only on x86; an arm64 guest has neither and
+	// keeps the architected timer as its clocksource. The serial console is ttyS0 on both:
+	// Firecracker exposes a 16550-compatible UART on arm64 too, and the arm64 guest kernel
+	// is built with the 8250 driver.
+	if arch == "amd64" {
+		args["i8042.nokbd"] = ""
+		args["i8042.noaux"] = ""
+
+		if options.KvmClock {
+			args["clocksource"] = "kvm-clock"
+		}
 	}
 
 	if options.SystemdToKernelLogs {

@@ -251,7 +251,8 @@ kernels/vmlinux-6.1.158/arm64/vmlinux.bin
 - **SMT** is disabled (ARM processors don't support simultaneous multi-threading)
 - **CPU detection** uses fallback values since `gopsutil` doesn't populate Family/Model on ARM64
 - **OCI platform** is set to the target architecture instead of hardcoded `amd64`
-- **Busybox binaries** are committed for both architectures and selected automatically via Go build tags
+- **Busybox binaries** are fetched per architecture by `scripts/fetch-busybox.sh` and selected at runtime from `<busybox dir>/<version>/<GOARCH>/busybox`
+- **Guest kernel command line** drops the x86-only `i8042.*` and `clocksource=kvm-clock` parameters on arm64; the console stays `ttyS0` (Firecracker exposes a 16550-compatible UART on both architectures)
 
 ### Cross-architecture deployment
 

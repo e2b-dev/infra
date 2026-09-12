@@ -20,6 +20,16 @@ declare -gA SHA256=(
   # superseded orchestrator and envd rows above stay for the rollback path.
   ["orchestrator/v0.15.0/orchestrator"]="b46e64241f830ceaedf91fccdf4598fcf818179ea156130def16946ce342ecc4"
   ["envd/v0.9.0/envd"]="c42a31d738718b5cf7654e258e5b111308646a905331b266294cdcbeb0a02355"
+  # arm64. The three Firecracker artifacts are published for both
+  # architectures already; the orchestrator and envd gain their arm64 objects
+  # (orchestrator/<version>/arm64/orchestrator, envd/<version>/arm64/envd, each
+  # with a .sha256 beside it) with their first release after the publish
+  # workflow's arm64 job, and their rows are added here from those sidecars.
+  # Until then main() stops on an aarch64 host with a FIX line naming the
+  # missing object; a row is never written ahead of the object.
+  ["firecrackers/v1.14-0.2.0/arm64/firecracker"]="66a8347a08741e47f850da1720cc6153a6998a2c9e87666958261afbcc9ba05e"
+  ["kernels/vmlinux-6.1.177_5008931/arm64/vmlinux.bin"]="3e134b55a6e4feec481f6f3a2813d42860e28c273eeb91c02df0661322e61dab"
+  ["busybox/1.36.1/arm64/busybox"]="eddab48ed02fe55034a3f9321c6d4f9db10d699bc92880bd334d94a5c55363e3"
 )
 
 goarch() {
@@ -85,16 +95,23 @@ main() {
   local ga
   ga="$(goarch "$FA_ARCH")" || {
     echo "fetch-artifacts: unsupported architecture $FA_ARCH" >&2
-    echo "FIX: only x86_64 hosts are supported; the released orchestrator and envd have no $FA_ARCH build" >&2
+    echo "FIX: only x86_64 and aarch64 hosts are supported; the released orchestrator and envd have no $FA_ARCH build" >&2
     exit 1
   }
+  # The orchestrator and envd objects carry no arch segment for amd64 (the key
+  # every earlier release published under) and an arm64/ segment otherwise, the
+  # layout the three Firecracker artifacts have always used. On the host both
+  # land at arch-less paths: the orchestrator reads envd from /fc-envd/envd.
+  local seg="" key
+  [ "$ga" = amd64 ] || seg="$ga/"
   if [ "$ga" != amd64 ]; then
-    echo "fetch-artifacts: host architecture is $FA_ARCH" >&2
-    echo "FIX: only x86_64 hosts are supported; the released orchestrator and envd have no $ga build" >&2
-    exit 1
+    for key in "orchestrator/${E2B_ORCHESTRATOR_VERSION}/${seg}orchestrator" "envd/${E2B_ENVD_VERSION}/${seg}envd"; do
+      [ -n "${SHA256[$key]:-}" ] ||
+        die "no $ga build of ${key%%/*} is pinned for this host" "the released ${key%%/*} has no $ga object under $BUCKET/$key yet (the first $ga release publishes it with a .sha256 beside it), and the tools image must then carry its checksum row in scripts/fetch-artifacts.sh; until then run the stack on an x86_64 host"
+    done
   fi
-  fetch "orchestrator/${E2B_ORCHESTRATOR_VERSION}/orchestrator" "$HOST_ROOT/var/lib/e2b/bin/orchestrator" 0755
-  fetch "envd/${E2B_ENVD_VERSION}/envd" "$HOST_ROOT/fc-envd/envd" 0755
+  fetch "orchestrator/${E2B_ORCHESTRATOR_VERSION}/${seg}orchestrator" "$HOST_ROOT/var/lib/e2b/bin/orchestrator" 0755
+  fetch "envd/${E2B_ENVD_VERSION}/${seg}envd" "$HOST_ROOT/fc-envd/envd" 0755
   fetch "firecrackers/${E2B_FIRECRACKER_VERSION}/${ga}/firecracker" "$HOST_ROOT/fc-versions/${E2B_FIRECRACKER_VERSION}/${ga}/firecracker" 0755
   fetch "kernels/${E2B_KERNEL_VERSION}/${ga}/vmlinux.bin" "$HOST_ROOT/fc-kernels/${E2B_KERNEL_VERSION}/${ga}/vmlinux.bin" 0644
   fetch "busybox/${E2B_BUSYBOX_VERSION}/${ga}/busybox" "$HOST_ROOT/fc-busybox/${E2B_BUSYBOX_VERSION}/${ga}/busybox" 0755
