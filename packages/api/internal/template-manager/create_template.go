@@ -289,8 +289,7 @@ func convertImageRegistry(registry *api.FromImageRegistry) (*templatemanagergrpc
 
 // setTemplateSource sets the source (either fromImage or fromTemplate)
 func setTemplateSource(ctx context.Context, tm *TemplateManager, teamID uuid.UUID, teamSlug string, template *templatemanagergrpc.TemplateConfig, fromImage *string, fromTemplate *string) error {
-	// hasImage can be empty for v1 template builds
-	hasImage := fromImage != nil
+	hasImage := fromImage != nil && *fromImage != ""
 	hasTemplate := fromTemplate != nil && *fromTemplate != ""
 
 	// Validate input: exactly one source must be provided

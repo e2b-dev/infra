@@ -26,7 +26,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/filesystem"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/core/oci/auth"
-	artifactsregistry "github.com/e2b-dev/infra/packages/shared/pkg/artifacts-registry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/dockerhub"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -150,29 +149,6 @@ func GetPublicImage(ctx context.Context, dockerhubRepository dockerhub.RemoteRep
 	telemetry.ReportEvent(ctx, "pulled public image")
 
 	err = verifyImagePlatform(ctx, img, platform, tag)
-	if err != nil {
-		return nil, err
-	}
-
-	return img, nil
-}
-
-func GetImage(ctx context.Context, artifactRegistry artifactsregistry.ArtifactsRegistry, templateId string, buildId string) (containerregistry.Image, error) {
-	childCtx, childSpan := tracer.Start(ctx, "pull-docker-image")
-	defer childSpan.End()
-
-	platform := DefaultPlatform()
-
-	img, err := artifactRegistry.GetImage(childCtx, templateId, buildId, platform)
-	if err != nil {
-		logger.L().Warn(childCtx, "failed to pull build image", logger.WithTemplateID(templateId), logger.WithBuildID(buildId), zap.Error(err))
-
-		return nil, errors.New("failed to pull build image from registry")
-	}
-
-	telemetry.ReportEvent(childCtx, "pulled image")
-
-	err = verifyImagePlatform(childCtx, img, platform, fmt.Sprintf("%s/%s", templateId, buildId))
 	if err != nil {
 		return nil, err
 	}
