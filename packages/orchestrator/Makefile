@@ -231,6 +231,10 @@ test-docker:
 # default; callers (e.g. integration-test CI) can override to leave headroom
 # for disk-heavy build steps after the build-reserved-disk-space-mb reservation.
 DISK_SIZE_MB ?= 1024
+# Guest memory of the built template. 256 MiB runs the kernel, envd and
+# light commands comfortably, and a small memfile keeps every pause, resume
+# and compression proportionally cheap; pass MEMORY_MB for a bigger guest.
+MEMORY_MB ?= 256
 build-template: fetch-busybox
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
 	GOOGLE_SERVICE_ACCOUNT_BASE64=$(GOOGLE_SERVICE_ACCOUNT_BASE64) \
@@ -248,7 +252,8 @@ build-template: fetch-busybox
 	-to-build $(BUILD_ID) \
 	-kernel $(KERNEL_VERSION) \
 	-firecracker $(FIRECRACKER_VERSION) \
-	-disk $(DISK_SIZE_MB)
+	-disk $(DISK_SIZE_MB) \
+	-memory $(MEMORY_MB)
 
 .PHONY: lint
 lint:
