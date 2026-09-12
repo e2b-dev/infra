@@ -16,7 +16,7 @@ RUN go mod download
 COPY . .
 
 # Build the plugin
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /nomad-nodepool-apm .
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /nomad-nodepool-apm .
 
 # Final stage - minimal image, but shared with builder
 FROM alpine:${ALPINE_VERSION}

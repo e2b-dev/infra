@@ -24,7 +24,7 @@ COPY ./db/migrations/ ./db/migrations
 
 WORKDIR /build/db
 
-RUN CGO_ENABLED=0 GOARCH=${TARGETARCH} go build -o ./bin/migrator ./scripts/migrator.go
+RUN --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOARCH=${TARGETARCH} go build -o ./bin/migrator ./scripts/migrator.go
 RUN chmod +x ./bin/migrator
 
 FROM alpine:${ALPINE_VERSION}

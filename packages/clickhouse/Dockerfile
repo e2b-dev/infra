@@ -7,7 +7,7 @@ ARG TARGETARCH
 
 RUN apk add --no-cache git
 # A cross-compiled `go install` lands in /go/bin/linux_<arch>/, a native one in /go/bin/.
-RUN GOARCH=${TARGETARCH} go install github.com/pressly/goose/v3/cmd/goose@v3.28.0 \
+RUN --mount=type=cache,target=/root/.cache/go-build GOARCH=${TARGETARCH} go install github.com/pressly/goose/v3/cmd/goose@v3.28.0 \
     && install -D "$(find /go/bin -type f -name goose)" /out/goose
 
 # Final stage
