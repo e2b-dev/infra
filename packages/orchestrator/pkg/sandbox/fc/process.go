@@ -166,6 +166,22 @@ type Process struct {
 	balloonAccum atomic.Pointer[BalloonMetricsSnapshot]
 }
 
+func validateFirecrackerBinary(versions Config, config cfg.BuilderConfig) error {
+	firecrackerPath := versions.FirecrackerPath(config)
+	_, err := os.Stat(firecrackerPath)
+	if err == nil {
+		return nil
+	}
+
+	if errors.Is(err, os.ErrNotExist) {
+		archPath, legacyPath := versions.firecrackerPaths(config)
+
+		return fmt.Errorf("firecracker binary not found; checked architecture-specific path %q and legacy path %q: %w", archPath, legacyPath, err)
+	}
+
+	return fmt.Errorf("error stating firecracker binary %q: %w", firecrackerPath, err)
+}
+
 func NewProcess(
 	ctx context.Context,
 	execCtx context.Context,
@@ -192,9 +208,8 @@ func NewProcess(
 		attribute.String("sandbox.cmd", startScript.Value),
 	)
 
-	_, err = os.Stat(versions.FirecrackerPath(config))
-	if err != nil {
-		return nil, fmt.Errorf("error stating firecracker binary: %w", err)
+	if err = validateFirecrackerBinary(versions, config); err != nil {
+		return nil, err
 	}
 
 	_, err = os.Stat(versions.HostKernelPath(config))
