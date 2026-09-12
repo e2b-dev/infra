@@ -210,7 +210,7 @@ test-clean-nfs-cache-image: build
 	@set -eu; \
 	image="clean-nfs-cache:test-$(COMMIT_SHA)-$$$$"; \
 	trap 'docker image rm --force "$$image" >/dev/null 2>&1 || true' EXIT; \
-	docker build --platform $(BUILD_PLATFORM) --tag "$$image" --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile.clean-nfs-cache .; \
+	docker build --load --platform $(BUILD_PLATFORM) --tag "$$image" --build-arg COMMIT_SHA="$(COMMIT_SHA)" -f ./Dockerfile.clean-nfs-cache .; \
 	docker run --rm "$$image" --help >/dev/null; \
 	docker run --rm --entrypoint /bin/sh "$$image" -eu -c 'test -s /etc/ssl/certs/ca-certificates.crt'
 
