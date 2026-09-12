@@ -133,7 +133,12 @@ func parseRedisURL(redisURL string) (*redis.Options, error) {
 
 	opts, err := redis.ParseURL(redisURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse REDIS_URL: %w", err)
+		// Parser errors echo slices of the input -- the URL, host:port
+		// fragments, escape sequences -- and any slice may carry the
+		// credential (an unencoded '#' in a password puts it in the "invalid
+		// port" detail, for example). Callers log this error at startup, so
+		// no parser text passes through at all.
+		return nil, errors.New(`failed to parse REDIS_URL: "<redacted>" is not a valid redis URL`)
 	}
 
 	return opts, nil

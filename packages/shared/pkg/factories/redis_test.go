@@ -212,6 +212,29 @@ func TestParseRedisURL(t *testing.T) {
 			})
 		}
 	})
+
+	t.Run("a parse error does not echo the credentials", func(t *testing.T) {
+		t.Parallel()
+
+		// net/url echoes slices of the input back in its errors: the invalid
+		// escape quotes the fragment-stripped URL, and an unencoded '#' in
+		// the password turns the rest into an "invalid port" detail carrying
+		// the credential. None of it may reach the returned error.
+		for name, url := range map[string]string{
+			"invalid escape":      "redis://user:secret%zz@redis.example:6379",
+			"with fragment":       "redis://user:secret%zz@redis.example:6379#fragment",
+			"'#' in the password": "redis://:secret#pass@redis.example:6379",
+		} {
+			t.Run(name, func(t *testing.T) {
+				t.Parallel()
+
+				_, err := parseRedisURL(url)
+				require.Error(t, err)
+				assert.NotContains(t, err.Error(), "secret")
+				assert.Contains(t, err.Error(), "<redacted>")
+			})
+		}
+	})
 }
 
 // The URL and the explicit REDIS_* settings describe one endpoint; the options reconcile them.
