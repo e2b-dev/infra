@@ -4,11 +4,13 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/build/storage/paths"
 	templatemanager "github.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
 const signedUrlExpiration = time.Minute * 30
@@ -29,14 +31,20 @@ func (s *ServerStore) InitLayerFileUpload(ctx context.Context, in *templatemanag
 		return nil, fmt.Errorf("failed to open layer files cache: %w", err)
 	}
 
-	signedUrl, err := s.buildStorage.UploadSignedURL(ctx, path, signedUrlExpiration)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get signed url: %w", err)
-	}
-
 	exists, err := obj.Exists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check if layer files exists: %w", err)
+	}
+
+	signedUrl, err := s.buildStorage.UploadSignedURL(ctx, path, signedUrlExpiration)
+	if err != nil {
+		// A cache hit needs no upload URL, so a provider that cannot sign one is fatal
+		// only on a miss.
+		if exists && errors.Is(err, storage.ErrSignedUploadURLUnsupported) {
+			return &templatemanager.InitLayerFileUploadResponse{Present: true}, nil
+		}
+
+		return nil, fmt.Errorf("failed to get signed url: %w", err)
 	}
 
 	return &templatemanager.InitLayerFileUploadResponse{

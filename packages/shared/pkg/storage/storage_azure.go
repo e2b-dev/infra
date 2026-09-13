@@ -190,7 +190,7 @@ func (s *azureStorage) GetDetails() string {
 // shape as the filesystem provider's local upload path, and no proto or public-API
 // change); SAS PUT URLs are deliberately never issued.
 func (s *azureStorage) UploadSignedURL(_ context.Context, path string, _ time.Duration) (string, error) {
-	return "", fmt.Errorf("signed upload URLs are not supported on Azure (%q): Put Blob requires the x-ms-blob-type request header, which a SAS cannot carry and external upload clients do not send", path)
+	return "", fmt.Errorf("%w: Azure (%q) Put Blob requires the x-ms-blob-type request header, which a SAS cannot carry and external upload clients do not send", ErrSignedUploadURLUnsupported, path)
 }
 
 func (s *azureStorage) OpenSeekable(_ context.Context, path string) (Seekable, error) {
