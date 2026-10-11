@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -203,6 +204,82 @@ func TestChunker_BasicSlice(t *testing.T) {
 	}
 }
 
+func TestChunkerSliceOwnsReturnedBytes(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range allChunkerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := makeTestData(testFileSize)
+			chunker, file, ft := tc.newChunker(t, data)
+			slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, ft)
+			require.NoError(t, err)
+			require.NoError(t, chunker.Close())
+
+			var first byte
+			err = RunFaultSafe(t.Context(), func() error {
+				first = slice[0]
+
+				return nil
+			})
+			require.NoError(t, err, "Chunker.Slice returned bytes backed by an unmapped cache")
+			require.Equal(t, data[0], first)
+		})
+	}
+}
+
+func BenchmarkChunkerCachedReadAt(b *testing.B) {
+	data := makeTestData(testBlockSize)
+	chunker, err := NewChunker(&featureflags.Client{}, int64(len(data)), testBlockSize, b.TempDir()+"/cache", newTestMetrics(b), storage.MemfileObjectType)
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = chunker.Close() })
+
+	upstream := new(fakeSeekable)
+	upstream.data = data
+	buf := make([]byte, testBlockSize)
+	ctx := b.Context()
+	_, err = chunker.ReadAt(ctx, buf, 0, upstream, nil)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.SetBytes(testBlockSize)
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := chunker.ReadAt(ctx, buf, 0, nil, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkChunkerCachedSlice measures the caller-owned copy on the cached
+// Slice path. ReadAt above remains the caller-buffer baseline.
+func BenchmarkChunkerCachedSlice(b *testing.B) {
+	data := makeTestData(testBlockSize)
+	chunker, err := NewChunker(&featureflags.Client{}, int64(len(data)), testBlockSize, b.TempDir()+"/cache", newTestMetrics(b), storage.MemfileObjectType)
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = chunker.Close() })
+
+	upstream := &fakeSeekable{data: data}
+	ctx := b.Context()
+	_, err = chunker.Slice(ctx, 0, testBlockSize, upstream, nil)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.SetBytes(testBlockSize)
+	b.ResetTimer()
+	for b.Loop() {
+		slice, sliceErr := chunker.Slice(ctx, 0, testBlockSize, nil, nil)
+		if sliceErr != nil {
+			b.Fatal(sliceErr)
+		}
+		if len(slice) != testBlockSize {
+			b.Fatalf("Slice length=%d, want %d", len(slice), testBlockSize)
+		}
+		runtime.KeepAlive(slice)
+	}
+}
+
 // TestChunker_CacheHit verifies that a second read of the same block
 // is served from cache without an additional upstream fetch.
 func TestChunker_CacheHit(t *testing.T) {
@@ -314,11 +391,11 @@ func TestChunker_EarlyReturn(t *testing.T) {
 
 	go func() {
 		slice, sliceErr := chunker.Slice(t.Context(), 0, testBlockSize, nil)
-		earlyDone <- result{data: bytes.Clone(slice), err: sliceErr} // clone: slice backed by mutable mmap
+		earlyDone <- result{data: slice, err: sliceErr}
 	}()
 	go func() {
 		slice, sliceErr := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
-		lateDone <- result{data: bytes.Clone(slice), err: sliceErr}
+		lateDone <- result{data: slice, err: sliceErr}
 	}()
 
 	// Advance exactly one read step (16KB). This covers offset 0 but is

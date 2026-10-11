@@ -61,65 +61,62 @@ func NewChunker(
 // ReadAt and Slice take {upstream, ft} as a paired snapshot from the caller.
 // The caller is responsible for keeping them consistent.
 func (c *Chunker) ReadAt(ctx context.Context, b []byte, off int64, upstream storage.RangeOpener, ft *storage.FrameTable) (int, error) {
-	slice, err := c.Slice(ctx, off, int64(len(b)), upstream, ft)
+	ct := ft.CompressionType()
+	readStart := time.Now()
+	src, err := c.ensureCached(ctx, off, int64(len(b)), upstream, ft)
 	if err != nil {
-		return 0, fmt.Errorf("failed to slice cache at %d-%d: %w", off, off+int64(len(b)), err)
+		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(readStart), 0, storage.ErrAttrs(c.objType, src, ct, err))
+
+		return 0, err
 	}
 
-	return copy(b, slice), nil
+	n, err := c.cache.readAtDirect(ctx, b, off)
+	if err != nil {
+		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(readStart), int64(n), storage.ErrAttrs(c.objType, src, ct, err))
+
+		return n, fmt.Errorf("failed to read from cache at offset %d: %w", off, err)
+	}
+	c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(readStart), int64(n), storage.OKAttrs(c.objType, src, ct))
+
+	return n, nil
 }
 
 func (c *Chunker) Slice(ctx context.Context, off, length int64, upstream storage.RangeOpener, ft *storage.FrameTable) ([]byte, error) {
-	ct := ft.CompressionType()
-	sliceStart := time.Now()
-
-	// Fast path: already cached.
-	b, err := c.cache.Slice(off, length)
-	if err == nil {
-		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, storage.SourceMmap, ct))
-
-		return b, nil
+	b := make([]byte, length)
+	n, err := c.ReadAt(ctx, b, off, upstream, ft)
+	if err != nil {
+		return nil, err
 	}
 
-	if !errors.As(err, &BytesNotAvailableError{}) {
-		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, storage.SourceMmap, ct, err))
+	return b[:n], nil
+}
 
-		return nil, fmt.Errorf("failed read from cache at offset %d: %w", off, err)
+// ensureCached fetches every chunk touched by [off, off+length). The returned
+// source attributes the work that populated the cache; SourceMmap means the
+// full range was already resident.
+func (c *Chunker) ensureCached(ctx context.Context, off, length int64, upstream storage.RangeOpener, ft *storage.FrameTable) (storage.Source, error) {
+	if c.cache.isCached(off, length) {
+		return storage.SourceMmap, nil
 	}
 
-	// Fetch every chunk the range spans (one fetch session per chunk).
 	var src storage.Source
 	end := off + length
 	for cur := off; cur < end; {
 		chunkOff, chunkLen, lerr := c.locateChunk(cur, ft)
 		if lerr != nil {
-			c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, lerr))
-
-			return nil, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
+			return src, fmt.Errorf("failed to locate chunk for offset %d: %w", cur, lerr)
 		}
 		chunkEnd := chunkOff + chunkLen
 		rangeEnd := min(end, chunkEnd)
 		s, err := c.fetch(ctx, cur, rangeEnd-cur, upstream, ft)
 		if err != nil {
-			c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, s, ct, err))
-
-			return nil, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
+			return s, fmt.Errorf("failed to ensure data at %d-%d: %w", cur, rangeEnd, err)
 		}
 		src = max(src, s)
 		cur = chunkEnd
 	}
 
-	// sliceDirect skips isCached — the waiter already confirmed the data is in the mmap.
-	b, cacheErr := c.cache.sliceDirect(off, length)
-	if cacheErr != nil {
-		c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), 0, storage.ErrAttrs(c.objType, src, ct, cacheErr))
-
-		return nil, fmt.Errorf("failed to read from cache after ensuring data at %d-%d: %w", off, off+length, cacheErr)
-	}
-
-	c.metrics.ChunkSliceTimerFactory.Record(ctx, time.Since(sliceStart), length, storage.OKAttrs(c.objType, src, ct))
-
-	return b, nil
+	return src, nil
 }
 
 // getOrCreateSession returns a fetch session for the chunk at [off, off+length),

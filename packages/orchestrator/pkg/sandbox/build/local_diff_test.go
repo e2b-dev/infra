@@ -3,9 +3,12 @@
 package build
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 )
 
 // TestLocalDiffFileCloseToDiffRemovesPartialOnError verifies CloseToDiff does not
@@ -51,4 +54,31 @@ func TestLocalDiffFileCloseToDiffRemovesEmptyCacheFile(t *testing.T) {
 	require.NoError(t, err)
 	require.IsType(t, &NoDiff{}, diff)
 	require.NoFileExists(t, cachePath, "empty diff cache file must be removed")
+}
+
+func TestLocalDiffSliceOwnsReturnedBytes(t *testing.T) {
+	t.Parallel()
+
+	const size = int64(4096)
+	cache, err := block.NewCache(size, size, t.TempDir()+"/slice-cache", false)
+	require.NoError(t, err)
+
+	payload := bytes.Repeat([]byte{0xA5}, int(size))
+	_, err = cache.WriteAt(payload, 0)
+	require.NoError(t, err)
+
+	diff, err := NewLocalDiffFromCache(GetDiffStoreKey("slice-owner", Rootfs), cache)
+	require.NoError(t, err)
+	data, err := diff.Slice(t.Context(), 0, size, nil)
+	require.NoError(t, err)
+	require.NoError(t, diff.Close())
+
+	var first byte
+	err = block.RunFaultSafe(t.Context(), func() error {
+		first = data[0]
+
+		return nil
+	})
+	require.NoError(t, err, "Diff.Slice returned bytes backed by an unmapped cache")
+	require.Equal(t, payload[0], first)
 }

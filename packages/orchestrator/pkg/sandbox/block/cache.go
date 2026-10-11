@@ -431,6 +431,63 @@ func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, slice), nil
 }
 
+// readAtDirect copies from the mmap while holding the close-exclusion lock but
+// deliberately skips the tracker check. Chunker uses it only after its fetch
+// session waiters have proved every requested byte is ready; uncompressed
+// sessions release blocks progressively before the whole chunk is marked
+// cached, so the public ReadAt would reject valid early reads.
+func (c *Cache) readAtDirect(ctx context.Context, b []byte, off int64) (int, error) {
+	// Non-cancellable callers keep the ordinary RWMutex path. Cancellable
+	// callers cannot block in RLock: a pending Close or
+	// unrelated writer would otherwise hide cancellation behind that writer.
+	locked := true
+	if ctx.Done() == nil {
+		c.mu.RLock()
+	} else {
+		locked = c.mu.TryRLock()
+	}
+
+	if !locked {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		timer := time.NewTimer(time.Millisecond)
+		defer timer.Stop()
+
+		for !locked {
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-timer.C:
+				if err := ctx.Err(); err != nil {
+					return 0, err
+				}
+				locked = c.mu.TryRLock()
+				if !locked {
+					timer.Reset(time.Millisecond)
+				}
+			}
+		}
+	}
+
+	defer c.mu.RUnlock()
+
+	if c.mmap == nil {
+		return 0, nil
+	}
+	if c.isClosed() {
+		return 0, NewErrCacheClosed(c.filePath)
+	}
+	if off < 0 || off >= c.size {
+		return 0, BytesNotAvailableError{}
+	}
+
+	end := min(off+int64(len(b)), c.size)
+
+	return copy(b, (*c.mmap)[off:end]), nil
+}
+
 func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -496,26 +553,6 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	}
 
 	return nil, BytesNotAvailableError{}
-}
-
-// sliceDirect returns a slice of the mmap without checking isCached.
-// Used by the streaming chunker after the waiter mechanism has confirmed data availability.
-func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
-	if c.isClosed() {
-		return nil, NewErrCacheClosed(c.filePath)
-	}
-
-	if c.mmap == nil {
-		return nil, nil
-	}
-
-	if off < 0 || off >= c.size {
-		return nil, BytesNotAvailableError{}
-	}
-
-	end := min(off+length, c.size)
-
-	return (*c.mmap)[off:end], nil
 }
 
 // Zero blocks are treated as cached: the mmap region reads back as zero (punched).
