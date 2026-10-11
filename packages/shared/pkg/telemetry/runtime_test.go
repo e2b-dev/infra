@@ -27,8 +27,7 @@ func TestStartRuntimeInstrumentationExportsGCMetrics(t *testing.T) {
 	// are both non-zero.
 	runtime.GC() //nolint:revive // intentional: a completed cycle is what the counters report
 
-	// Both counters are monotonic, so the exported values must fall between
-	// a read before and a read after the collection.
+	// These monotonic runtime counters must bracket the exported values.
 	before := readCounters()
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(t.Context(), &rm))
@@ -82,6 +81,20 @@ func TestStartRuntimeInstrumentationExportsGCMetrics(t *testing.T) {
 	assert.LessOrEqual(t, cyclesData.DataPoints[0].Value, after.cycles)
 	assert.Zero(t, cyclesData.DataPoints[0].Attributes.Len())
 
+	mutexWait, ok := found["go.sync.mutex.wait.time"]
+	require.True(t, ok, "go.sync.mutex.wait.time not exported")
+	assert.Equal(t, "s", mutexWait.Unit)
+	mutexWaitData, ok := mutexWait.Data.(metricdata.Sum[float64])
+	require.True(t, ok, "go.sync.mutex.wait.time is %T, want a float64 sum", mutexWait.Data)
+	assert.True(t, mutexWaitData.IsMonotonic)
+	assert.Equal(t, metricdata.CumulativeTemporality, mutexWaitData.Temporality)
+	require.Len(t, mutexWaitData.DataPoints, 1)
+	assert.Zero(t, mutexWaitData.DataPoints[0].Attributes.Len())
+	// Native totals can temporarily decrease, so two reads cannot bracket an
+	// intervening observation. Controlled SDK callbacks test the retained peak.
+	assert.Equal(t, "/sync/mutex/wait/total:seconds", mutexWaitSample)
+	assert.GreaterOrEqual(t, mutexWaitData.DataPoints[0].Value, float64(0))
+
 	// The contrib instruments are still registered beside them.
 	_, ok = found["go.memory.gc.goal"]
 	assert.True(t, ok, "go.memory.gc.goal not exported")
@@ -108,12 +121,12 @@ func TestContribRuntimeDoesNotEmitTheGCMetrics(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, names, "the contrib instrumentation exported nothing")
-	for _, ours := range []string{"go.memory.live", "go.memory.gc.cycles", "go.cpu.time"} {
+	for _, ours := range []string{"go.memory.live", "go.memory.gc.cycles", "go.cpu.time", "go.sync.mutex.wait.time"} {
 		assert.NotContains(t, names, ours, "contrib now emits %s; delete it from startGCMetrics", ours)
 	}
 }
 
-type gcCounters struct {
+type runtimeCounters struct {
 	gcCPU  float64
 	cycles int64
 }
@@ -121,9 +134,9 @@ type gcCounters struct {
 // readCounters names its samples itself rather than through the package's
 // constants, so a constant pointing at the wrong sample cannot move the
 // bracket along with the value it checks.
-func readCounters() gcCounters {
+func readCounters() runtimeCounters {
 	samples := []rtmetrics.Sample{{Name: "/cpu/classes/gc/total:cpu-seconds"}, {Name: "/gc/cycles/total:gc-cycles"}}
 	rtmetrics.Read(samples)
 
-	return gcCounters{gcCPU: samples[0].Value.Float64(), cycles: int64(samples[1].Value.Uint64())}
+	return runtimeCounters{gcCPU: samples[0].Value.Float64(), cycles: int64(samples[1].Value.Uint64())}
 }
