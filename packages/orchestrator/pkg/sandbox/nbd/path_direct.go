@@ -109,6 +109,12 @@ type DirectPathMount struct {
 	// the window where the kernel holds the device but Open has not returned it.
 	afterConnect func(deviceIndex uint32)
 
+	// Tests replace device operations without connecting a kernel NBD device.
+	// Production leaves these nil and uses the same disconnect and pool calls.
+	disconnectDeviceFn func(ctx context.Context, deviceIndex uint32) error
+	releaseDeviceFn    func(ctx context.Context, deviceIndex uint32) error
+	socketPairFn       func() ([2]int, error)
+
 	dispatchers []*Dispatch
 	socksClient []*os.File
 	socksServer []io.Closer
@@ -202,7 +208,7 @@ func (d *DirectPathMount) Open(ctx context.Context) (retDeviceIndex uint32, err 
 
 		for i := range connections {
 			// Create the socket pairs
-			sockPair, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+			sockPair, err := d.socketPair()
 			if err != nil {
 				closeErr := closeSocketPairs(d.socksClient, d.socksServer)
 				releaseErr := d.devicePool.ReleaseDevice(ctx, deviceIndex)
@@ -542,7 +548,7 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 
 	// Disconnect NBD
 	if idx != math.MaxUint32 {
-		err := disconnectNBDWithTimeout(ctx, idx, disconnectTimeout)
+		err := d.disconnectDevice(ctx, idx)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error disconnecting NBD: %w", err))
 		}
@@ -562,13 +568,37 @@ func (d *DirectPathMount) Close(ctx context.Context) error {
 	// Release the device back to the pool, retry if it is in use
 	if idx != math.MaxUint32 {
 		telemetry.ReportEvent(ctx, "releasing device to the pool")
-		err := d.devicePool.ReleaseDevice(ctx, idx, WithInfiniteRetry(), WithLogger(d.logger))
+		err := d.releaseDevice(ctx, idx)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("error releasing overlay device: %w", err))
 		}
 	}
 
 	return errors.Join(errs...)
+}
+
+func (d *DirectPathMount) socketPair() ([2]int, error) {
+	if d.socketPairFn != nil {
+		return d.socketPairFn()
+	}
+
+	return syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+}
+
+func (d *DirectPathMount) disconnectDevice(ctx context.Context, deviceIndex uint32) error {
+	if d.disconnectDeviceFn != nil {
+		return d.disconnectDeviceFn(ctx, deviceIndex)
+	}
+
+	return disconnectNBDWithTimeout(ctx, deviceIndex, disconnectTimeout)
+}
+
+func (d *DirectPathMount) releaseDevice(ctx context.Context, deviceIndex uint32) error {
+	if d.releaseDeviceFn != nil {
+		return d.releaseDeviceFn(ctx, deviceIndex)
+	}
+
+	return d.devicePool.ReleaseDevice(ctx, deviceIndex, WithInfiniteRetry(), WithLogger(d.logger))
 }
 
 func disconnectNBDWithTimeout(ctx context.Context, deviceIndex uint32, timeout time.Duration) error {

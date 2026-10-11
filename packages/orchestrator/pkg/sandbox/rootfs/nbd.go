@@ -29,9 +29,15 @@ func (o *NBDProvider) CacheSize(ctx context.Context) (int64, error) {
 	return o.overlay.CacheSize(ctx)
 }
 
+type nbdMount interface {
+	Open(ctx context.Context) (uint32, error)
+	Flush(ctx context.Context) error
+	Close(ctx context.Context) error
+}
+
 type NBDProvider struct {
 	overlay      *block.Overlay
-	mnt          *nbd.DirectPathMount
+	mnt          nbdMount
 	featureFlags *featureflags.Client
 
 	logger logger.Logger
