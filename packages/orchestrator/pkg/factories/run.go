@@ -1064,15 +1064,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
 	}
 
-	httpMux := http.NewServeMux()
-	httpMux.Handle("/health", healthcheck.CreateHandler())
-
-	if localUploadHandler != nil {
-		httpMux.Handle("/upload", localUploadHandler)
-	}
-
 	httpServer := NewHTTPServer()
-	httpServer.Handler = httpMux
+	httpServer.Handler = newHTTPHandler(healthcheck.CreateHandler(), localUploadHandler)
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
