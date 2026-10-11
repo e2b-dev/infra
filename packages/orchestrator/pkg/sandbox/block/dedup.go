@@ -104,6 +104,7 @@ func dedupCompare(
 	plan := &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()}
 
 	parentByKey := make(map[dedupFetchKey]*roaring.Bitmap)
+	trackParentPages := budget.MaxPagesPerPromotedFrame > 0
 
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
@@ -162,12 +163,16 @@ func dedupCompare(
 				}
 
 				key := parentFetchKey(baseHeader, mapped, hasMapping, pageOff, windowBytes)
-				bm := parentByKey[key]
-				if bm == nil {
-					bm = roaring.New()
+				bm, exists := parentByKey[key]
+				if !exists {
+					if trackParentPages {
+						bm = roaring.New()
+					}
 					parentByKey[key] = bm
 				}
-				bm.Add(pageIdx)
+				if bm != nil {
+					bm.Add(pageIdx)
+				}
 			}
 		}
 	}
