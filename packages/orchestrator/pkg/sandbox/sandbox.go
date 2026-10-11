@@ -922,7 +922,7 @@ func (f *Factory) CreateSandbox(
 	defer func() {
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
-			e = errors.Join(e, cleanupErr)
+			e = errors.Join(preserveConstructionCause(ctx, e), cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
 		}
@@ -1304,7 +1304,7 @@ func (f *Factory) ResumeSandbox(
 	defer func() {
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
-			e = errors.Join(e, cleanupErr)
+			e = errors.Join(preserveConstructionCause(ctx, e), cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
 		}
