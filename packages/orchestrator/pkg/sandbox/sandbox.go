@@ -4310,13 +4310,22 @@ func serveMemory(
 
 	telemetry.ReportEvent(ctx, "started uffd")
 
-	cleanup.Add(ctx, func(ctx context.Context) error {
+	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
 		if err := fcUffd.Stop(); err != nil {
 			return fmt.Errorf("failed to stop uffd: %w", err)
 		}
+
+		return nil
+	})
+	cleanup.Add(ctx, func(context.Context) error {
+		// Stop only requests exit. Keep the memory handler's descriptors and
+		// borrowed template data owned until its receive/serve work has joined.
+		// The handler's operational error is already published through Exit and
+		// MemoryHandlerErr; it is not a cleanup failure after the owner joined.
+		_ = fcUffd.Exit().Wait()
 
 		return nil
 	})
