@@ -347,22 +347,37 @@ func acquireOrchestratorLock(path string) (*flock.Flock, error) {
 	}
 
 	// Record our PID so a future conflicting instance can report it. We hold the
-	// exclusive advisory lock, so no other process writes this file concurrently.
-	if err := writeLockHolderPID(path); err != nil {
-		_ = fileLock.Unlock()
-
-		return nil, fmt.Errorf("write lock holder pid: %w", err)
+	// exclusive advisory lock, but its pathname may have been replaced while
+	// TryLock was opening it. Bind the metadata writer to the held inode.
+	lockedInfo, err := fileLock.Stat()
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("stat held lock file: %w", err), fileLock.Unlock())
+	}
+	if err := writeLockHolderPID(path, lockedInfo); err != nil {
+		return nil, errors.Join(fmt.Errorf("write lock holder pid: %w", err), fileLock.Unlock())
 	}
 
 	return fileLock, nil
 }
 
-func writeLockHolderPID(path string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o644)
+func writeLockHolderPID(path string, lockedInfo os.FileInfo) error {
+	// Do not truncate through the pathname before confirming this descriptor
+	// refers to the inode that we actually locked.
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open lock file: %w", err)
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat lock metadata file: %w", err)
+	}
+	if !os.SameFile(lockedInfo, info) {
+		return errors.New("lock file path changed during acquisition")
+	}
+	if err := f.Truncate(0); err != nil {
+		return fmt.Errorf("truncate lock file: %w", err)
+	}
 
 	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
 		return fmt.Errorf("write pid: %w", err)
@@ -403,17 +418,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 			log.Fatalf("Failed to acquire orchestrator lock %s: %v", config.OrchestratorLockPath, err)
 		}
 		defer func() {
-			fileErr := f.Close()
-			if fileErr != nil {
-				log.Printf("Failed to close lock file %s: %v", config.OrchestratorLockPath, fileErr)
-			}
-			// Remove the lock file on clean shutdown so a rollback to the older
-			// stat-based release can start: that guard exits whenever the lock
-			// file exists and cannot tell that this process is already gone.
-			// TODO: Remove this os.Remove once all hosts run a flock-based
-			// release and rollback to the stat-based guard is no longer possible.
-			if rmErr := os.Remove(config.OrchestratorLockPath); rmErr != nil && !os.IsNotExist(rmErr) {
-				log.Printf("Failed to remove lock file %s: %v", config.OrchestratorLockPath, rmErr)
+			if err := releaseOrchestratorLock(config.OrchestratorLockPath, f.Close); err != nil {
+				log.Printf("Failed to release lock file %s: %v", config.OrchestratorLockPath, err)
 			}
 		}()
 	}
