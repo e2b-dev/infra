@@ -130,6 +130,12 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 		return nil
 	}
 
+	// Teardown may cancel before the background run starts. Do not build the
+	// full page-work queues for a run that will never consume them.
+	if ctx.Err() != nil {
+		return nil
+	}
+
 	// Get worker counts and coalescing config from feature flags at runtime
 	maxFetchWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxFetchWorkers)
 	maxCopyWorkers := p.featureFlags.IntFlag(ctx, featureflags.MemoryPrefetchMaxCopyWorkers)
