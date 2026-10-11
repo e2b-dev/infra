@@ -281,6 +281,17 @@ func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
 }
 
+func newServiceErrorChannel() chan error {
+	return make(chan error, 1)
+}
+
+func reportServiceError(serviceError chan<- error, err error) {
+	select {
+	case serviceError <- err:
+	default:
+	}
+}
+
 // Run starts the orchestrator, blocking until shutdown.
 // Returns true on clean shutdown.
 func Run(opts Options) bool {
@@ -444,7 +455,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
 
-	serviceError := make(chan error)
+	serviceError := newServiceErrorChannel()
 	defer close(serviceError)
 
 	var g errgroup.Group
@@ -537,12 +548,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 				l.Error(ctx, "service returned an error", zap.Error(err))
 			}
 
-			select {
-			case serviceError <- err:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
+			reportServiceError(serviceError, err)
 
 			return serviceDoneError{name: name}
 		})
