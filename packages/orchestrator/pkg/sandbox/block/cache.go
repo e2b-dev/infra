@@ -59,13 +59,26 @@ type Cache struct {
 	closed    atomic.Bool
 }
 
-func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
-	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
+func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (_ *Cache, retErr error) {
+	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
+	created := err == nil
+	if errors.Is(err, os.ErrExist) {
+		// Existing paths may hold a completed diff. Ownership transfers only
+		// on success, so a failed constructor must leave them to their caller.
+		f, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+		if retErr != nil && created {
+			if err := os.Remove(filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				retErr = errors.Join(retErr, fmt.Errorf("remove failed cache file: %w", err))
+			}
+		}
+	}()
 
 	if size == 0 {
 		return &Cache{
