@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"context"
@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
@@ -54,9 +53,9 @@ func TestAdminJWTAlternativePreservesAdminTeamFailureStatus(t *testing.T) {
 	r.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
 		ErrorHandler: func(c *gin.Context, message string, fallbackStatusCode int) {
 			statusCode := max(c.Writer.Status(), fallbackStatusCode)
-			utils.ErrorHandler(c, message, statusCode)
+			ErrorHandler(c, message, statusCode)
 		},
-		MultiErrorHandler: utils.MultiErrorHandler,
+		MultiErrorHandler: MultiErrorHandler,
 		Options: openapi3filter.Options{
 			AuthenticationFunc: authenticationFunc,
 			MultiError:         true,

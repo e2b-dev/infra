@@ -1,4 +1,4 @@
-package main
+package api
 
 import (
 	"net/http"
@@ -10,14 +10,12 @@ import (
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/stretchr/testify/require"
-
-	"github.com/e2b-dev/infra/packages/api/internal/api"
 )
 
 func newSchemaValidatingRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 
-	swagger, err := api.GetSpec()
+	swagger, err := GetSpec()
 	require.NoError(t, err)
 	swagger.Servers = nil
 

@@ -1,4 +1,4 @@
-package main
+package utils
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 )
@@ -110,9 +109,9 @@ func newValidatingRouter(t *testing.T) (*gin.Engine, *[]error) {
 	})
 	router.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
 		ErrorHandler: func(c *gin.Context, message string, fallbackStatusCode int) {
-			utils.ErrorHandler(c, message, max(c.Writer.Status(), fallbackStatusCode))
+			ErrorHandler(c, message, max(c.Writer.Status(), fallbackStatusCode))
 		},
-		MultiErrorHandler: utils.MultiErrorHandler,
+		MultiErrorHandler: MultiErrorHandler,
 		Options: openapi3filter.Options{
 			AuthenticationFunc: authenticationFunc,
 			MultiError:         true,
