@@ -656,11 +656,6 @@ sandboxes are skipped. The delete is guarded by `execution_id` in a Lua script, 
 lifecycle never removes the record of a newer execution. On a miss client-proxy goes to the
 auto-resume path (`ResumeSandbox` gRPC to the API).
 
-Deploy order: every orchestrator on a cluster must run a build that publishes the record for one
-maximum sandbox length before client-proxy is upgraded past the flag-gated builds. Otherwise
-requests for sandboxes started before the orchestrator upgrade miss the record and go to the
-resume path.
-
 The TTL of the record is `sandbox_max_length_in_hours` from the write time. The record is
 deleted earlier in every normal stop path.
 
