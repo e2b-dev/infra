@@ -84,14 +84,6 @@ func HopMode(tb testing.TB, metrics *sdkmetric.ManualReader, hop, mode, source s
 		attribute.String(mtls.AttrClientHop, hop), attribute.String(mtls.AttrMode, mode), attribute.String(mtls.AttrSource, source))
 }
 
-// Handshakes is the handshake count of the listener or hop name, with attr
-// mtls.AttrListener or mtls.AttrClientHop, and outcome.
-func Handshakes(tb testing.TB, metrics *sdkmetric.ManualReader, attr, name, outcome string) int64 {
-	tb.Helper()
-
-	return Point(tb, metrics, mtls.MetricHandshakes, attribute.String(attr, name), attribute.String(mtls.AttrOutcome, outcome))
-}
-
 // Point is the value of the int64 gauge or counter name whose attributes
 // are exactly attrs, or -1 when that series is absent.
 func Point(tb testing.TB, metrics *sdkmetric.ManualReader, name string, attrs ...attribute.KeyValue) int64 {
