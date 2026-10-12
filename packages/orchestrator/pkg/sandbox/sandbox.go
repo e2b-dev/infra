@@ -1026,7 +1026,7 @@ func (f *Factory) CreateSandbox(
 	cgroupRemovalRegistered := false
 	defer cleanupIfNotRegistered(ctx, &e, &cgroupRemovalRegistered, cgroupHandle.Remove)
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased, runtime.SandboxType.EgressClass())
+	ipsPromise := f.getNetworkSlot(ctx, cleanup, config, runtime, lifecycleID)
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -1549,7 +1549,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased, runtime.SandboxType.EgressClass())
+	ipsPromise := f.getNetworkSlot(ctx, cleanup, config, runtime, lifecycleID)
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -4357,6 +4357,18 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName 
 
 		return nil, nil
 	}, trace.WithAttributes(attribute.String("cgroup_name", cgroupName)))
+}
+
+// Both fresh and resumed sandboxes acquire their slot with this lifecycle's
+// release callback. The pool retains it with the slot's cleanup owner.
+func (f *Factory) getNetworkSlot(
+	ctx context.Context,
+	cleanup *Cleanup,
+	config *Config,
+	runtime sandboxtypes.RuntimeMetadata,
+	lifecycleID string,
+) *utils.Promise[*network.Slot] {
+	return getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkRelease(runtime.SandboxID, lifecycleID), runtime.SandboxType.EgressClass())
 }
 
 func getNetworkSlot(

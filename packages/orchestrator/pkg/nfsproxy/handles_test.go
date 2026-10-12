@@ -28,6 +28,7 @@ import (
 type servedVolume struct {
 	target    *nfs.Target
 	sandboxes *sandbox.Map
+	sbx       *sandbox.Sandbox
 	hostPath  string
 
 	// mount mounts the volume again over a new connection.
@@ -43,6 +44,16 @@ func mountVolume(t *testing.T, config nfscfg.Config) servedVolume {
 		t.Skip("skipping test as it requires root privileges")
 	}
 
+	return serveUserspaceVolume(t, config)
+}
+
+func serveUserspaceVolume(t *testing.T, config nfscfg.Config) servedVolume {
+	t.Helper()
+
+	// Chrooted confines paths with openat2 descriptors, not a process chroot.
+	// Temporary directories and a userspace RPC client need no root privileges
+	// or kernel NFS mount, so the handle lifecycle must also be tested rootless.
+
 	teamID, volumeID := uuid.New(), uuid.New()
 	const volumeType, volumeName = "volume-type", "volume"
 
@@ -54,7 +65,8 @@ func mountVolume(t *testing.T, config nfscfg.Config) servedVolume {
 	require.NoError(t, err)
 
 	sandboxes := sandbox.NewSandboxesMap()
-	sandboxes.AssignNetwork(t.Context(), &sandbox.Sandbox{
+	sbx := &sandbox.Sandbox{
+		LifecycleID: uuid.NewString(),
 		Metadata: &sandbox.Metadata{
 			Config: sandbox.NewConfig(sandbox.Config{
 				VolumeMounts: []sandbox.VolumeMountConfig{
@@ -66,15 +78,26 @@ func mountVolume(t *testing.T, config nfscfg.Config) servedVolume {
 		Resources: &sandbox.Resources{
 			Slot: &network.Slot{Key: uuid.NewString(), HostIP: net.IPv4(127, 0, 0, 1)},
 		},
-	})
+	}
+	sandboxes.AssignNetwork(t.Context(), sbx)
 
 	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	t.Cleanup(func() { assert.NoError(t, listener.Close()) })
 
 	proxy, err := NewProxy(t.Context(), builder, sandboxes, config)
+	if err != nil {
+		require.NoError(t, listener.Close())
+	}
 	require.NoError(t, err)
-	go func() { assert.NoError(t, proxy.Serve(listener)) }()
+	serveDone := make(chan struct{})
+	t.Cleanup(func() {
+		assert.NoError(t, listener.Close())
+		<-serveDone
+	})
+	go func() {
+		defer close(serveDone)
+		assert.NoError(t, proxy.Serve(listener))
+	}()
 
 	host, portText, err := net.SplitHostPort(listener.Addr().String())
 	require.NoError(t, err)
@@ -92,7 +115,7 @@ func mountVolume(t *testing.T, config nfscfg.Config) servedVolume {
 	target, err := mount()
 	require.NoError(t, err)
 
-	return servedVolume{target: target, sandboxes: sandboxes, hostPath: hostPath, mount: mount}
+	return servedVolume{target: target, sandboxes: sandboxes, sbx: sbx, hostPath: hostPath, mount: mount}
 }
 
 // git holds .git/index.lock open for a whole checkout and writes it last; the
@@ -128,6 +151,45 @@ func TestSandboxReleaseMakesItsHandlesStale(t *testing.T) {
 	var status *nfs.Error
 	require.ErrorAs(t, err, &status)
 	assert.Equal(t, uint32(nfs.NFS3ErrStale), status.ErrorNum)
+}
+
+// All mounts here use the userspace NFS client over owned loopback sockets, not
+// a kernel mount. A delayed old release must close old handles, never new users
+// reached through the exact same slot pointer and IP.
+func TestCapturedNetworkReleaseMakesOnlyOldNFSHandlesStale(t *testing.T) {
+	t.Parallel()
+
+	volume := serveUserspaceVolume(t, nfscfg.Config{})
+	old := volume.sbx
+	oldHeld, err := volume.target.OpenFile("old-held", 0o644)
+	require.NoError(t, err)
+	volume.sandboxes.TrackLifecycle(t.Context(), old)
+	release := volume.sandboxes.NetworkRelease(old.Runtime.SandboxID, old.LifecycleID)
+	replacement := &sandbox.Sandbox{
+		LifecycleID: uuid.NewString(),
+		Metadata:    old.Metadata,
+		Resources:   old.Resources,
+	}
+	volume.sandboxes.AssignNetwork(t.Context(), replacement)
+	newTarget, err := volume.mount()
+	require.NoError(t, err)
+	newHeld, err := newTarget.OpenFile("new-held", 0o644)
+	require.NoError(t, err)
+
+	require.NoError(t, release(t.Context(), old.Slot.HostIPString()))
+	volume.sandboxes.MarkStopped(t.Context(), old)
+	require.NoError(t, release(t.Context(), old.Slot.HostIPString()))
+	_, err = oldHeld.Write([]byte("late old write"))
+	var status *nfs.Error
+	require.ErrorAs(t, err, &status, "the old lifecycle's real NFS handles must be retired")
+	assert.Equal(t, uint32(nfs.NFS3ErrStale), status.ErrorNum)
+	_, err = newHeld.Write([]byte("new owner write"))
+	require.NoError(t, err, "old callback must not retire replacement NFS users")
+	require.NoError(t, newHeld.Close())
+	got, err := volume.sandboxes.GetByHostPort(net.JoinHostPort(old.Slot.HostIPString(), "80"))
+	require.NoError(t, err, "old callback must not remove the replacement NFS route")
+	require.Same(t, replacement, got)
+	require.NoError(t, volume.sandboxes.NetworkRelease(replacement.Runtime.SandboxID, replacement.LifecycleID)(t.Context(), replacement.Slot.HostIPString()))
 }
 
 // Mounting a volume again reuses its filesystem, so its handles stay the same.

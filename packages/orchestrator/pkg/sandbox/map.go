@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
@@ -414,7 +415,109 @@ func (m *Map) notifyLifecycleChangeLocked() {
 	m.lifecycleChanged = make(chan struct{})
 }
 
-// NetworkReleased unregisters a sandbox's IP and notifies OnNetworkRelease
+// NetworkRelease captures one lifecycle's notification before slot acquisition.
+// The callback joins concurrent attempts, retains failed subscribers after route
+// removal, and does not repeat successful subscriber releases. Callers must keep
+// this same callback with their per-acquisition return owner.
+func (m *Map) NetworkRelease(sandboxID, lifecycleID string) network.ReleaseNotify {
+	type attempt struct {
+		done chan struct{}
+		err  error
+	}
+	var mu sync.Mutex
+	var active *attempt
+	var sbx *Sandbox
+	var pending []MapSubscriber
+	started := false
+
+	return func(ctx context.Context, ip string) error {
+		routeRemoved := false
+		mu.Lock()
+		if active != nil {
+			joined := active
+			mu.Unlock()
+			select {
+			case <-joined.done:
+				return joined.err
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			}
+		}
+		if started && len(pending) == 0 {
+			mu.Unlock()
+
+			return nil
+		}
+		if sandboxID == "" || lifecycleID == "" {
+			mu.Unlock()
+
+			return errors.New("network release requires sandbox and lifecycle identity")
+		}
+		if err := context.Cause(ctx); err != nil {
+			mu.Unlock()
+
+			return err
+		}
+		if !started {
+			// An old lifecycle can still own users after a successor replaces its
+			// route. Resolve only the captured identity, never the current IP owner.
+			sbx, _ = m.lifecycles.Get(sandboxLifecycleKey(sandboxID, lifecycleID))
+			routeRemoved = m.network.RemoveCb(ip, func(_ string, candidate *Sandbox, exists bool) bool {
+				if !exists || candidate.Runtime.SandboxID != sandboxID || candidate.LifecycleID != lifecycleID {
+					return false
+				}
+				sbx = candidate
+
+				return true
+			})
+			started = true
+			if sbx == nil {
+				mu.Unlock()
+				// Nothing was published for this lifecycle. This is a registry and
+				// subscriber fact, not proof that the physical slot has returned.
+				return nil
+			}
+			m.subsLock.RLock()
+			pending = append(pending, m.subs...)
+			m.subsLock.RUnlock()
+		}
+		current := &attempt{done: make(chan struct{})}
+		active = current
+		mu.Unlock()
+		if routeRemoved {
+			sbx.log().Info(ctx, "sandbox network map entry removed",
+				logger.WithLifecycleID(sbx.LifecycleID),
+				logger.WithSandboxIP(ip),
+			)
+		}
+
+		var errs []error
+		remaining := pending[:0]
+		for _, subscriber := range pending {
+			if err := subscriber.OnNetworkRelease(ctx, sbx); err != nil {
+				errs = append(errs, err)
+				remaining = append(remaining, subscriber)
+			}
+		}
+		clear(pending[len(remaining):])
+		mu.Lock()
+		pending = remaining
+		if len(pending) == 0 {
+			pending = nil
+			sbx = nil
+		}
+		current.err = errors.Join(errs...)
+		active = nil
+		close(current.done)
+		mu.Unlock()
+
+		return current.err
+	}
+}
+
+// NetworkReleased is a legacy IP-index operation, not a captured resource-return
+// promise. Return owners must use NetworkRelease with lifecycle identity.
+// It unregisters a sandbox's IP and notifies OnNetworkRelease
 // subscribers after a successful removal. Every subscriber is notified, and
 // their errors are joined.
 func (m *Map) NetworkReleased(ctx context.Context, ip string) error {
