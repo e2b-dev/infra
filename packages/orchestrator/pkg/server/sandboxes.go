@@ -670,10 +670,18 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, mapSandboxUpdateError(err)
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+func mapSandboxUpdateError(err error) error {
+	if errors.Is(err, sandbox.ErrSandboxUpdateClosed) {
+		return status.Error(codes.NotFound, "sandbox is closing or closed")
+	}
+
+	return err
 }
 
 // transitionEgress moves the in-memory egress config (read per-connection by

@@ -310,11 +310,86 @@ func (m *Metadata) SetEndAt(t time.Time) {
 	m.endAt = t
 }
 
+// ErrSandboxUpdateClosed reports that sandbox teardown owns update admission.
+var ErrSandboxUpdateClosed = errors.New("sandbox is closing or closed")
+
+// updateAdmission owns the boundary between live Update callbacks and
+// teardown. updatesClosed is the authoritative monotonic admission state;
+// activeDone identifies the one callback serialized by Sandbox.updateMu.
+type updateAdmission struct {
+	stateMu sync.Mutex
+
+	updatesClosed chan struct{}
+	activeDone    chan struct{}
+}
+
+func (a *updateAdmission) initialize() {
+	a.stateMu.Lock()
+	_ = a.closedSignalLocked()
+	a.stateMu.Unlock()
+}
+
+func (a *updateAdmission) closedSignalLocked() chan struct{} {
+	if a.updatesClosed == nil {
+		a.updatesClosed = make(chan struct{})
+	}
+
+	return a.updatesClosed
+}
+
+func (a *updateAdmission) closedSignal() <-chan struct{} {
+	a.stateMu.Lock()
+	closed := a.closedSignalLocked()
+	a.stateMu.Unlock()
+
+	return closed
+}
+
+func (a *updateAdmission) admit() (chan struct{}, error) {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+
+	select {
+	case <-a.closedSignalLocked():
+		return nil, ErrSandboxUpdateClosed
+	default:
+	}
+
+	activeDone := make(chan struct{})
+	a.activeDone = activeDone
+
+	return activeDone, nil
+}
+
+func (a *updateAdmission) complete(activeDone chan struct{}) {
+	a.stateMu.Lock()
+	if a.activeDone == activeDone {
+		a.activeDone = nil
+		close(activeDone)
+	}
+	a.stateMu.Unlock()
+}
+
+func (a *updateAdmission) closeAndSnapshotActive() <-chan struct{} {
+	a.stateMu.Lock()
+	closed := a.closedSignalLocked()
+	select {
+	case <-closed:
+	default:
+		close(closed)
+	}
+	activeDone := a.activeDone
+	a.stateMu.Unlock()
+
+	return activeDone
+}
+
 type Sandbox struct {
 	*Resources
 	*Metadata
 
-	updateMu sync.Mutex
+	updateMu        sync.Mutex
+	updateAdmission updateAdmission
 
 	// fphMu serialises free-page-hinting runs (the pre-pause drain and the
 	// periodic hinter): FC accepts one hinting cycle at a time, and Pause takes
@@ -505,6 +580,15 @@ func (s *Sandbox) EndInPlaceCheckpoint() {
 func (s *Sandbox) RunUpdate(update func() error) error {
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
+
+	activeDone, err := s.updateAdmission.admit()
+	if err != nil {
+		return err
+	}
+	// Registered after Unlock's defer so LIFO closes the active event before
+	// updateMu is released. Close can then start cleanup only after the callback
+	// and its admission have both ended.
+	defer s.updateAdmission.complete(activeDone)
 
 	return update()
 }
@@ -1077,6 +1161,7 @@ func (f *Factory) CreateSandbox(
 		exit: exit,
 	}
 
+	sbx.updateAdmission.initialize()
 	f.Sandboxes.AssignNetwork(ctx, sbx)
 	f.Sandboxes.reclaimLiveEntryOnCleanup(ctx, cleanup, runtime, sbx.LifecycleID)
 
@@ -1732,6 +1817,7 @@ func (f *Factory) ResumeSandbox(
 	// Register the sandbox IP before Resume so it is findable by source address
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
+	sbx.updateAdmission.initialize()
 	f.Sandboxes.AssignNetwork(ctx, sbx)
 	f.Sandboxes.reclaimLiveEntryOnCleanup(ctx, cleanup, runtime, sbx.LifecycleID)
 
@@ -1916,6 +2002,12 @@ func (s *Sandbox) MemoryHandlerErr() error {
 }
 
 func (s *Sandbox) Close(ctx context.Context) error {
+	// Stop admission, then join the exact live callback before any teardown.
+	// No admission or update lock is held across resource cleanup.
+	if activeDone := s.updateAdmission.closeAndSnapshotActive(); activeDone != nil {
+		<-activeDone
+	}
+
 	// The live-map entry is reclaimed inside the chain, by the callback
 	// Map.reclaimLiveEntryOnCleanup registers. Close must not reclaim it here:
 	// a writer at this point runs after the whole chain, which would move the

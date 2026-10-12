@@ -312,3 +312,81 @@ func TestUpdate_SerializesUpdatesPerSandbox(t *testing.T) {
 	require.NoError(t, <-updateDone)
 	assert.True(t, newEnd.Equal(sbx.GetEndAt()))
 }
+
+func TestMapSandboxUpdateError(t *testing.T) {
+	t.Parallel()
+
+	closedErr := mapSandboxUpdateError(sandbox.ErrSandboxUpdateClosed)
+	require.Error(t, closedErr)
+	assert.Equal(t, codes.NotFound, status.Code(closedErr))
+	assert.Equal(t, "sandbox is closing or closed", status.Convert(closedErr).Message())
+
+	unrelatedPrecondition := status.Error(codes.FailedPrecondition, "callback precondition")
+	assert.Same(t, unrelatedPrecondition, mapSandboxUpdateError(unrelatedPrecondition))
+
+	callbackErr := status.Error(codes.ResourceExhausted, "callback verdict")
+	mappedCallbackErr := mapSandboxUpdateError(callbackErr)
+	assert.Equal(t, callbackErr, mappedCallbackErr)
+	assert.Equal(t, codes.ResourceExhausted, status.Code(mappedCallbackErr))
+	assert.Equal(t, "callback verdict", status.Convert(mappedCallbackErr).Message())
+}
+
+func TestUpdate_ClosedSandboxReturnsNotFoundWithoutApplying(t *testing.T) {
+	t.Parallel()
+
+	slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{}) //nolint:exhaustruct_v5 // only slot identity is used
+	require.NoError(t, err)
+
+	sandboxID := id.Generate()
+	sbx := sandbox.NewBalloonTestSandbox(sandboxID, "", nil)
+	sbx.Resources = &sandbox.Resources{Slot: slot}
+	sbx.SetStartedAt(time.Now())
+	originalEnd := time.Now().Add(time.Hour)
+	sbx.SetEndAt(originalEnd)
+
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.AssignNetwork(t.Context(), sbx)
+	require.NoError(t, sandboxMap.MarkRunning(t.Context(), sbx))
+
+	s := &Server{ //nolint:exhaustruct_v5 // focused Update fixture
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{}, //nolint:exhaustruct_v5 // TrackWork needs only zero-value bookkeeping
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
+
+	require.NoError(t, sbx.Close(t.Context()))
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{ //nolint:exhaustruct_v5 // egress is intentionally absent
+		SandboxId: sandboxID,
+		EndTime:   timestamppb.New(time.Now().Add(5 * time.Hour)),
+	})
+	require.Error(t, err)
+	assert.Equal(t, codes.NotFound, status.Code(err))
+	assert.Equal(t, "sandbox is closing or closed", status.Convert(err).Message())
+	assert.True(t, originalEnd.Equal(sbx.GetEndAt()), "closed update callback changed end time")
+}
+
+func TestUpdate_StoppingSandboxReturnsNotFoundWithoutApplying(t *testing.T) {
+	t.Parallel()
+
+	slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{})
+	require.NoError(t, err)
+	sbx := sandbox.NewBalloonTestSandbox(id.Generate(), "", nil)
+	sbx.Resources = &sandbox.Resources{Slot: slot}
+	sbx.LifecycleID = "update-rpc-owner"
+	originalEnd := time.Now().Add(time.Hour)
+	sbx.SetEndAt(originalEnd)
+	m := sandbox.NewSandboxesMap()
+	require.NoError(t, m.MarkRunning(t.Context(), sbx))
+	require.True(t, m.MarkStopping(t.Context(), sbx.Runtime.SandboxID, sbx.LifecycleID))
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: m},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		EndTime:   timestamppb.New(time.Now().Add(5 * time.Hour)),
+	})
+	require.Equal(t, codes.NotFound, status.Code(err))
+	require.True(t, originalEnd.Equal(sbx.GetEndAt()))
+}

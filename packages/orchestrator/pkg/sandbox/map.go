@@ -335,9 +335,10 @@ func (m *Map) MarkStoppingReserved(ctx context.Context, sandboxID, lifecycleID s
 
 func (m *Map) markStopping(ctx context.Context, sandboxID, lifecycleID string, reserve bool) (*Reservation, error) {
 	var (
-		stopped     *Sandbox
-		reservation *Reservation
-		stopErr     error
+		stopped          *Sandbox
+		reservation      *Reservation
+		stopErr          error
+		activeUpdateDone <-chan struct{}
 	)
 
 	m.registryMu.Lock()
@@ -360,6 +361,10 @@ func (m *Map) markStopping(ctx context.Context, sandboxID, lifecycleID string, r
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
+		// Close admission before publishing the successful live-map removal.
+		// An Update that already fetched this pointer must not start during
+		// the subsequent stop or snapshot work.
+		activeUpdateDone = sbx.updateAdmission.closeAndSnapshotActive()
 		stopped = sbx
 
 		return true
@@ -376,6 +381,13 @@ func (m *Map) markStopping(ctx context.Context, sandboxID, lifecycleID string, r
 		}
 
 		return nil, fmt.Errorf("sandbox '%s' lifecycle '%s' is no longer live", sandboxID, lifecycleID)
+	}
+
+	// Wait outside registry/live-map locks: an admitted callback may still
+	// read the map. Subscribers and callers can begin teardown only after it
+	// returns, but no new callback can pass admission in the meantime.
+	if activeUpdateDone != nil {
+		<-activeUpdateDone
 	}
 
 	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {

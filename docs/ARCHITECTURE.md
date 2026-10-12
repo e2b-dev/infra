@@ -233,6 +233,12 @@ under `pkg/`, almost all Linux-only.
 gRPC services on :5008 (`pkg/server/`, `pkg/service/`, `pkg/template/server/`, `pkg/volumes/`):
 
 - **SandboxService** — `Create`, `Update`, `List`, `Delete`, `Pause`, `Checkpoint`.
+  `Update` callbacks are serialized per sandbox. A successful transition out of the live
+  map closes update admission and joins any admitted callback before stop/checkpoint
+  work or stopping notifications begin; `Close` repeats that check for crash cleanup.
+  An update using an inactive sandbox returns gRPC `NotFound`, which the API maps to
+  HTTP 404 for timeout and network updates. Teardown waits for admitted callbacks;
+  it cannot preempt one that does not return.
 - **TemplateService** — `TemplateCreate`, `TemplateBuildStatus`, `TemplateBuildDelete` (template-manager role only).
 - **InfoService** — node identity, roles, capacity, health status (used by API node discovery).
 - **ChunkService / VolumeService** — peer-to-peer template chunk serving; persistent volumes.
