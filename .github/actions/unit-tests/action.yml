@@ -99,8 +99,21 @@ runs:
         sudo mount -t hugetlbfs none /mnt/hugepages
         echo 2000 | sudo tee /proc/sys/vm/nr_hugepages
 
-        # Enable NBD
-        sudo modprobe nbd nbds_max=256
+        # Enable NBD. Skipped when devices already exist: a kernel with the
+        # driver built in (CONFIG_BLK_DEV_NBD=y) boots with its own device set
+        # and modprobe has no module tree to load from there.
+        if [ ! -e /dev/nbd0 ]; then
+          sudo modprobe nbd nbds_max=256
+        fi
+
+        # The shard's test binaries share the device namespace: the smoke
+        # test pre-warms NBD_POOL_SIZE slots from device 0 up, and the nbd
+        # package partitions the slots above that pool into per-test windows
+        # (pkg/sandbox/nbd/partition_test.go reads the same variable). The
+        # smoke test boots one sandbox at a time, so two warm slots are
+        # plenty, and the windows then fit a built-in driver's 16 devices as
+        # well as the 256 loaded above.
+        echo "NBD_POOL_SIZE=2" >> "$GITHUB_ENV"
 
         # Disable inotify watching of change events for NBD devices
         echo 'ACTION=="add|change", KERNEL=="nbd*", OPTIONS:="nowatch"' | sudo tee /etc/udev/rules.d/97-nbd-device.rules
@@ -129,8 +142,12 @@ runs:
       run: dirname "$(mise which gotestsum)" >> "$GITHUB_PATH"
 
     # sudo strips PATH; pass it through so gotestsum/go resolve to the
-    # runner's toolchain instead of /usr/bin/go. Trap chowns the coverage
-    # profile back to the runner so callers can read it even when tests fail.
+    # runner's toolchain instead of /usr/bin/go. The rest of the environment
+    # (Go cache settings, HOST_BUSYBOX_DIR, NBD_POOL_SIZE) goes over as an
+    # explicit --preserve-env list: sudo-rs, the sudo on Ubuntu 25.10 and
+    # later images, ignores a bare -E, and both implementations take the
+    # list form. Trap chowns the coverage profile back to the runner so
+    # callers can read it even when tests fail.
     - name: Run tests that require sudo
       if: inputs.sudo == 'true'
       shell: bash
@@ -141,7 +158,7 @@ runs:
         if [ "${{ inputs.race }}" = "true" ]; then RACE="-race"; TEST_TIMEOUT=40m; fi
         COVER=""
         if [ "${{ inputs.coverage }}" = "true" ]; then COVER="-coverprofile=coverage.txt"; fi
-        sudo -E env "PATH=$PATH" gotestsum --format=standard-verbose \
+        sudo --preserve-env="$(compgen -e | paste -sd,)" env "PATH=$PATH" gotestsum --format=standard-verbose \
           -- -timeout $TEST_TIMEOUT $RACE -parallel 16 $COVER ${{ inputs.test-path }}
 
     - name: Run tests

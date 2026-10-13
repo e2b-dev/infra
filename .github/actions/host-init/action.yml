@@ -47,7 +47,10 @@ runs:
         INIT_SCRIPT_PATH: "./.github/actions/host-init/init-client.sh"
       run: |
         chmod +x "${INIT_SCRIPT_PATH}"
-        sudo -E bash -c "${INIT_SCRIPT_PATH}"
+        # The script reads the job's variables (KERNEL_VERSIONS, NBDS_MAX,
+        # GITHUB_ENV, ...); an explicit --preserve-env list carries them, since
+        # sudo-rs on Ubuntu 25.10 and later images ignores a bare -E.
+        sudo --preserve-env="$(compgen -e | paste -sd,)" bash -c "${INIT_SCRIPT_PATH}"
       shell: bash
 
     - name: Save sandbox artifacts

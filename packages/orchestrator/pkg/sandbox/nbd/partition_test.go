@@ -4,6 +4,8 @@ package nbd
 
 import (
 	"context"
+	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -34,10 +36,10 @@ var (
 
 // acquireWindow hands out a window index below capacity, waiting for a
 // recycled one when every window is held: -parallel may exceed the number of
-// windows that fit (ten on a 128-device module), and a transiently full
-// namespace must queue behind running tests rather than fail. The deadline
-// turns a window held past its test's cleanup into a diagnosis instead of a
-// package-wide hang.
+// windows that fit (one on a 16-device built-in driver, five on 64), and a
+// transiently full namespace must queue behind running tests rather than
+// fail. The deadline turns a window held past its test's cleanup into a
+// diagnosis instead of a package-wide hang.
 func acquireWindow(t *testing.T, capacity uint) uint {
 	t.Helper()
 
@@ -86,22 +88,23 @@ func claimSlotWindow(t *testing.T, pool *DevicePool) (release func()) {
 	// usedSlots.Len is fixed at construction: every pool reads the same
 	// nbds_max, so capacity is a process-wide constant.
 	total := pool.usedSlots.Len()
-	// The base scales with the loaded module's nbds_max instead of assuming
-	// CI's 256 (where it stays 96): a local module loaded with 128 still
-	// yields seven windows at base 72. The floor keeps the windows above the
-	// smoke test binary's pool — go test runs the two binaries concurrently.
-	// That pool populates from device 0 upward and reaches past its default
-	// size of 64 (cfg.NBDPoolSize): Populate claims one in-flight slot beyond
-	// the buffered 64, and each checked-out device holds its slot while the
-	// feeder refills above it, so 72 = 64 + 1 in flight + checkout headroom,
-	// aligned to the window size.
-	base := max(total*3/8, 72)
+	// The windows sit above the smoke test binary's pool — go test runs the
+	// two binaries concurrently. That pool populates from device 0 upward and
+	// reaches past its size: Populate claims one in-flight slot beyond the
+	// buffered ones, and each checked-out device holds its slot while the
+	// feeder refills above it, so the base is the pool size plus one in
+	// flight plus one checked out, aligned up to the window size: 72 for the
+	// default pool of 64, 8 for the two slots the unit-test action sets,
+	// which fits a built-in driver's 16 devices. On larger namespaces the
+	// base also scales with nbds_max (96 on a 256-device module) so the
+	// smoke test keeps room to grow.
+	base := max(total*3/8, alignUp(smokeTestPoolSize(t)+2, testWindowSize))
 	var capacity uint
 	if total > base {
 		capacity = (total - base) / testWindowSize
 	}
 	require.NotZero(t, capacity,
-		"the device namespace cannot fit one test window above the smoke test's pool; raise nbds_max")
+		"the device namespace cannot fit one test window above the smoke test's pool; raise nbds_max or lower NBD_POOL_SIZE")
 
 	window := acquireWindow(t, capacity)
 	// Registered after a successful acquire and before the caller's pool
@@ -131,6 +134,28 @@ func claimSlotWindow(t *testing.T, pool *DevicePool) (release func()) {
 			}
 		}
 	}
+}
+
+// smokeTestPoolSize is the NBD_POOL_SIZE the smoke test binary builds its
+// pool with (cfg.Config.NBDPoolSize, default 64). Both binaries read the same
+// environment, so the windows start where that pool ends.
+func smokeTestPoolSize(t *testing.T) uint {
+	t.Helper()
+
+	value := os.Getenv("NBD_POOL_SIZE")
+	if value == "" {
+		return 64
+	}
+
+	size, err := strconv.ParseUint(value, 10, 32)
+	require.NoError(t, err, "NBD_POOL_SIZE must be a positive integer")
+	require.NotZero(t, size, "NBD_POOL_SIZE must be a positive integer")
+
+	return uint(size)
+}
+
+func alignUp(n, to uint) uint {
+	return (n + to - 1) / to * to
 }
 
 // newPartitionedPool builds a windowed pool with a running feeder and tears

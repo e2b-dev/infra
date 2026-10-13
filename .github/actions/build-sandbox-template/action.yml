@@ -83,6 +83,29 @@ runs:
           echo "blacksmith=false" >> "$GITHUB_OUTPUT"
         fi
 
+    # A template snapshot carries the vCPU state of the host it was taken
+    # on, and Firecracker restores it only on the same CPU model: on another
+    # one the load fails with "Failed to set all KVM MSRs for this vCPU".
+    # One runner label can front hosts of several models (Intel and AMD
+    # both seen behind the same label), and the cache is shared across them,
+    # so the key carries the host's vendor, family, model and stepping and a
+    # staged template is reused only where it can boot.
+    - name: Identify the host CPU
+      id: host-cpu
+      shell: bash
+      run: |
+        cpu=$(awk -F':' '
+          $1 ~ /^vendor_id/ { v = $2 }
+          $1 ~ /^cpu family/ { f = $2 }
+          $1 ~ /^model[[:space:]]*$/ { m = $2 }
+          $1 ~ /^stepping/ { s = $2 }
+          $1 ~ /^model name/ { n = $2 }
+          END { gsub(/[[:space:]]/, "", v); gsub(/[[:space:]]/, "", f); gsub(/[[:space:]]/, "", m); gsub(/[[:space:]]/, "", s)
+                sub(/^[[:space:]]+/, "", n); print v "-" f "-" m "-" s "\t" n }' /proc/cpuinfo)
+        tab=$'\t'
+        echo "Host CPU: ${cpu#*"$tab"} (${cpu%%"$tab"*})"
+        echo "cpu=${cpu%%"$tab"*}" >> "$GITHUB_OUTPUT"
+
     - name: Cache the built template
       if: steps.cache-backend.outputs.blacksmith == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -90,7 +113,7 @@ runs:
         path: /tmp/base-template-stage
 # gc dimension: DEBUG_GCFLAGS shapes the embedded envd binary the same
         # way RACE_FLAG does (optimized vs -N -l debug builds).
-        key: base-template-race${{ env.RACE_FLAG }}-gc${{ env.DEBUG_GCFLAGS != '' && 'debug' || 'opt' }}-${{ inputs.compress_enabled }}-${{ inputs.compress_type }}-${{ inputs.compress_level }}-${{ inputs.compress_workers }}-disk${{ inputs.disk_size_mb }}-${{ steps.template-src.outputs.hash }}
+        key: base-template-race${{ env.RACE_FLAG }}-gc${{ env.DEBUG_GCFLAGS != '' && 'debug' || 'opt' }}-${{ inputs.compress_enabled }}-${{ inputs.compress_type }}-${{ inputs.compress_level }}-${{ inputs.compress_workers }}-disk${{ inputs.disk_size_mb }}-${{ steps.template-src.outputs.hash }}-${{ steps.host-cpu.outputs.cpu }}
 
     # Note: this cannot run concurrently with a running orchestrator -
     # create-build manages its own sandbox network state (slot pools,
@@ -141,13 +164,16 @@ runs:
         echo "COMPRESS_FRAME_ENCODE_WORKERS=${COMPRESS_FRAME_ENCODE_WORKERS}" >> .env.test
 
         if [ ! -s "$marker" ]; then
-          sudo -E make -C packages/orchestrator build-template \
+          # The compression settings and the artifact directories reach
+          # create-build through the environment; sudo-rs on Ubuntu 25.10 and
+          # later images ignores a bare -E, so the variables are listed.
+          sudo --preserve-env="$(compgen -e | paste -sd,)" make -C packages/orchestrator build-template \
             ARTIFACTS_REGISTRY_PROVIDER=Local \
             STORAGE_PROVIDER=Local \
             TEMPLATE_ID=${TEMPLATE_ID} \
             BUILD_ID=${BUILD_ID} \
             KERNEL_VERSION=${KERNEL_VERSION} \
-            FC_VERSION=${FC_VERSION} \
+            FIRECRACKER_VERSION=${FIRECRACKER_VERSION} \
             DISK_SIZE_MB=${DISK_SIZE_MB} \
             MEMORY_MB=${MEMORY_MB}
 

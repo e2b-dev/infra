@@ -116,9 +116,12 @@ run-dummy: build-dummy
 	NODE_ID=$(HOSTNAME) GRPC_PORT=5008 HEALTH_PORT=5018 ./bin/dummy-orchestrator
 
 .PHONY: run-debug
+# The service reads its configuration from the environment (the
+# start-services step sets it); sudo-rs on Ubuntu 25.10 and later images
+# ignores a bare -E, so the variables go over as an explicit list.
 run-debug:
 	make build-debug
-	sudo -E GOTRACEBACK=crash \
+	sudo --preserve-env="$$(printenv | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' | paste -sd,)" GOTRACEBACK=crash \
 	GODEBUG=madvdontneed=1 \
 	NODE_ID="testclient" \
 	TEMPLATE_BUCKET_NAME=$(TEMPLATE_BUCKET_NAME) \
