@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -33,6 +34,8 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/constants"
+	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	managementv1 "github.com/e2b-dev/infra/packages/api/internal/secretsstore/management/v1"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
@@ -550,6 +553,65 @@ func TestSecretsValueForwardedUntouched(t *testing.T) {
 		require.Equal(t, http.StatusCreated, recorder.Code)
 		require.Len(t, backend.createRequests, 1)
 		require.Len(t, backend.createRequests[0].GetValue(), size)
+	}
+}
+
+func TestPostSecretsProjectSecretsLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		tier  string
+		flag  func(*ldtestdata.TestDataSource, uuid.UUID)
+		limit int32
+	}{
+		{name: "base tier default", tier: constants.BaseTierID, limit: baseTierProjectSecretsLimit},
+		{name: "paid tier default", tier: "pro_v1", limit: paidTierProjectSecretsLimit},
+		{name: "flag serving nothing keeps the tier default", tier: constants.BaseTierID, flag: func(td *ldtestdata.TestDataSource, _ uuid.UUID) {
+			td.Update(td.Flag(featureflags.MaxLiveSecretsPerProjectFlag.Key()).ValueForAll(ldvalue.Int(0)))
+		}, limit: baseTierProjectSecretsLimit},
+		{name: "flag rule on the tier wins", tier: "pro_v1", flag: func(td *ldtestdata.TestDataSource, _ uuid.UUID) {
+			td.Update(td.Flag(featureflags.MaxLiveSecretsPerProjectFlag.Key()).
+				Variations(ldvalue.Int(0), ldvalue.Int(250)).
+				FallthroughVariationIndex(0).
+				VariationIndexForKey(featureflags.TierKind, "pro_v1", 1))
+		}, limit: 250},
+		{name: "flag rule on the team UUID wins", tier: constants.BaseTierID, flag: func(td *ldtestdata.TestDataSource, teamID uuid.UUID) {
+			td.Update(td.Flag(featureflags.MaxLiveSecretsPerProjectFlag.Key()).
+				Variations(ldvalue.Int(0), ldvalue.Int(40)).
+				FallthroughVariationIndex(0).
+				VariationIndexForKey(featureflags.TeamKind, teamID.String(), 1))
+		}, limit: 40},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body, err := json.Marshal(api.NewSecret{Name: "my-secret", Value: sentinelSecretValue})
+			require.NoError(t, err)
+
+			ginCtx, recorder, teamID := newSecretsRequest(t, http.MethodPost, "/secrets", string(body))
+			sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{Team: &authqueries.Team{ID: teamID, Tier: tt.tier}})
+			middleware.InitLaunchDarklyContext(ginCtx)
+
+			td := ldtestdata.DataSource()
+			td.Update(td.Flag(featureflags.CustomerSecretsFlag.Key()).VariationForAll(true))
+			if tt.flag != nil {
+				tt.flag(td, teamID)
+			}
+			ff, err := featureflags.NewClientWithDatasource(td)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
+
+			backend := &fakeSecretsBackend{secret: backendSecret()}
+			store := &APIStore{featureFlags: ff, secretsManagement: startSecretsBackend(t, backend)}
+			store.PostSecrets(ginCtx)
+
+			require.Equal(t, http.StatusCreated, recorder.Code)
+			require.Len(t, backend.createRequests, 1)
+			require.Equal(t, tt.limit, backend.createRequests[0].GetProjectSecretsLimit())
+		})
 	}
 }
 

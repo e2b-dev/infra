@@ -305,9 +305,12 @@ type CreateSecretRequest struct {
 	// Value of the first version.
 	Value []byte `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
 	// Customer metadata for the logical secret. Omission defaults to empty.
-	Metadata      map[string]string `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	Metadata map[string]string `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Live secrets the project may hold, as the caller resolved it for the
+	// project's plan. Zero or omitted leaves the backend's own limit in place.
+	ProjectSecretsLimit int32 `protobuf:"varint,5,opt,name=project_secrets_limit,json=projectSecretsLimit,proto3" json:"project_secrets_limit,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *CreateSecretRequest) Reset() {
@@ -366,6 +369,13 @@ func (x *CreateSecretRequest) GetMetadata() map[string]string {
 		return x.Metadata
 	}
 	return nil
+}
+
+func (x *CreateSecretRequest) GetProjectSecretsLimit() int32 {
+	if x != nil {
+		return x.ProjectSecretsLimit
+	}
+	return 0
 }
 
 type CreateSecretResponse struct {
@@ -915,13 +925,14 @@ const file_e2b_secretsstore_management_v1_management_proto_rawDesc = "" +
 	"\x06values\x18\x01 \x03(\v2:.e2b.secretsstore.management.v1.SecretMetadata.ValuesEntryR\x06values\x1a9\n" +
 	"\vValuesEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xfa\x01\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xae\x02\n" +
 	"\x13CreateSecretRequest\x12\x1d\n" +
 	"\n" +
 	"project_id\x18\x01 \x01(\tR\tprojectId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x14\n" +
 	"\x05value\x18\x03 \x01(\fR\x05value\x12]\n" +
-	"\bmetadata\x18\x04 \x03(\v2A.e2b.secretsstore.management.v1.CreateSecretRequest.MetadataEntryR\bmetadata\x1a;\n" +
+	"\bmetadata\x18\x04 \x03(\v2A.e2b.secretsstore.management.v1.CreateSecretRequest.MetadataEntryR\bmetadata\x122\n" +
+	"\x15project_secrets_limit\x18\x05 \x01(\x05R\x13projectSecretsLimit\x1a;\n" +
 	"\rMetadataEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"V\n" +

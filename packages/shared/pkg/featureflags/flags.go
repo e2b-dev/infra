@@ -445,6 +445,10 @@ var (
 	// cannot reach LaunchDarkly keeps the routes dark.
 	CustomerSecretsFlag = NewBoolFlag("customer-secrets", false)
 
+	// MaxLiveSecretsPerProjectFlag overrides the live secrets a project may
+	// hold. A variation of zero or less keeps the tier default.
+	MaxLiveSecretsPerProjectFlag = NewIntFlag("secrets-store-max-live-secrets-per-project", 0)
+
 	DisableLegacyTeamMutationsFlag = NewBoolFlag("disable-legacy-team-mutations", false)
 
 	// V4HeaderForUncompressedFlag forces the V4 header layout on uncompressed
