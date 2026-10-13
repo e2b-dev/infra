@@ -241,6 +241,13 @@ var (
 	// the caller asked for a template that cold-boots.
 	FilesystemOnlyCheckpointFlag = NewBoolFlag("filesystem-only-checkpoint", false)
 
+	// EnvdInitHeldRequestFlag makes a start whose envd is at or above
+	// utils.MinEnvdVersionForHeldInit wait on one /init for its whole envd-wait budget
+	// instead of abandoning an attempt every envd-init-request-timeout-milliseconds, and
+	// send that /init's body, timestamp included, only once envd asks for it
+	// (Expect: 100-continue). Off (the default) runs today's retry loop on every start.
+	EnvdInitHeldRequestFlag = NewBoolFlag("envd-init-held-request", false)
+
 	// InPlaceCheckpointReportingFlag re-admits to the in-place checkpoint the
 	// sandboxes whose balloon runs free-page reporting, and those whose
 	// balloon could not be read. It only decides where DeferMemoryExportFlag
@@ -550,6 +557,10 @@ var (
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                                // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50)         // Timeout for envd init request in milliseconds
 	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs()) // Timeout for waiting for envd on resume; falls back to ENVD_TIMEOUT env var (default 10s)
+	// EnvdInitConnectTimeoutMilliseconds bounds each connect of the held envd init
+	// request. Read with EnvdInitHeldRequestFlag; a value below 1000 is raised to it, and
+	// a value at or below zero reads as the fallback.
+	EnvdInitConnectTimeoutMilliseconds = NewIntFlag("envd-init-connect-timeout-milliseconds", 5000)
 	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
 	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
 	// timeout from guest RAM; a positive value pins it.

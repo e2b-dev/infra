@@ -43,6 +43,15 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+	// envd's count of /init handlers that thawed inline after their client had gone, read
+	// off the served /init of a first customer start that succeeded.
+	EnvdInitUnobservedHandlers CounterType = "orchestrator.sandbox.envd.init.unobserved_handlers"
+	// Held envd init dials that took over 500 ms on a first customer start, by how that
+	// attempt ended.
+	EnvdInitSlowDials CounterType = "orchestrator.sandbox.envd.init.slow_dials"
+	// Held post-checkpoint envd re-inits stopped before they returned, by what stopped
+	// them: a following pause, or the sandbox's Firecracker exiting.
+	EnvdReinitCut CounterType = "orchestrator.sandbox.envd.reinit.cut"
 
 	// 2 MiB chunks the pre-pause envd heap collapse attempted, split by the
 	// result attribute (collapsed|skipped): attempts = total, successful =
@@ -350,6 +359,9 @@ const (
 	// throwaway is absent from Prometheus otherwise (registration-skip), so this
 	// is the harvest-activity / failure-rate signal.
 	PauseResumePrefetchHarvestAttempts CounterType = "orchestrator.sandbox.pause_resume_prefetch.harvest.attempts"
+	// Harvest throwaways whose held envd /init was served a 204, by whether envd skipped
+	// the thaw.
+	PauseResumePrefetchHarvestThaw CounterType = "orchestrator.sandbox.pause_resume_prefetch.harvest.thaw"
 
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
@@ -417,6 +429,8 @@ const (
 	// Sandbox timing histograms
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
+	EnvdInitTimestampAgeHistogramName     HistogramType = "orchestrator.sandbox.envd.init.timestamp_age"
+	EnvdInitClockCorrectionHistogramName  HistogramType = "orchestrator.sandbox.envd.init.clock_correction"
 	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
 	PauseDurationHistogramName            HistogramType = "orchestrator.sandbox.pause.duration"
 	SnapshotProcessMemoryDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_memory.duration"
@@ -714,6 +728,9 @@ var counterDesc = map[CounterType]string{
 	TeamSandboxCreated:                           "Counter of started sandboxes for the team in the interval",
 	OrchestratorHostBalanceDirtyPagesThreads:     "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
 	EnvdInitCalls:                                "Number of envd initialization calls",
+	EnvdReinitCut:                                "Post-checkpoint envd re-inits stopped before they returned, by what first stopped them, recorded when it did and counted once the re-init returns: pause (a following pause stopped a held one before its pre-pause freeze: cancelled it whatever it had written, or, before its gate chose the held loop, kept it from writing), kill (the sandbox's Firecracker process exited during a held one) or replace (a fresh re-init took its place: cancelled a held one in flight, or kept one from writing on either loop before its gate chose one)",
+	EnvdInitSlowDials:                            "Held envd init dials that took over 500 ms on a first customer start, by how that attempt ended: connect, write, response or success",
+	EnvdInitUnobservedHandlers:                   "Envd /init handlers that thawed the workload inline and completed after their client had gone, as envd counts them on the served /init of a first customer start that succeeded (X-Envd-Init-Unobserved)",
 	EnvdCollapseChunks:                           "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:         "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSandboxCrashedCounterName:        "Sandbox executions that ended without a recorded stop reason, labeled by cause (clean_exit/exit_error/external_signal/fault/memory_handler_failed/requested_signal/unknown)",
@@ -745,6 +762,7 @@ var counterDesc = map[CounterType]string{
 	OrchestratorEnvdBinaryCacheDeliveries:        "Host envd binary reads at delivery time, by outcome (copy|stale) and upgrade path",
 	OrchestratorEnvdBinaryCacheWarms:             "Host envd binary cache warms, by result (ok|superseded|suppressed|pinned|already_warming|bad_target|failed)",
 	OrchestratorEnvdUpgradeHandover:              "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
+	PauseResumePrefetchHarvestThaw:               "Harvest throwaways whose envd /init took the held request and was served a 204, by skipped: true when envd answered X-Envd-Thaw: skip and left the workload frozen, false when it thawed inline and the workload ran into the trace (an envd version the gate admitted that does not skip); envd_running_version is the version the gate read, kept when the orchestrator holds it, else other",
 	PauseResumePrefetchHarvestAttempts:           "Resume prefetch harvest attempts after a pause or an in-place checkpoint, by result (success | resume_failed | collect_failed | skipped = seal did not settle | slot_timeout = no start slot | persist_deadline) and path (pause | checkpoint)",
 	TCPFirewallConnectionsTotal:                  "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:                       "Total number of TCP firewall errors",
@@ -791,6 +809,9 @@ var counterUnits = map[CounterType]string{
 	TeamSandboxCreated:                           "{sandbox}",
 	OrchestratorHostBalanceDirtyPagesThreads:     "{thread}",
 	EnvdInitCalls:                                "1",
+	EnvdInitUnobservedHandlers:                   "{handler}",
+	EnvdInitSlowDials:                            "{dial}",
+	EnvdReinitCut:                                "{reinit}",
 	EnvdCollapseChunks:                           "{chunk}",
 	OrchestratorSandboxKilledCounterName:         "{sandbox}",
 	OrchestratorSandboxCrashedCounterName:        "{sandbox}",
@@ -823,6 +844,7 @@ var counterUnits = map[CounterType]string{
 	OrchestratorEnvdBinaryCacheDeliveries:        "{read}",
 	OrchestratorEnvdUpgradeHandover:              "{item}",
 	PauseResumePrefetchHarvestAttempts:           "{attempt}",
+	PauseResumePrefetchHarvestThaw:               "{throwaway}",
 	TCPFirewallConnectionsTotal:                  "{connection}",
 	TCPFirewallErrorsTotal:                       "{error}",
 	TCPFirewallDecisionsTotal:                    "{decision}",
@@ -1050,6 +1072,8 @@ var histogramDesc = map[HistogramType]string{
 	OrchestratorEnvdUpgradeDurationName:               "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
 	OrchestratorEnvdUpgradePhaseDurationName:          "Wall-time of one resume-time envd upgrade phase (resolve|deliver|ready); resolve is absent from the combined histogram",
 	WaitForEnvdDurationHistogramName:                  "Time taken for Envd to initialize successfully",
+	EnvdInitTimestampAgeHistogramName:                 "Age of the host timestamp carried by the served envd /init when its response arrived, on a handle's first customer start that succeeded. envd steps the guest clock to that timestamp, so this bounds how far behind the host the guest clock is left by it: the age also holds the rest of the handler and the response's transit, which come after the step, and an envd that corrects the timestamp (clock_correction) removes its own share before the step",
+	EnvdInitClockCorrectionHistogramName:              "Time envd added to the served /init timestamp before its clock rules, its own time from reading the request body to those rules whether or not they stepped the clock, in whole milliseconds as reported on X-Envd-Init-Clock-Correction, on a handle's first customer start that succeeded; absent when the envd sends no such header",
 	EnvdCollapseDurationHistogramName:                 "Time taken for the pre-pause envd heap collapse round-trip",
 	GuestSyncDurationHistogramName:                    "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 	PauseDurationHistogramName:                        "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
@@ -1135,6 +1159,8 @@ var histogramUnits = map[HistogramType]string{
 	OrchestratorEnvdBinaryCacheSourceStatDurationName: "ms",
 	OrchestratorFsRecoveryDurationName:                "ms",
 	WaitForEnvdDurationHistogramName:                  "ms",
+	EnvdInitTimestampAgeHistogramName:                 "ms",
+	EnvdInitClockCorrectionHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:                 "ms",
 	GuestSyncDurationHistogramName:                    "ms",
 	PauseDurationHistogramName:                        "ms",

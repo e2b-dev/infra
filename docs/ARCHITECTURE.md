@@ -359,8 +359,10 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
 - Scans guest ports and forwards them so any port a user process opens becomes reachable through
   sandbox URLs. **`pkg/version.go` carries the released version**, maintained by release-please from
   the Conventional Commits merged since the last envd release; do not edit it by hand. The API and
-  the orchestrator gate features on the envd version recorded in each template build, so a
-  behavioral change ships under a `feat`/`fix` commit type that cuts a version it can be gated on.
+  the orchestrator gate features on the envd version recorded in each template build — the
+  orchestrator's held `/init` is the one gate that reads the version of the envd expected to
+  answer instead (see sandbox creation) — so a behavioral change ships under a `feat`/`fix`
+  commit type that cuts a version it can be gated on.
 
 ### Client proxy (`packages/client-proxy`)
 
@@ -502,7 +504,7 @@ sequenceDiagram
     O->>O: fetch template (local cache / NFS / object storage)
     O->>O: acquire network slot + NBD rootfs overlay + uffd memory
     O->>FC: load snapshot, resume VM
-    O->>E: POST /init (env vars, access token) — retried until ready
+    O->>E: POST /init (env vars, access token) — held until envd reads it; older envds: retried until ready
     E-->>O: 204
     O-->>API: Create OK
     API->>R: store running sandbox
@@ -513,6 +515,22 @@ The API blocks on the gRPC `Create`, which itself blocks on envd's `/init` — w
 gets a response, the sandbox is fully usable. Fresh creates are internally a *resume* of the
 template's base snapshot (cold boots happen for filesystem-only templates and builds, or when
 an explicit resume requests one — see pause and resume below; template creates never do).
+
+How that `/init` reaches envd depends on the envd expected to answer it. Behind the
+`envd-init-held-request` flag, and for an envd at or above 0.10.0, the orchestrator sends one
+**held request**: it dials the guest first, writes a single `/init` with `Expect: 100-continue`
+over that connection, and withholds the body — timestamp included — until envd's handler asks
+for it, so the body is minted after the request has cleared the guest's accept queue and
+dispatch rather than before. The request waits for envd up to the caller's envd-wait budget and
+is re-sent only after a transport failure (a refused connect, or a connection that dropped under
+it), never on a timer. Older envds, and every sandbox with the flag off, keep the **legacy loop**:
+a complete `/init` posted and retried until envd answers. The gate reads the envd version it
+expects to answer, in this order: the version a confirmed live upgrade delivered in this life,
+else the version an offline upgrade swapped onto the rootfs before this boot, else the version
+the running envd last reported on `/init` when it parses as a version, else the running version
+the snapshot recorded at pause, else the version baked into the template build. The first two
+are binaries the orchestrator staged itself; the rest are the guest's word, which only ever
+chooses between the two loops for that guest.
 
 #### Opt-in request idempotency
 
@@ -735,6 +753,22 @@ sequenceDiagram
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
+- **Post-checkpoint re-init and the pre-pause cut**: after an in-place checkpoint the sandbox
+  keeps running, so the orchestrator re-sends `/init` in the background to re-sync the guest
+  clock. The re-init is best-effort, bounded by the envd-wait budget and by the VM's liveness,
+  and published on the sandbox before it starts, because a held re-init whose `/init` landed
+  after the pre-pause freeze would have envd serve it behind that freeze and thaw the workload
+  the snapshot is about to capture. A Pause therefore cuts the published re-init before it
+  freezes — a held one is cancelled wherever it is, one that has not yet chosen its loop is
+  refused when it does, one already on the legacy loop is left to run as before — and holds
+  publication, so no fresh re-init starts between the cut and the freeze. The hold is released
+  once the freeze lands, or once the Pause gives up before it; in the latter case the Pause's
+  cleanup restarts the re-init it cut, since the VM never paused and the clock re-sync is still
+  owed. The **prefetch harvest** that follows a pause or an in-place checkpoint resumes a
+  network-isolated throwaway of the new snapshot to record which memory pages its resume
+  touches; the throwaway's held `/init` asks envd to skip the thaw, so the workload never runs
+  and the trace holds only the resume's own faults. A throwaway the gate routes to the legacy
+  loop sends no such request, and envd thaws inline as before.
 - **Fork**: checkpoints the original in place, then starts each fork from that snapshot as a
   new sandbox rather than a resume — like a sandbox created from a snapshot template — so
   placement spreads the forks across nodes instead of preferring the original's node.

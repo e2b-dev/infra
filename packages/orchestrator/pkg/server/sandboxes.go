@@ -2466,7 +2466,8 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 		stat = binCache.Stat
 	}
 
-	path, tv, reason := featureflags.ResolveEnvdUpgrade(ctx, target, from, s.config.HostEnvdPath, getVersion, stat)
+	path, tv, reason := featureflags.ResolveEnvdUpgrade(ctx, target, from, s.config.HostEnvdPath,
+		s.sandboxFactory.RecordingEnvdTargetVersion(getVersion), stat)
 	reason = envdbin.GatedReason(reason, binCache.DeferralOutcome())
 	// Labelled by the resolver's own reason, not by success/no_upgrade, and skipped
 	// entirely where the resolver returned before probing anything.
@@ -2630,6 +2631,13 @@ func (s *Server) maybeUpgradeEnvd(ctx context.Context, sbx *sandbox.Sandbox) (up
 		// and serving — best-effort: let the resume proceed on the old version.
 		return false, nil
 	}
+	// A confirmed exec is taken to run the staged binary: the rest of this life routes its
+	// /init by that version, the re-check below included, and the mark stands even if the
+	// version check below finds a mismatch.
+	if execConfirmed {
+		sbx.MarkEnvdDelivered(toVersion)
+	}
+
 	// WaitForEnvd re-runs /init, which re-captures the now-running version.
 	//
 	// Detach from upCtx (WithoutCancel) but keep the bounded readyTimeout: the

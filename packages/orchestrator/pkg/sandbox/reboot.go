@@ -302,9 +302,12 @@ func (f *Factory) RebootSandbox(
 		opt(&processOptions)
 	}
 
+	// The version an offline upgrade swaps onto the rootfs, read by the running-version
+	// label once the sandbox exists; the pre-boot hook runs inside CreateSandbox.
+	var offlineEnvdVersion string
 	preBoot := chainPreBoot(
 		f.fsRecoverPreBoot(ctx, runtime, meta.IsFsQuiesced(), requestFilesystemBoot, recordRecovery),
-		f.envdOfflineUpgradePreBoot(ctx, config, runtime, meta.IsFsQuiesced()),
+		f.envdOfflineUpgradePreBoot(ctx, config, runtime, meta.IsFsQuiesced(), &offlineEnvdVersion),
 	)
 
 	sbx, err := f.CreateSandbox(
@@ -330,6 +333,9 @@ func (f *Factory) RebootSandbox(
 	// CreateSandbox anchors the lifetime to now; honor the caller's absolute end
 	// time so queue delay can't extend the TTL.
 	sbx.SetEndAt(endAt)
+	if offlineEnvdVersion != "" {
+		sbx.offlineEnvdVersion.Store(&offlineEnvdVersion)
+	}
 
 	if err := sbx.WaitForEnvd(ctx, StartTypeReboot, rebootEnvdTimeout); err != nil {
 		closeErr := sbx.Close(context.WithoutCancel(ctx))
@@ -603,7 +609,7 @@ func (f *Factory) resolveOfflineTarget(
 	}
 
 	path, toVersion, reason = featureflags.ResolveEnvdOfflineUpgrade(
-		ctx, f.featureFlags, from, f.config.HostEnvdPath, getVersion, stat, sbCtx, tmplCtx,
+		ctx, f.featureFlags, from, f.config.HostEnvdPath, f.envdTargets.recording(getVersion), stat, sbCtx, tmplCtx,
 	)
 	reason = envdbin.GatedReason(reason, binCache.DeferralOutcome())
 	span.SetAttributes(
@@ -630,11 +636,15 @@ func (f *Factory) resolveOfflineTarget(
 // envd (rootfs.ErrOfflineSwapUnrecoverable) fails the boot, so CreateSandbox tears
 // down and the dirty overlay is discarded. Every other failure boots the ORIGINAL
 // envd.
+//
+// A successful swap stores the version it put on the rootfs in swappedTo, when it is not
+// nil.
 func (f *Factory) envdOfflineUpgradePreBoot(
 	ctx context.Context,
 	config *Config,
 	runtime sandboxtypes.RuntimeMetadata,
 	fsQuiesced bool,
+	swappedTo *string,
 ) PreBootFn {
 	from := config.Envd.Version
 
@@ -730,6 +740,9 @@ func (f *Factory) envdOfflineUpgradePreBoot(
 		result := "success"
 		switch {
 		case err == nil:
+			if swappedTo != nil {
+				*swappedTo = toVersion
+			}
 			runtime.Logger().Info(ctx, "swapped envd binary before reboot",
 				zap.String("target", path),
 				zap.String("to_version", toVersion),

@@ -66,13 +66,16 @@ type fakeHarvestResumer struct {
 	called     bool
 	gotRuntime sandboxtypes.RuntimeMetadata
 	gotConfig  *sandbox.Config
+	// gotEnvdVersion is the envd version the throwaway was given for its gate.
+	gotEnvdVersion string
 	// onResume runs while the throwaway is being brought up, standing in for
 	// anything that touches the live source concurrently.
 	onResume func()
 }
 
-func (f *fakeHarvestResumer) ResumeForHarvest(_ context.Context, _ sbxtemplate.Template, config *sandbox.Config, runtime sandboxtypes.RuntimeMetadata, _, _ time.Time) (harvestInstance, error) {
+func (f *fakeHarvestResumer) ResumeForHarvest(_ context.Context, _ sbxtemplate.Template, config *sandbox.Config, runtime sandboxtypes.RuntimeMetadata, _, _ time.Time, envdVersion string) (harvestInstance, error) {
 	f.called = true
+	f.gotEnvdVersion = envdVersion
 	f.gotRuntime = runtime
 	f.gotConfig = config
 	if f.onResume != nil {
@@ -244,6 +247,34 @@ func TestHarvestRun_ThrowawayIdentity(t *testing.T) {
 	require.NotNil(t, p.resumer.gotConfig)
 	require.Nil(t, p.resumer.gotConfig.VolumeMounts,
 		"throwaway must resume with volume mounts suppressed so /init does not attempt the (DenyEgress-blocked) NFS mount")
+}
+
+// TestHarvestRun_ThrowawayInheritsTheSourceEnvdVersion: the throwaway's init gate is
+// given the source handle's envd version, which a live upgrade may have moved past the
+// cloned config's baked one, and nothing when the source knows no better.
+func TestHarvestRun_ThrowawayInheritsTheSourceEnvdVersion(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name      string
+		delivered string
+	}{
+		{name: "an upgraded source", delivered: "0.10.0"},
+		{name: "a source with nothing to inherit"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			p := newHarvestProbe()
+			sbx := testHarvestSandbox()
+			if tc.delivered != "" {
+				sbx.MarkEnvdDelivered(tc.delivered)
+			}
+			_, err := p.h.run(t.Context(), sbx, metadata.Template{}, p.upload, "build-1", storage.ObjectMetadata{}, true)
+			require.NoError(t, err)
+			require.Equal(t, tc.delivered, p.resumer.gotEnvdVersion)
+		})
+	}
 }
 
 // TestHarvestRun_ThrowawayNetworkIsASnapshot: the throwaway resumes from its
