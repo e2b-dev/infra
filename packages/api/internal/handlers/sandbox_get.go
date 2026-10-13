@@ -31,6 +31,18 @@ func sandboxLifecycleToAPI(autoPause bool, autoResumeConfig *dbtypes.SandboxAuto
 	}
 }
 
+// sandboxPauseModeToAPI names what a paused sandbox's snapshot holds. Rows
+// from before filesystem-only pauses existed omit the flag, which decodes to a
+// full snapshot, the only kind there was.
+func sandboxPauseModeToAPI(config *dbtypes.PausedSandboxConfig) *api.SandboxPauseMode {
+	pauseMode := api.Full
+	if config != nil && config.FilesystemOnly {
+		pauseMode = api.Filesystem
+	}
+
+	return &pauseMode
+}
+
 func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNetworkConfig {
 	if network == nil {
 		return nil
@@ -268,6 +280,7 @@ func (a *APIStore) GetSandboxesSandboxID(c *gin.Context, id string) {
 		Domain:              nil,
 		Network:             dbNetworkConfigToAPI(networkConfig),
 		Lifecycle:           sandboxLifecycleToAPI(lastSnapshot.Snapshot.AutoPause, autoResumeConfig),
+		PauseMode:           sandboxPauseModeToAPI(lastSnapshot.Snapshot.Config),
 	}
 
 	sandbox.Alias = &pausedAlias

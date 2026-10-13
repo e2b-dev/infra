@@ -664,6 +664,18 @@ components:
         onTimeout:
           $ref: "#/components/schemas/SandboxOnTimeout"
 
+    SandboxPauseMode:
+      type: string
+      description: >-
+        What the sandbox's latest pause saved. `full` saved the filesystem and
+        the memory, and resuming restores the sandbox where it left off.
+        `filesystem` saved only the filesystem, and resuming reboots the
+        sandbox from disk. Returned for a paused sandbox once its pause has
+        finished, and omitted while it is still pausing.
+      enum:
+        - full
+        - filesystem
+
     SandboxLog:
       description: Log entry with timestamp and line
       required:
@@ -885,6 +897,8 @@ components:
           $ref: "#/components/schemas/SandboxNetworkConfig"
         lifecycle:
           $ref: "#/components/schemas/SandboxLifecycle"
+        pauseMode:
+          $ref: "#/components/schemas/SandboxPauseMode"
         volumeMounts:
           type: array
           items:
