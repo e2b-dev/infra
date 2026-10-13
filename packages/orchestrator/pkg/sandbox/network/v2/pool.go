@@ -93,6 +93,12 @@ type V2Pool struct {
 	closeMu sync.RWMutex
 	closed  bool
 
+	// admissionsWG tracks Get calls admitted before Close published closed. It
+	// covers slot selection, the final handoff, configuration, and initiation of
+	// a configuration-failure return. If that return runs asynchronously,
+	// returnsWG owns its cleanup; Close joins it after admissionsWG.
+	admissionsWG sync.WaitGroup
+
 	// returnsWG tracks in-flight asynchronous slot returns; Close waits for
 	// it before draining the pool.
 	returnsWG sync.WaitGroup
@@ -244,6 +250,11 @@ func (p *V2Pool) Populate(ctx context.Context) {
 }
 
 func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetworkConfig, class sandboxtypes.EgressClass) (*network.Slot, error) {
+	if !p.tryTrackAdmission() {
+		return nil, network.ErrClosed
+	}
+	defer p.admissionsWG.Done()
+
 	slot, err := p.take(ctx)
 	if err != nil {
 		return nil, err
@@ -264,43 +275,55 @@ func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetwork
 // take prefers a reused slot and otherwise waits for whichever queue delivers
 // first.
 func (p *V2Pool) take(ctx context.Context) (*network.Slot, error) {
+	var (
+		slot   *network.Slot
+		reused bool
+	)
+
 	select {
 	case <-p.done:
 		return nil, network.ErrClosed
 	case s := <-p.reusedSlots:
-		return p.takeReused(ctx, s), nil
+		reusableSlotsAvailableCounter.Add(ctx, -1)
+		slot = s
+		reused = true
 	default:
-	}
-
-	select {
-	case <-p.done:
-		return nil, network.ErrClosed
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case s := <-p.reusedSlots:
-		// ReturnAsync may publish a reusable slot after the fast-path miss.
-		return p.takeReused(ctx, s), nil
-	case s, ok := <-p.newSlots:
-		// Populate closes the channel on its way out, and a closed channel
-		// wins this select as readily as done does.
-		if !ok {
+		select {
+		case <-p.done:
 			return nil, network.ErrClosed
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case s := <-p.reusedSlots:
+			// ReturnAsync may publish a reusable slot after the fast-path miss.
+			reusableSlotsAvailableCounter.Add(ctx, -1)
+			slot = s
+			reused = true
+		case s, ok := <-p.newSlots:
+			// Populate closes the channel on its way out, and a closed channel
+			// wins this select as readily as done does.
+			if !ok {
+				return nil, network.ErrClosed
+			}
+
+			newSlotsAvailableCounter.Add(ctx, -1)
+			slot = s
 		}
-
-		newSlotsAvailableCounter.Add(ctx, -1)
-		acquiredSlots.Add(ctx, 1, metric.WithAttributes(attribute.String("pool", "new")))
-		telemetry.ReportEvent(ctx, "new v2 network slot")
-
-		return s, nil
 	}
-}
 
-func (p *V2Pool) takeReused(ctx context.Context, s *network.Slot) *network.Slot {
-	reusableSlotsAvailableCounter.Add(ctx, -1)
-	acquiredSlots.Add(ctx, 1, metric.WithAttributes(attribute.String("pool", "reused")))
-	telemetry.ReportEvent(ctx, "reused v2 network slot")
+	if err := p.claimSlot(ctx, slot); err != nil {
+		return nil, err
+	}
 
-	return s
+	poolName := "new"
+	event := "new v2 network slot"
+	if reused {
+		poolName = "reused"
+		event = "reused v2 network slot"
+	}
+	acquiredSlots.Add(ctx, 1, metric.WithAttributes(attribute.String("pool", poolName)))
+	telemetry.ReportEvent(ctx, event)
+
+	return slot, nil
 }
 
 func (p *V2Pool) configureSlot(ctx context.Context, slot *network.Slot, netConfig *orchestrator.SandboxNetworkConfig, class sandboxtypes.EgressClass) error {
@@ -315,6 +338,37 @@ func (p *V2Pool) configureSlot(ctx context.Context, slot *network.Slot, netConfi
 	}
 
 	return nil
+}
+
+// tryTrackAdmission registers a complete Get, including configuration and
+// initiation of its failure cleanup, before Close can publish closed and wait.
+// It reports false for every later caller.
+func (p *V2Pool) tryTrackAdmission() bool {
+	p.closeMu.RLock()
+	defer p.closeMu.RUnlock()
+
+	if p.closed {
+		return false
+	}
+
+	p.admissionsWG.Add(1)
+
+	return true
+}
+
+// claimSlot is the final handoff linearization point. If Close published
+// closed first, the admission still owns the received slot and must clean it
+// up before returning ErrClosed; Close joins that work through admissionsWG.
+func (p *V2Pool) claimSlot(ctx context.Context, slot *network.Slot) error {
+	p.closeMu.RLock()
+	closed := p.closed
+	p.closeMu.RUnlock()
+
+	if !closed {
+		return nil
+	}
+
+	return p.cleanupWith(context.WithoutCancel(ctx), slot, network.ErrClosed)
 }
 
 func (p *V2Pool) tryTrackReturn() bool {
@@ -470,16 +524,30 @@ func (p *V2Pool) cleanup(ctx context.Context, slot *network.Slot) error {
 	return errors.Join(errs...)
 }
 
+// Close leaves the pool unchanged when ctx is canceled before Close publishes
+// closed. Once it has published closed, Close ignores later cancellation so it
+// can join admissions and returns before removing shared network state.
 func (p *V2Pool) Close(ctx context.Context) error {
-	logger.L().Info(ctx, "Closing v2 network pool")
+	p.closeMu.Lock()
+	if err := ctx.Err(); err != nil {
+		p.closeMu.Unlock()
 
+		return err
+	}
+	p.closed = true
 	p.doneOnce.Do(func() {
 		close(p.done)
 	})
-
-	p.closeMu.Lock()
-	p.closed = true
 	p.closeMu.Unlock()
+
+	ctx = context.WithoutCancel(ctx)
+	logger.L().Info(ctx, "Closing v2 network pool")
+
+	// Admissions register while open under closeMu. A successful claim may
+	// still be configuring its caller-owned slot after Close publishes closed.
+	// Join the complete Get, including rejected-claim cleanup or initiation of
+	// a configuration-failure return; returnsWG below joins asynchronous returns.
+	p.admissionsWG.Wait()
 
 	// Wait for in-flight asynchronous returns: each either cleans its slot
 	// up itself or has already pushed it into reusedSlots, drained below.

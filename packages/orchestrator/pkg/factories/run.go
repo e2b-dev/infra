@@ -273,6 +273,15 @@ type closer struct {
 	close func(ctx context.Context) error
 }
 
+func networkPoolCloser(pool network.PoolInterface) closer {
+	return closer{"network pool", func(ctx context.Context) error {
+		// FORCE_STOP cancels the shared shutdown context before invoking closers.
+		// The pool must still publish closed and stop its Populate service before
+		// run joins that service; direct pool callers retain their cancel contract.
+		return pool.Close(context.WithoutCancel(ctx))
+	}}
+}
+
 type serviceDoneError struct {
 	name string
 }
@@ -894,7 +903,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		// defense so future parsing and selection logic cannot silently diverge.
 		logger.L().Fatal(ctx, "unsupported NETWORK_VERSION after validated config", zap.Int("network_version", config.NetworkConfig.NetworkVersion))
 	}
-	closers = append(closers, closer{"network pool", networkPool.Close})
+	closers = append(closers, networkPoolCloser(networkPool))
 
 	datapathRegistration, err := network.RegisterDatapathMetric(tel.MeterProvider, selectedNetworkVersion)
 	if err != nil {
