@@ -641,14 +641,24 @@ func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID
 // resolveCPURequirement builds the CPU constraint placement filters nodes with.
 //
 // A memory restore may move to the newer models IsCompatibleWith treats as
-// supersets. A filesystem-only snapshot is instead confined to one CPU model,
-// keeping the cold-boot resume on a single generation while that path is
-// unproven across them. FsOnlyResumeCPUModelFlag names the model, and empty
-// returns filesystem-only resumes to the shared rule.
+// supersets. A cold boot (a filesystem-only snapshot or a memory:false resume)
+// is instead confined to one CPU model, keeping it on a single generation while
+// that path is unproven across them. FsOnlyResumeCPUModelFlag names the model,
+// and empty returns cold boots to the shared rule.
+//
+// ExtraCompatibleNodeModelsFlag adds model pairs to the shared rule for every
+// placement; the pin still narrows on top of them.
 func (o *Orchestrator) resolveCPURequirement(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) placement.CPURequirement {
-	requirement := placement.CPURequirement{Build: builds.ToMachineInfo(sbxData.Build)}
+	requirement := placement.CPURequirement{
+		Build: builds.ToMachineInfo(sbxData.Build),
+		ExtraNodeModels: featureflags.GetExtraCompatibleNodeModels(ctx, o.featureFlagsClient,
+			featureflags.TeamContext(team.ID.String()),
+			featureflags.SandboxContext(sandboxID),
+			featureflags.ClusterContext(clusters.WithClusterFallback(team.ClusterID)),
+		),
+	}
 
-	if !sbxData.FilesystemOnlySnapshot {
+	if !sbxData.FilesystemOnlySnapshot && !sbxData.FilesystemBoot {
 		return requirement
 	}
 

@@ -25,6 +25,7 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -439,12 +440,13 @@ func TestCreateSandbox_StoresResolvedFirecrackerVersion(t *testing.T) {
 	})
 }
 
-// buildOnCPU returns testBuild() recorded as having been built on cpuModel.
-func buildOnCPU(cpuModel string) queries.EnvBuild {
+// buildOnIceLake returns testBuild() recorded as having been built on an n2 (Ice Lake) host.
+func buildOnIceLake() queries.EnvBuild {
 	build := testBuild()
 	arch, family := "x86_64", "6"
 	build.CpuArchitecture = &arch
 	build.CpuFamily = &family
+	cpuModel := machineinfo.IceLakeModel
 	build.CpuModel = &cpuModel
 
 	return build
@@ -517,7 +519,7 @@ func TestCreateSandbox_FilesystemOnlySnapshotPinsCPUModel(t *testing.T) {
 			return SandboxMetadata{
 				TemplateID:             "tpl",
 				BaseTemplateID:         "base-tpl",
-				Build:                  buildOnCPU(machineinfo.IceLakeModel),
+				Build:                  buildOnIceLake(),
 				NodeID:                 &nodeID,
 				FilesystemOnlySnapshot: filesystemOnly,
 			}, nil
@@ -608,6 +610,229 @@ func TestCreateSandbox_FilesystemOnlySnapshotWithoutBuildCPUStillPinned(t *testi
 			_, apiErr := o.CreateSandbox(t.Context(), "sbx-nocpu-"+uuid.New().String()[:8], uuid.New().String(),
 				testTeam(), resume("node-1"),
 				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// A memory:false resume of a memory snapshot cold-boots too, so it is pinned
+// like a filesystem-only snapshot; a plain memory restore is not.
+func TestCreateSandbox_MemoryFalseResumePinsCPUModel(t *testing.T) {
+	t.Parallel()
+
+	extra := ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}})
+
+	tests := []struct {
+		name           string
+		pin            string
+		extra          ldvalue.Value
+		filesystemBoot bool
+		nodeCPUModel   string
+		wantErrCode    string
+	}{
+		{"memory:false, pinned to n2: n4 node refused", machineinfo.IceLakeModel, ldvalue.Null(), true, machineinfo.EmeraldRapidsModel, errCodeNoCompatibleNode},
+		{"memory:false, pinned to n2: n2 node accepted", machineinfo.IceLakeModel, ldvalue.Null(), true, machineinfo.IceLakeModel, ""},
+		{"memory:false, empty pin: n4 node accepted", "", ldvalue.Null(), true, machineinfo.EmeraldRapidsModel, ""},
+		{"memory:false, pinned to n2, extra pair: c4 node refused", machineinfo.IceLakeModel, extra, true, machineinfo.GraniteRapidsModel, errCodeNoCompatibleNode},
+		{"memory restore, pinned to n2: n4 node accepted", machineinfo.IceLakeModel, ldvalue.Null(), false, machineinfo.EmeraldRapidsModel, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := fsOnlyPinFlagSource(tt.pin)
+			source.Update(source.Flag("extra-compatible-node-models").ValueForAll(tt.extra))
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, source,
+				nodemanager.WithCPUInfo("x86_64", "6", tt.nodeCPUModel))
+			now := time.Now()
+			nodeID := "node-1"
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-memfalse-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), func(_ context.Context) (SandboxMetadata, *api.APIError) {
+					return SandboxMetadata{
+						TemplateID:     "tpl",
+						BaseTemplateID: "base-tpl",
+						Build:          buildOnIceLake(),
+						NodeID:         &nodeID,
+						FilesystemBoot: tt.filesystemBoot,
+					}, nil
+				},
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// extra-compatible-node-models lets an n2 build run on a Granite Rapids node
+// for memory and filesystem-only resumes alike, and adds nothing when unset.
+func TestCreateSandbox_ExtraCompatibleNodeModels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		extra          ldvalue.Value
+		filesystemOnly bool
+		wantErrCode    string
+	}{
+		{"memory, flag unset: refused", ldvalue.Null(), false, errCodeNoCompatibleNode},
+		{"memory, pair listed: accepted", ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}}), false, ""},
+		{"fs-only, pair listed: accepted", ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}}), true, ""},
+		{"memory, other pair listed: refused", ldvalue.FromJSONMarshal(map[string][]string{"207": {"173"}}), false, errCodeNoCompatibleNode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag("extra-compatible-node-models").ValueForAll(tt.extra))
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, source,
+				nodemanager.WithCPUInfo("x86_64", "6", machineinfo.GraniteRapidsModel))
+			now := time.Now()
+			nodeID := "node-1"
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-extra-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), func(_ context.Context) (SandboxMetadata, *api.APIError) {
+					return SandboxMetadata{
+						TemplateID:             "tpl",
+						BaseTemplateID:         "base-tpl",
+						Build:                  buildOnIceLake(),
+						NodeID:                 &nodeID,
+						FilesystemOnlySnapshot: tt.filesystemOnly,
+					}, nil
+				},
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// createOnNodeModel resumes an n2-built snapshot on a single node reporting
+// nodeModel, and returns the placement error.
+func createOnNodeModel(t *testing.T, source *ldtestdata.TestDataSource, team *teamtypes.Team, nodeModel string, filesystemOnly bool) *api.APIError {
+	t.Helper()
+
+	o := newCreateSandboxTestOrchestratorWithFlags(t, source, nodemanager.WithCPUInfo("x86_64", "6", nodeModel))
+	now := time.Now()
+	nodeID := "node-1"
+
+	_, apiErr := o.CreateSandbox(t.Context(), "sbx-extra-"+uuid.New().String()[:8], uuid.New().String(),
+		team, func(_ context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{
+				TemplateID:             "tpl",
+				BaseTemplateID:         "base-tpl",
+				Build:                  buildOnIceLake(),
+				NodeID:                 &nodeID,
+				FilesystemOnlySnapshot: filesystemOnly,
+			}, nil
+		},
+		now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+	return apiErr
+}
+
+// A rule targeting one cluster admits the extra pair for that cluster's teams
+// only (a team without a cluster is on the local cluster), so the cluster
+// context must reach the flag evaluation.
+func TestCreateSandbox_ExtraCompatibleNodeModelsTargetsCluster(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		targeted    uuid.UUID
+		wantErrCode string
+	}{
+		{"rule targets the team's cluster: accepted", consts.LocalClusterID, ""},
+		{"rule targets another cluster: refused", uuid.New(), errCodeNoCompatibleNode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag("extra-compatible-node-models").
+				Variations(ldvalue.Null(), ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}})).
+				FallthroughVariationIndex(0).
+				VariationIndexForKey(featureflags.ClusterKind, tt.targeted.String(), 1))
+
+			apiErr := createOnNodeModel(t, source, testTeam(), machineinfo.GraniteRapidsModel, false)
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// The fs-only pin narrows rather than yields to the extra pairs.
+func TestCreateSandbox_FsOnlyPinNarrowsExtraCompatibleNodeModels(t *testing.T) {
+	t.Parallel()
+
+	source := ldtestdata.DataSource()
+	source.Update(source.Flag("fs-only-resume-cpu-model").ValueForAll(ldvalue.String(machineinfo.IceLakeModel)))
+	source.Update(source.Flag("extra-compatible-node-models").ValueForAll(ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}})))
+
+	apiErr := createOnNodeModel(t, source, testTeam(), machineinfo.GraniteRapidsModel, true)
+
+	require.NotNil(t, apiErr)
+	assert.Equal(t, errCodeNoCompatibleNode, apiErr.ErrorCode)
+}
+
+// A malformed flag never blocks a start: placement continues on the hardcoded
+// rule, which admits 207 for a 106 build, and the extras stay empty.
+func TestCreateSandbox_MalformedExtraCompatibleNodeModelsKeepsHardcodedRule(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		nodeModel   string
+		wantErrCode string
+	}{
+		{"hardcoded pair: accepted", machineinfo.EmeraldRapidsModel, ""},
+		{"extra-only pair: refused", machineinfo.GraniteRapidsModel, errCodeNoCompatibleNode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag("extra-compatible-node-models").ValueForAll(ldvalue.FromJSONMarshal(map[string]string{"106": "173"})))
+
+			apiErr := createOnNodeModel(t, source, testTeam(), tt.nodeModel, false)
 
 			if tt.wantErrCode == "" {
 				assert.Nil(t, apiErr)

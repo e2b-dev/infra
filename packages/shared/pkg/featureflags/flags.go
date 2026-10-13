@@ -2,6 +2,7 @@ package featureflags
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -1123,17 +1124,26 @@ var (
 	// sandbox on the node, so the node, its group and its cluster are the cohorts
 	// that mean anything.
 	EnvdBinaryCacheFlag = NewBoolFlag("envd-binary-cache", envBoolOr("ENVD_BINARY_CACHE", env.IsDevelopment()))
-	// FsOnlyResumeCPUModelFlag restricts where a filesystem-only snapshot may be
-	// resumed: placement keeps only nodes reporting this CPU model, on top of the
-	// build-compatibility rule every sandbox is already subject to. The value is
-	// a bare CPU model as /proc/cpuinfo reports it — machineinfo.IceLakeModel is
-	// "106" (n2), machineinfo.EmeraldRapidsModel is "207" (n4).
+	// FsOnlyResumeCPUModelFlag restricts where a cold-boot resume (a
+	// filesystem-only snapshot or a memory:false resume) may run: placement keeps
+	// only nodes reporting this CPU model, on top of the build-compatibility rule
+	// every sandbox is already subject to. The value is a bare CPU model as
+	// /proc/cpuinfo reports it; see the machineinfo model constants.
 	//
-	// Empty (the default) turns the restriction off, leaving filesystem-only
-	// snapshots on the cross-generation rule a memory restore uses. A deployment
+	// Empty (the default) turns the restriction off, leaving cold boots on the
+	// cross-generation rule a memory restore uses. A deployment
 	// with no LaunchDarkly therefore keeps placing them exactly as before, rather
-	// than needing an LD rule to unpin itself. Memory snapshots never read it.
+	// than needing an LD rule to unpin itself. Memory restores never read it.
 	FsOnlyResumeCPUModelFlag = NewStringFlag("fs-only-resume-cpu-model", "")
+
+	// ExtraCompatibleNodeModelsFlag adds CPU model pairs to the hardcoded
+	// compatibility rule, as a JSON object from build model to node models:
+	// {"106": ["173"]} lets n2 builds run on C4 Granite Rapids nodes. Pairs are
+	// one-way, and architecture and family must still match.
+	//
+	// Null (the default) or a malformed value adds nothing. It applies to every
+	// placement, and FsOnlyResumeCPUModelFlag still narrows on top of it.
+	ExtraCompatibleNodeModelsFlag = NewJSONFlag("extra-compatible-node-models", ldvalue.Null())
 
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
@@ -1612,4 +1622,42 @@ func GetIsolatedSchedulingHosts(ctx context.Context, ff *Client, contexts ...ldc
 	}
 
 	return hosts
+}
+
+// malformedExtraModels records the malformed values already logged.
+var malformedExtraModels sync.Map
+
+// GetExtraCompatibleNodeModels reads ExtraCompatibleNodeModelsFlag. A null or
+// malformed value returns nil; a malformed one is logged once per distinct value.
+func GetExtraCompatibleNodeModels(ctx context.Context, ff *Client, contexts ...ldcontext.Context) map[string][]string {
+	value := ff.JSONFlag(ctx, ExtraCompatibleNodeModelsFlag, contexts...)
+	if value.IsNull() {
+		return nil
+	}
+
+	var extra map[string][]string
+	if err := json.Unmarshal([]byte(value.JSONString()), &extra); err != nil {
+		// Dedupe on the value with sorted keys: JSONString orders keys randomly.
+		var generic any
+		_ = json.Unmarshal([]byte(value.JSONString()), &generic)
+		canonical, marshalErr := json.Marshal(generic)
+		if marshalErr != nil {
+			canonical = []byte(value.JSONString())
+		}
+
+		if _, dup := malformedExtraModels.LoadOrStore(string(canonical), struct{}{}); !dup {
+			targets := make([]string, 0, len(contexts))
+			for _, c := range contexts {
+				targets = append(targets, string(c.Kind())+":"+c.Key())
+			}
+
+			logger.L().Warn(ctx, "malformed feature flag value, ignoring",
+				zap.String("flag", ExtraCompatibleNodeModelsFlag.Key()), zap.String("value", value.JSONString()),
+				zap.Strings("contexts", targets), zap.Error(err))
+		}
+
+		return nil
+	}
+
+	return extra
 }

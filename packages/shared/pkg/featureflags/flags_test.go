@@ -2,8 +2,11 @@ package featureflags
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
@@ -12,9 +15,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
+
+var malformedTestRun atomic.Int64
 
 func newResolverTestClient(t *testing.T, versions map[string]string) *Client {
 	t.Helper()
@@ -256,4 +264,94 @@ func TestGetIsolatedSchedulingHosts(t *testing.T) {
 			assert.Equal(t, tt.expected, GetIsolatedSchedulingHosts(t.Context(), client))
 		})
 	}
+}
+
+func TestGetExtraCompatibleNodeModels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		value    ldvalue.Value
+		expected map[string][]string
+	}{
+		{"unset adds nothing", ldvalue.Null(), nil},
+		{
+			"build model to node models",
+			ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}}),
+			map[string][]string{"106": {"173"}},
+		},
+		{"a non-object value adds nothing", ldvalue.FromJSONMarshal([]string{"173"}), nil},
+		{"non-array entries add nothing", ldvalue.FromJSONMarshal(map[string]string{"106": "173"}), nil},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			td := ldtestdata.DataSource()
+			td.Update(td.Flag(ExtraCompatibleNodeModelsFlag.Key()).ValueForAll(tt.value))
+
+			client, err := NewClientWithDatasource(td)
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				require.NoError(t, client.Close(context.WithoutCancel(t.Context())))
+			})
+
+			assert.Equal(t, tt.expected, GetExtraCompatibleNodeModels(t.Context(), client))
+		})
+	}
+}
+
+// A malformed value is logged once per distinct value, not on every
+// create, and reads as empty.
+//
+//nolint:paralleltest // replaces the global logger
+func TestGetExtraCompatibleNodeModels_LogsMalformedValueOnce(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
+	t.Cleanup(logger.ReplaceGlobals(t.Context(), logger.NewTracedLoggerFromCore(core)))
+
+	// The dedupe set is process-wide, so a per-run suffix keeps values unique
+	// across -count runs.
+	suffix := fmt.Sprintf("%s-%d", t.Name(), malformedTestRun.Add(1))
+	read := func(value map[string]string) map[string][]string {
+		td := ldtestdata.DataSource()
+		td.Update(td.Flag(ExtraCompatibleNodeModelsFlag.Key()).ValueForAll(ldvalue.FromJSONMarshal(value)))
+
+		client, err := NewClientWithDatasource(td)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			require.NoError(t, client.Close(context.WithoutCancel(t.Context())))
+		})
+
+		return GetExtraCompatibleNodeModels(t.Context(), client, ldcontext.NewWithKind("cluster", "c1"))
+	}
+	logged := func() []observer.LoggedEntry {
+		return logs.FilterMessage("malformed feature flag value, ignoring").All()
+	}
+
+	single := map[string]string{"106": "single-" + suffix}
+	assert.Nil(t, read(single))
+	assert.Nil(t, read(single))
+
+	entries := logged()
+	require.Len(t, entries, 1)
+	assert.Equal(t, zap.WarnLevel, entries[0].Level)
+	assert.Equal(t, ExtraCompatibleNodeModelsFlag.Key(), entries[0].ContextMap()["flag"])
+	assert.JSONEq(t, `{"106":"single-`+suffix+`"}`, entries[0].ContextMap()["value"].(string))
+	assert.Equal(t, []any{"cluster:c1"}, entries[0].ContextMap()["contexts"])
+
+	// A different malformed value logs again.
+	assert.Nil(t, read(map[string]string{"106": "other-" + suffix}))
+	assert.Len(t, logged(), 2)
+
+	// Object key order is random in the serialized value, so a multi-key
+	// object must still log once.
+	multi := map[string]string{}
+	for i := range 8 {
+		multi[fmt.Sprintf("k%d", i)] = "multi-" + suffix
+	}
+	for range 50 {
+		assert.Nil(t, read(multi))
+	}
+	assert.Len(t, logged(), 3)
 }
