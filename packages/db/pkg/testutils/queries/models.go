@@ -232,6 +232,7 @@ type Team struct {
 	SandboxSchedulingLabels []string
 	SsoOrganizationID       *uuid.UUID
 	SsoAutoJoin             bool
+	DeletedAt               *time.Time
 	Slug                    string
 }
 

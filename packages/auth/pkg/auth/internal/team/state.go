@@ -18,6 +18,16 @@ func CheckTeamBanned(team authqueries.Team) error {
 	return nil
 }
 
+// CheckTeamDeleted returns *ForbiddenError if the team was deleted. A deleted
+// team keeps its memberships, so this is what stops them from granting access.
+func CheckTeamDeleted(team authqueries.Team) error {
+	if team.DeletedAt != nil {
+		return &ForbiddenError{Message: "team is deleted"}
+	}
+
+	return nil
+}
+
 // CheckTeamBlocked returns *BlockedError if the team is blocked.
 // Called inline at any handler that creates or mutates a billable resource.
 // Each service decides for itself which endpoints need it.

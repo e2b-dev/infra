@@ -18,6 +18,10 @@ func GetTeamsByUser(ctx context.Context, db *authdb.Client, userID uuid.UUID) ([
 
 	teamsWithLimits := make([]*types.TeamWithDefault, 0, len(teams))
 	for _, team := range teams {
+		// A deleted team keeps its memberships but must not be selectable.
+		if team.Team.DeletedAt != nil {
+			continue
+		}
 		teamsWithLimits = append(teamsWithLimits, &types.TeamWithDefault{
 			Team:      types.NewTeam(&team.Team, &team.TeamLimit),
 			IsDefault: team.IsDefault,

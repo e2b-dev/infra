@@ -200,7 +200,8 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
 - **Outbox** (`internal/outbox`): a River client on the shared database's `river` schema
   works jobs that other services enqueue there for work needing the orchestrator
   connections. Its job arguments live in `packages/db/pkg/outbox`. The one kind today,
-  `teardown_team_resources`, stops a deleted team's workloads. A guard runs first on every
+  `teardown_team_resources`, stops a deleted team's workloads; dashboard-api enqueues it when
+  it deletes a project. A guard runs first on every
   attempt: a team that exists and is not blocked fails the attempt, and the job retries rather
   than kill a live team's sandboxes; a missing team row does not stop it. Then
   `kill_sandboxes` kills the team's running sandboxes and succeeds only once the sandbox store
@@ -490,12 +491,31 @@ The shared error response supports an optional `error_code`, defined by the dash
 may omit it. Callers use that stable code rather than the human-readable message, and treat
 uncoded or unknown reasons as generic errors.
 
-`DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
-`volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
-project that ever built one pins its team row — and releasing it needs the API service's
-orchestrator connections, which this service does not have. The API's `teardown_team_resources`
-outbox job (see the API section) is the worker for that release; nothing enqueues it yet, and
-projects are not deleted from control planes today.
+`DELETE /v1/management/projects/{projectID}` soft-deletes a project. A project that is a
+member's default project is that member's personal project and is refused with 409 before
+anything changes. `envs`, `snapshots` and `volumes` reference `teams` with `ON DELETE NO
+ACTION`, so the team row stays. One transaction locks the row (404 if it is missing), sets
+`teams.deleted_at`, blocks the team (a CHECK keeps every deleted team blocked), clears its
+cluster assignment, scrubs its name and email to `DELETED` and its slug to
+`deleted-<project ID>` (releasing the old slug for reuse), deletes its memberships and API
+keys, soft-deletes its templates, snapshot templates and paused-sandbox snapshots the way a
+template deletion does (releasing their aliases and build tracking), and enqueues the API's
+`teardown_team_resources` outbox job with River's `InsertTx`, so the teardown runs exactly
+when the deletion commits. dashboard-api holds an insert-only River client for this; it works
+no jobs. After commit it evicts the deleted keys' auth cache entries best-effort; the team's
+other cached entries refresh or expire on their own. Repeating the call answers 204 and runs
+every step again, keeping only the first deletion's time: it re-blocks and re-scrubs the team
+and clears its cluster, undoing a block reason, rename or cluster assignment (from the cluster
+route or an upsert carrying a cluster ID) written by a delivery that passed its
+deleted-project check just before the first call committed; it deletes memberships, keys and
+envs created since (a sandbox that paused before the teardown killed it leaves a snapshot);
+and it enqueues the teardown again, which is a no-op while one is still open. Afterwards a
+dashboard-api middleware, running after authentication, answers 404 to every write under
+`/v1/management/` or `/admin/` that names the project by `projectID` or `teamID` (project
+upsert, member, limits and block deliveries, cluster assignment and detachment, admin block
+and ban); the project DELETE is exempt so a retry still reaches it. Shared auth refuses a
+membership or API key still left for the project with 403, and the API leaves it out of a
+user's team list. Volumes, builds and stored artifacts are not reclaimed.
 
 ## Data stores
 

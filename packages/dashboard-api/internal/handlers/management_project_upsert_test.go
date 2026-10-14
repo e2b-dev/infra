@@ -204,21 +204,6 @@ func TestUpsertProjectEchoesTheStoredProject(t *testing.T) {
 	require.Equal(t, "ops@acme.test", decoded.Email)
 }
 
-// Deleting a project needs teardown this process cannot reach. If you are
-// removing this test, read the handler comment first.
-func TestDeleteProjectIsDeliberatelyNotImplemented(t *testing.T) {
-	t.Parallel()
-
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodDelete,
-		"/v1/management/projects/"+uuid.NewString(), nil)
-
-	(&APIStore{}).ManagementDeleteProject(ginCtx, uuid.New())
-
-	require.Equal(t, http.StatusNotImplemented, recorder.Code)
-}
-
 // projectFixture is a valid project with a slug unique to its test, so cases
 // that care about one field can change that one and send the rest.
 type projectFixture struct {

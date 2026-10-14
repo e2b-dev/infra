@@ -44,6 +44,10 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 		return nil, err
 	}
 
+	if err := internalauthteam.CheckTeamDeleted(result.Team); err != nil {
+		return nil, err
+	}
+
 	go func() {
 		// Run the update in a separate context to avoid an extra latency
 		ctx := context.WithoutCancel(ctx)
@@ -94,6 +98,10 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 	}
 
 	if err := internalauthteam.CheckTeamBanned(result.Team); err != nil {
+		return nil, err
+	}
+
+	if err := internalauthteam.CheckTeamDeleted(result.Team); err != nil {
 		return nil, err
 	}
 
