@@ -371,9 +371,51 @@ The stateless edge for all sandbox traffic (port 3002; health on 3003). Terminat
 looks the sandbox up in the Redis routing record to find the owning node, and reverse-proxies to
 that node's orchestrator proxy on :5007 by default. `ORCHESTRATOR_PROXY_PORT` selects a
 different downstream port when the node proxy listens elsewhere. If the sandbox is not in the record (paused), it calls
-the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparently on traffic.
+the API's `ResumeSandbox` gRPC — paused sandboxes wake transparently on traffic.
 The record is the orchestrator-owned `sandbox:routing:{id}` (see "Sandbox routing records"
 below).
+
+Concurrent requests that miss the record for the same sandbox, port and credentials share one
+**resume flight** per client-proxy process: the first request's call runs detached from its
+connection under a 90 s ceiling and later requests join it, so one resume RPC serves them all
+and a client that disconnects mid-resume does not fail the others. A call whose requests have
+all left runs to its end, so a client that comes back finds the sandbox awake, but no further
+attempt starts for nobody, and a process keeps at most 64 such callerless calls; beyond that a
+departure cancels the proxy's call. That bound and that cancellation apply to the proxy's flights
+only: the API's resume entry point lets a create already under way run on past the proxy's
+cancellation, so the node finishes the create and the API registers the sandbox inside the
+reservation's 90 s window (the create may run until ten seconds before the pending reservation can
+be reaped and the registration until five seconds before, so the run-on never lets a fresh
+reservation start a second resume of the same snapshot), and the API's shutdown drain waits for
+that work, bounded at 95 s. The run-on is granted when the resume is admitted, and an API already
+draining admits none: a resume that arrives then keeps its caller's cut, so a create the proxy
+cancels mid-drain is cut with it and the reservation lapses. The sandbox otherwise lives its
+ordinary timeout or auto-pause, billed, with nobody waiting for it. With
+`client-proxy-resume-parking` on (default off), a request whose flight got a still-transitioning
+or `Unavailable` answer parks instead of failing: the flight retries
+while a parked request waits, under a budget (`client-proxy-resume-parking-budget-ms`, 15 s from
+the first retryable failure) that gates only whether another retry starts: every attempt, a late
+retry included, runs under its full 90 s ceiling while a caller waits on it, so a parked request
+can wait up to the budget plus one attempt. The proxy cuts a retry at the budget's end only once
+every caller has left, and that cut ends the proxy's wait, not the create on the node.
+A process keeps at most
+`client-proxy-resume-parking-lot-size` (512) parked requests, shedding the rest. A resume the
+control plane cannot carry out right now (no capacity, no node, the API unreachable, the budget
+spent) answers **503** with `Retry-After: 2` and no error code; a request shed because the lot was
+full answers the same **503** without the header and with `proxy_parking_lot_full` as its
+`error_code`, so a client, or one behind an ingress that strips the header, still tells the two
+apart. The SDKs do not act on the header either way: their status-based retry
+wraps only the control-plane API client, and sandbox traffic through the proxy is retried only on
+a connection failure, never on a 503. The omission is for hand-rolled retry loops and browsers
+that honour the header, which would otherwise come back in one wave while the lot is still full,
+and for a client that does the SDKs' jittered backoff on its own; a placement no retry helps, which
+the API names in an `ErrorInfo` detail on the RPC status, is not retried and answers without the
+header, with the status the API carried: **503** for a feature no orchestrator in the cluster
+supports, **500** (`sandbox_create_refused`) for a sandbox the node refuses to create, such as a
+stored build whose vCPU count is outside the node's bounds; a sandbox still pausing
+answers **409** with the header on a user port and the same page as **503** on the envd port (the
+SDK reads an envd 409 as "already exists"); a request whose client left before it was routed
+answers 408.
 
 ### Dashboard API (`packages/dashboard-api`)
 
@@ -647,8 +689,8 @@ sequenceDiagram
     alt running
         R-->>CP: node IP
     else paused / unknown
-        CP->>API: gRPC ResumeSandbox(i7fa3)
-        API-->>CP: node IP (after resume)
+        CP->>API: gRPC ResumeSandbox(i7fa3) — one flight shared by concurrent requests
+        API-->>CP: node IP (after resume), or 409 / 503 + Retry-After to the client
     end
     CP->>OP: forward to http://nodeIP:5007
     OP->>OP: lookup sandbox, check traffic access token

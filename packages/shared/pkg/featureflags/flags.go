@@ -184,6 +184,11 @@ var (
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 	WorkspacesEnabledFlag               = NewBoolFlag("workspacesEnabled", false)
 
+	// ClientProxyResumeParkingFlag lets client-proxy retry a wake-on-traffic
+	// resume that failed retryably, read by each request at its own park
+	// transition: off means the first retryable failure is that request's answer.
+	ClientProxyResumeParkingFlag = NewBoolFlag("client-proxy-resume-parking", false)
+
 	// FsFreezeViaExecFlag freezes the guest rootfs with `fsfreeze -f /` run through
 	// the envd exec API before a filesystem-only pause, for guests whose envd
 	// predates the native /fsfreeze endpoint. Off = those guests fall back to a
@@ -713,6 +718,18 @@ var (
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = NewIntFlag("build-base-rootfs-size-limit-mb", 25000)
+
+	// ClientProxyResumeParkingBudgetMs gates the retries of one resume
+	// flight, counted from its first retryable failure and read when the
+	// flight is created: no retry starts past it, an attempt under way keeps
+	// its ceiling while a caller waits, and is cut at the budget's end once
+	// every caller has left.
+	ClientProxyResumeParkingBudgetMs = NewIntFlag("client-proxy-resume-parking-budget-ms", 15000)
+
+	// ClientProxyResumeParkingLotSize caps the requests one client-proxy
+	// process keeps waiting on retried resumes, read by each request at its
+	// park transition; the rest are shed with a 503.
+	ClientProxyResumeParkingLotSize = NewIntFlag("client-proxy-resume-parking-lot-size", 512)
 
 	// MinAutoResumeTimeoutSeconds is the minimum auto-resume timeout in seconds.
 	// This prevents thrashing from very short timeouts.

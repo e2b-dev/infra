@@ -180,16 +180,16 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	isResume := req.GetSandbox().GetSnapshot()
 	vcpu, maxVcpus := req.GetSandbox().GetVcpu(), req.GetSandbox().GetMaxVcpus()
 	if vcpu < 1 {
-		return nil, status.Errorf(codes.InvalidArgument, "vcpu %d must be at least 1", vcpu)
+		return nil, createRefused(ctx, codes.InvalidArgument, "vcpu %d must be at least 1", vcpu)
 	}
 	if vcpu > fc.MaxVcpus {
-		return nil, status.Errorf(codes.InvalidArgument, "vcpu %d is above the %d a VM can have", vcpu, fc.MaxVcpus)
+		return nil, createRefused(ctx, codes.InvalidArgument, "vcpu %d is above the %d a VM can have", vcpu, fc.MaxVcpus)
 	}
 	if maxVcpus != 0 && maxVcpus < vcpu {
-		return nil, status.Errorf(codes.InvalidArgument, "vcpu %d must be 1..max_vcpus %d", vcpu, maxVcpus)
+		return nil, createRefused(ctx, codes.InvalidArgument, "vcpu %d must be 1..max_vcpus %d", vcpu, maxVcpus)
 	}
 	if maxVcpus > fc.MaxVcpus {
-		return nil, status.Errorf(codes.InvalidArgument, "max_vcpus %d is above the %d a VM can have", maxVcpus, fc.MaxVcpus)
+		return nil, createRefused(ctx, codes.InvalidArgument, "max_vcpus %d is above the %d a VM can have", maxVcpus, fc.MaxVcpus)
 	}
 	// fsOnly reports the ARTIFACT kind (filesystem-only snapshot), mirroring the
 	// fs_only pause label, so the historical fs-only latency cohort stays pure.
@@ -427,7 +427,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 				logger.WithBuildID(runtime.BuildID),
 				logger.WithTemplateID(runtime.TemplateID))
 
-			return nil, status.Error(codes.InvalidArgument, err.Error())
+			return nil, createRefused(ctx, codes.InvalidArgument, "%s", err.Error())
 		}
 
 		err = errors.Join(err, context.Cause(ctx))
@@ -2801,6 +2801,31 @@ func envdUpgradeDeclineReason(sentUser string, workdirWithheld, envdPreserves bo
 	}
 
 	return ""
+}
+
+// createRefused is a create refusal no other node and no retry changes, with
+// a typed detail so the API reports it as a refusal rather than a failure to
+// retry; a transient refusal (this host's limits, draining, files still on
+// their way) carries none. The detail's HTTP status is the client's fault
+// for an invalid argument and the server's otherwise.
+func createRefused(ctx context.Context, code codes.Code, format string, args ...any) error {
+	st := status.Newf(code, format, args...)
+	httpStatus := http.StatusInternalServerError
+	if code == codes.InvalidArgument {
+		httpStatus = http.StatusBadRequest
+	}
+	withDetails, err := st.WithDetails(&orchestrator.UserError{
+		Code:       orchestrator.UserErrorCode_SANDBOX_CREATE_REFUSED,
+		Message:    st.Message(),
+		HttpStatus: uint32(httpStatus),
+	})
+	if err != nil {
+		logger.L().Error(ctx, "failed to attach the create refusal detail", zap.Error(err), zap.String("refusal", st.Message()))
+
+		return st.Err()
+	}
+
+	return withDetails.Err()
 }
 
 // filesystemOnlyDisabledStatus is the flag refusal with a typed detail, so the

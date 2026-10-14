@@ -497,7 +497,7 @@ func TestReservation_StalePendingCleanup(t *testing.T) {
 	pendingSetKey := getPendingSetKey(teamID.String())
 
 	// Simulate a crashed API instance by manually inserting a stale pending entry
-	// with a timestamp well in the past (3 minutes ago, beyond the 2-minute staleTTL)
+	// with a timestamp well in the past (3 minutes ago, beyond the 90-second StaleTTL)
 	staleTimestamp := float64(time.Now().Add(-3 * time.Minute).Unix())
 	err := client.ZAdd(t.Context(), pendingSetKey, goredis.Z{
 		Score:  staleTimestamp,

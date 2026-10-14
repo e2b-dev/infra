@@ -86,6 +86,12 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 		return "", err
 	}
 
+	// The token may have arrived as the attempt ended; an attempt that
+	// ended must not dial.
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
 		SandboxId: sandboxId,
 	})

@@ -6,12 +6,14 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/require"
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -27,8 +29,6 @@ type stubResumer struct {
 	err    error
 }
 
-func (s stubResumer) Init(_ context.Context) {}
-
 func (s stubResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
 	return s.nodeIP, s.err
 }
@@ -40,8 +40,6 @@ type recordingResumer struct {
 	envdAccessToken    string
 }
 
-func (r *recordingResumer) Init(_ context.Context) {}
-
 func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
 	r.sandboxID = sandboxID
 	r.sandboxPort = sandboxPort
@@ -49,6 +47,37 @@ func (r *recordingResumer) Resume(_ context.Context, sandboxID string, sandboxPo
 	r.envdAccessToken = envdAccessToken
 
 	return "10.0.0.1", nil
+}
+
+// placementStatusWithCode is the status the API sends for a placement
+// failure: the gRPC code its HTTP status maps to, with the semantic error
+// code as an ErrorInfo detail (the shape resumeStatusError on the API side
+// builds).
+func placementStatusWithCode(t *testing.T, grpcCode codes.Code, code string) error {
+	t.Helper()
+
+	st, err := status.New(grpcCode, "Failed to place sandbox: "+code).
+		WithDetails(&errdetails.ErrorInfo{Reason: code, Domain: proxygrpc.ResumeErrorDomain})
+	require.NoError(t, err)
+
+	return st.Err()
+}
+
+// placementStatusWithHTTPStatus is placementStatusWithCode with the HTTP
+// status the API answered with carried on the detail, as the API sends it
+// since it attaches the status.
+func placementStatusWithHTTPStatus(t *testing.T, grpcCode codes.Code, code string, httpStatus int) error {
+	t.Helper()
+
+	st, err := status.New(grpcCode, "Failed to place sandbox: "+code).
+		WithDetails(&errdetails.ErrorInfo{
+			Reason:   code,
+			Domain:   proxygrpc.ResumeErrorDomain,
+			Metadata: map[string]string{proxygrpc.ResumeErrorHTTPStatusKey: strconv.Itoa(httpStatus)},
+		})
+	require.NoError(t, err)
+
+	return st.Err()
 }
 
 func newFF(t *testing.T) *featureflags.Client {
@@ -223,12 +252,15 @@ func TestCatalogResolution_CatalogMiss_ResumeEmptyIPReturnsRouteUnavailable(t *t
 func TestHandlePausedSandbox(t *testing.T) {
 	t.Parallel()
 
-	unavailableErr := status.Error(codes.Unavailable, "boom")
+	internalErr := status.Error(codes.Internal, "boom")
+	deadlineErr := status.Error(codes.DeadlineExceeded, "orchestrator did not answer")
+	internalPlacementErr := placementStatusWithCode(t, codes.Internal, "internal_server_error")
+	createRefusedErr := placementStatusWithCode(t, codes.Internal, proxygrpc.PlacementCreateRefused)
 	failedPreconditionErr := status.Error(codes.FailedPrecondition, "sandbox resume precondition failed")
 
 	tests := []struct {
 		name       string
-		resumer    PausedSandboxResumer
+		resumer    SandboxResumer
 		trafficTok string
 		envdTok    string
 		wantNodeIP string
@@ -314,11 +346,130 @@ func TestHandlePausedSandbox(t *testing.T) {
 			},
 		},
 		{
-			name:       "resume returns generic grpc error",
-			resumer:    stubResumer{err: unavailableErr},
+			name:       "resume unavailable is a capacity error",
+			resumer:    stubResumer{err: status.Error(codes.Unavailable, "no capacity")},
 			trafficTok: "token",
 			wantResult: autoResumeErrored,
-			wantErrIs:  unavailableErr,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
+
+				var capacityErr *reverseproxy.SandboxCapacityError
+				require.ErrorAs(t, err, &capacityErr)
+				require.Equal(t, "sbx", capacityErr.SandboxId)
+				require.Equal(t, "no capacity", capacityErr.Message)
+			},
+		},
+		{
+			name:       "resume returns generic grpc error",
+			resumer:    stubResumer{err: internalErr},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			wantErrIs:  internalErr,
+		},
+		{
+			// The API sends a placement timeout as 504, which maps to
+			// DeadlineExceeded; the code it carries says a retry helps.
+			name:       "placement timeout is a capacity error",
+			resumer:    stubResumer{err: placementStatusWithCode(t, codes.DeadlineExceeded, proxygrpc.PlacementTimeout)},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
+
+				var capacityErr *reverseproxy.SandboxCapacityError
+				require.ErrorAs(t, err, &capacityErr)
+				require.False(t, capacityErr.Permanent)
+			},
+		},
+		{
+			// A create that failed on the node is a 500 with a code that
+			// says to retry.
+			name:       "create failed is a capacity error",
+			resumer:    stubResumer{err: placementStatusWithCode(t, codes.Internal, proxygrpc.PlacementCreateFailed)},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
+
+				var capacityErr *reverseproxy.SandboxCapacityError
+				require.ErrorAs(t, err, &capacityErr)
+				require.False(t, capacityErr.Permanent)
+			},
+		},
+		{
+			name:       "deadline exceeded without a code stays generic",
+			resumer:    stubResumer{err: deadlineErr},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			wantErrIs:  deadlineErr,
+		},
+		{
+			// A create the node refused for good is a placement refusal no
+			// retry helps, whatever gRPC code its HTTP status mapped to.
+			name:       "create refused is a permanent placement refusal",
+			resumer:    stubResumer{err: createRefusedErr},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
+
+				var capacityErr *reverseproxy.SandboxCapacityError
+				require.ErrorAs(t, err, &capacityErr)
+				require.True(t, capacityErr.Permanent)
+				require.Equal(t, proxygrpc.PlacementCreateRefused, capacityErr.ErrorCode)
+				require.Equal(t, http.StatusServiceUnavailable, capacityErr.StatusCode)
+			},
+		},
+		{
+			name:       "create refused as a bad request keeps the API's 400",
+			resumer:    stubResumer{err: placementStatusWithCode(t, codes.InvalidArgument, proxygrpc.PlacementCreateRefused)},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
+
+				var capacityErr *reverseproxy.SandboxCapacityError
+				require.ErrorAs(t, err, &capacityErr)
+				require.True(t, capacityErr.Permanent)
+				require.Equal(t, http.StatusBadRequest, capacityErr.StatusCode)
+			},
+		},
+		{
+			// The API answers a refusal of a stored build as 500; the
+			// Internal that maps to must not fold it into the 503 page.
+			name:       "create refused as a server error keeps the API's 500",
+			resumer:    stubResumer{err: placementStatusWithHTTPStatus(t, codes.Internal, proxygrpc.PlacementCreateRefused, http.StatusInternalServerError)},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
+
+				var capacityErr *reverseproxy.SandboxCapacityError
+				require.ErrorAs(t, err, &capacityErr)
+				require.True(t, capacityErr.Permanent)
+				require.Equal(t, http.StatusInternalServerError, capacityErr.StatusCode)
+			},
+		},
+		{
+			name:       "create refused with a carried status that is no error falls back to the page's 503",
+			resumer:    stubResumer{err: placementStatusWithHTTPStatus(t, codes.Internal, proxygrpc.PlacementCreateRefused, http.StatusOK)},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			checkErr: func(t *testing.T, err error) {
+				t.Helper()
+
+				var capacityErr *reverseproxy.SandboxCapacityError
+				require.ErrorAs(t, err, &capacityErr)
+				require.True(t, capacityErr.Permanent)
+				require.Equal(t, http.StatusServiceUnavailable, capacityErr.StatusCode)
+			},
+		},
+		{
+			name:       "internal with the generic placement code stays generic",
+			resumer:    stubResumer{err: internalPlacementErr},
+			trafficTok: "token",
+			wantResult: autoResumeErrored,
+			wantErrIs:  internalPlacementErr,
 		},
 		{
 			name:       "resume succeeds",
@@ -378,7 +529,7 @@ func TestNewClientProxy_Construction(t *testing.T) {
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t)
 
-	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service", 0, 5007, c, nil, ff)
+	p, _, err := NewClientProxy(noopmetric.NewMeterProvider(), "test-service", 0, 5007, c, nil, ff)
 	require.NoError(t, err)
 	require.NotNil(t, p)
 	require.EqualValues(t, 0, p.CurrentServerConnections())
@@ -409,7 +560,7 @@ func TestNewClientProxy_ForwardsToConfiguredOrchestratorPort(t *testing.T) {
 	t.Cleanup(backend.Close)
 	address := backend.Listener.Addr().(*net.TCPAddr)
 	c := fixedCatalog{nodeIP: address.IP.String()}
-	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "configured-port", 0, uint16(address.Port), c, nil, newFF(t))
+	p, _, err := NewClientProxy(noopmetric.NewMeterProvider(), "configured-port", 0, uint16(address.Port), c, nil, newFF(t))
 	require.NoError(t, err)
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://49983-sbx.e2b.app/commands", nil)
 	req.Header.Set("X-Access-Token", "sandbox-token")
@@ -425,9 +576,11 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 	tests := []struct {
 		name             string
 		url              string
-		resumer          PausedSandboxResumer
+		resumer          SandboxResumer
 		wantStatus       int
+		wantRetryAfter   string
 		wantBodyContains []string
+		wantBodyOmits    []string
 	}{
 		{
 			name:       "sandbox not found",
@@ -435,6 +588,107 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 			wantStatus: http.StatusBadGateway,
 			wantBodyContains: []string{
 				`"sandboxId":"sbx"`,
+				`"message":"The sandbox was not found"`,
+			},
+		},
+		{
+			name:           "resume unavailable keeps the transport error off the page",
+			url:            "http://49983-sbx.e2b.app/",
+			resumer:        stubResumer{err: status.Error(codes.Unavailable, "transport: Error while dialing: dial tcp 10.1.2.3:5008: connect: connection refused")},
+			wantStatus:     http.StatusServiceUnavailable,
+			wantRetryAfter: "2",
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"The sandbox cannot be resumed right now. Try again in a moment."`,
+			},
+			wantBodyOmits: []string{"dial tcp", "10.1.2.3"},
+		},
+		{
+			name:           "resume unavailable without a message",
+			url:            "http://49983-sbx.e2b.app/",
+			resumer:        stubResumer{err: status.Error(codes.Unavailable, "")},
+			wantStatus:     http.StatusServiceUnavailable,
+			wantRetryAfter: "2",
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"The sandbox cannot be resumed right now. Try again in a moment."`,
+			},
+		},
+		{
+			// A 504 from the API maps to DeadlineExceeded; the code it
+			// carries puts it on the capacity page, not the not-found page
+			// the SDKs read as the sandbox being gone.
+			name:           "placement timeout answers the capacity page",
+			url:            "http://49983-sbx.e2b.app/",
+			resumer:        stubResumer{err: placementStatusWithCode(t, codes.DeadlineExceeded, proxygrpc.PlacementTimeout)},
+			wantStatus:     http.StatusServiceUnavailable,
+			wantRetryAfter: "2",
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"The sandbox cannot be resumed right now. Try again in a moment."`,
+			},
+			wantBodyOmits: []string{"Failed to place sandbox"},
+		},
+		{
+			name:           "create failed answers the capacity page",
+			url:            "http://49983-sbx.e2b.app/",
+			resumer:        stubResumer{err: placementStatusWithCode(t, codes.Internal, proxygrpc.PlacementCreateFailed)},
+			wantStatus:     http.StatusServiceUnavailable,
+			wantRetryAfter: "2",
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"The sandbox cannot be resumed right now. Try again in a moment."`,
+			},
+			wantBodyOmits: []string{"Failed to place sandbox"},
+		},
+		{
+			name:       "create refused answers the refused page with the code and no Retry-After",
+			url:        "http://49983-sbx.e2b.app/",
+			resumer:    stubResumer{err: placementStatusWithCode(t, codes.Internal, proxygrpc.PlacementCreateRefused)},
+			wantStatus: http.StatusServiceUnavailable,
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"The sandbox cannot be resumed: no node in this cluster can run it."`,
+				`"error_code":"` + proxygrpc.PlacementCreateRefused + `"`,
+			},
+			wantBodyOmits: []string{"Failed to place sandbox", "was not found"},
+		},
+		{
+			// A refusal the API answered as a bad request keeps its 400: a
+			// 503 would invite the SDKs' retries, each starting a resume.
+			name:       "create refused as a bad request answers the refused page as 400",
+			url:        "http://49983-sbx.e2b.app/",
+			resumer:    stubResumer{err: placementStatusWithCode(t, codes.InvalidArgument, proxygrpc.PlacementCreateRefused)},
+			wantStatus: http.StatusBadRequest,
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"error_code":"` + proxygrpc.PlacementCreateRefused + `"`,
+				`"code":400`,
+			},
+		},
+		{
+			// The API answers a refusal of a stored build as 500, which maps
+			// to Internal; the page answers with the API's 500 and no
+			// Retry-After, since a 503 would invite the SDKs' retries, each
+			// starting a resume for an answer no retry changes.
+			name:       "create refused as a server error answers the refused page as 500",
+			url:        "http://49983-sbx.e2b.app/",
+			resumer:    stubResumer{err: placementStatusWithHTTPStatus(t, codes.Internal, proxygrpc.PlacementCreateRefused, http.StatusInternalServerError)},
+			wantStatus: http.StatusInternalServerError,
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`"message":"The sandbox cannot be resumed: no node in this cluster can run it."`,
+				`"error_code":"` + proxygrpc.PlacementCreateRefused + `"`,
+				`"code":500`,
+			},
+			wantBodyOmits: []string{"Failed to place sandbox", "was not found"},
+		},
+		{
+			name:       "deadline exceeded without a code stays on the not-found page",
+			url:        "http://49983-sbx.e2b.app/",
+			resumer:    stubResumer{err: status.Error(codes.DeadlineExceeded, "orchestrator did not answer")},
+			wantStatus: http.StatusBadGateway,
+			wantBodyContains: []string{
 				`"message":"The sandbox was not found"`,
 			},
 		},
@@ -459,10 +713,23 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 			},
 		},
 		{
-			name:       "resume still transitioning",
-			url:        "http://49983-sbx.e2b.app/",
-			resumer:    stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)},
-			wantStatus: http.StatusConflict,
+			name:           "resume still transitioning on a user port",
+			url:            "http://3000-sbx.e2b.app/",
+			resumer:        stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)},
+			wantStatus:     http.StatusConflict,
+			wantRetryAfter: "2",
+			wantBodyContains: []string{
+				`"sandboxId":"sbx"`,
+				`still transitioning`,
+			},
+		},
+		{
+			// The SDK reads an envd-port 409 as "already exists".
+			name:           "resume still transitioning on the envd port",
+			url:            "http://49983-sbx.e2b.app/",
+			resumer:        stubResumer{err: status.Error(codes.FailedPrecondition, proxygrpc.SandboxStillTransitioningMessage)},
+			wantStatus:     http.StatusServiceUnavailable,
+			wantRetryAfter: "2",
 			wantBodyContains: []string{
 				`"sandboxId":"sbx"`,
 				`still transitioning`,
@@ -484,7 +751,7 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 
 			c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 			ff := newFF(t)
-			p, err := NewClientProxy(noopmetric.NewMeterProvider(), "handler-errors-"+tt.name, uint16(i), 5007, c, tt.resumer, ff)
+			p, _, err := NewClientProxy(noopmetric.NewMeterProvider(), "handler-errors-"+tt.name, uint16(i), 5007, c, tt.resumer, ff)
 			require.NoError(t, err)
 
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tt.url, nil)
@@ -492,8 +759,19 @@ func TestNewClientProxy_HandlerErrors(t *testing.T) {
 			p.Handler.ServeHTTP(rr, req)
 
 			require.Equal(t, tt.wantStatus, rr.Code)
+			require.Equal(t, tt.wantRetryAfter, rr.Header().Get("Retry-After"))
+			wantExposed := ""
+			if tt.wantRetryAfter != "" {
+				// A browser hides the delay from a cross-origin page unless
+				// the response lists the header.
+				wantExposed = "Retry-After"
+			}
+			require.Equal(t, wantExposed, rr.Header().Get("Access-Control-Expose-Headers"))
 			for _, want := range tt.wantBodyContains {
 				require.Contains(t, rr.Body.String(), want)
+			}
+			for _, omitted := range tt.wantBodyOmits {
+				require.NotContains(t, rr.Body.String(), omitted)
 			}
 		})
 	}
@@ -508,7 +786,7 @@ func TestNewClientProxy_DuplicateMetricsRegistrationReturnsErrors(t *testing.T) 
 	// noop meter provider should not error; this is a sanity test that NewClientProxy
 	// works repeatedly for separate service names without leaking metric registrations.
 	for range 3 {
-		_, err := NewClientProxy(noopmetric.NewMeterProvider(), "service", 0, 5007, c, nil, ff)
+		_, _, err := NewClientProxy(noopmetric.NewMeterProvider(), "service", 0, 5007, c, nil, ff)
 		require.NoError(t, err)
 	}
 }
@@ -520,7 +798,7 @@ func TestNewClientProxy_HasIdleTimeout(t *testing.T) {
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t)
 
-	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-idle", 0, 5007, c, nil, ff)
+	p, _, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-idle", 0, 5007, c, nil, ff)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, p.IdleTimeout, idleTimeout)
 	require.Less(t, p.IdleTimeout, 2*idleTimeout)
@@ -533,7 +811,7 @@ func TestNewClientProxy_PoolAccessors(t *testing.T) {
 	c := catalog.NewRedisSandboxCatalog(redis_utils.SetupInstance(t))
 	ff := newFF(t)
 
-	p, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-pool", 0, 5007, c, nil, ff)
+	p, _, err := NewClientProxy(noopmetric.NewMeterProvider(), "service-pool", 0, 5007, c, nil, ff)
 	require.NoError(t, err)
 	require.GreaterOrEqual(t, p.CurrentPoolSize(), 0)
 

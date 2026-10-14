@@ -160,7 +160,7 @@ func run() int {
 	}
 
 	// Proxy sandbox http traffic to orchestrator nodes
-	trafficProxy, err := e2bproxy.NewClientProxy(
+	trafficProxy, resumeCloser, err := e2bproxy.NewClientProxy(
 		tel.MeterProvider,
 		serviceName,
 		config.ProxyPort,
@@ -194,11 +194,7 @@ func run() int {
 		Handler: healthHandler,
 	}
 
-	var closers []Closeable
-	closers = append(closers, featureFlagsClient, catalog)
-	if closeable, ok := pausedSandboxResumer.(Closeable); ok {
-		closers = append(closers, closeable)
-	}
+	closers := shutdownClosers(featureFlagsClient, catalog, resumeCloser, pausedSandboxResumer)
 
 	wg.Go(func() {
 		// make sure to cancel the parent context before this
@@ -307,6 +303,22 @@ func run() int {
 	wg.Wait()
 
 	return int(exitCode.Load())
+}
+
+// shutdownClosers orders what shutdown closes: the resume flights first,
+// since a flight still running reads the feature flags closed after it and
+// calls the resumer closed last; the catalog closes with the flags.
+func shutdownClosers(featureFlags Closeable, catalog Closeable, resumeCloser e2bproxy.ResumeCloser, resumer e2bproxy.PausedSandboxResumer) []Closeable {
+	var closers []Closeable
+	if resumeCloser != nil {
+		closers = append(closers, resumeCloser)
+	}
+	closers = append(closers, featureFlags, catalog)
+	if closeable, ok := resumer.(Closeable); ok {
+		closers = append(closers, closeable)
+	}
+
+	return closers
 }
 
 func main() {

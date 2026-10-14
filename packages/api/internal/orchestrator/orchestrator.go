@@ -37,7 +37,8 @@ const statusLogInterval = time.Second * 20
 
 // trackedWorkBound is the longest a tracked pause can hold its count: the
 // pause budget, then the terminal build-status write, which opens a fresh
-// budget once the pause context has expired.
+// budget once the pause context has expired. A tracked resume create fits
+// inside it (CreateSandbox).
 const trackedWorkBound = pauseTimeout + buildStatusWriteTimeout
 
 // workDrainGrace pads trackedWorkBound so the drain outlasts the work.

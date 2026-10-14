@@ -114,6 +114,9 @@ func TestHandleErrorSetsCORSHeader(t *testing.T) {
 		{"sandbox not found", NewSandboxNotFoundError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
 		{"port closed", NewPortClosedError("im9r2ycjiy2534qsdy1oo", "e2b.app", 3000)},
 		{"sandbox still transitioning", NewSandboxStillTransitioningError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
+		{"sandbox still transitioning unavailable", NewSandboxStillTransitioningUnavailableError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
+		{"sandbox capacity", NewSandboxCapacityError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
+		{"sandbox placement refused", NewSandboxPlacementRefusedError("im9r2ycjiy2534qsdy1oo", "e2b.app", "sandbox_feature_unsupported", 0)},
 		{"sandbox resume permission denied", NewSandboxResumePermissionDeniedError("im9r2ycjiy2534qsdy1oo", "e2b.app")},
 		{"sandbox too many connections", NewSandboxTooManyConnectionsError("im9r2ycjiy2534qsdy1oo", "e2b.app", 100)},
 		{"team sandbox limit", NewTeamSandboxLimitError("im9r2ycjiy2534qsdy1oo", "e2b.app", "limit reached")},
@@ -184,7 +187,11 @@ func TestBrowserPagesRenderThroughLayout(t *testing.T) {
 	}{
 		{"sandbox not found", NewSandboxNotFoundError(sandboxID, host), "Sandbox not found", "502 Bad Gateway", []string{sandboxID}, nil},
 		{"port closed", NewPortClosedError(sandboxID, host, 3000), "Port closed", "502 Bad Gateway", []string{sandboxID, host, "port 3000"}, nil},
-		{"sandbox still transitioning", NewSandboxStillTransitioningError(sandboxID, host), "Sandbox still transitioning", "409 Conflict", []string{sandboxID}, nil},
+		{"sandbox still transitioning", NewSandboxStillTransitioningError(sandboxID, host), "Sandbox still transitioning", "409 Conflict", []string{sandboxID, "Try again"}, nil},
+		{"sandbox still transitioning unavailable", NewSandboxStillTransitioningUnavailableError(sandboxID, host), "Sandbox still transitioning", "503 Service Unavailable", []string{sandboxID, "Try again"}, nil},
+		{"sandbox capacity", NewSandboxCapacityError(sandboxID, host), "Sandbox cannot be resumed", "503 Service Unavailable", []string{sandboxID, "cannot be resumed right now", "Try again"}, nil},
+		// No retry helps a refused placement, so the page offers none.
+		{"sandbox placement refused", NewSandboxPlacementRefusedError(sandboxID, host, "sandbox_create_refused", http.StatusServiceUnavailable), "Sandbox cannot be resumed", "503 Service Unavailable", []string{sandboxID, "no node in this cluster can run it"}, []string{"Try again", `class="actions"`}},
 		{"sandbox resume permission denied", NewSandboxResumePermissionDeniedError(sandboxID, host), "Unable to resume sandbox", "403 Forbidden", []string{sandboxID}, nil},
 		{"sandbox too many connections", NewSandboxTooManyConnectionsError(sandboxID, host, 100), "Too many connections", "429 Too Many Requests", []string{sandboxID, "limit: 100"}, nil},
 		{"team sandbox limit", NewTeamSandboxLimitError(sandboxID, host, hostile), "Sandbox limit reached", "429 Too Many Requests", []string{"&lt;script&gt;"}, []string{hostile}},

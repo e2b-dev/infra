@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -42,6 +43,7 @@ func TestPlaceSandbox_FleetTooOldReported(t *testing.T) {
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	var unsupportedErr UnsupportedFeatureError
@@ -66,6 +68,7 @@ func TestPlaceSandbox_EmptyClusterIsNotFleetTooOld(t *testing.T) {
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	var noNodesErr NoNodesAvailableError
@@ -92,6 +95,7 @@ func TestPlaceSandbox_OneCapableNodeIsNotFleetTooOld(t *testing.T) {
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	require.NoError(t, err)
@@ -126,6 +130,7 @@ func TestPlaceSandbox_PreferredNodeTooOldIsNotUsed(t *testing.T) {
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	require.NoError(t, err)
@@ -154,6 +159,7 @@ func TestPlaceSandbox_PreferredNodeCapableIsUsed(t *testing.T) {
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	require.NoError(t, err)
@@ -180,6 +186,7 @@ func TestPlaceSandbox_CancelledRequestStaysATimeout(t *testing.T) {
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	var timeoutErr PlacementTimeoutError

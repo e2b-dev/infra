@@ -10,10 +10,12 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/oauth"
 	apiorchestrator "github.com/e2b-dev/infra/packages/api/internal/orchestrator"
@@ -292,9 +294,12 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		true,
 		false,
 		nil, // mcp
+		// The proxy comes back for the sandbox, not for this answer: a create
+		// under way completes for it even if it stops waiting.
+		apiorchestrator.CompleteStartedCreate(),
 	)
 	if apiErr != nil {
-		return nil, status.Error(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
+		return nil, resumeStatusError(ctx, apiErr)
 	}
 
 	nodeIP := s.api.orchestrator.GetNodeRouteIPAddress(sbx.ClusterID, sbx.NodeID)
@@ -303,4 +308,31 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 	}
 
 	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
+}
+
+// resumeStatusError turns a start failure into the resume RPC's status. The
+// API's semantic error code travels as an ErrorInfo detail, so the proxy can
+// tell a placement refusal no retry helps from a shortage that clears; the
+// HTTP status alone maps both to Unavailable. The detail also carries that
+// HTTP status, so the page the proxy renders for a refusal answers with it
+// rather than with one read back off the gRPC code, which folds 500 into
+// the 503 the SDKs retry.
+func resumeStatusError(ctx context.Context, apiErr *api.APIError) error {
+	st := status.New(sharedutils.GRPCCodeFromHTTPStatus(apiErr.Code), apiErr.ClientMsg)
+	if apiErr.ErrorCode == "" {
+		return st.Err()
+	}
+
+	withCode, err := st.WithDetails(&errdetails.ErrorInfo{
+		Reason:   apiErr.ErrorCode,
+		Domain:   proxygrpc.ResumeErrorDomain,
+		Metadata: map[string]string{proxygrpc.ResumeErrorHTTPStatusKey: strconv.Itoa(apiErr.Code)},
+	})
+	if err != nil {
+		logger.L().Error(ctx, "failed to attach the error code to the resume status", zap.Error(err), zap.String("error_code", apiErr.ErrorCode))
+
+		return st.Err()
+	}
+
+	return withCode.Err()
 }

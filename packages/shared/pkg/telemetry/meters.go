@@ -384,6 +384,14 @@ const (
 	// a transition. A sustained high rate means transitions pile up at the
 	// front of the index, e.g. evictions near their concurrency limit.
 	ApiRedisStorageExpirationIndexDeferred CounterType = "api.redis_storage.expiration_index.deferred"
+
+	// ClientProxyResumeFlightCounterName counts callers of the per-sandbox
+	// resume flight by role (leader|joiner|none) and result
+	// (served|error|canceled); none is a caller that joined no flight.
+	ClientProxyResumeFlightCounterName CounterType = "client_proxy.resume.flight.total"
+	// ClientProxyResumeParkingRejectedCounterName counts callers shed with a
+	// 503 because the parking lot was full when their flight first retried.
+	ClientProxyResumeParkingRejectedCounterName CounterType = "client_proxy.resume.parking.rejected"
 )
 
 const (
@@ -397,6 +405,7 @@ const (
 	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.open"
 	ClientProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "client_proxy.proxy.pool.connections.open"
 	ClientProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "client_proxy.proxy.pool.size"
+	ClientProxyResumeParkingActiveName           ObservableUpDownCounterType = "client_proxy.resume.parking.active"
 
 	OrchestratorProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.server.connections.open"
 	OrchestratorProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "orchestrator.proxy.pool.connections.open"
@@ -542,6 +551,11 @@ const (
 	// Ingress proxy histograms
 	IngressProxyConnectionDurationHistogramName    HistogramType = "orchestrator.proxy.connection.duration"
 	IngressProxyConnectionsPerSandboxHistogramName HistogramType = "orchestrator.proxy.connections.per_sandbox"
+
+	// ClientProxyResumeParkingWaitDurationName is how long a request waited
+	// in the parking lot, labeled by outcome
+	// (served|budget_exhausted|canceled|error).
+	ClientProxyResumeParkingWaitDurationName HistogramType = "client_proxy.resume.parking.wait.duration"
 )
 
 const (
@@ -794,6 +808,9 @@ var counterDesc = map[CounterType]string{
 	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution|invalid)",
 	ApiRedisStorageExpirationIndexRescored: "Live expiration index members re-scored after drifting from the stored EndTime",
 	ApiRedisStorageExpirationIndexDeferred: "Expired expiration index members moved out of the evictor scan window while their sandbox is in a transition",
+
+	ClientProxyResumeFlightCounterName:          "Callers of the per-sandbox resume flight at the client proxy (role=leader|joiner|none, result=served|error|canceled)",
+	ClientProxyResumeParkingRejectedCounterName: "Requests shed with a 503 because the client proxy parking lot was full at their flight's first retry",
 }
 
 var counterUnits = map[CounterType]string{
@@ -847,6 +864,8 @@ var counterUnits = map[CounterType]string{
 	PauseResumePrefetchHarvestThaw:               "{throwaway}",
 	TCPFirewallConnectionsTotal:                  "{connection}",
 	TCPFirewallErrorsTotal:                       "{error}",
+	ClientProxyResumeFlightCounterName:           "{request}",
+	ClientProxyResumeParkingRejectedCounterName:  "{request}",
 	TCPFirewallDecisionsTotal:                    "{decision}",
 
 	OrchestratorTemplateCacheAncestorResolutionsCounterName: "{ancestor}",
@@ -892,6 +911,7 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	ClientProxyServerConnectionsMeterCounterName:       "Open connections to the client proxy from load balancer.",
 	ClientProxyPoolConnectionsMeterCounterName:         "Open connections from the client proxy to the orchestrator proxy.",
 	ClientProxyPoolSizeMeterCounterName:                "Size of the client proxy pool.",
+	ClientProxyResumeParkingActiveName:                 "Requests parked at the client proxy waiting on a retried resume.",
 	OrchestratorProxyServerConnectionsMeterCounterName: "Open connections to the orchestrator proxy from client proxies.",
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "Open connections from the orchestrator proxy to sandboxes.",
 	OrchestratorProxyPoolSizeMeterCounterName:          "Size of the orchestrator proxy pool.",
@@ -908,6 +928,7 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	ClientProxyServerConnectionsMeterCounterName:       "{connection}",
 	ClientProxyPoolConnectionsMeterCounterName:         "{connection}",
 	ClientProxyPoolSizeMeterCounterName:                "{transport}",
+	ClientProxyResumeParkingActiveName:                 "{request}",
 	OrchestratorProxyServerConnectionsMeterCounterName: "{connection}",
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
 	OrchestratorProxyPoolSizeMeterCounterName:          "{transport}",
@@ -1137,6 +1158,8 @@ var histogramDesc = map[HistogramType]string{
 	UploadUncompressedBytes: "Per-upload uncompressed artifact size",
 	UploadCompressedBytes:   "Per-upload compressed artifact size",
 	UploadCompressionRatio:  "Per-upload compressed/uncompressed ratio (1.0 = no compression)",
+
+	ClientProxyResumeParkingWaitDurationName: "Time a request waited in the client proxy parking lot, labeled by outcome (served|budget_exhausted|canceled|error)",
 }
 
 var histogramUnits = map[HistogramType]string{
@@ -1218,6 +1241,8 @@ var histogramUnits = map[HistogramType]string{
 	UploadUncompressedBytes: "{By}",
 	UploadCompressedBytes:   "{By}",
 	UploadCompressionRatio:  "{1}",
+
+	ClientProxyResumeParkingWaitDurationName: "ms",
 }
 
 // GetHistogram returns an Int64 histogram with the registered description and

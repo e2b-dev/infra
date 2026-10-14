@@ -17,7 +17,7 @@ const (
 var (
 	// reserveScript atomically checks limits and reserves a sandbox for creation.
 	// The pending set is a ZSET where score = Unix timestamp of reservation.
-	// Stale entries (older than staleTTL) are cleaned up before counting.
+	// Stale entries (older than StaleTTL) are cleaned up before counting.
 	//
 	// KEYS[1] = storage index key (sandbox:storage:{teamID}:index)
 	// KEYS[2] = pending zset key (sandbox:storage:{teamID}:reservations:pending)
@@ -25,7 +25,7 @@ var (
 	// ARGV[1] = sandboxID
 	// ARGV[2] = limit (-1 means no limit)
 	// ARGV[3] = current Unix timestamp (seconds, float)
-	// ARGV[4] = stale cutoff Unix timestamp (now - staleTTL)
+	// ARGV[4] = stale cutoff Unix timestamp (now - StaleTTL)
 	//
 	// Returns:
 	//   0 = RESERVED (sandbox added to pending zset)
