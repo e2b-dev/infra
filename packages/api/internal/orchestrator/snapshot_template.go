@@ -87,7 +87,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 		return SnapshotTemplateResult{}, fmt.Errorf("node '%s' not found", sbx.NodeID)
 	}
 
-	currentKind, upsertResult, err := o.upsertSnapshotKeepingKind(ctx, sbx, node)
+	currentKind, upsertResult, err := o.upsertSnapshotKeepingKind(ctx, sbx, node, opts.FilesystemOnly)
 	if err != nil {
 		return SnapshotTemplateResult{}, err
 	}
@@ -193,14 +193,16 @@ func detachedBuildStatusCtx(ctx context.Context) (context.Context, context.Cance
 // touching the row's kind. The kind describes the latest ready build, which
 // this build is not yet: it is recorded by finishSnapshotBuildWithKind once
 // the build is ready, so a refused or failed pause, checkpoint or fork never
-// changes what the previous build is resumed as. It returns the kind it kept.
-func (o *Orchestrator) upsertSnapshotKeepingKind(ctx context.Context, sbx sandbox.Sandbox, node *nodemanager.Node) (bool, queries.UpsertSnapshotRow, error) {
+// changes what the previous build is resumed as. The new build itself is
+// labelled filesystemOnly at once; it is unused until it is ready. It returns
+// the kind it kept.
+func (o *Orchestrator) upsertSnapshotKeepingKind(ctx context.Context, sbx sandbox.Sandbox, node *nodemanager.Node, filesystemOnly bool) (bool, queries.UpsertSnapshotRow, error) {
 	currentKind, err := o.sqlcDB.GetSnapshotFilesystemOnly(ctx, sbx.SandboxID)
 	if err != nil && !dberrors.IsNotFoundError(err) {
 		return false, queries.UpsertSnapshotRow{}, fmt.Errorf("error reading snapshot kind: %w", err)
 	}
 
-	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, currentKind))
+	upsertResult, err := o.throttledUpsertSnapshot(ctx, buildUpsertSnapshotParams(sbx, node, currentKind, filesystemOnly))
 	if err != nil {
 		return false, queries.UpsertSnapshotRow{}, fmt.Errorf("error upserting snapshot: %w", err)
 	}

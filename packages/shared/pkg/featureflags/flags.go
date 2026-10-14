@@ -1145,10 +1145,11 @@ var (
 	// sandbox on the node, so the node, its group and its cluster are the cohorts
 	// that mean anything.
 	EnvdBinaryCacheFlag = NewBoolFlag("envd-binary-cache", envBoolOr("ENVD_BINARY_CACHE", env.IsDevelopment()))
-	// FsOnlyResumeCPUModelFlag restricts where a cold-boot resume (a
-	// filesystem-only snapshot or a memory:false resume) may run: placement keeps
-	// only nodes reporting this CPU model, on top of the build-compatibility rule
-	// every sandbox is already subject to. The value is a bare CPU model as
+	// FsOnlyResumeCPUModelFlag restricts where a cold boot (a resume of a
+	// filesystem-only snapshot, a memory:false resume, or a sandbox created from a
+	// memory:false snapshot template) may run: placement keeps only nodes
+	// reporting this CPU model, on top of the build-compatibility rule every
+	// sandbox is already subject to. The value is a bare CPU model as
 	// /proc/cpuinfo reports it; see the machineinfo model constants.
 	//
 	// Empty (the default) turns the restriction off, leaving cold boots on the

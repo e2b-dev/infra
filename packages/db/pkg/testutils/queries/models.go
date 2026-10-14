@@ -137,6 +137,7 @@ type EnvBuild struct {
 	CpuFlags           []string
 	StatusGroup        string
 	TeamID             *uuid.UUID
+	FilesystemOnly     bool
 }
 
 type EnvBuildAssignment struct {

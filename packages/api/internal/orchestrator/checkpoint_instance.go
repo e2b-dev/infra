@@ -74,7 +74,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 	// filesystem-only build from an earlier memory:false snapshot: that kind
 	// must survive until this build is ready, or a refused checkpoint would
 	// leave the row claiming memory for a build that has none.
-	currentKind, upsertResult, err := o.upsertSnapshotKeepingKind(ctx, sbx, node)
+	currentKind, upsertResult, err := o.upsertSnapshotKeepingKind(ctx, sbx, node, false)
 	if err != nil {
 		return err
 	}

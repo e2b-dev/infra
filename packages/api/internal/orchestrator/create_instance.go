@@ -75,7 +75,9 @@ type SandboxMetadata struct {
 	FilesystemBoot bool
 	// FilesystemOnlySnapshot marks a resume whose snapshot persists only the
 	// rootfs. Unlike FilesystemBoot it describes the stored artifact rather than
-	// the request, so every path that resumes such a snapshot sets it.
+	// the request, so every path that resumes such a snapshot sets it. It is read
+	// from the snapshot row, which also covers builds older than
+	// Build.FilesystemOnly.
 	FilesystemOnlySnapshot bool
 }
 
@@ -701,10 +703,11 @@ func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID
 // resolveCPURequirement builds the CPU constraint placement filters nodes with.
 //
 // A memory restore may move to the newer models IsCompatibleWith treats as
-// supersets. A cold boot (a filesystem-only snapshot or a memory:false resume)
-// is instead confined to one CPU model, keeping it on a single generation while
-// that path is unproven across them. FsOnlyResumeCPUModelFlag names the model,
-// and empty returns cold boots to the shared rule.
+// supersets. A cold boot (any start from a filesystem-only build, including a
+// sandbox created from a memory:false snapshot template, or a memory:false
+// resume) is instead confined to one CPU model, keeping it on a single
+// generation while that path is unproven across them. FsOnlyResumeCPUModelFlag
+// names the model, and empty returns cold boots to the shared rule.
 //
 // ExtraCompatibleNodeModelsFlag adds model pairs to the shared rule for every
 // placement; the pin still narrows on top of them.
@@ -718,7 +721,8 @@ func (o *Orchestrator) resolveCPURequirement(ctx context.Context, sandboxID stri
 		),
 	}
 
-	if !sbxData.FilesystemOnlySnapshot && !sbxData.FilesystemBoot {
+	coldBoot := sbxData.FilesystemOnlySnapshot || sbxData.Build.FilesystemOnly || sbxData.FilesystemBoot
+	if !coldBoot {
 		return requirement
 	}
 

@@ -698,6 +698,51 @@ func TestCreateSandbox_MemoryFalseResumePinsCPUModel(t *testing.T) {
 	}
 }
 
+// A sandbox created from a memory:false snapshot template cold-boots, so it is
+// pinned like a filesystem-only resume. Such a create has no snapshot row; only
+// the build records the kind.
+func TestCreateSandbox_FilesystemOnlyBuildPinsCPUModel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		filesystemOnly bool
+		nodeCPUModel   string
+		wantErrCode    string
+	}{
+		{"fs-only build, pinned to n2: n4 node refused", true, machineinfo.EmeraldRapidsModel, errCodeNoCompatibleNode},
+		{"fs-only build, pinned to n2: n2 node accepted", true, machineinfo.IceLakeModel, ""},
+		{"memory build, pinned to n2: n4 node accepted", false, machineinfo.EmeraldRapidsModel, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, fsOnlyPinFlagSource(machineinfo.IceLakeModel),
+				nodemanager.WithCPUInfo("x86_64", "6", tt.nodeCPUModel))
+			build := buildOnIceLake()
+			build.FilesystemOnly = tt.filesystemOnly
+			now := time.Now()
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-fsbuild-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), func(_ context.Context) (SandboxMetadata, *api.APIError) {
+					return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "tpl", Build: build}, nil
+				},
+				now, now.Add(time.Hour), time.Hour, false, false, sandbox.CreationMetadata{})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
 // extra-compatible-node-models lets an n2 build run on a Granite Rapids node
 // for memory and filesystem-only resumes alike, and adds nothing when unset.
 func TestCreateSandbox_ExtraCompatibleNodeModels(t *testing.T) {

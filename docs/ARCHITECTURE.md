@@ -834,7 +834,10 @@ sequenceDiagram
   full snapshot or a pause and resume). The request is never downgraded to a memory snapshot.
   The snapshot row records the kind only once the build is ready, and the pause and fork paths
   keep the same rule, so a refused or failed request leaves the previous build resumed as what
-  it is.
+  it is. Each snapshot build also records its own kind (`env_builds.filesystem_only`) when it is
+  created. A sandbox created from a snapshot template reads that, because the source's row
+  follows its later snapshots, and placement holds such a cold boot to the
+  `fs-only-resume-cpu-model` CPU model as it does a filesystem-only resume.
 - **Explicit filesystem-only resume**: `memory: false` on resume/connect demands a cold boot
   (`RebootSandbox`) even when the snapshot includes memory, as a self-serve rescue when the
   restored memory state is unusable. Gated per team by the `fs-only-resume-api` flag; when off
