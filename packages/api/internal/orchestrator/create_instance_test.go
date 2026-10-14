@@ -2,18 +2,27 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -27,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -63,7 +73,14 @@ func newCreateSandboxTestOrchestrator(t *testing.T, nodeOpts ...nodemanager.Test
 func newCreateSandboxTestOrchestratorWithFlags(t *testing.T, flagSource *ldtestdata.TestDataSource, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
 	t.Helper()
 
-	client := redis_utils.SetupInstance(t)
+	return newCreateSandboxTestOrchestratorOnRedis(t, redis_utils.SetupInstance(t), flagSource, nodeOpts...)
+}
+
+// newCreateSandboxTestOrchestratorOnRedis builds one API instance on client, so
+// several instances can share a Redis server.
+func newCreateSandboxTestOrchestratorOnRedis(t *testing.T, client redis.UniversalClient, flagSource *ldtestdata.TestDataSource, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
+	t.Helper()
+
 	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider(), nil)
 	require.NoError(t, err)
 	go storage.Start(t.Context())
@@ -876,4 +893,169 @@ func TestCreateSandbox_CreatedCounterCarriesTeam(t *testing.T) {
 	teamID, ok := sum.DataPoints[0].Attributes.Value("team.id")
 	require.True(t, ok)
 	assert.Equal(t, team.ID.String(), teamID.AsString())
+}
+
+type placementSandboxClient struct {
+	orchestrator.SandboxServiceClient
+
+	placement *orchestrator.SandboxNetworkPlacement
+}
+
+func (c *placementSandboxClient) Create(context.Context, *orchestrator.SandboxCreateRequest, ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	return &orchestrator.SandboxCreateResponse{NetworkPlacement: c.placement}, nil
+}
+
+func (c *placementSandboxClient) Update(context.Context, *orchestrator.SandboxUpdateRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+func requirePlacement(t *testing.T, want, got *orchestrator.SandboxNetworkPlacement) {
+	t.Helper()
+
+	require.Truef(t, proto.Equal(want, got), "network placement: want %v, got %v", want, got)
+}
+
+func plainSandboxData(_ context.Context) (SandboxMetadata, *api.APIError) {
+	return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "base-tpl", Build: testBuild()}, nil
+}
+
+func storedPlacement(t *testing.T, o *Orchestrator, teamID uuid.UUID, sandboxID string) *orchestrator.SandboxNetworkPlacement {
+	t.Helper()
+
+	stored, err := o.sandboxStore.Get(t.Context(), teamID, sandboxID)
+	require.NoError(t, err)
+
+	return stored.NetworkPlacement
+}
+
+// pendingProbeHook closes probed when its client checks whether a reservation
+// is still pending, which a joining caller does only after it subscribed to
+// the result and found none.
+type pendingProbeHook struct {
+	probed chan struct{}
+	once   sync.Once
+}
+
+func (h *pendingProbeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *pendingProbeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func (h *pendingProbeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		if cmd.Name() == "zscore" && strings.HasSuffix(fmt.Sprint(cmd.Args()[1]), ":reservations:pending") {
+			h.once.Do(func() { close(h.probed) })
+		}
+
+		return err
+	}
+}
+
+func TestCreateSandbox_RetainsWinningPlacement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		placement *orchestrator.SandboxNetworkPlacement
+	}{
+		{name: "legacy"},
+		{name: "egress-router", placement: &orchestrator.SandboxNetworkPlacement{
+			NetworkMode:    "egress-router",
+			RouterId:       "router-a",
+			IngressAddress: "10.0.0.11",
+			IngressPort:    5007,
+		}},
+		{name: "full-router", placement: &orchestrator.SandboxNetworkPlacement{
+			NetworkMode:    "full-router",
+			RouterId:       "router-b",
+			IngressAddress: "10.8.0.2",
+			IngressPort:    5010,
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			executionID := uuid.NewString()
+			want := tt.placement
+			if want != nil {
+				want.ExecutionId = executionID
+			}
+			client := redis_utils.SetupInstance(t)
+			rpc := &placementSandboxClient{placement: want}
+			o := newCreateSandboxTestOrchestratorOnRedis(t, client, ldtestdata.DataSource(),
+				func(node *nodemanager.TestNode) { node.SetSandboxClient(rpc) })
+			origin := nodemanager.NewTestNode("node-origin", api.NodeStatusReady, 0, 8,
+				nodemanager.WithSandboxCreateError(status.Error(codes.Internal, "create failed")))
+			origin.ClusterID = uuid.Nil
+			o.registerNode(origin)
+
+			joinerClient := redis.NewClient(&redis.Options{Addr: client.(*redis.Client).Options().Addr})
+			t.Cleanup(func() { _ = joinerClient.Close() })
+			probe := &pendingProbeHook{probed: make(chan struct{})}
+			joinerClient.AddHook(probe)
+			joinerAPI := newCreateSandboxTestOrchestratorOnRedis(t, joinerClient, ldtestdata.DataSource())
+			joined := make(chan sandbox.Sandbox, 1)
+			team := testTeam()
+			sandboxID := "sbx-placement"
+			now := time.Now()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			sbx, apiErr := o.CreateSandbox(ctx, sandboxID, executionID, team,
+				func(ctx context.Context) (SandboxMetadata, *api.APIError) {
+					// The winner has reserved the start. Hold it until the other API is waiting.
+					go func() {
+						result, joinErr := joinerAPI.CreateSandbox(ctx, sandboxID, uuid.NewString(), team, plainSandboxData,
+							now, now.Add(time.Hour), time.Hour, false, false, sandbox.CreationMetadata{})
+						assert.Nil(t, joinErr)
+						joined <- result
+					}()
+					select {
+					case <-probe.probed:
+					case <-ctx.Done():
+						t.Fatal("joiner did not wait on the pending start")
+					}
+
+					data, err := plainSandboxData(ctx)
+					data.NodeID = &origin.ID // Fail on the snapshot's worker before retrying node-1.
+
+					return data, err
+				}, now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+			require.Nil(t, apiErr)
+			assert.Equal(t, "node-1", sbx.NodeID)
+			requirePlacement(t, want, sbx.NetworkPlacement)
+			joiner := <-joined
+			assert.Equal(t, executionID, joiner.ExecutionID)
+			assert.Equal(t, sbx.NodeID, joiner.NodeID)
+			requirePlacement(t, want, joiner.NetworkPlacement)
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+
+			_, apiErr = o.KeepAliveFor(ctx, team.ID, sandboxID, 2*time.Hour, false)
+			require.Nil(t, apiErr)
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+			require.Nil(t, o.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, []string{"1.1.1.1"}, nil, nil, nil, nil))
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+
+			transition, _, finish, err := o.sandboxStore.StartRemoving(ctx, team.ID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+			require.NoError(t, err)
+			requirePlacement(t, want, transition.Sandbox.NetworkPlacement)
+			restored, err := o.sandboxStore.RestoreRunning(ctx, transition, 0)
+			require.NoError(t, err)
+			finish(ctx, sandbox.ErrTransitionRestored)
+			requirePlacement(t, want, restored.NetworkPlacement)
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+
+			o.sandboxStore.Remove(ctx, team.ID, sandboxID)
+			rpc.placement = nil
+			sbx, apiErr = o.CreateSandbox(ctx, sandboxID, uuid.NewString(), team, plainSandboxData,
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+			require.Nil(t, apiErr)
+			requirePlacement(t, nil, sbx.NetworkPlacement)
+			requirePlacement(t, nil, storedPlacement(t, o, team.ID, sandboxID))
+		})
+	}
 }

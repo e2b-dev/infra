@@ -576,6 +576,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxData.Iam,
 	)
 	sbx.FirecrackerVersionResolved = resolvedFCVersion
+	sbx.NetworkPlacement = placed.Response.GetNetworkPlacement()
 
 	// An orchestrator that predates the filesystem_boot field ignores it and
 	// memory-restores; only the echo proves the demand was honored. Kill the

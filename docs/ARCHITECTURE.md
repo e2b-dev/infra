@@ -720,9 +720,16 @@ The TTL of the record is `sandbox_max_length_in_hours` from the write time. The 
 deleted earlier in every normal stop path.
 
 A routed sandbox adds `lifecycle_id` (its Firecracker process) and `network_placement` with the
-mode, Router and Portable IP. The record carries no configuration: the
-orchestrator hands the Router its policy and workload identity over gRPC before the create call
-returns. An absent placement means the legacy per-worker network. Nothing writes a placement yet.
+mode, Router, Portable IP and ingress endpoint (`ingress_address`, `ingress_port`). The endpoint is
+the Router for full-router and the worker for egress-router. The record carries location only. The
+orchestrator owns the Router configuration, which never travels through this record. An absent
+placement means the legacy per-worker network. The orchestrator publisher does not write a
+placement yet.
+
+The API keeps the placement returned by the winning orchestrator create on its own sandbox record
+in Redis (`networkPlacement`), and callers that join the same start get the same placement. A new
+execution carries only its own create's placement. Nothing routes on it yet: client-proxy and the
+API still send traffic to the worker.
 
 ### Volume content
 

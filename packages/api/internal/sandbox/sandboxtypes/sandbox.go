@@ -7,6 +7,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
@@ -130,6 +131,10 @@ type Sandbox struct {
 	// Iam records the sandbox workload identity configuration. Persisted so it
 	// survives re-sync and is carried into the paused snapshot.
 	Iam *types.SandboxIam `json:"iam,omitempty"`
+	// NetworkPlacement is the placement the orchestrator returned for this
+	// execution's successful create. Nil means the legacy per-worker network,
+	// including records written before orchestrators returned a placement.
+	NetworkPlacement *orchestrator.SandboxNetworkPlacement `json:"networkPlacement,omitempty"`
 
 	State State `json:"state"`
 }
