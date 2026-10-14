@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -66,6 +67,7 @@ type testControl struct {
 	advance  chan struct{} // close to release reads
 	consumed chan struct{} // receives after each read step
 	opened   chan struct{} // receives when OpenRangeReader is called
+	parked   chan struct{} // receives when a read is parked on advance
 	closed   chan struct{} // receives when reader is closed (fetch done)
 	onOpen   func()        // optional callback on OpenRangeReader
 }
@@ -106,6 +108,7 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 			step:     max(16*1024, testBlockSize),
 			advance:  s.ctrl.advance,
 			consumed: s.ctrl.consumed,
+			parked:   s.ctrl.parked,
 			closed:   s.ctrl.closed,
 		}, storage.SourceFS, nil
 	}
@@ -184,6 +187,19 @@ var allChunkerTestCases = []chunkerTestCase{
 			return newTestChunker(t, int64(len(data))), &fakeSeekable{data: data}, nil
 		},
 	},
+}
+
+// FetchTimeout reports the budget the chunker applies to each of its
+// fetches: the default for a new chunker, its own value otherwise.
+func TestFetchTimeoutIsTheChunkerBudget(t *testing.T) {
+	t.Parallel()
+
+	chunker := newTestChunker(t, testBlockSize)
+	defer chunker.Close()
+
+	require.Equal(t, defaultFetchTimeout, chunker.FetchTimeout())
+	chunker.fetchTimeout = 7 * time.Second
+	require.Equal(t, 7*time.Second, chunker.FetchTimeout(), "the instance's value, not the package default")
 }
 
 func TestChunker_BasicSlice(t *testing.T) {
@@ -681,6 +697,7 @@ func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
 		advance:  make(chan struct{}),
 		consumed: make(chan struct{}, 10),
 		opened:   make(chan struct{}, 10),
+		parked:   make(chan struct{}, 10),
 		closed:   make(chan struct{}, 10),
 	}
 	file := &fakeSeekable{data: data, ctrl: ctrl}
@@ -693,13 +710,15 @@ func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
 }
 
 // controlledReader yields data in fixed-size steps, blocking on advance
-// before each Read. After advance is closed, reads proceed immediately.
+// before each Read and signalling parked, if set, as it does. After advance
+// is closed, reads proceed immediately.
 type controlledReader struct {
 	data     []byte
 	pos      int
 	step     int
 	advance  chan struct{}
 	consumed chan struct{}
+	parked   chan struct{}
 	closed   chan struct{}
 }
 
@@ -708,6 +727,10 @@ func (r *controlledReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
+	select {
+	case r.parked <- struct{}{}:
+	default:
+	}
 	<-r.advance
 
 	end := min(r.pos+min(len(p), r.step), len(r.data))

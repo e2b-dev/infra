@@ -225,11 +225,16 @@ func (d *plannedCloseWaitDiff) Slice(ctx context.Context, off, length int64, ft 
 	return d.StorageDiff.Slice(ctx, off, length, ft)
 }
 
+// A ready page is served at once while the eviction is parked behind the
+// unrelated fetch tail: the fetch streams under the cache's stream lock, so a
+// parked Close never holds the read lock a ready read takes, and the read
+// neither waits for the tail nor for the eviction.
+//
 // Serial subcases keep the runtime stack observation tied to this fixture's
 // unique Close wrapper; all byte, cancellation and fetch effects remain real.
 //
 //nolint:paralleltest,tparallel // Subcases observe a single pending cache writer in runtime stacks.
-func TestStorageDiffReadyReadCancellationBehindEviction(t *testing.T) {
+func TestStorageDiffReadyReadServedBehindEviction(t *testing.T) {
 	t.Parallel()
 	for _, consumer := range []string{"ChunkerRead", "ChunkerSlice", "StorageDiffRead", "StorageDiffSlice", "FileRead", "FileSlice"} {
 		t.Run(consumer, func(t *testing.T) {
@@ -306,8 +311,9 @@ func TestStorageDiffReadyReadCancellationBehindEviction(t *testing.T) {
 			require.Equal(t, f.payload, healthy.data)
 			require.NoError(t, f.diff.closeErr)
 			require.False(t, closeCompletedTooSoon, "cache must remain mapped while shared fetch uses it")
-			require.True(t, returnedBeforeTail, "caller cancellation waited for an unrelated fetch tail behind eviction Close")
-			require.ErrorIs(t, result.err, context.Canceled)
+			require.True(t, returnedBeforeTail, "a ready read waited for an unrelated fetch tail behind eviction Close")
+			require.NoError(t, result.err, "a ready read is served while the eviction is parked")
+			require.Equal(t, f.payload[:4096], result.data[:result.n])
 		})
 	}
 }

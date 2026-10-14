@@ -3,9 +3,11 @@
 package block
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTracker(t *testing.T) {
@@ -281,5 +283,140 @@ func TestTracker(t *testing.T) {
 		bmDirty, _ := s.Export()
 		bmDirty.Add(42)
 		assert.Equal(t, NotPresent, s.Get(42), "mutating export must not leak into tracker")
+	})
+}
+
+// TestTrackerDiscard pins the named transition back to NotPresent.
+func TestTrackerDiscard(t *testing.T) {
+	t.Parallel()
+
+	installed := []State{Dirty, Zero, Removed, Clean}
+
+	t.Run("from every installed state", func(t *testing.T) {
+		t.Parallel()
+		for _, from := range installed {
+			s := NewTracker()
+			s.SetRange(0, 8, from)
+			require.Equal(t, from, s.Get(3))
+
+			require.EqualValues(t, 8, s.Discard(0, 8), "every index was present")
+
+			for idx := range uint32(8) {
+				assert.Equal(t, NotPresent, s.Get(idx), "%s→not-present at %d", from, idx)
+			}
+			assert.False(t, s.Present(0, 8))
+			dirty, zero, removed, clean := s.ExportStates()
+			for _, bm := range []interface{ IsEmpty() bool }{dirty, zero, removed, clean} {
+				assert.True(t, bm.IsEmpty(), "discard from %s must clear every bitmap", from)
+			}
+		}
+	})
+
+	t.Run("partial range leaves neighbours untouched", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+		for i, st := range installed {
+			lo := uint32(i) * 10
+			s.SetRange(lo, lo+10, st)
+		}
+
+		require.EqualValues(t, 30, s.Discard(5, 35))
+
+		for idx := range uint32(40) {
+			want := NotPresent
+			switch {
+			case idx < 5:
+				want = Dirty
+			case idx >= 35:
+				want = Clean
+			}
+			assert.Equal(t, want, s.Get(idx), "index %d", idx)
+		}
+		assert.True(t, s.HasRange(0, 5, Dirty))
+		assert.True(t, s.HasRange(35, 40, Clean))
+	})
+
+	t.Run("export excludes the discarded range", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+		s.SetRange(0, 4, Dirty)
+		s.SetRange(4, 8, Zero)
+		s.SetRange(8, 12, Removed)
+
+		s.Discard(2, 10)
+
+		dirty, empty := s.Export()
+		assert.Equal(t, []uint32{0, 1}, dirty.ToArray())
+		assert.Equal(t, []uint32{10, 11}, empty.ToArray())
+	})
+
+	t.Run("reinstall after discard", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+		s.SetRange(0, 4, Dirty)
+		s.Discard(0, 4)
+
+		s.MarkInstalled(0, 2, Clean)
+		s.MarkInstalled(2, 3, Zero)
+		assert.Equal(t, Clean, s.Get(0))
+		assert.Equal(t, Clean, s.Get(1))
+		assert.Equal(t, Zero, s.Get(2))
+		assert.Equal(t, NotPresent, s.Get(3))
+
+		assert.Equal(t, Clean, s.MarkWritten(1))
+		assert.Equal(t, Dirty, s.Get(1))
+		assert.True(t, s.Present(0, 3))
+	})
+
+	t.Run("empty and inverted ranges are no-ops", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+		s.SetRange(0, 4, Dirty)
+		assert.Zero(t, s.Discard(2, 2))
+		assert.Zero(t, s.Discard(3, 1))
+		assert.True(t, s.HasRange(0, 4, Dirty))
+	})
+
+	t.Run("not-present range reports nothing freed", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+		s.SetRange(0, 4, Dirty)
+		assert.Zero(t, s.Discard(8, 16))
+		assert.EqualValues(t, 4, s.Discard(0, 16), "only the four present indices count")
+	})
+
+	t.Run("concurrent SetRange and Discard keep the states disjoint", func(t *testing.T) {
+		t.Parallel()
+		s := NewTracker()
+		const n = uint32(256)
+
+		var wg sync.WaitGroup
+		for w := range 4 {
+			st := installed[w]
+			wg.Go(func() {
+				for round := range uint32(64) {
+					lo := (round * 7) % n
+					s.SetRange(lo, min(lo+16, n), st)
+				}
+			})
+		}
+		wg.Go(func() {
+			for round := range uint32(64) {
+				lo := (round * 11) % n
+				s.Discard(lo, min(lo+16, n))
+			}
+		})
+		wg.Wait()
+
+		dirty, zero, removed, clean := s.ExportStates()
+		for idx := range n {
+			var count int
+			for _, bm := range []interface{ Contains(idx uint32) bool }{dirty, zero, removed, clean} {
+				if bm.Contains(idx) {
+					count++
+				}
+			}
+			assert.LessOrEqual(t, count, 1, "index %d must be in at most one state", idx)
+		}
 	})
 }

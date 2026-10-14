@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
@@ -771,6 +772,25 @@ func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff,
 	key := build.GetDiffStoreKey(buildID, diffType)
 
 	return c.buildStore.Lookup(key)
+}
+
+// DiscardDiffRanges returns the given runs of a cached diff to not-present and
+// punches them, so a later read refetches. The runs are storage offsets of the
+// entry's own diff (BuildMap.Offset and Length in its packed storage space),
+// not device offsets; the resume-build tool translates device ranges through
+// the diff's header with supersededStorageRuns before calling. Forwards to
+// build.DiffStore.DiscardRanges; the store is otherwise private to the cache.
+func (c *Cache) DiscardDiffRanges(buildID string, diffType build.DiffType, runs []header.BuildMap) (block.DiscardStats, error) {
+	key := build.GetDiffStoreKey(buildID, diffType)
+
+	return c.buildStore.DiscardRanges(key, runs)
+}
+
+// DiscardDiffRangesOf is DiscardDiffRanges on a diff the caller holds from
+// LookupDiff and reads through, so the discard lands on that handle even if
+// the store evicted it meanwhile. Forwards to build.DiffStore.DiscardRangesOf.
+func (c *Cache) DiscardDiffRangesOf(diff build.Diff, runs []header.BuildMap) (block.DiscardStats, error) {
+	return c.buildStore.DiscardRangesOf(diff, runs)
 }
 
 // Invalidate removes a template from the cache, forcing a refetch on next access.
