@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -83,8 +84,9 @@ func New(
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
 	discoveredNode NodePlaneInstance,
+	creds credentials.TransportCredentials,
 ) (*Node, error) {
-	client, err := NewClient(tracerProvider, meterProvider, discoveredNode.OrchestratorAddress)
+	client, err := NewClient(tracerProvider, meterProvider, discoveredNode.OrchestratorAddress, creds)
 	if err != nil {
 		return nil, err
 	}

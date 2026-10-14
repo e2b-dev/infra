@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
@@ -64,6 +65,7 @@ func NewPool(
 	sandboxLogsReader ClickhouseLogsReader,
 	featureFlags *featureflags.Client,
 	config cfg.Config,
+	localCreds credentials.TransportCredentials,
 ) (*Pool, error) {
 	clusters := smap.New[*Cluster]()
 	poolCtx, cancel := context.WithCancel(ctx)
@@ -88,6 +90,7 @@ func NewPool(
 		queryMetricsProvider: queryMetricsProvider,
 		sandboxLogsReader:    sandboxLogsReader,
 		featureFlags:         featureFlags,
+		localCreds:           localCreds,
 		onLocalInstance:      p.notifyLocalInstance,
 		activateCluster: func(cluster *Cluster, mode initialSyncMode) error {
 			return p.activateCluster(poolCtx, cluster, mode)
@@ -168,6 +171,7 @@ type clustersSyncStore struct {
 	sandboxLogsReader    ClickhouseLogsReader
 	featureFlags         *featureflags.Client
 	config               cfg.Config
+	localCreds           credentials.TransportCredentials
 	activateCluster      func(*Cluster, initialSyncMode) error
 	onLocalInstance      func()
 }
@@ -239,7 +243,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 func (d clustersSyncStore) newCluster(cluster queries.Cluster) (*Cluster, error) {
 	if cluster.ID == consts.LocalClusterID {
-		return newLocalCluster(d.tel, d.localDiscovery, d.queryMetricsProvider, d.queryLogsProvider, d.sandboxLogsReader, d.featureFlags, d.config, d.onLocalInstance), nil
+		return newLocalCluster(d.tel, d.localDiscovery, d.queryMetricsProvider, d.queryLogsProvider, d.sandboxLogsReader, d.featureFlags, d.config, d.localCreds, d.onLocalInstance), nil
 	}
 
 	authOrgID := ""

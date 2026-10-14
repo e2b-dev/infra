@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
@@ -77,6 +79,7 @@ func newLocalCluster(
 	sandboxLogsReader ClickhouseLogsReader,
 	featureFlags *featureflags.Client,
 	config cfg.Config,
+	localCreds credentials.TransportCredentials,
 	onInstanceJoined func(),
 ) *Cluster {
 	clusterID := consts.LocalClusterID
@@ -84,7 +87,7 @@ func newLocalCluster(
 	instances := smap.New[*Instance]()
 	instanceCreation := func(ctx context.Context, item servicediscovery.Instance) (*Instance, error) {
 		// For local cluster we are doing direct connection to instance IP and API port and without additional cluster auth.
-		return newInstance(ctx, tel, nil, clusterID, item, item.Address(), false)
+		return newInstance(ctx, tel, nil, clusterID, item, item.Address(), false, localCreds)
 	}
 
 	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation, onInsert: onInstanceJoined}
@@ -148,7 +151,7 @@ func newRemoteCluster(
 	instanceCreation := func(ctx context.Context, item servicediscovery.Instance) (*Instance, error) {
 		// A remote cluster is reached through an endpoint acting as a gRPC proxy,
 		// which handles auth and routing for us.
-		return newInstance(ctx, tel, remoteInstanceAuthorization(secret, endpointTLS, item), clusterID, item, endpoint, endpointTLS)
+		return newInstance(ctx, tel, remoteInstanceAuthorization(secret, endpointTLS, item), clusterID, item, endpoint, endpointTLS, insecure.NewCredentials())
 	}
 
 	storeDiscovery := servicediscovery.NewRemote(httpClient)

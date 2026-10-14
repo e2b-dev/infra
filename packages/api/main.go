@@ -49,6 +49,7 @@ import (
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	metricsMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/metrics"
 	tracingMiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/tracing"
+	"github.com/e2b-dev/infra/packages/shared/pkg/mtls"
 	"github.com/e2b-dev/infra/packages/shared/pkg/removedroutes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -101,7 +102,7 @@ var (
 	serviceVersion             = "0.14.1" // x-release-please-version
 )
 
-func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, adminJWTVerifier *auth.JWKSVerifier, redisClient redis.UniversalClient, ff *featureflags.Client, swagger *openapi3.T, port int) *http.Server {
+func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client, l logger.Logger, apiStore *handlers.APIStore, adminJWTVerifier *auth.JWKSVerifier, redisClient redis.UniversalClient, ff *featureflags.Client, swagger *openapi3.T) *http.Server {
 	// Rendered before the servers are cleared below, so the served document
 	// keeps them.
 	openAPISpec, err := openapispec.Handler(swagger)
@@ -249,7 +250,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 
 	s := &http.Server{
 		Handler: r,
-		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
 
 		// Configure request timeouts.
 		ReadHeaderTimeout: maxReadHeaderTimeout,
@@ -267,7 +267,6 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 		// still running. Per-request deadlines come from middleware.
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
-	httpserver.ConfigureH2C(s)
 
 	return s
 }
@@ -430,6 +429,15 @@ func run() int {
 	}
 	cleanupFns = append(cleanupFns, featureFlags.Close)
 
+	tlsProcess, err := mtls.NewProcess(ctx, tel.MeterProvider, featureFlags.StringReader(), l)
+	if err != nil {
+		l.Fatal(ctx, "failed to set up mutual TLS", zap.Error(err))
+	}
+	tlsConfig, err := newServiceTLS(tlsProcess, config.TLS, config.AnalyticsCollectorHost != "" && !config.AnalyticsCollectorTLS)
+	if err != nil {
+		l.Fatal(ctx, "invalid mutual TLS configuration", zap.Error(err))
+	}
+
 	// External sandbox logger routes through LaunchDarkly (LogsWriteConfigFlag),
 	// falling back to the fixed collector address. Created here so it can use the
 	// feature flags client.
@@ -449,7 +457,7 @@ func run() int {
 	// Create an instance of our handler which satisfies the generated interface
 	//  (use the outer context rather than the signal handling
 	//   context so it doesn't exit first.)
-	apiStore := handlers.NewAPIStore(ctx, tel, redisClient, featureFlags, config)
+	apiStore := handlers.NewAPIStore(ctx, tel, redisClient, featureFlags, config, tlsConfig.hops)
 	cleanupFns = append(cleanupFns, apiStore.Close)
 
 	riverOutbox, err := apiStore.NewOutbox(l)
@@ -475,7 +483,7 @@ func run() int {
 		l.Fatal(ctx, "failed to create proxy grpc listener", zap.Error(err))
 	}
 
-	grpcServer := e2bgrpc.NewGRPCServer(tel)
+	grpcServer := e2bgrpc.NewGRPCServer(tel, grpcTLSOptions(tlsConfig.internalGRPC)...)
 	proxygrpc.RegisterSandboxServiceServer(grpcServer, handlers.NewSandboxService(apiStore, false, nil))
 
 	edgeGrpcAddr := fmt.Sprintf("0.0.0.0:%d", config.APIEdgeGrpcPort)
@@ -484,7 +492,7 @@ func run() int {
 		l.Fatal(ctx, "failed to create edge proxy grpc listener", zap.Error(err))
 	}
 
-	edgeGrpcServer := e2bgrpc.NewGRPCServer(tel)
+	edgeGrpcServer := e2bgrpc.NewGRPCServer(tel, grpcTLSOptions(tlsConfig.publicGRPC)...)
 	clientProxyOAuthVerifier, err := oauth.NewVerifier(ctx, config.ClientProxyOIDCIssuerURL)
 	if err != nil {
 		l.Fatal(ctx, "failed to create client proxy OIDC verifier", zap.Error(err))
@@ -494,8 +502,15 @@ func run() int {
 	}
 	proxygrpc.RegisterSandboxServiceServer(edgeGrpcServer, handlers.NewSandboxService(apiStore, true, clientProxyOAuthVerifier))
 
+	httpInner, err := (&net.ListenConfig{}).Listen(ctx, "tcp", fmt.Sprintf("0.0.0.0:%d", port))
+	if err != nil {
+		l.Fatal(ctx, "failed to create http listener", zap.Error(err))
+	}
+
 	// Pass ctx so in-flight requests survive the serve goroutines' exit during graceful shutdown.
-	s := NewGinServer(ctx, config, tel, l, apiStore, adminJWTVerifier, redisClient, featureFlags, swagger, port)
+	s := NewGinServer(ctx, config, tel, l, apiStore, adminJWTVerifier, redisClient, featureFlags, swagger)
+	httpListener := mtls.WrapHTTPServer(s, httpInner, tlsConfig.http, tlsConfig.httpHealthPaths)
+	httpserver.ConfigureH2C(s)
 
 	if err := riverOutbox.Start(ctx); err != nil {
 		l.Error(ctx, "starting the outbox", zap.Error(err))
@@ -514,8 +529,8 @@ func run() int {
 
 	// serveErrCtx is cancelled by any serve goroutine when it exits — both
 	// on fatal Serve() error and on the normal "listener closed by Shutdown"
-	// exit. The shutdown watcher selects on this so that a startup-time
-	// listener failure (e.g. port in use) also triggers the drain sequence.
+	// exit. The shutdown watcher selects on this so that any Serve error also
+	// triggers the drain sequence.
 	serveErrCtx, serveErrCancel := context.WithCancel(ctx)
 	defer serveErrCancel()
 
@@ -534,7 +549,7 @@ func run() int {
 		l.Info(ctx, "Http service starting", zap.Int("port", port))
 
 		// Serve HTTP until shutdown.
-		err := s.ListenAndServe()
+		err := s.Serve(httpListener)
 
 		switch {
 		case errors.Is(err, http.ErrServerClosed):

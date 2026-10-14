@@ -174,6 +174,9 @@ type Config struct {
 	// OutboxBacklogInterval is how often the outbox backlog gauges are read
 	// from the database.
 	OutboxBacklogInterval time.Duration `env:"OUTBOX_BACKLOG_INTERVAL" envDefault:"30s"`
+
+	// TLS is the mutual TLS settings of the api's ports and client hops.
+	TLS TLSConfig
 }
 
 type FailureCondition string

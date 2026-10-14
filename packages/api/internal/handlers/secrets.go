@@ -17,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	_ "google.golang.org/grpc/health" // Registers the client side of healthCheckConfig.
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -66,17 +66,18 @@ var (
 
 // newSecretsManagementClient dials nothing: grpc.NewClient only prepares the
 // connection, so a backend that is down or not yet deployed cannot keep the API
-// from starting. The hop is private, in-cluster and plaintext by decision, it
-// carries no credential of any kind, and a call that may have reached the
-// backend is never replayed by the transport. gRPC may still transparently
-// retry a call that it knows never reached the server's application code.
+// from starting. The hop is private and in-cluster; it dials through creds,
+// plaintext while its mutual TLS mode is off, and carries no other credential.
+// A call that may have reached the backend is never replayed by the transport.
+// gRPC may still transparently retry a call that it knows never reached the
+// server's application code.
 //
 // address is a gRPC target used as given. A plain "host:port" goes through
 // the default DNS resolver. With a headless Service name every ready backend
 // address becomes its own connection. The client resolves again whenever a
 // connection closes, so a backend that rotates its connections by age lets it
 // find replicas added later.
-func newSecretsManagementClient(address string) (*grpc.ClientConn, error) {
+func newSecretsManagementClient(address string, creds credentials.TransportCredentials) (*grpc.ClientConn, error) {
 	// Calls are spread over every resolved backend address, and only to a
 	// backend whose readiness health service reports SERVING. A backend without
 	// the health service is still picked: gRPC treats its UNIMPLEMENTED answer
@@ -91,7 +92,7 @@ func newSecretsManagementClient(address string) (*grpc.ClientConn, error) {
 
 	conn, err := grpc.NewClient(
 		address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		// Turns off configured retries, whatever any service config says.
 		grpc.WithDisableRetry(),

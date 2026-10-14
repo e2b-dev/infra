@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/db/queries"
@@ -344,6 +345,7 @@ func newLifecycleTestPool(lifecycleCtx context.Context, cancel context.CancelFun
 	p.store = clustersSyncStore{
 		clusters:        clusters,
 		onLocalInstance: p.notifyLocalInstance,
+		localCreds:      insecure.NewCredentials(),
 		activateCluster: func(cluster *Cluster, mode initialSyncMode) error {
 			return p.activateCluster(lifecycleCtx, cluster, mode)
 		},

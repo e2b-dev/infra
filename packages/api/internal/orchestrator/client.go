@@ -30,7 +30,7 @@ func (o *Orchestrator) connectToNode(ctx context.Context, discovered nodemanager
 		connectCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), nodeConnectTimeout)
 		defer cancel()
 
-		orchestratorNode, err := nodemanager.New(connectCtx, o.tel.TracerProvider, o.tel.MeterProvider, discovered)
+		orchestratorNode, err := nodemanager.New(connectCtx, o.tel.TracerProvider, o.tel.MeterProvider, discovered, o.nodeCreds)
 		if err != nil {
 			return nil, err
 		}

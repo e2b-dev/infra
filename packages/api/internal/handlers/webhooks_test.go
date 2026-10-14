@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -184,7 +185,7 @@ func startWebhooksBackend(t *testing.T, backend *fakeWebhooksBackend) *APIStore 
 	// allowed to send fails here too if they stop accommodating it.
 	conn, err := grpc.NewClient(
 		"passthrough:///webhooks-backend",
-		append(webhooksDialOptions(), grpc.WithContextDialer(
+		append(webhooksDialOptions(insecure.NewCredentials()), grpc.WithContextDialer(
 			func(ctx context.Context, _ string) (net.Conn, error) {
 				return listener.DialContext(ctx)
 			},

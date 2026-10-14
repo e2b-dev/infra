@@ -257,7 +257,7 @@ const (
 	startupStateDraining
 )
 
-func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.UniversalClient, featureFlags *featureflags.Client, config cfg.Config) *APIStore {
+func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.UniversalClient, featureFlags *featureflags.Client, config cfg.Config, hops Hops) *APIStore {
 	logger.L().Info(ctx, "Initializing API store and services")
 
 	sqlcDB, err := sqlcdb.NewClient(ctx, config.PostgresConnectionString, pool.WithMaxConnections(config.DBMaxOpenConnections), pool.WithMinIdle(config.DBMinIdleConnections))
@@ -346,7 +346,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		}
 	}
 
-	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, sd.templateBuilders, clickhouseStore, queryLogsProvider, clusterLogsReader, featureFlags, config)
+	clusters, err := clusters.NewPool(ctx, tel, sqlcDB, sd.templateBuilders, clickhouseStore, queryLogsProvider, clusterLogsReader, featureFlags, config, hops.Orchestrator)
 	if err != nil {
 		logger.L().Fatal(ctx, "initializing edge clusters pool failed", zap.Error(err))
 	}
@@ -373,7 +373,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "failed to create snapshot build query semaphore", zap.Error(err))
 	}
 
-	orch, err := orchestrator.New(ctx, config, tel, sd.nodes, provider == cfg.ServiceDiscoveryProviderLocal, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem)
+	orch, err := orchestrator.New(ctx, config, tel, sd.nodes, provider == cfg.ServiceDiscoveryProviderLocal, posthogClient, redisClient, sqlcDB, clusters, featureFlags, accessTokenGenerator, snapshotCache, snapshotUpsertSem, hops.Analytics, hops.Orchestrator)
 	if err != nil {
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
@@ -409,7 +409,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		secretsManagement managementv1.SecretManagementServiceClient
 	)
 	if config.SecretsStoreBackendGrpcAddress != "" {
-		secretsConn, err = newSecretsManagementClient(config.SecretsStoreBackendGrpcAddress)
+		secretsConn, err = newSecretsManagementClient(config.SecretsStoreBackendGrpcAddress, hops.SecretsStore)
 		if err != nil {
 			logger.L().Fatal(ctx, "Initializing secrets store management client", zap.Error(err))
 		}
@@ -423,7 +423,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		sandboxEvents     webhookevents.SandboxEventsServiceClient
 	)
 	if config.WebhooksBackendGrpcAddress != "" {
-		webhooksConn, err = newWebhooksClient(config.WebhooksBackendGrpcAddress)
+		webhooksConn, err = newWebhooksClient(config.WebhooksBackendGrpcAddress, hops.Webhooks)
 		if err != nil {
 			logger.L().Fatal(ctx, "Initializing webhooks backend client", zap.Error(err))
 		}

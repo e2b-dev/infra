@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc/credentials"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -66,6 +67,7 @@ type Orchestrator struct {
 	posthogClient                 *analyticscollector.PosthogClient
 	sqlcDB                        *sqlcdb.Client
 	tel                           *telemetry.Client
+	nodeCreds                     credentials.TransportCredentials
 	clusters                      *clusters.Pool
 	metricsRegistration           metric.Registration
 	sandboxCountGaugeRegistration metric.Registration
@@ -135,11 +137,13 @@ func New(
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
 	snapshotCache SnapshotCacheInvalidator,
 	snapshotUpsertSem *utils.AdjustableSemaphore,
+	analyticsCreds, nodeCreds credentials.TransportCredentials,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		config.AnalyticsCollectorHost,
 		config.AnalyticsCollectorAPIToken,
 		config.AnalyticsCollectorTLS,
+		analyticsCreds,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "Error initializing Analytics client", zap.Error(err))
@@ -192,6 +196,7 @@ func New(
 		sqlcDB:               sqlcDB,
 		snapshotCache:        snapshotCache,
 		tel:                  tel,
+		nodeCreds:            nodeCreds,
 		clusters:             clusters,
 		redisStorage:         redisStorage,
 

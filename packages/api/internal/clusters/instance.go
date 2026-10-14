@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -93,8 +94,9 @@ func newInstance(
 	sd servicediscovery.Instance,
 	connAddr string,
 	connTls bool,
+	plaintext credentials.TransportCredentials,
 ) (*Instance, error) {
-	client, err := createClient(tel, clusterAuth, connAddr, connTls)
+	client, err := createClient(tel, clusterAuth, connAddr, connTls, plaintext)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cluster instance client client: %w", err)
 	}

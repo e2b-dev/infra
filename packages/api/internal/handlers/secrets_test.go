@@ -967,7 +967,7 @@ func TestSecretsManagementClientIsLazyAndFailsFast(t *testing.T) {
 
 	// Nothing listens on this address: construction must still succeed and
 	// stay idle, and a call must fail without waiting for a connection.
-	conn, err := newSecretsManagementClient("127.0.0.1:1")
+	conn, err := newSecretsManagementClient("127.0.0.1:1", insecure.NewCredentials())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
@@ -1163,7 +1163,7 @@ func secretsAddresses(replicas ...*secretsReplica) resolver.State {
 func dialSecretsManagement(t *testing.T, target string) managementv1.SecretManagementServiceClient {
 	t.Helper()
 
-	conn, err := newSecretsManagementClient(target)
+	conn, err := newSecretsManagementClient(target, insecure.NewCredentials())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	require.Equal(t, connectivity.Idle, conn.GetState())
