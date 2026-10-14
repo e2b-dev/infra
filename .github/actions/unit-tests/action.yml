@@ -116,6 +116,67 @@ runs:
       shell: bash
       run: dirname "$(mise which gotestsum)" >> "$GITHUB_PATH"
 
+    # go test replays a cached pass when the test binary and the inputs it
+    # observed are unchanged, and that cache outlives the job on every
+    # route: with GOCACHEPROG set it is a store shared across jobs and
+    # runners, and without it setup-go restores GOCACHE, test results
+    # included, from the actions cache under a key made of the module files,
+    # while a persistent runner keeps it on disk. The sudo shards exercise
+    # the runner kernel itself (userfaultfd, NBD, netns, FUSE), which is not
+    # one of those inputs, so a kernel change on the runners would replay
+    # results recorded on the old one. Linking the test binaries with the
+    # kernel in -ldflags keys the replay by kernel: go records -ldflags in a
+    # binary's build settings, so a new value recompiles the generated test
+    # main and moves both IDs a result is stored under, the link action ID
+    # and the binary's content ID. The -X target is a variable no package
+    # declares, so the linker ignores it and the tests run unchanged: an
+    # unchanged kernel replays as before, a new one runs every package once
+    # more. -trimpath leaves -ldflags out of the build settings and would
+    # quietly bring the kernel-blind replay back, so the step fails when
+    # GOFLAGS turns it on, in any spelling go reads as on: the value is read
+    # through go env, which sees the process environment and the go env file
+    # alike, and split into words the way go splits it, across newlines and
+    # with quotes dropped.
+    - name: Key cached test results by the runner kernel
+      if: inputs.sudo == 'true'
+      shell: bash
+      run: |
+        kernel="$(uname -rv)"
+        echo "Runner kernel: ${kernel}"
+        # Split as go splits GOFLAGS: a word ends at a space, tab, newline or
+        # carriage return, and a word that opens with a quote runs to the
+        # matching quote, which is dropped. go rejects an unterminated quote;
+        # here the rest of the value is one word.
+        ws=$' \t\n\r'
+        rest="$(go env GOFLAGS)"
+        while rest="${rest#"${rest%%[!"${ws}"]*}"}" && [ -n "${rest}" ]; do
+          case "${rest}" in
+            [\'\"]*)
+              quote="${rest:0:1}"
+              rest="${rest:1}"
+              flag="${rest%%"${quote}"*}"
+              rest="${rest:${#flag}+1}"
+              ;;
+            *)
+              flag="${rest%%["${ws}"]*}"
+              rest="${rest:${#flag}}"
+              ;;
+          esac
+          # One or two dashes name the same flag. Only the values go reads as
+          # false pass; any other -trimpath value turns it on or stops go.
+          name="${flag#-}"
+          case "${name#-}" in
+            trimpath=0|trimpath=[fF]|trimpath=false|trimpath=FALSE|trimpath=False) ;;
+            trimpath|trimpath=*)
+              echo "::error::GOFLAGS carries ${flag}: -ldflags leaves the build settings and test results replay across kernels"
+              exit 1
+              ;;
+          esac
+        done
+        salt="${kernel//[^[:alnum:]._:#+~-]/_}"
+        echo "Cached test results keyed by this kernel (ci.kernel=${salt})"
+        echo "TEST_LDFLAGS=-ldflags=-X=ci.kernel=${salt}" >> "$GITHUB_ENV"
+
     # sudo strips PATH; pass it through so gotestsum/go resolve to the
     # runner's toolchain instead of /usr/bin/go. The rest of the environment
     # (Go cache settings, HOST_BUSYBOX_DIR, NBD_POOL_SIZE) goes over as an
@@ -130,7 +191,7 @@ runs:
         RACE=""; TEST_TIMEOUT=20m
         if [ "${{ inputs.race }}" = "true" ]; then RACE="-race"; TEST_TIMEOUT=40m; fi
         sudo --preserve-env="$(compgen -e | paste -sd,)" env "PATH=$PATH" gotestsum --format=standard-verbose \
-          -- -timeout $TEST_TIMEOUT $RACE -parallel 16 ${{ inputs.test-path }}
+          -- -timeout $TEST_TIMEOUT $RACE -parallel 16 ${TEST_LDFLAGS:-} ${{ inputs.test-path }}
 
     - name: Run tests
       if: inputs.sudo != 'true'
