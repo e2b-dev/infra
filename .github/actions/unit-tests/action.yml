@@ -2,8 +2,7 @@ name: "Unit Tests"
 description: |
   Runs the unit test shard for one infra package, including the host setup
   that the package needs (bindfs for envd, NBD/hugepages/uffd for the
-  orchestrator). Writes coverage.txt into the package directory when coverage
-  is enabled; coverage is opt-in and no CI workflow currently enables it.
+  orchestrator).
 
   The workspace root must have this repository's layout. The logic lives in
   a composite action (instead of inline in pr-tests.yml) so that other
@@ -23,10 +22,6 @@ inputs:
     default: "false"
   race:
     description: "Run with the race detector (roughly doubles runtime; raises the go test timeout to 40m)"
-    required: false
-    default: "false"
-  coverage:
-    description: "Write coverage.txt (set/atomic covermode picked by go test); enable when the caller uploads it"
     required: false
     default: "false"
 
@@ -56,26 +51,6 @@ runs:
         buildkitd-config-inline: |
           [registry."docker.io"]
             mirrors = ["mirror.gcr.io"]
-
-    - name: Reap orphaned Testcontainers from previous runs
-      shell: bash
-      # Persistent runner + Ryuk disabled: prune leftover containers
-      # from SIGKILL/timeout/OOM in prior jobs.
-      # Two `docker ps` calls because different filter keys AND inside
-      # one call. Don't anchor `name=^reaper_` — Docker silently drops
-      # anchored patterns (docker/cli#1201).
-      run: |
-        set -euo pipefail
-        ids=$(
-          {
-            docker ps -aq --filter "label=org.testcontainers=true"
-            docker ps -aq --filter "name=reaper_"
-          } | sort -u
-        )
-        if [ -n "${ids}" ]; then
-          # shellcheck disable=SC2086
-          docker rm -f ${ids}
-        fi
 
     - name: Setup envd tests
       if: inputs.package == 'packages/envd'
@@ -146,20 +121,16 @@ runs:
     # (Go cache settings, HOST_BUSYBOX_DIR, NBD_POOL_SIZE) goes over as an
     # explicit --preserve-env list: sudo-rs, the sudo on Ubuntu 25.10 and
     # later images, ignores a bare -E, and both implementations take the
-    # list form. Trap chowns the coverage profile back to the runner so
-    # callers can read it even when tests fail.
+    # list form.
     - name: Run tests that require sudo
       if: inputs.sudo == 'true'
       shell: bash
       working-directory: ${{ inputs.package }}
       run: |
-        trap 'sudo chown "$(id -u):$(id -g)" coverage.txt 2>/dev/null || true' EXIT
         RACE=""; TEST_TIMEOUT=20m
         if [ "${{ inputs.race }}" = "true" ]; then RACE="-race"; TEST_TIMEOUT=40m; fi
-        COVER=""
-        if [ "${{ inputs.coverage }}" = "true" ]; then COVER="-coverprofile=coverage.txt"; fi
         sudo --preserve-env="$(compgen -e | paste -sd,)" env "PATH=$PATH" gotestsum --format=standard-verbose \
-          -- -timeout $TEST_TIMEOUT $RACE -parallel 16 $COVER ${{ inputs.test-path }}
+          -- -timeout $TEST_TIMEOUT $RACE -parallel 16 ${{ inputs.test-path }}
 
     - name: Run tests
       if: inputs.sudo != 'true'
@@ -168,7 +139,5 @@ runs:
       run: |
         RACE=""; TEST_TIMEOUT=20m
         if [ "${{ inputs.race }}" = "true" ]; then RACE="-race"; TEST_TIMEOUT=40m; fi
-        COVER=""
-        if [ "${{ inputs.coverage }}" = "true" ]; then COVER="-coverprofile=coverage.txt"; fi
         gotestsum --format=standard-verbose \
-          -- -timeout $TEST_TIMEOUT $RACE -parallel 16 $COVER ${{ inputs.test-path }}
+          -- -timeout $TEST_TIMEOUT $RACE -parallel 16 ${{ inputs.test-path }}

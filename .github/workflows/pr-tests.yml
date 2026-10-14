@@ -28,8 +28,8 @@ jobs:
       GIN_MODE: test
       # Parallel `go test ./...` binaries derive the same Ryuk session id
       # and race on `reaper_<hash>` creation. Disable Ryuk; t.Cleanup
-      # handles normal exit, the reap step in the unit-tests action handles
-      # abnormal exit.
+      # handles normal exit, and every shard runs on a fresh VM, so
+      # containers left by an abnormal exit die with it.
       TESTCONTAINERS_RYUK_DISABLED: "true"
     strategy:
       matrix:
