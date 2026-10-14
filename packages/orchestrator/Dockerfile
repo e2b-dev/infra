@@ -11,18 +11,41 @@ ARG DEBIAN_VERSION=bookworm
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
 ARG TARGETARCH
 
-# Cached golang dependencies
+# Cached golang dependencies. The module proxy occasionally resets the
+# HTTP/2 stream of a large zip mid-transfer; `go mod download` does not
+# retry, and the default comma-separated GOPROXY moves to its next entry
+# only on a 404 or 410, so one reset fails the build. The cache mount
+# keeps every module that already landed, so a retry fetches only what is
+# still missing.
 WORKDIR /build/shared
 COPY ./shared/go.mod ./shared/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    for attempt in 1 2 3; do \
+        go mod download && break; \
+        [ "$attempt" -lt 3 ] || exit 1; \
+        echo "go mod download failed (attempt $attempt of 3), retrying" >&2; \
+        sleep 5; \
+    done
 
 WORKDIR /build/clickhouse
 COPY ./clickhouse/go.mod ./clickhouse/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    for attempt in 1 2 3; do \
+        go mod download && break; \
+        [ "$attempt" -lt 3 ] || exit 1; \
+        echo "go mod download failed (attempt $attempt of 3), retrying" >&2; \
+        sleep 5; \
+    done
 
 WORKDIR /build/orchestrator
 COPY ./orchestrator/go.mod ./orchestrator/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    for attempt in 1 2 3; do \
+        go mod download && break; \
+        [ "$attempt" -lt 3 ] || exit 1; \
+        echo "go mod download failed (attempt $attempt of 3), retrying" >&2; \
+        sleep 5; \
+    done
 
 # Copy source code
 WORKDIR /build
