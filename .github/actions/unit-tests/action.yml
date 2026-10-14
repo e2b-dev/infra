@@ -39,19 +39,6 @@ runs:
     - name: Use the Docker Hub mirror
       uses: ./.github/actions/docker-hub-mirror
 
-    # The image checks that callers run after this action (make test-image)
-    # pull their base images through BuildKit, which ignores the testcontainers
-    # prefix. This builder, made the default for the rest of the job, pulls
-    # Docker Hub bases from the mirror; those builds pass --load, so their
-    # images still reach the local daemon for docker run.
-    - name: Set up a BuildKit builder that uses the Docker Hub mirror
-      uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      with:
-        driver-opts: image=mirror.gcr.io/moby/buildkit:buildx-stable-1
-        buildkitd-config-inline: |
-          [registry."docker.io"]
-            mirrors = ["mirror.gcr.io"]
-
     - name: Setup envd tests
       if: inputs.package == 'packages/envd'
       shell: bash
