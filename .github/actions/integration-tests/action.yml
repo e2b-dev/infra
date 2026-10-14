@@ -64,6 +64,27 @@ inputs:
       start-services action.
     required: false
     default: "packages/orchestrator"
+  base-template:
+    description: |
+      Passed to build-sandbox-template: "build" (default) builds the base
+      template from this checkout; "reuse" lets a shard that only runs
+      sandboxes start from the template the default branch published when
+      this checkout's own entry is missing; "publish" stages the template
+      for the caller to publish after the tests have run from it (the
+      template-* outputs name the key and the directory).
+    required: false
+    default: "build"
+
+outputs:
+  template-published:
+    description: "build-sandbox-template's published output: true when a base template is already published under the recipe key for this host"
+    value: ${{ steps.build-template.outputs.published }}
+  template-recipe-key:
+    description: "build-sandbox-template's recipe-key output: in publish mode, the key to save the staged template under once this action has passed"
+    value: ${{ steps.build-template.outputs.recipe-key }}
+  template-stage:
+    description: "build-sandbox-template's stage output: the directory to save under template-recipe-key"
+    value: ${{ steps.build-template.outputs.stage }}
 
 runs:
   using: "composite"
@@ -102,12 +123,14 @@ runs:
     # orchestrator doing the same - overlapping them wedges the
     # provisioning VM until its deadline.
     - name: Build Template
+      id: build-template
       uses: ./.github/actions/build-sandbox-template
       with:
         compress_enabled: ${{ inputs.compress_enabled }}
         compress_type: ${{ inputs.compress_type }}
         compress_level: ${{ inputs.compress_level }}
         compress_workers: ${{ inputs.compress_workers }}
+        base-template: ${{ inputs.base-template }}
 
     - name: Start Services
       uses: ./.github/actions/start-services
