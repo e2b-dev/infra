@@ -39,6 +39,7 @@ type Cluster struct {
 	ID            uuid.UUID
 	SandboxDomain *string
 	AuthOrgID     string
+	edgeToken     string
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[servicediscovery.Instance, *Instance]
@@ -161,6 +162,7 @@ func newRemoteCluster(
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
 	)
+	c.edgeToken = secret
 
 	return c, nil
 }

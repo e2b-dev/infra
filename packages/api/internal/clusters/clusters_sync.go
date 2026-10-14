@@ -194,7 +194,9 @@ func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, e
 func (d clustersSyncStore) SourceExists(_ context.Context, s []queries.Cluster, p *Cluster) bool {
 	for _, item := range s {
 		if item.ID == p.ID {
-			return true
+			// A replacement deployment keeps its cluster ID but rotates the edge
+			// credential. Retire its old clients so the next sync recreates them.
+			return item.ID == consts.LocalClusterID || item.Token == p.edgeToken
 		}
 	}
 

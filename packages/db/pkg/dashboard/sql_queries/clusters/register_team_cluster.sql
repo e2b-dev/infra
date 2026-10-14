@@ -31,6 +31,38 @@ WHERE clusters.name = EXCLUDED.name
   AND clusters.auth_org_id IS NOT DISTINCT FROM EXCLUDED.auth_org_id
 RETURNING id;
 
+-- name: RegisterManagedCluster :one
+-- Management registration refreshes only the credential of an unchanged
+-- cluster descriptor. Assignments and stored deletion protection survive.
+INSERT INTO public.clusters (
+    id,
+    name,
+    endpoint,
+    endpoint_tls,
+    token,
+    sandbox_proxy_domain,
+    auth_org_id,
+    deletion_protection
+)
+VALUES (
+    COALESCE(sqlc.narg(cluster_id)::uuid, gen_random_uuid()),
+    sqlc.arg(name)::text,
+    sqlc.arg(endpoint)::text,
+    sqlc.arg(endpoint_tls)::boolean,
+    sqlc.arg(token)::text,
+    sqlc.narg(sandbox_proxy_domain)::text,
+    sqlc.narg(auth_org_id)::text,
+    sqlc.arg(deletion_protection)::boolean
+)
+ON CONFLICT (id) DO UPDATE
+SET token = EXCLUDED.token
+WHERE clusters.name = EXCLUDED.name
+  AND clusters.endpoint = EXCLUDED.endpoint
+  AND clusters.endpoint_tls = EXCLUDED.endpoint_tls
+  AND clusters.sandbox_proxy_domain IS NOT DISTINCT FROM EXCLUDED.sandbox_proxy_domain
+  AND clusters.auth_org_id IS NOT DISTINCT FROM EXCLUDED.auth_org_id
+RETURNING id;
+
 -- name: ClusterDeletionProtected :one
 SELECT EXISTS (
     SELECT FROM public.clusters
