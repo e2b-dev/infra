@@ -40,6 +40,10 @@ type Pool struct {
 	startupReady     chan struct{}
 	startupReadyOnce sync.Once
 	lifecycleMu      *sync.Mutex
+
+	// localInstances carries one token per batch of joins to the local
+	// cluster's registry.
+	localInstances chan struct{}
 }
 
 func localClusterConfig() *queries.Cluster {
@@ -64,13 +68,14 @@ func NewPool(
 	clusters := smap.New[*Cluster]()
 	poolCtx, cancel := context.WithCancel(ctx)
 	p := &Pool{
-		db:            db,
-		tel:           tel,
-		clusters:      clusters,
-		cancel:        cancel,
-		lifecycleDone: poolCtx.Done(),
-		startupReady:  make(chan struct{}),
-		lifecycleMu:   &sync.Mutex{},
+		db:             db,
+		tel:            tel,
+		clusters:       clusters,
+		cancel:         cancel,
+		lifecycleDone:  poolCtx.Done(),
+		startupReady:   make(chan struct{}),
+		lifecycleMu:    &sync.Mutex{},
+		localInstances: make(chan struct{}, 1),
 	}
 	p.store = clustersSyncStore{
 		config:               config,
@@ -83,6 +88,7 @@ func NewPool(
 		queryMetricsProvider: queryMetricsProvider,
 		sandboxLogsReader:    sandboxLogsReader,
 		featureFlags:         featureFlags,
+		onLocalInstance:      p.notifyLocalInstance,
 		activateCluster: func(cluster *Cluster, mode initialSyncMode) error {
 			return p.activateCluster(poolCtx, cluster, mode)
 		},
@@ -109,6 +115,20 @@ func (p *Pool) GetClusterById(id uuid.UUID) (*Cluster, bool) {
 
 func (p *Pool) GetClusters() map[string]*Cluster {
 	return p.clusters.Items()
+}
+
+// LocalInstanceJoined delivers a token after an instance joins the local
+// cluster's registry. Tokens coalesce, so one receive can stand for several
+// joins, and a token sent before anyone receives waits for the first receiver.
+func (p *Pool) LocalInstanceJoined() <-chan struct{} {
+	return p.localInstances
+}
+
+func (p *Pool) notifyLocalInstance() {
+	select {
+	case p.localInstances <- struct{}{}:
+	default:
+	}
 }
 
 // StartupReady closes after the first successful inventory and every remote
@@ -149,6 +169,7 @@ type clustersSyncStore struct {
 	featureFlags         *featureflags.Client
 	config               cfg.Config
 	activateCluster      func(*Cluster, initialSyncMode) error
+	onLocalInstance      func()
 }
 
 func (d clustersSyncStore) SourceList(ctx context.Context) ([]queries.Cluster, error) {
@@ -216,7 +237,7 @@ func (d clustersSyncStore) PoolInsert(ctx context.Context, cluster queries.Clust
 
 func (d clustersSyncStore) newCluster(cluster queries.Cluster) (*Cluster, error) {
 	if cluster.ID == consts.LocalClusterID {
-		return newLocalCluster(d.tel, d.localDiscovery, d.queryMetricsProvider, d.queryLogsProvider, d.sandboxLogsReader, d.featureFlags, d.config), nil
+		return newLocalCluster(d.tel, d.localDiscovery, d.queryMetricsProvider, d.queryLogsProvider, d.sandboxLogsReader, d.featureFlags, d.config, d.onLocalInstance), nil
 	}
 
 	authOrgID := ""
@@ -284,12 +305,14 @@ func (p *Pool) startInitialRemoteCluster(lifecycleCtx context.Context, ctx conte
 	return nil
 }
 
-// activateCluster publishes a constructed cluster: it starts the cluster's
-// periodic discovery and adds it to the pool. Both happen under lifecycleMu,
-// the mutex Close holds while cancelling, so a cluster can never start or
-// become visible after shutdown began. Callers construct the cluster and run
-// any network calls outside this method, both to keep those off the mutex and
-// because the caller owns the cluster until activation succeeds.
+// activateCluster publishes a constructed cluster: it adds the cluster to the
+// pool and starts the cluster's periodic discovery. Both happen under
+// lifecycleMu, the mutex Close holds while cancelling, so a cluster can never
+// start or become visible after shutdown began. The insert comes first so a
+// registry join reported by the first discovery round finds the cluster in
+// the pool. Callers construct the cluster and run any network calls outside
+// this method, both to keep those off the mutex and because the caller owns
+// the cluster until activation succeeds.
 func (p *Pool) activateCluster(lifecycleCtx context.Context, cluster *Cluster, mode initialSyncMode) error {
 	p.lifecycleMu.Lock()
 	defer p.lifecycleMu.Unlock()
@@ -298,8 +321,8 @@ func (p *Pool) activateCluster(lifecycleCtx context.Context, cluster *Cluster, m
 		return err
 	}
 
-	cluster.Start(lifecycleCtx, mode)
 	p.clusters.Insert(cluster.ID.String(), cluster)
+	cluster.Start(lifecycleCtx, mode)
 
 	return nil
 }

@@ -76,6 +76,7 @@ func newLocalCluster(
 	sandboxLogsReader ClickhouseLogsReader,
 	featureFlags *featureflags.Client,
 	config cfg.Config,
+	onInstanceJoined func(),
 ) *Cluster {
 	clusterID := consts.LocalClusterID
 
@@ -85,7 +86,7 @@ func newLocalCluster(
 		return newInstance(ctx, tel, nil, clusterID, item, item.Address(), false)
 	}
 
-	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
+	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation, onInsert: onInstanceJoined}
 
 	c := NewCluster(
 		clusterID,

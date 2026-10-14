@@ -15,7 +15,7 @@ func NewTestPool(clusters ...*Cluster) *Pool {
 		m.Insert(c.ID.String(), c)
 	}
 
-	return &Pool{clusters: m}
+	return &Pool{clusters: m, localInstances: make(chan struct{}, 1)}
 }
 
 // NewTestCluster builds a minimal Cluster carrying just an ID and sandbox

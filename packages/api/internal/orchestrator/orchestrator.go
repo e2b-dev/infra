@@ -213,7 +213,8 @@ func New(
 		},
 	)
 
-	o.startup = newStartupGate(ctx, clusters.StartupReady(), o.syncClusterDiscoveredNodes)
+	o.startup = newStartupGate(clusters.StartupReady(), clusters.LocalInstanceJoined(), o.syncClusterDiscoveredNodes)
+	o.startup.start(ctx)
 
 	// Evict old sandboxes
 	sandboxEvictor, err := evictor.New(ctx, o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)
