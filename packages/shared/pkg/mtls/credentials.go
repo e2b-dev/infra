@@ -182,7 +182,6 @@ func (c *ServerCredentials) plaintext(ctx context.Context, key string, conn net.
 	if !c.conns.add(key, plain, ConnState{}, mode == ModeRequired) {
 		warnSharedRemote(ctx, c.cfg, key)
 	}
-	c.cfg.log().Debug(ctx, "mtls: plaintext connection admitted", zap.String("listener", c.cfg.Name), zap.String("remote", key))
 
 	return plain
 }
