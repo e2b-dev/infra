@@ -33,6 +33,12 @@ jobs:
           go-version-file: go.work
           cache: false
 
+      # One reset of a module proxy stream fails the job otherwise; see
+      # go-setup-cache for the mechanism.
+      - name: Retry module proxy errors
+        shell: bash
+        run: echo 'GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct' | tee -a "$GITHUB_ENV"
+
       - name: Restore ARM64 Go cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:

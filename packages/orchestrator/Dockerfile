@@ -9,43 +9,23 @@ ARG DEBIAN_RUNTIME_TAG=bookworm-20260824-slim
 ARG DEBIAN_VERSION=bookworm
 
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
+# Fall through to a retry on any module proxy error; see
+# .github/actions/go-setup-cache/action.yml for the mechanism.
+ENV GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct
 ARG TARGETARCH
 
-# Cached golang dependencies. The module proxy occasionally resets the
-# HTTP/2 stream of a large zip mid-transfer; `go mod download` does not
-# retry, and the default comma-separated GOPROXY moves to its next entry
-# only on a 404 or 410, so one reset fails the build. The cache mount
-# keeps every module that already landed, so a retry fetches only what is
-# still missing.
+# Cached golang dependencies
 WORKDIR /build/shared
 COPY ./shared/go.mod ./shared/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    for attempt in 1 2 3; do \
-        go mod download && break; \
-        [ "$attempt" -lt 3 ] || exit 1; \
-        echo "go mod download failed (attempt $attempt of 3), retrying" >&2; \
-        sleep 5; \
-    done
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 WORKDIR /build/clickhouse
 COPY ./clickhouse/go.mod ./clickhouse/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    for attempt in 1 2 3; do \
-        go mod download && break; \
-        [ "$attempt" -lt 3 ] || exit 1; \
-        echo "go mod download failed (attempt $attempt of 3), retrying" >&2; \
-        sleep 5; \
-    done
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 WORKDIR /build/orchestrator
 COPY ./orchestrator/go.mod ./orchestrator/go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    for attempt in 1 2 3; do \
-        go mod download && break; \
-        [ "$attempt" -lt 3 ] || exit 1; \
-        echo "go mod download failed (attempt $attempt of 3), retrying" >&2; \
-        sleep 5; \
-    done
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy source code
 WORKDIR /build

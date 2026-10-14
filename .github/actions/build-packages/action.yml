@@ -14,6 +14,12 @@ runs:
         # run would restore stale artifacts and recompile everything.
         cache: false
 
+    # One reset of a module proxy stream fails the job otherwise; see
+    # go-setup-cache for the mechanism.
+    - name: Retry module proxy errors
+      shell: bash
+      run: echo 'GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct' | tee -a "$GITHUB_ENV"
+
     # Blacksmith runners serve the Go build cache through GOCACHEPROG, so
     # ~/.cache/go-build stays empty there and only the module download
     # cache is worth carrying between jobs. It lives on a sticky disk: one

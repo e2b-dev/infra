@@ -44,3 +44,20 @@ runs:
         go-version-file: go.work
         cache-dependency-path: |
           ${{ inputs.cache-dependency-paths }}
+
+    # proxy.golang.org sometimes resets an HTTP/2 stream mid-transfer
+    # ("stream error: ... INTERNAL_ERROR; received from peer"). The go
+    # command does not retry, and the default comma-separated GOPROXY moves
+    # to its next entry only on a 404 or 410, so one reset fails the job. A
+    # pipe moves on after any error, so the same proxy listed again is the
+    # retry; direct stays last for a module the proxy lacks. The three
+    # entries are one endpoint spelled three ways on purpose: the go command
+    # keys its per-proxy repo cache by the string as written and memoises a
+    # failed .mod or .info fetch in it, so an identical entry would replay
+    # the error instead of asking again (only .zip fetches are not
+    # memoised). Exported rather than prefetched: golangci-lint's typecheck,
+    # go test and go tool fetch lazily, and in workspace mode a bare `go mod
+    # download` pulls every module of every workspace module.
+    - name: Retry module proxy errors
+      shell: bash
+      run: echo 'GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct' | tee -a "$GITHUB_ENV"
