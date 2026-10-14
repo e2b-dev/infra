@@ -32,13 +32,6 @@ fi
 sudo sysctl vm.swappiness=10
 sudo sysctl vm.vfs_cache_pressure=50
 
-# Add tmpfs for snapshotting
-# TODO: Parametrize this
-sudo mkdir -p /mnt/snapshot-cache
-sudo mount -t tmpfs -o size=65G tmpfs /mnt/snapshot-cache
-
-ulimit -n 1048576
-
 # Applied directly rather than appended to /etc/sysctl.conf: ephemeral CI
 # hosts never reboot, so persistence has nothing to persist for. The
 # production init also raises the net.core/tcp backlog knobs; CI runs a
