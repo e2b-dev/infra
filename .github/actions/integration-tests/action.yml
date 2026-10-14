@@ -77,10 +77,12 @@ runs:
       uses: ./.github/actions/start-databases
 
     # The compressed configs only run what the allow-list names, so verify
-    # its stale-entry guard still bites before depending on it.
-    - name: Check Test Allow-list
+    # its stale-entry guard still bites before depending on it. The shard
+    # regexes in the same Makefile must still partition the suite; both
+    # checks read sources only, so they run before anything is built.
+    - name: Check Test Allow-list and Shard Partition
       shell: bash
-      run: make -C tests/integration check-tests-allowlist
+      run: make -C tests/integration check-tests-allowlist check-shard-partition
 
     - name: Build Packages
       uses: ./.github/actions/build-packages
