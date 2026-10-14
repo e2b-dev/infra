@@ -108,8 +108,15 @@ type Server struct {
 	uploadsWG       sync.WaitGroup
 	uploadsInFlight atomic.Int64
 
-	done      chan struct{}
-	closeOnce sync.Once
+	// detachedCheckpoints are the resume-fresh checkpoints past their
+	// reservation, by sandbox ID; Delete and Checkpoint consult them while
+	// the sandbox is out of the live map.
+	detachedCheckpointsMu sync.Mutex
+	detachedCheckpoints   map[string]*detachedCheckpoint
+
+	// shutdownCtx ends when the server begins to shut down.
+	shutdownCtx context.Context //nolint:containedctx // the detached checkpoints watch it with context.AfterFunc
+	shutdown    context.CancelFunc
 }
 
 type ServiceConfig struct {
@@ -159,9 +166,11 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		uploadedBuilds:    uploadedBuilds,
 		uploads:           cfg.Uploads,
 
+		detachedCheckpoints: map[string]*detachedCheckpoint{},
+
 		buildDisk: newBuildDisk(cfg.Config.DefaultCacheDir, cfg.TemplateStorage),
-		done:      make(chan struct{}),
 	}
+	server.shutdownCtx, server.shutdown = context.WithCancel(context.Background())
 	server.updateMaxSandboxesLimit(ctx)
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -344,9 +353,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	s.closeOnce.Do(func() {
-		close(s.done)
-	})
+	s.BeginShutdown()
 
 	// Wait for in-flight snapshot uploads to finish so a graceful shutdown
 	// doesn't drop a snapshot that is still uploading. ctx is cancelled on a
@@ -452,7 +459,7 @@ func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
 
 	for {
 		select {
-		case <-s.done:
+		case <-s.shutdownCtx.Done():
 			return
 		case <-ticker.C:
 			limit := s.featureFlags.IntFlag(ctx, featureflags.MaxStartingInstancesPerNode)
@@ -480,7 +487,7 @@ func (s *Server) refreshMaxSandboxesLimit(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-s.done:
+		case <-s.shutdownCtx.Done():
 			return
 		case <-ticker.C:
 			s.updateMaxSandboxesLimit(ctx)

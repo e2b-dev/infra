@@ -838,6 +838,46 @@ sequenceDiagram
   touches; the throwaway's held `/init` asks envd to skip the thaw, so the workload never runs
   and the trace holds only the resume's own faults. A throwaway the gate routes to the legacy
   loop sends no such request, and envd thaws inline as before.
+
+- **Resume-fresh checkpoint ownership**: when the in-place route is not available, a checkpoint
+  snapshots the sandbox and resumes a fresh VM from the new build under the same execution. From
+  the reservation on, the old VM is lost on any failure and the resume is the only way the sandbox
+  survives, so that work belongs to the node, not to the caller. The node claims the sandbox for
+  the checkpoint at the reservation, while its live entry still exists, and holds the claim until
+  the resumed sandbox is live or, on failure, until the rollback has run and the reservation is
+  released, so no interleaving finds the sandbox neither live nor in flight. Everything past the
+  reservation runs detached from the caller's cancellation. The snapshot phase and the resume
+  phase (template, resume, envd upgrade, registration) each have their own ten-minute budget,
+  observed by the steps that take the context (the Firecracker pause on this route does) and
+  between steps: a step that does not take it outlives the budget. Only a Delete for the sandbox
+  or the orchestrator's shutdown ends the checkpoint early. A Delete that arrives during the window
+  cancels the checkpoint and waits for
+  it, so the rollback is that delete and no VM the API stopped tracking goes live later. It
+  answers success when its cancellation is what ends the sandbox's lifecycle, and not found when
+  the checkpoint ended for its own cause or never held the sandbox, even when the Delete's own
+  deadline expires first; a reservation still being taken at that deadline counts as held, and the
+  acknowledgement below covers it. A Delete answering for a checkpoint that ended for its own
+  cause or never held the sandbox is first handed any sandbox of the checkpoint's that is live
+  again, the original the registry put back after a failure in the reservation, and answers
+  success for it. A publication the cancellation did not reach can still go live, and the
+  checkpoint then kills it with the Delete's reason: the Delete records its acknowledgement with
+  its final read of the live map under the operation's mutex, and the publication reads that
+  acknowledgement after its insert under the same mutex, so one of the two always sees the other.
+  While a checkpoint is in flight, Pause answers the same retryable refusal a busy node gives,
+  and a second Checkpoint answers operation-in-progress. The checkpoint marker is the sandbox's
+  own and is shared by both routes, so an in-place checkpoint and a resume-fresh one on the same
+  sandbox refuse each other. Shutdown cancels a detached checkpoint after the sandbox drain, as
+  the gRPC server closes, so it cannot hold a handler open for minutes. The kill accounting
+  follows the cause: a checkpoint a Delete ended records the kill and publishes the killed event
+  and counter with the Delete's reason, as the in-place path does for its own teardown, whereas
+  a resumed VM torn down by a budget or by shutdown is not labelled killed.
+
+  Two limits remain. The in-place checkpoint path is still bound to the caller's context, so
+  this ownership covers only the resume-fresh route. And the API still marks the build failed
+  when its own request ends before the node answers, even when the node's work later succeeds,
+  because the outcome is unknown to it; it restores the sandbox to Running rather than kill it.
+  A caller timeout therefore no longer means the snapshot or the VM creation stopped, only that
+  the build row records a failure the node may have gone on to complete.
 - **Fork**: checkpoints the original in place, then starts each fork from that snapshot as a
   new sandbox rather than a resume — like a sandbox created from a snapshot template — so
   placement spreads the forks across nodes instead of preferring the original's node.

@@ -1107,6 +1107,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 	})
 	closers = append(closers, closer{"grpc server", func(context.Context) error {
 		logger.L().Info(ctx, "Shutting down grpc server")
+		// Detached checkpoints hold handlers open for minutes; end them first.
+		orchestratorService.BeginShutdown()
 		grpcServer.GracefulStop()
 
 		return nil

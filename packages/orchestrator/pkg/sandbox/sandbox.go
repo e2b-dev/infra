@@ -437,12 +437,14 @@ type Sandbox struct {
 	process      *fc.Process
 	cgroupHandle *cgroup.CgroupHandle
 
-	// inPlaceCheckpointInFlight excludes concurrent in-place checkpoints of
-	// this sandbox: it stays live and addressable through one (no MarkStopping),
-	// so nothing else prevents a second Checkpoint RPC from racing
-	// Pause/CreateSnapshot/ResumeInPlace on the same FC process. See
-	// Server.checkpointInPlace.
-	inPlaceCheckpointInFlight atomic.Bool
+	// checkpointInFlight excludes concurrent checkpoints of this sandbox
+	// on either route: it stays live and addressable through an in-place
+	// one (no MarkStopping), and a resume-fresh one claims it before its
+	// reservation takes it out of the live map, so nothing else prevents a
+	// second Checkpoint RPC from racing Pause/CreateSnapshot/ResumeInPlace on
+	// the same FC process. See Server.checkpointInPlace and
+	// Server.registerDetachedCheckpoint.
+	checkpointInFlight atomic.Bool
 	// lastCheckpointEndedAt (unix nanos) marks the end of the last in-place
 	// checkpoint: the periodic hinter stays quiet for QuietAfterStart after it.
 	lastCheckpointEndedAt atomic.Int64
@@ -594,17 +596,17 @@ type Sandbox struct {
 	inheritedEnvdVersion string
 }
 
-// BeginInPlaceCheckpoint marks an in-place checkpoint in flight; false means
-// one is already running and the caller must refuse. Pair with
-// EndInPlaceCheckpoint.
-func (s *Sandbox) BeginInPlaceCheckpoint() bool {
-	return s.inPlaceCheckpointInFlight.CompareAndSwap(false, true)
+// BeginCheckpoint marks a checkpoint of this sandbox in flight, in place or
+// resume-fresh; false means one is already running and the caller must
+// refuse. Pair with EndCheckpoint.
+func (s *Sandbox) BeginCheckpoint() bool {
+	return s.checkpointInFlight.CompareAndSwap(false, true)
 }
 
-// EndInPlaceCheckpoint clears the in-flight marker set by BeginInPlaceCheckpoint.
-func (s *Sandbox) EndInPlaceCheckpoint() {
+// EndCheckpoint clears the in-flight marker set by BeginCheckpoint.
+func (s *Sandbox) EndCheckpoint() {
 	s.lastCheckpointEndedAt.Store(time.Now().UnixNano())
-	s.inPlaceCheckpointInFlight.Store(false)
+	s.checkpointInFlight.Store(false)
 }
 
 func (s *Sandbox) RunUpdate(update func() error) error {
@@ -704,6 +706,20 @@ func (m *Metadata) SetStopReason(reason StopReason) {
 	}
 
 	m.stopReason = reason
+}
+
+// MarkKilledDuringCheckpoint replaces a checkpointing stop reason with killed:
+// a Delete that ended the checkpoint is why the execution ended, not the
+// checkpoint it interrupted. Any other recorded reason stays. The lifecycle
+// goroutine may have sampled the reason already, as the snapshot closes the
+// VM; that sample then reflects the checkpoint's intent, as for Pause.
+func (m *Metadata) MarkKilledDuringCheckpoint() {
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	if m.stopReason == "" || m.stopReason == StopReasonCheckpointing {
+		m.stopReason = StopReasonKilled
+	}
 }
 
 // GetStopReason returns the recorded teardown reason. An execution that ended

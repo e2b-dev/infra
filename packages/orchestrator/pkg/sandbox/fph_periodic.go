@@ -162,10 +162,10 @@ func (s *Sandbox) rootfsSealPending() bool {
 }
 
 func (s *Sandbox) hintDecisionInput(now time.Time) hintDecisionInput {
-	// Flag first, then timestamp: EndInPlaceCheckpoint stores the timestamp
+	// Flag first, then timestamp: EndCheckpoint stores the timestamp
 	// before clearing the flag, so a reader that sees the flag clear also sees
 	// the stamp and cannot skip the post-checkpoint quiet window.
-	checkpointActive := s.inPlaceCheckpointInFlight.Load()
+	checkpointActive := s.checkpointInFlight.Load()
 	var lastCkpt time.Time
 	if ns := s.lastCheckpointEndedAt.Load(); ns != 0 {
 		lastCkpt = time.Unix(0, ns)

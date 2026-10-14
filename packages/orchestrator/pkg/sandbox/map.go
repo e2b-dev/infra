@@ -219,15 +219,23 @@ func (r *Reservation) Release() {
 }
 
 func (r *Reservation) MarkRunning(ctx context.Context, sbx *Sandbox) error {
-	return r.m.markRunning(ctx, sbx, r)
+	return r.m.markRunning(ctx, sbx, r, false)
+}
+
+// MarkRunningUnlessEnded is MarkRunning that refuses, with ctx's cause, when
+// ctx has ended, decided under the registry lock with the registration: an
+// operation ended by a Delete that answered on the strength of the
+// cancellation cannot publish a sandbox the Delete will never see.
+func (r *Reservation) MarkRunningUnlessEnded(ctx context.Context, sbx *Sandbox) error {
+	return r.m.markRunning(ctx, sbx, r, true)
 }
 
 // MarkRunning registers an unreserved ID. Reserved IDs require Reservation.MarkRunning.
 func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) error {
-	return m.markRunning(ctx, sbx, nil)
+	return m.markRunning(ctx, sbx, nil, false)
 }
 
-func (m *Map) markRunning(ctx context.Context, sbx *Sandbox, reservation *Reservation) error {
+func (m *Map) markRunning(ctx context.Context, sbx *Sandbox, reservation *Reservation, unlessEnded bool) error {
 	m.registryMu.Lock()
 	if reservation != nil && reservation.sandboxID != sbx.Runtime.SandboxID {
 		m.registryMu.Unlock()
@@ -238,6 +246,11 @@ func (m *Map) markRunning(ctx context.Context, sbx *Sandbox, reservation *Reserv
 		m.registryMu.Unlock()
 
 		return fmt.Errorf("%w: registration does not own the reservation", ErrSandboxAlreadyRunning)
+	}
+	if unlessEnded && ctx.Err() != nil {
+		m.registryMu.Unlock()
+
+		return fmt.Errorf("registration refused, the operation ended: %w", context.Cause(ctx))
 	}
 	if live, ok := m.live.Get(sbx.Runtime.SandboxID); ok {
 		m.registryMu.Unlock()
@@ -383,6 +396,31 @@ func (m *Map) markStopping(ctx context.Context, sandboxID, lifecycleID string, r
 
 		return nil, fmt.Errorf("sandbox '%s' lifecycle '%s' is no longer live", sandboxID, lifecycleID)
 	}
+
+	// On a subscriber panic the hold is dropped, since the caller never
+	// receives it, and a live sandbox goes back unless the ID was taken or
+	// the VM closed; the undo is map-only, subscribers keep their view and
+	// the update admission closed above stays closed.
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		m.registryMu.Lock()
+		if reservation != nil && m.reservations[sandboxID] == reservation {
+			delete(m.reservations, sandboxID)
+		}
+		_, taken := m.live.Get(sandboxID)
+		closed := stopped.cleanup != nil && stopped.cleanup.hasRun.Load()
+		if taken || closed {
+			stopped.log().Error(ctx, fmt.Sprintf("subscriber panicked while marking sandbox as stopping; the ID was taken or the sandbox closed meanwhile, the sandbox stays stopping: %v", r))
+		} else {
+			m.live.Insert(sandboxID, stopped)
+			stopped.log().Error(ctx, fmt.Sprintf("subscriber panicked while marking sandbox as stopping; the sandbox is live again but its routing record is gone: %v", r))
+		}
+		m.registryMu.Unlock()
+		panic(r)
+	}()
 
 	// Wait outside registry/live-map locks: an admitted callback may still
 	// read the map. Subscribers and callers can begin teardown only after it
