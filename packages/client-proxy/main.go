@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/mtls"
 	e2bcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
@@ -107,6 +108,19 @@ func run() int {
 		return 1
 	}
 
+	tlsProcess, err := mtls.NewProcess(ctx, tel.MeterProvider, featureFlagsClient.StringReader(), l)
+	if err != nil {
+		l.Error(ctx, "Failed to set up mutual TLS", zap.Error(err))
+
+		return 1
+	}
+	apiHop, err := newAPIHop(tlsProcess, config.TLS)
+	if err != nil {
+		l.Error(ctx, "Invalid mutual TLS configuration for the api hop", zap.Error(err))
+
+		return 1
+	}
+
 	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
@@ -147,7 +161,7 @@ func run() int {
 	}
 
 	if apiGRPCAddress != "" {
-		pausedSandboxResumer, err = e2bproxy.NewGRPCPausedSandboxResumer(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS)
+		pausedSandboxResumer, err = e2bproxy.NewGRPCPausedSandboxResumer(ctx, apiGRPCAddress, apiGRPCOAuthConfig, apiGRPCUseTLS, apiHop)
 		if err != nil {
 			l.Error(ctx, "Failed to create paused sandbox checker", zap.Error(err))
 

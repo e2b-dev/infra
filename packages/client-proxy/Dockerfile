@@ -30,7 +30,7 @@ COPY ./shared/pkg ./shared/pkg
 COPY ./clickhouse/pkg ./clickhouse/pkg
 
 COPY ./client-proxy/internal ./client-proxy/internal
-COPY ./client-proxy/main.go ./client-proxy/main.go
+COPY ./client-proxy/*.go ./client-proxy/
 COPY ./client-proxy/Makefile ./client-proxy/Makefile
 
 WORKDIR /build/client-proxy

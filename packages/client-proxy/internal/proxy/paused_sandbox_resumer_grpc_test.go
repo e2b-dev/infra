@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -18,6 +19,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
+	"github.com/e2b-dev/infra/packages/shared/pkg/mtls/servicetest"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 )
 
@@ -76,7 +78,7 @@ func startFakeServer(t *testing.T, srv proxygrpc.SandboxServiceServer) *grpc.Cli
 func TestNewGRPCPausedSandboxResumer_EmptyAddressErrors(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewGRPCPausedSandboxResumer(t.Context(), "  ", GRPCOAuthConfig{}, false)
+	r, err := NewGRPCPausedSandboxResumer(t.Context(), "  ", GRPCOAuthConfig{}, false, insecure.NewCredentials())
 	require.Error(t, err)
 	require.Nil(t, r)
 }
@@ -84,7 +86,7 @@ func TestNewGRPCPausedSandboxResumer_EmptyAddressErrors(t *testing.T) {
 func TestNewGRPCPausedSandboxResumer_OAuthMisconfiguredErrors(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewGRPCPausedSandboxResumer(t.Context(), "127.0.0.1:1234", GRPCOAuthConfig{ClientID: "only-id"}, false)
+	r, err := NewGRPCPausedSandboxResumer(t.Context(), "127.0.0.1:1234", GRPCOAuthConfig{ClientID: "only-id"}, false, insecure.NewCredentials())
 	require.Error(t, err)
 	require.Nil(t, r)
 }
@@ -92,7 +94,7 @@ func TestNewGRPCPausedSandboxResumer_OAuthMisconfiguredErrors(t *testing.T) {
 func TestNewGRPCPausedSandboxResumer_InsecureSucceeds(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewGRPCPausedSandboxResumer(t.Context(), "127.0.0.1:1234", GRPCOAuthConfig{}, false)
+	r, err := NewGRPCPausedSandboxResumer(t.Context(), "127.0.0.1:1234", GRPCOAuthConfig{}, false, insecure.NewCredentials())
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
@@ -106,7 +108,7 @@ func TestNewGRPCPausedSandboxResumer_InsecureSucceeds(t *testing.T) {
 func TestNewGRPCPausedSandboxResumer_TLSSucceeds(t *testing.T) {
 	t.Parallel()
 
-	r, err := NewGRPCPausedSandboxResumer(t.Context(), "127.0.0.1:1234", GRPCOAuthConfig{}, true)
+	r, err := NewGRPCPausedSandboxResumer(t.Context(), "127.0.0.1:1234", GRPCOAuthConfig{}, true, insecure.NewCredentials())
 	require.NoError(t, err)
 	require.NotNil(t, r)
 
@@ -406,4 +408,27 @@ func TestGRPCPausedSandboxResumer_Close(t *testing.T) {
 	}
 
 	require.NoError(t, r.Close(t.Context()))
+}
+
+func TestNewGRPCPausedSandboxResumer_InternalDialsWithTheHopCredentials(t *testing.T) {
+	t.Parallel()
+
+	creds := servicetest.NewCredentials()
+	r, err := NewGRPCPausedSandboxResumer(t.Context(), servicetest.GRPCServer(t), GRPCOAuthConfig{}, false, creds)
+	require.NoError(t, err)
+	resumer, ok := r.(*grpcPausedSandboxResumer)
+	require.True(t, ok)
+	t.Cleanup(func() { _ = resumer.Close(t.Context()) })
+
+	resumer.conn.Connect()
+	servicetest.AwaitHandshake(t, creds)
+}
+
+func TestDialCredentials_EdgeKeepsItsTLS(t *testing.T) {
+	t.Parallel()
+
+	hop := servicetest.NewCredentials()
+	creds := dialCredentials(true, hop)
+	assert.NotSame(t, hop, creds)
+	assert.Equal(t, "tls", creds.Info().SecurityProtocol)
 }
