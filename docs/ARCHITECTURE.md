@@ -819,6 +819,17 @@ sequenceDiagram
     async upload — and any origin-node resume/prefetch that reads the rootfs diff — waits on the
     seal. A seal failure is permanent (it never re-runs), so the upload fails fast rather than
     retrying.
+  - **Per-sandbox pause rate limit** (gated by the `sandbox-pause-rate-limit` flag,
+    `{"limit": N, "period_s": S}` with S at most 600): before the pause transition, the pause
+    endpoint reads the sandbox record and counts the pause against a budget of N pauses per period
+    (GCRA, burst N) in Redis under `ratelimit:sandbox-pause:{sandboxID}`. An exhausted budget
+    answers HTTP 429 with `Retry-After` and leaves the sandbox running. The count is per
+    execution ID, so concurrent requests for one execution use one slot; a record that is
+    missing or already pausing is not counted, and Redis errors let the pause through. The
+    pause is pinned (`ExpectExecutionID`) to the record the limiter read, so a resume landing
+    between the check and the pause sends the new execution back through the limiter instead
+    of pausing it uncounted. The key expires once the budget is full again, at most one period
+    after the last counted pause. Timeout auto-pauses are not limited.
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
   is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.

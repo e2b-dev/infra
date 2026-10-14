@@ -27,6 +27,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/outbox"
+	"github.com/e2b-dev/infra/packages/api/internal/pauselimit"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	template_manager "github.com/e2b-dev/infra/packages/api/internal/template-manager"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
@@ -206,6 +207,7 @@ type APIStore struct {
 	// pause handler's two calls — tests use it to assert the gate's wiring
 	// (refusal before RemoveSandbox) without a real orchestrator.
 	pauseBackendOverride   pauseOrchestrator
+	pauseLimiter           *pauselimit.Limiter
 	resumeBackendOverride  resumeWaitOrchestrator
 	connectBackendOverride connectOrchestrator
 	// snapshotBackendOverride does the same for the snapshot-template
@@ -376,6 +378,11 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 		logger.L().Fatal(ctx, "Initializing Orchestrator client", zap.Error(err))
 	}
 
+	pauseLimiter, err := pauselimit.New(redisClient, featureFlags, tel.MeterProvider)
+	if err != nil {
+		logger.L().Fatal(ctx, "Initializing pause rate limiter", zap.Error(err))
+	}
+
 	authClient := &http.Client{
 		Transport: otelhttp.NewTransport(http.DefaultTransport),
 	}
@@ -428,6 +435,7 @@ func NewAPIStore(ctx context.Context, tel *telemetry.Client, redisClient redis.U
 	a := &APIStore{
 		config:                config,
 		orchestrator:          orch,
+		pauseLimiter:          pauseLimiter,
 		teamSandboxCounter:    sandboxcountscache.NewCountsCache(orch, redisClient),
 		sandboxLifecycles:     clickhouseStore,
 		templateManager:       templateManager,

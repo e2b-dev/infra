@@ -103,6 +103,14 @@ var RateLimitV2Mode = NewStringFlag("rate-limit-v2-mode", APIGroupRateLimitDisab
 
 var RateLimitDeleteMode = NewStringFlag("rate-limit-delete-mode", APIGroupRateLimitDisabled)
 
+// SandboxPauseRateLimitFlag caps explicit pause requests per sandbox:
+//
+//	{"limit": 5, "period_s": 60}
+//
+// period_s must be 1 to 600, which keeps every limiter key in Redis for at
+// most ten minutes. Null or an invalid value leaves pauses unlimited.
+var SandboxPauseRateLimitFlag = NewJSONFlag("sandbox-pause-rate-limit", ldvalue.Null())
+
 type BoolFlag struct {
 	name     string
 	fallback bool
