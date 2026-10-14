@@ -17,14 +17,16 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-func NewCMUXServer(ctx context.Context, port uint16, meterProvider metric.MeterProvider) (cmux.CMux, error) {
+// NewCMUXServer opens the port, wraps its listener with wrap, and
+// multiplexes HTTP and gRPC over it.
+func NewCMUXServer(ctx context.Context, port uint16, meterProvider metric.MeterProvider, wrap func(net.Listener) net.Listener) (cmux.CMux, error) {
 	var lisCfg net.ListenConfig
 	lis, err := lisCfg.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
 		return nil, fmt.Errorf("failed to listen on port %d: %w", port, err)
 	}
 
-	root := &cmuxListener{Listener: lis, connections: make(map[*cmuxConn]struct{})}
+	root := &cmuxListener{Listener: wrap(lis), connections: make(map[*cmuxConn]struct{})}
 	m := cmux.New(root)
 
 	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/factories")

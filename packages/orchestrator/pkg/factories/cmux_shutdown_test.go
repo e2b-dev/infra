@@ -16,6 +16,9 @@ import (
 	"go.opentelemetry.io/otel/metric/noop"
 )
 
+// noWrap serves the port with no listener in front of cmux.
+func noWrap(l net.Listener) net.Listener { return l }
+
 func waitCMUXShutdown(t *testing.T, done <-chan struct{}, message string) {
 	t.Helper()
 	select {
@@ -27,7 +30,7 @@ func waitCMUXShutdown(t *testing.T, done <-chan struct{}, message string) {
 
 func TestCMUXCloseReleasesRootListener(t *testing.T) {
 	t.Parallel()
-	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider())
+	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider(), noWrap)
 	require.NoError(t, err)
 	listener := mux.Match(cmux.Any())
 	done := make(chan struct{})
@@ -60,7 +63,7 @@ func TestCMUXCloseReleasesRootListener(t *testing.T) {
 
 func TestCMUXCloseJoinsBlockedMatcher(t *testing.T) {
 	t.Parallel()
-	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider())
+	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider(), noWrap)
 	require.NoError(t, err)
 	started := make(chan struct{})
 	var once sync.Once

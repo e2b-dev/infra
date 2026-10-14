@@ -23,7 +23,7 @@ import (
 
 func TestCMUXMatchedListenerClosePreservesAcceptedConnection(t *testing.T) {
 	t.Parallel()
-	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider())
+	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider(), noWrap)
 	require.NoError(t, err)
 	listener := mux.Match(cmux.Any())
 	done := make(chan struct{})
@@ -69,7 +69,7 @@ func TestCMUXMatchedListenerClosePreservesAcceptedConnection(t *testing.T) {
 
 func TestCMUXShutdownPreservesHTTPAndGRPC(t *testing.T) {
 	t.Parallel()
-	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider())
+	mux, err := NewCMUXServer(t.Context(), 0, noop.NewMeterProvider(), noWrap)
 	require.NoError(t, err)
 	httpListener := mux.Match(cmux.HTTP1Fast())
 	grpcListener := mux.Match(cmux.Any())

@@ -72,6 +72,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/mtls"
 	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -87,6 +88,7 @@ type Deps struct {
 	Logger              logger.Logger
 	Sandboxes           *sandbox.Map
 	FeatureFlags        *featureflags.Client
+	MTLS                *mtls.Process // for an edition's own client hops
 	ClickhouseEndpoints []ClickhouseEndpoint
 }
 
@@ -592,6 +594,20 @@ func run(config cfg.Config, opts Options) (success bool) {
 	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
 	featureFlags.RegisterContextProvider(instanceGroupContextProvider(config.InstanceGroupName))
 
+	tlsProcess, err := mtls.NewProcess(ctx, tel.MeterProvider, featureFlags.StringReader(), globalLogger)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to set up mutual TLS", zap.Error(err))
+	}
+	sharedPortTLS, err := newPortTLS(tlsProcess, config.TLS)
+	if err != nil {
+		logger.L().Fatal(ctx, "invalid mutual TLS configuration for the shared port", zap.Error(err))
+	}
+	peersHop, err := tlsProcess.Hop("peers", peersHopFlag, config.TLS.Peers)
+	if err != nil {
+		logger.L().Fatal(ctx, "invalid mutual TLS configuration for the peer hop", zap.Error(err))
+	}
+	peersCreds := mtls.NewClientCredentials(peersHop)
+
 	// Not a service and no closer: pacing stays in force through the sandbox
 	// drain and ends with the process.
 	if usesSandboxRuntime {
@@ -669,7 +685,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	peerResolver := peerclient.NopResolver()
 	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
 		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
-		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
+		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress, peersCreds)
 	}
 
 	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
@@ -779,6 +795,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		Logger:              globalLogger,
 		Sandboxes:           sandboxes,
 		FeatureFlags:        featureFlags,
+		MTLS:                tlsProcess,
 		ClickhouseEndpoints: clickhouseEndpoints,
 	}
 
@@ -1006,7 +1023,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// No connection age: ChunkService and VolumeService streams may outlive the
 	// shared default's age plus grace, and how their clients behave on the
 	// GOAWAY has not been measured.
-	grpcServer := e2bgrpc.NewGRPCServer(tel, e2bgrpc.WithSandboxMetricAttributes(), e2bgrpc.WithMaxConnectionAge(0, 0))
+	grpcServer := e2bgrpc.NewGRPCServer(tel, append([]e2bgrpc.ServerOption{
+		e2bgrpc.WithSandboxMetricAttributes(), e2bgrpc.WithMaxConnectionAge(0, 0),
+	}, sharedPortTLS.grpcOptions()...)...)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
@@ -1053,7 +1072,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider)
+	cmuxServer, err := NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider, sharedPortTLS.wrap)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
@@ -1086,7 +1105,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	httpServer := NewHTTPServer()
-	httpServer.Handler = newHTTPHandler(healthcheck.CreateHandler(), localUploadHandler)
+	httpServer.Handler = sharedPortTLS.guard(newHTTPHandler(healthcheck.CreateHandler(), localUploadHandler))
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
