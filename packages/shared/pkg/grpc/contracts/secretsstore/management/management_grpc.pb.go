@@ -7,7 +7,7 @@
 // The versioned namespace is mirrored by this file's path so its descriptor
 // cannot collide with another contract registered in the same process.
 
-package managementv1
+package management
 
 import (
 	context "context"
