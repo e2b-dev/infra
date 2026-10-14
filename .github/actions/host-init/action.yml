@@ -1,5 +1,5 @@
 name: "Host Initialization"
-description: "Sets up the host environment, including authentication and dependencies."
+description: "Sets up the host environment, including dependencies."
 
 runs:
   using: "composite"

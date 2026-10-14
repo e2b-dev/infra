@@ -2,7 +2,6 @@ name: Push Main
 
 permissions:
   contents: read
-  id-token: write
 
 on:
   push:
