@@ -31,6 +31,9 @@ type Config struct {
 
 	OrySDKURL          string `env:"ORY_SDK_URL"`
 	OryProjectAPIToken string `env:"ORY_PROJECT_API_TOKEN,unset"`
+
+	// TLS is the mutual TLS settings of the HTTP port.
+	TLS TLSConfig
 }
 
 type FailureCondition string
