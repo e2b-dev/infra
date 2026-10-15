@@ -137,6 +137,18 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   preserving V1 headers, and `enabled` also enforces V2. Ungrouped operations, unconfigured V2
   rates, and V2 Redis errors retain V1 enforcement. A rejection reports the rejecting limiter's
   headers; when both checks allow a request in enabled mode, V2 supplies the rate-limit headers.
+- **Sandbox list snapshots**: a list request reads the team's whole sandbox index from Redis
+  (its running and pausing records) and pages in memory, so with the LaunchDarkly
+  `sandbox-list-max-lag-ms` flag set for a team, each API replica shares one read between
+  that team's concurrent list requests and keeps it for the flag's value, counted from the
+  start of the read; a request that joins a read already in flight gets that read's result
+  however long it takes. A lowered flag applies to a live snapshot; a raised one from the
+  next read. Within that lag a sandbox created, killed, paused or resumed can be missing from
+  the list or shown in its previous state on the replica holding the snapshot, and one
+  resumed inside it can appear on two pages of a walk served by different replicas. The
+  default, zero, gives every request its own read with the same store commands as before.
+  Only the two list endpoints use the snapshot; the evictor, reconcile, template delete and
+  team teardown keep reading the store directly.
 - **Workload identity**: sandbox create accepts an optional `iam.tokens` map of caller-named
   workload-token definitions (each an exact `audience` and `tokenType`). A non-empty, validated
   map enables workload identity, whose identity the orchestrator derives from the sandbox's

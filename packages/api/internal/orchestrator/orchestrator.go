@@ -77,6 +77,9 @@ type Orchestrator struct {
 	teamMetricsObserver           *metrics.TeamObserver
 	accessTokenGenerator          *sandbox.AccessTokenGenerator
 	createdCounter                metric.Int64Counter
+	listReadsCounter              metric.Int64Counter
+	listAgeHistogram              metric.Int64Histogram
+	teamLists                     teamListSnapshots
 	snapshotCache                 SnapshotCacheInvalidator
 
 	snapshotUpsertSem *utils.AdjustableSemaphore

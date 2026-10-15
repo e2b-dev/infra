@@ -62,13 +62,11 @@ const (
 
 	maxReadHeaderTimeout = 5 * time.Second
 	maxReadTimeout       = 10 * time.Second
-	maxWriteTimeout      = 75 * time.Second
-
-	// requestTimeout is the context deadline applied to each request.
-	// Must be less than maxWriteTimeout so the context cancels before the
-	// server's write deadline kills the connection (WriteTimeout does NOT
-	// cancel r.Context(); see https://github.com/golang/go/issues/59602).
-	requestTimeout = 70 * time.Second
+	// maxWriteTimeout must exceed cfg.RequestTimeout so the request context
+	// cancels before the server's write deadline kills the connection.
+	maxWriteTimeout = 75 * time.Second
+	// Fails to compile when cfg.RequestTimeout reaches maxWriteTimeout.
+	_ = uint(maxWriteTimeout - cfg.RequestTimeout - 1)
 
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
@@ -82,7 +80,7 @@ const (
 	shutdownDrainWait = 15 * time.Second
 
 	// shutdownTimeout caps how long s.Shutdown waits for in-flight
-	// requests to complete. Must be >= requestTimeout so a request, that
+	// requests to complete. Must be >= cfg.RequestTimeout so a request, that
 	// arrived before load balancer stopped sending new traffic,
 	// has its full deadline to finish
 	// (e.g. a slow sandbox pause / snapshot RPC).
@@ -90,7 +88,7 @@ const (
 	// Also caps grpc.Server.GracefulStop. After this we
 	// fall back to Stop() so a stuck stream cannot block the process
 	// past Nomad's kill_timeout.
-	shutdownTimeout = requestTimeout + 5*time.Second
+	shutdownTimeout = cfg.RequestTimeout + 5*time.Second
 
 	// pprofShutdownTimeout is a best-effort bound for pprof drain.
 	pprofShutdownTimeout = 5 * time.Second
@@ -172,7 +170,7 @@ func NewGinServer(ctx context.Context, config cfg.Config, tel *telemetry.Client,
 			},
 		}),
 		gin.Recovery(),
-		sharedmiddleware.RequestTimeout(requestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
+		sharedmiddleware.RequestTimeout(cfg.RequestTimeout), //nolint:contextcheck // Gin middleware sets context via c.Request.WithContext
 	)
 
 	r.Use(customMiddleware.CORS())

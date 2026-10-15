@@ -29,6 +29,12 @@ const (
 	// superseded: the ID was reclaimed by a new incarnation meanwhile; nothing
 	// was restored, removed, or killed.
 	ApiOrchestratorPauseRefusalRestore CounterType = "api.orchestrator.pause_refusal_restore"
+	// ApiSandboxListReads counts sandbox list requests by team and by how the
+	// team's store read was served: disabled (no lag allowed, own read) | read
+	// (started the shared read) | shared (joined one in flight) | hit (a live
+	// snapshot). The read plus disabled rate is the team's store sweeps per
+	// second; hit over the total is what the snapshot saves.
+	ApiSandboxListReads CounterType = "api.sandbox.list.reads"
 	// ApiEvictorFsOnlyAutoPause counts timeout auto-pauses whose policy asked
 	// for a filesystem-only snapshot. Unlabeled since the fs-only version
 	// gate was dropped: every counted eviction takes the fs-only path.
@@ -642,6 +648,15 @@ const (
 
 const (
 	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
+	// ApiSandboxListAge is the age of a served sandbox list, by team and
+	// outcome (see ApiSandboxListReads), recorded only for teams whose lag
+	// flag is set: for a read, the store sweep's duration; for a shared read,
+	// the wait from the sweep's start to the joiner's result; for a hit, how
+	// far the snapshot lagged the store. Tune the list lag flag against it: hits
+	// parked at the allowance mean it decides the team's lifetime; sweeps
+	// longer than the lifetime mean the store is being read as fast as the
+	// allowance permits. Exported with explicit buckets (metrics.go).
+	ApiSandboxListAge HistogramType = "api.sandbox.list.age"
 
 	// Firecracker net histograms — per-sandbox distribution per metrics flush, no sandbox_id.
 	// Firecracker serializes SharedIncMetric as per-flush deltas (default flush interval: 60 s).
@@ -739,6 +754,7 @@ var counterDesc = map[CounterType]string{
 	ApiEvictorAutoPauseDegraded:                  "Timeout auto-pauses degraded to filesystem-only after a node refusal, by cause (admission_refused | overstay_budget).",
 	ApiOrchestratorResumeOriginNodeRemap:         "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
 	ApiOrchestratorPauseRefusalRestore:           "Outcomes of restoring a sandbox whose pause the node refused retryably, by outcome and caller.",
+	ApiSandboxListReads:                          "Sandbox list requests by team and by how the team's store read was served: disabled | read | shared | hit.",
 	BuildResultCounterName:                       "Number of template build results",
 	BuildCacheResultCounterName:                  "Number of build cache results",
 	TeamSandboxCreated:                           "Counter of started sandboxes for the team in the interval",
@@ -824,6 +840,7 @@ var counterUnits = map[CounterType]string{
 	ApiEvictorAutoPauseDegraded:                  "{pause}",
 	ApiOrchestratorResumeOriginNodeRemap:         "{snapshot}",
 	ApiOrchestratorPauseRefusalRestore:           "{pause}",
+	ApiSandboxListReads:                          "{request}",
 	BuildResultCounterName:                       "{build}",
 	BuildCacheResultCounterName:                  "{layer}",
 	TeamSandboxCreated:                           "{sandbox}",
@@ -1081,6 +1098,7 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
+	ApiSandboxListAge:                       "Age of a served sandbox list: the store sweep's duration for a read, the wait from the sweep's start for a joined (shared) read, the snapshot's lag for a hit",
 
 	FPHRunDurationName:                                "Duration of a completed free-page-hinting drain or run, labeled by phase",
 	FPHStopDurationName:                               "Duration of the stop of an abandoned hinting cycle, acknowledgement wait included",
@@ -1167,6 +1185,7 @@ var histogramDesc = map[HistogramType]string{
 
 var histogramUnits = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "ms",
+	ApiSandboxListAge:                       "ms",
 
 	FPHRunDurationName:                                "ms",
 	FPHStopDurationName:                               "ms",

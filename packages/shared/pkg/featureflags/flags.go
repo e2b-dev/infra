@@ -439,6 +439,15 @@ var (
 	// for sandbox placement.
 	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
 
+	// SandboxListMaxLagMsFlag is how far, in milliseconds, a team's sandbox list
+	// may lag the store. With it set, each API replica shares one store read
+	// between the team's concurrent list requests and keeps it that long, so at
+	// 2000 a team is read at most every 2 s per replica however often it lists,
+	// while reads succeed; a failed read is not kept. Target it at a team to
+	// bound that team alone. The fallback, zero, keeps every request on its own
+	// read, with the same store commands as before.
+	SandboxListMaxLagMsFlag = NewIntFlag("sandbox-list-max-lag-ms", 0)
+
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 	MaxNetworkRuleDomains     = NewIntFlag("max-network-rule-domains", 10)
 
