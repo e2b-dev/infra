@@ -1992,7 +1992,7 @@ func (f *Factory) ResumeSandbox(
 		err = sbx.WaitForEnvd(
 			ctx,
 			StartTypeResume,
-			f.GetEnvdTimeout(ctx),
+			envdWaitForVolumes(ctx, f.GetEnvdTimeout(ctx), len(config.VolumeMounts)),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -4617,6 +4617,38 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
+}
+
+const (
+	// envdWaitPerVolume extends the envd wait for each volume. envd mounts volumes one at
+	// a time on every start and resume, about 28 ms each with a healthy NFS proxy.
+	envdWaitPerVolume = 100 * time.Millisecond
+
+	// envdWaitForStalledMount lets envd report which volume failed before the wait ends.
+	// envd gives one volume at most 20 s (nfsVolumeBudget: two 10 s mount attempts, the
+	// mount point created within them); the extra 10 s covers another volume that stalls
+	// once and then mounts.
+	envdWaitForStalledMount = 30 * time.Second
+
+	// envdWaitDeadlineMargin is left before the request's deadline, so a resume whose
+	// volumes run out of time fails and cleans up before the request is cancelled.
+	envdWaitDeadlineMargin = 2 * time.Second
+)
+
+// envdWaitForVolumes is how long to wait for envd's /init to mount volumes. The time
+// added for volumes ends envdWaitDeadlineMargin before ctx's deadline; the wait is never
+// shorter than envdTimeout.
+func envdWaitForVolumes(ctx context.Context, envdTimeout time.Duration, volumes int) time.Duration {
+	if volumes == 0 {
+		return envdTimeout
+	}
+
+	wait := envdTimeout + envdWaitForStalledMount + time.Duration(volumes)*envdWaitPerVolume
+	if deadline, ok := ctx.Deadline(); ok {
+		wait = max(envdTimeout, min(wait, time.Until(deadline)-envdWaitDeadlineMargin))
+	}
+
+	return wait
 }
 
 func (f *Factory) GetEnvdTimeout(ctx context.Context) time.Duration {

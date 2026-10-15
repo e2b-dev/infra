@@ -134,7 +134,7 @@ func TestEnvdCallsReadABoundedBody(t *testing.T) {
 			call: func(ctx context.Context, t *testing.T, s *Sandbox, id string) string {
 				t.Helper()
 				err := s.initEnvd(ctx, StartTypeResume, false, envdInitOptions{})
-				require.EqualError(t, err, "unexpected status code: 500")
+				require.EqualError(t, err, "unexpected status code: 500: "+truncated)
 
 				return initFailureBody(t, "sbx-"+id)
 			},

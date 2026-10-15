@@ -446,6 +446,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 			return nil, createRefused(ctx, codes.InvalidArgument, "%s", err.Error())
 		}
+		if refusal := volumeRefusal(ctx, err); refusal != nil {
+			// The user's volume is unusable; the orchestrator itself is fine.
+			telemetry.ReportError(ctx, "sandbox volume not usable", err, telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()))
+
+			return nil, refusal
+		}
 
 		err = errors.Join(err, context.Cause(ctx))
 		telemetry.ReportCriticalError(ctx, "failed to create sandbox", err)
@@ -3041,6 +3047,17 @@ func createRefused(ctx context.Context, code codes.Code, format string, args ...
 	}
 
 	return withDetails.Err()
+}
+
+// volumeRefusal is the create refusal for a volume envd could not mount, or nil when
+// err is not one. Every node mounts the same volume, so no other node is asked.
+func volumeRefusal(ctx context.Context, err error) error {
+	volumeErr, ok := errors.AsType[sandbox.VolumeMountError](err)
+	if !ok {
+		return nil
+	}
+
+	return createRefused(ctx, codes.FailedPrecondition, "%s", volumeErr.Error())
 }
 
 // filesystemOnlyDisabledStatus is the flag refusal with a typed detail, so the

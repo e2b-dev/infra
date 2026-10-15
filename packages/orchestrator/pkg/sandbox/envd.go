@@ -887,13 +887,19 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 	s.readEnvdInitHeaders(ctx, response.Header, startType, countStart)
 
 	if response.StatusCode != http.StatusNoContent {
+		body := envdErrorBody(response.Body)
 		s.log().Error(ctx, "envd init request failed",
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.Int("status_code", response.StatusCode),
-			zap.String("response_body", envdErrorBody(response.Body)),
+			zap.String("response_body", body),
 		)
 
-		return fmt.Errorf("unexpected status code: %d", response.StatusCode)
+		err := fmt.Errorf("unexpected status code: %d: %s", response.StatusCode, body)
+		if path := response.Header.Get(envdFailedVolumeHeader); path != "" {
+			return fmt.Errorf("%w: %w", VolumeMountError{Path: utils.Truncate(path, maxVolumePathBytes)}, err)
+		}
+
+		return err
 	}
 
 	report = readEnvdInitReport(response.Header, attempts.servedAge)
@@ -961,6 +967,22 @@ func verifyEnvdCpuCount(header string, want int, vmVcpus int64) error {
 	}
 
 	return nil
+}
+
+// envdFailedVolumeHeader names the volume path a failed /init could not mount.
+const envdFailedVolumeHeader = "X-Envd-Failed-Volume"
+
+// maxVolumePathBytes bounds the guest-written volume path kept in an error.
+const maxVolumePathBytes = 4096
+
+// VolumeMountError reports a volume envd could not mount. Its message names only the
+// path the caller asked for, so it is safe to return to the user.
+type VolumeMountError struct {
+	Path string
+}
+
+func (e VolumeMountError) Error() string {
+	return fmt.Sprintf("failed to mount volume at %q", e.Path)
 }
 
 // recordEnvdInitStart records one counted start on the init instruments. base is the
