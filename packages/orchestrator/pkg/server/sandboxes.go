@@ -454,6 +454,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 			logger.WithSandboxID(runtime.SandboxID),
 			logger.WithBuildID(runtime.BuildID),
 			logger.WithTemplateID(runtime.TemplateID),
+			logger.WithTeamID(runtime.TeamID),
 			logger.WithEnvdVersion(config.Envd.Version),
 			logger.WithKernelVersion(config.FirecrackerConfig.KernelVersion),
 			logger.WithFirecrackerVersion(config.FirecrackerConfig.FirecrackerVersion),
