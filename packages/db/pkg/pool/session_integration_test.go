@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"os"
 	"slices"
 	"sync/atomic"
 	"testing"
@@ -20,12 +21,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"go.segfaultmedaddy.com/pgxephemeraltest/v2"
 
 	"github.com/e2b-dev/infra/packages/db/pkg/retry"
 )
-
-const testPostgresImage = "postgres:18-alpine"
 
 func TestTransactionRetryDelay(t *testing.T) {
 	t.Parallel()
@@ -749,22 +748,44 @@ func closeBounded(t *testing.T, client *Client) {
 	}
 }
 
+// emptyPoolFactory hands each test an empty database of its own on the server
+// PG_TEST_DATABASE_URL names. The template is created when the first test
+// asks for one.
+var emptyPoolFactory = func() *pgxephemeraltest.PoolFactory {
+	config, err := pgxpool.ParseConfig(os.Getenv("PG_TEST_DATABASE_URL"))
+	if err != nil {
+		panic(fmt.Errorf("parse PG_TEST_DATABASE_URL: %w", err))
+	}
+	config.MaxConns = 1
+
+	factory, err := pgxephemeraltest.NewPoolFactory(context.Background(), config, emptyTemplate{},
+		pgxephemeraltest.WithLazyInitialization(true))
+	if err != nil {
+		panic(fmt.Errorf("create the pool factory: %w", err))
+	}
+
+	return factory
+}()
+
+type emptyTemplate struct{}
+
+func (emptyTemplate) Hash() string { return "pool_empty" }
+
+func (emptyTemplate) Migrate(context.Context, *pgx.Conn) error { return nil }
+
 func testDatabaseURL(t *testing.T) string {
 	t.Helper()
 
-	container, err := postgres.Run(
-		t.Context(),
-		testPostgresImage,
-		postgres.WithDatabase("postgres"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("postgres"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() { require.NoError(t, container.Terminate(context.WithoutCancel(t.Context()))) })
+	if testing.Short() {
+		t.Skip("Skipping integration test in short mode")
+	}
 
-	endpoint, err := container.Endpoint(t.Context(), "")
-	require.NoError(t, err)
+	require.NotEmpty(t, os.Getenv("PG_TEST_DATABASE_URL"), "PG_TEST_DATABASE_URL must name a PostgreSQL server for the tests")
 
-	return fmt.Sprintf("postgres://postgres:postgres@%s/postgres?sslmode=disable", endpoint)
+	config := emptyPoolFactory.Pool(t).Config()
+	u, err := url.Parse(config.ConnString())
+	require.NoError(t, err)
+	u.Path = "/" + config.ConnConfig.Database
+
+	return u.String()
 }
