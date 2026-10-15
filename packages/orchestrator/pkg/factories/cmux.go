@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/soheilhy/cmux"
 	"go.opentelemetry.io/otel/metric"
@@ -17,9 +18,18 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
+// cmuxReadTimeout bounds the protocol sniff: a peer that sends nothing, or
+// stops after a partial prefix, is passed to the next matcher instead of
+// holding the sniff goroutine. The same bound as the mtls handshake deadline.
+const cmuxReadTimeout = 5 * time.Second
+
 // NewCMUXServer opens the port, wraps its listener with wrap, and
 // multiplexes HTTP and gRPC over it.
 func NewCMUXServer(ctx context.Context, port uint16, meterProvider metric.MeterProvider, wrap func(net.Listener) net.Listener) (cmux.CMux, error) {
+	return newCMUXServer(ctx, port, meterProvider, wrap, cmuxReadTimeout)
+}
+
+func newCMUXServer(ctx context.Context, port uint16, meterProvider metric.MeterProvider, wrap func(net.Listener) net.Listener, readTimeout time.Duration) (cmux.CMux, error) {
 	var lisCfg net.ListenConfig
 	lis, err := lisCfg.Listen(ctx, "tcp", fmt.Sprintf(":%d", port))
 	if err != nil {
@@ -28,6 +38,7 @@ func NewCMUXServer(ctx context.Context, port uint16, meterProvider metric.MeterP
 
 	root := &cmuxListener{Listener: wrap(lis), connections: make(map[*cmuxConn]struct{})}
 	m := cmux.New(root)
+	m.SetReadTimeout(readTimeout)
 
 	meter := meterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/factories")
 	errCounter := utils.Must(telemetry.GetCounter(meter, telemetry.CmuxErrorsTotal))
