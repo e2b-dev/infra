@@ -261,6 +261,9 @@ the node to `ShuttingDown` before draining builds and sandboxes. Like `Draining`
 placement while existing work stays reachable, and `/health` returns HTTP 200 with status
 `draining`. Unlike reversible `Draining`, `ShuttingDown` is terminal for the process;
 status overrides cannot enter or leave it. `FORCE_STOP` skips waiting for sandboxes to exit.
+The sandbox drain ends only when no sandbox is live and the node's outstanding work (below) is
+zero, so a create or a resume-fresh checkpoint in flight, whose sandbox is briefly not live, holds
+it until its sandbox goes live and then ends.
 
 After sandbox drain and snapshot uploads complete, sandbox proxy cleanup attempts graceful HTTP
 server shutdown with a separate deadline, then forces server closure if needed. Successful forced
