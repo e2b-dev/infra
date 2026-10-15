@@ -52,6 +52,11 @@ func TestSandboxListMetricsRegistered(t *testing.T) {
 	require.Truef(t, ok, "%s must export explicit buckets, got %T", ApiSandboxListAge, ageMetric.Data)
 	require.Len(t, data.DataPoints, 1)
 	assert.Equal(t, int64(2_000), data.DataPoints[0].Sum)
-	assert.Contains(t, data.DataPoints[0].Bounds, float64(1_000), "the buckets must resolve lags around a few seconds")
-	assert.Contains(t, data.DataPoints[0].Bounds, float64(3_000))
+	// A hit's age is bounded by the lag flag and a read's by the request
+	// timeout, so the buckets must resolve the second or two a flag is set to:
+	// one bucket from 1 s to 3 s cannot tell a 1.2 s hit from a 2.9 s one.
+	for _, bound := range []float64{500, 750, 1_000, 1_250, 1_500, 1_750, 2_000, 2_250, 2_500, 2_750, 3_000, 5_000, 70_000} {
+		assert.Containsf(t, data.DataPoints[0].Bounds, bound, "bound %v ms", bound)
+	}
+	assert.NotContains(t, data.DataPoints[0].Bounds, float64(0), "a 0 bound only catches sub-millisecond sweeps of empty teams")
 }

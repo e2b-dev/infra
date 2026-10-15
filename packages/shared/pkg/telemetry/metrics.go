@@ -117,7 +117,7 @@ func newMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 	opts = append(opts, sdkmetric.WithView(snapshotBytesView, uploadBytesView))
 	// Export these as explicit histograms so collectors can forward them to
 	// Prometheus without adding them to an exponential-conversion allowlist.
-	for _, name := range []HistogramType{NetworkSlotReturnDurationName, NetworkEgressRetirementDurationName, ApiSandboxListAge} {
+	for _, name := range []HistogramType{NetworkSlotReturnDurationName, NetworkEgressRetirementDurationName} {
 		opts = append(opts, sdkmetric.WithView(sdkmetric.NewView(
 			sdkmetric.Instrument{Name: string(name), Kind: sdkmetric.InstrumentKindHistogram},
 			sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
@@ -125,6 +125,15 @@ func newMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 			}},
 		)))
 	}
+	// Same reason, with its own buckets: a hit's age is bounded by the lag
+	// flag, a read's duration by the 70 s request timeout, and the flag is
+	// tuned in the second or two the 250 ms steps resolve.
+	opts = append(opts, sdkmetric.WithView(sdkmetric.NewView(
+		sdkmetric.Instrument{Name: string(ApiSandboxListAge), Kind: sdkmetric.InstrumentKindHistogram},
+		sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+			Boundaries: []float64{1, 10, 50, 100, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 4000, 5000, 10000, 30000, 70000},
+		}},
+	)))
 
 	return sdkmetric.NewMeterProvider(opts...), nil
 }
