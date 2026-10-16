@@ -251,6 +251,14 @@ type EgressSetup struct {
 	// and strictly before its guest can run (or resume running).
 	NetworkAssignHook sandbox.NetworkAssignHook
 
+	// StartupReclaim removes network state the edition's previous process
+	// left (optional). It runs only where the sandbox runtime's startup
+	// reclaim runs, right after it, while no other orchestrator process runs
+	// on the host and before the network pool exists. It is best-effort like
+	// that reclaim: an error is logged, and what it left is for the edition's
+	// later use of that state to refuse or clear.
+	StartupReclaim func(ctx context.Context) error
+
 	// Start is called as a managed service (optional).
 	// If nil, no service is started for the egress proxy.
 	Start func(ctx context.Context) error
@@ -831,6 +839,11 @@ func run(config cfg.Config, opts Options) (success bool) {
 			StorageConfig: config.StorageConfig,
 		})
 		reclaimClean = !summary.HasFailures()
+		if egressSetup.StartupReclaim != nil {
+			if err := egressSetup.StartupReclaim(ctx); err != nil {
+				logger.L().Error(ctx, "failed to reclaim edition network state", zap.Error(err))
+			}
+		}
 	}
 
 	if usesSandboxRuntime {
