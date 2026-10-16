@@ -3,6 +3,8 @@ package featureflags
 import (
 	"context"
 	"fmt"
+	"os"
+	"os/exec"
 	"sync/atomic"
 	"testing"
 
@@ -18,7 +20,6 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
-	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -87,14 +88,8 @@ func TestDisableLegacyTeamMutationsFlagFallback(t *testing.T) {
 func TestFirecrackerVersionMap_KeysMatchLDKeys(t *testing.T) {
 	t.Parallel()
 
-	for key, value := range FirecrackerVersionMap {
-		info, err := fcversion.New(value)
-		require.NoError(t, err)
-
-		derived, ok := info.LDKey()
-		require.True(t, ok)
-		assert.Equal(t, key, derived)
-	}
+	_, err := FirecrackerVersionsFallback(FirecrackerVersionMap, "")
+	require.NoError(t, err)
 }
 
 func TestResolveFirecrackerVersion_MixedFormatMap(t *testing.T) {
@@ -354,4 +349,152 @@ func TestGetExtraCompatibleNodeModels_LogsMalformedValueOnce(t *testing.T) {
 		assert.Nil(t, read(multi))
 	}
 	assert.Len(t, logged(), 3)
+}
+
+func TestFirecrackerVersionsFallback_MergesOverridesOverBase(t *testing.T) {
+	t.Parallel()
+
+	base := map[string]string{
+		"v1.14":   "v1.14.1_431f1fc",
+		"v1.14-0": "v1.14-0.2.0",
+	}
+
+	merged, err := FirecrackerVersionsFallback(base, "")
+	require.NoError(t, err)
+	assert.Equal(t, base, merged)
+
+	merged, err = FirecrackerVersionsFallback(base, `{"v1.14-0":"v1.14-0.3.1","v1.14-1":"v1.14-1.0.0"}`)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		"v1.14":   "v1.14.1_431f1fc",
+		"v1.14-0": "v1.14-0.3.1",
+		"v1.14-1": "v1.14-1.0.0",
+	}, merged)
+	// The baked map is never mutated by an override.
+	assert.Equal(t, "v1.14-0.2.0", base["v1.14-0"])
+}
+
+func TestFirecrackerVersionsFallback_RejectsInvalidOverrides(t *testing.T) {
+	t.Parallel()
+
+	cases := map[string]string{
+		"not json":            `v1.14-0.3.1`,
+		"not an object":       `["v1.14-0.3.1"]`,
+		"non-string value":    `{"v1.14-0": 1}`,
+		"empty value":         `{"v1.14-0": ""}`,
+		"unparseable version": `{"v1.14-0": "v1.14-0.3"}`,
+	}
+
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			merged, err := FirecrackerVersionsFallback(FirecrackerVersionMap, raw)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), FirecrackerVersionsEnv)
+			// The baked map survives a rejected override.
+			assert.Equal(t, FirecrackerVersionMap, merged)
+		})
+	}
+
+	t.Run("bad base entry", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := FirecrackerVersionsFallback(map[string]string{"v1.14-0": "v1.14-1.0.0"}, "")
+		require.ErrorContains(t, err, `does not belong to release line "v1.14-0"`)
+	})
+}
+
+// The env is read at package init, so the wiring is exercised in a child test process.
+func TestFirecrackerVersionsEnv_Wiring(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name, raw, helper string
+	}{
+		{"valid override reaches the fallback and the resolver", `{"v1.14":"v1.14-0.3.1","v1.14-0":"v1.14-0.3.1"}`, "TestFirecrackerVersionsEnvHelper_Valid"},
+		{"invalid override keeps the baked map and fails NewClient", `{"v1.14-0":"v1.14-0.3"}`, "TestFirecrackerVersionsEnvHelper_Invalid"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+tc.helper+"$", "-test.v")
+			cmd.Env = append(os.Environ(), "FIRECRACKER_VERSIONS_ENV_HELPER=1", "LAUNCH_DARKLY_API_KEY=", FirecrackerVersionsEnv+"="+tc.raw)
+			out, err := cmd.CombinedOutput()
+			require.NoError(t, err, string(out))
+			assert.Contains(t, string(out), "--- PASS: "+tc.helper, string(out))
+		})
+	}
+}
+
+func TestFirecrackerVersionsEnvHelper_Valid(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("FIRECRACKER_VERSIONS_ENV_HELPER") == "" {
+		t.Skip("child process of TestFirecrackerVersionsEnv_Wiring")
+	}
+
+	require.NoError(t, firecrackerVersionsEnvErr)
+	assert.Equal(t, "v1.14-0.3.1", FirecrackerVersions.Fallback().GetByKey("v1.14-0").StringValue())
+	assert.Equal(t, "v1.14-0.3.1", FirecrackerVersions.Fallback().GetByKey("v1.14").StringValue())
+	assert.Equal(t, DefaultFirecrackerV1_12Version, FirecrackerVersions.Fallback().GetByKey("v1.12").StringValue())
+
+	client, err := NewClient("test", "test", "test")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		assert.NoError(t, client.Close(context.WithoutCancel(t.Context())))
+	})
+
+	assert.Equal(t, "v1.14-0.3.1", ResolveFirecrackerVersion(t.Context(), client, "v1.14-0.2.0"))
+	assert.Equal(t, "v1.14-0.3.1", ResolveFirecrackerVersion(t.Context(), client, "v1.14.1_431f1fc"))
+	assert.Equal(t, DefaultFirecrackerV1_12Version, ResolveFirecrackerVersion(t.Context(), client, "v1.12.1_210cbac"))
+}
+
+func TestFirecrackerVersionsEnvHelper_Invalid(t *testing.T) {
+	t.Parallel()
+
+	if os.Getenv("FIRECRACKER_VERSIONS_ENV_HELPER") == "" {
+		t.Skip("child process of TestFirecrackerVersionsEnv_Wiring")
+	}
+
+	require.ErrorContains(t, firecrackerVersionsEnvErr, `DEFAULT_FIRECRACKER_VERSIONS["v1.14-0"]`)
+	assert.Equal(t, DefaultFirecrackerV1_14_0Version, FirecrackerVersions.Fallback().GetByKey("v1.14-0").StringValue())
+
+	_, err := NewClient("test", "test", "test")
+	require.ErrorContains(t, err, `DEFAULT_FIRECRACKER_VERSIONS["v1.14-0"]`)
+}
+
+// One override can move every line, legacy ones included, onto a single release, as a security fix needs.
+func TestResolveFirecrackerVersion_OverrideMovesEveryLineOntoOneRelease(t *testing.T) {
+	t.Parallel()
+
+	versions, err := FirecrackerVersionsFallback(FirecrackerVersionMap, `{"v1.10":"v1.14-0.3.1","v1.12":"v1.14-0.3.1","v1.14":"v1.14-0.3.1","v1.14-0":"v1.14-0.3.1"}`)
+	require.NoError(t, err)
+
+	client := newResolverTestClient(t, versions)
+
+	for _, stored := range []string{"v1.10.1_30cbb07", "v1.12.1_210cbac", "v1.14.1_431f1fc", "v1.14-0.1.0", "v1.14-0.2.0", "v1.14-0.3.1"} {
+		assert.Equal(t, "v1.14-0.3.1", ResolveFirecrackerVersion(t.Context(), client, stored), stored)
+	}
+	// A line the override does not name keeps its baked default.
+	assert.Equal(t, "v1.14-1.0.0", ResolveFirecrackerVersion(t.Context(), client, "v1.14-1.0.0"))
+}
+
+func TestResolveFirecrackerVersion_OverriddenLineServesNewRelease(t *testing.T) {
+	t.Parallel()
+
+	versions, err := FirecrackerVersionsFallback(map[string]string{
+		"v1.14":   "v1.14.1_431f1fc",
+		"v1.14-0": "v1.14-0.2.0",
+	}, `{"v1.14-0":"v1.14-0.3.1"}`)
+	require.NoError(t, err)
+
+	client := newResolverTestClient(t, versions)
+
+	// Templates built before and after the override both serve the override; the legacy line is untouched.
+	assert.Equal(t, "v1.14-0.3.1", ResolveFirecrackerVersion(t.Context(), client, "v1.14-0.2.0"))
+	assert.Equal(t, "v1.14-0.3.1", ResolveFirecrackerVersion(t.Context(), client, "v1.14-0.3.1"))
+	assert.Equal(t, "v1.14.1_431f1fc", ResolveFirecrackerVersion(t.Context(), client, "v1.14.1_431f1fc"))
 }

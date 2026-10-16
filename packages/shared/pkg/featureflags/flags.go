@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -1053,6 +1056,56 @@ var FirecrackerVersionMap = map[string]string{
 	"v1.14-0": DefaultFirecrackerV1_14_0Version,
 }
 
+// FirecrackerVersionsEnv overrides the firecracker-versions fallback where there is no LaunchDarkly: a JSON object of release line to served version, e.g. {"v1.14-0":"v1.14-0.3.1"}.
+// Set it identically on every binary that resolves versions (api and orchestrator). Like the flag, an override may move a line onto another release, so one security fix can cover every line: {"v1.10":"v1.14-0.3.1","v1.12":"v1.14-0.3.1","v1.14":"v1.14-0.3.1","v1.14-0":"v1.14-0.3.1"}; the operator owns snapshot compatibility across that move.
+const FirecrackerVersionsEnv = "DEFAULT_FIRECRACKER_VERSIONS"
+
+// FirecrackerVersionsFallback merges the FirecrackerVersionsEnv overrides in raw over base; base entries must derive to their key, overrides must parse; on error it returns a copy of base with the error.
+func FirecrackerVersionsFallback(base map[string]string, raw string) (map[string]string, error) {
+	merged := maps.Clone(base)
+	if merged == nil {
+		merged = map[string]string{}
+	}
+
+	for key, value := range base {
+		info, err := fcversion.New(value)
+		if err != nil {
+			return maps.Clone(base), fmt.Errorf("%s[%q]: %w", FirecrackerVersionsEnv, key, err)
+		}
+
+		derived, ok := info.LDKey()
+		if !ok || derived != key {
+			return maps.Clone(base), fmt.Errorf("%s[%q]: baked default %q does not belong to release line %q", FirecrackerVersionsEnv, key, value, key)
+		}
+	}
+
+	if strings.TrimSpace(raw) == "" {
+		return merged, nil
+	}
+
+	var overrides map[string]string
+	if err := json.Unmarshal([]byte(raw), &overrides); err != nil {
+		return merged, fmt.Errorf("%s: expected a JSON object of release line to version: %w", FirecrackerVersionsEnv, err)
+	}
+
+	if overrides == nil {
+		return merged, fmt.Errorf("%s: expected a JSON object of release line to version, got null", FirecrackerVersionsEnv)
+	}
+
+	for key, value := range overrides {
+		if _, err := fcversion.New(value); err != nil {
+			return maps.Clone(base), fmt.Errorf("%s[%q]: %w", FirecrackerVersionsEnv, key, err)
+		}
+	}
+
+	maps.Copy(merged, overrides)
+
+	return merged, nil
+}
+
+// A malformed override keeps the baked map here and fails NewClient, so the service stops with the message instead of a package-init panic.
+var firecrackerVersionsFallback, firecrackerVersionsEnvErr = FirecrackerVersionsFallback(FirecrackerVersionMap, env.GetEnv(FirecrackerVersionsEnv, ""))
+
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
 	BuildFirecrackerVersion = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
@@ -1186,7 +1239,7 @@ var (
 
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersionsFallback))
 
 	// ClickhouseReadEndpointFlag selects which ClickHouse DSN to use for reads.
 	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).
