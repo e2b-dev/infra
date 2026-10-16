@@ -470,8 +470,10 @@ var (
 	// cannot reach LaunchDarkly keeps the routes dark.
 	CustomerSecretsFlag = NewBoolFlag("customer-secrets", false)
 
-	// MaxLiveSecretsPerProjectFlag overrides the live secrets a project may
-	// hold. A variation of zero or less keeps the tier default.
+	// MaxLiveSecretsPerProjectFlag is the secrets store's fallback cap on the
+	// live secrets a project may hold, read only when a create carries no
+	// limit. The API sends the team's resolved max_secrets instead. A variation
+	// of zero or less keeps the store's default.
 	MaxLiveSecretsPerProjectFlag = NewIntFlag("secrets-store-max-live-secrets-per-project", 0)
 
 	DisableLegacyTeamMutationsFlag = NewBoolFlag("disable-legacy-team-mutations", false)

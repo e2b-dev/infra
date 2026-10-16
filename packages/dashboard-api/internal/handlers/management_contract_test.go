@@ -209,3 +209,23 @@ func TestProjectLimitsContractRequiresTheListRate(t *testing.T) {
 	delete(body, "api_team_rps_list")
 	require.ErrorContains(t, schema.VisitJSON(body), "api_team_rps_list")
 }
+
+// The tier decides the secret limit for a project no push has reached, so a
+// sender must say the limit outright and may not send a cap of zero.
+func TestProjectLimitsContractTakesAPositiveOrAbsentSecretLimit(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := api.GetSwagger()
+	require.NoError(t, err)
+	schema := swagger.Components.Schemas["ManagementProjectLimits"].Value
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal([]byte(validLimitsBody), &body))
+	require.NoError(t, schema.VisitJSON(body))
+
+	body["max_secrets"] = 0
+	require.ErrorContains(t, schema.VisitJSON(body), "max_secrets")
+
+	delete(body, "max_secrets")
+	require.NoError(t, schema.VisitJSON(body))
+}

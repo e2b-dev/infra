@@ -15,3 +15,10 @@ func TestNewTeamPreservesAPIRates(t *testing.T) {
 	assert.Equal(t, int64(1<<32), team.Limits.APITeamRPSList)
 	assert.Equal(t, int64(1<<32+1), team.Limits.APITeamRPSDelete)
 }
+
+func TestNewTeamPreservesTheSecretLimit(t *testing.T) {
+	t.Parallel()
+
+	team := NewTeam(&authqueries.Team{}, &authqueries.TeamLimit{MaxSecrets: 1 << 32})
+	assert.Equal(t, int64(1<<32), team.Limits.MaxSecrets)
+}

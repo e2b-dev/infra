@@ -42,6 +42,9 @@ type ProjectLimitsProjection struct {
 	DefaultFreeDiskSizeMB    int64
 	MaxFreeDiskSizeMB        int64
 	APITeamRPSList           int64
+
+	// Nil when the sender predates the limit; the tier then decides.
+	MaxSecrets *int64
 }
 
 // ApplyProjectLimits records a project's effective limits, behind the revision
@@ -124,6 +127,7 @@ func (s *Service) applyProjectLimits(ctx context.Context, projection ProjectLimi
 		DefaultFreeDiskSizeMb:    projection.DefaultFreeDiskSizeMB,
 		MaxFreeDiskSizeMb:        projection.MaxFreeDiskSizeMB,
 		ApiTeamRpsList:           projection.APITeamRPSList,
+		MaxSecrets:               projection.MaxSecrets,
 	}); err != nil {
 		if dberrors.IsCheckViolation(err) {
 			return false, fmt.Errorf("%w: %w", ErrProjectLimitsRejected, err)
@@ -167,6 +171,11 @@ func validateProjectLimitsProjection(projection ProjectLimitsProjection) error {
 			return fmt.Errorf("%w: %s must be at least %d, got %d",
 				ErrInvalidProjectLimits, floored.field, floored.floor, floored.value)
 		}
+	}
+
+	if projection.MaxSecrets != nil && *projection.MaxSecrets < 1 {
+		return fmt.Errorf("%w: max_secrets must be at least 1, got %d",
+			ErrInvalidProjectLimits, *projection.MaxSecrets)
 	}
 
 	if projection.DefaultFreeDiskSizeMB > projection.MaxFreeDiskSizeMB {

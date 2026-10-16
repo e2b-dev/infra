@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -35,7 +35,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/constants"
-	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
@@ -261,7 +260,10 @@ func newSecretsRequest(t *testing.T, method, target, body string) (*gin.Context,
 
 	teamID := uuid.New()
 	ginCtx.Request.Header.Set(sharedauth.HeaderTeamID, teamID.String())
-	sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{Team: &authqueries.Team{ID: teamID}})
+	sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{
+		Team:   &authqueries.Team{ID: teamID},
+		Limits: &types.TeamLimits{MaxSecrets: 10},
+	})
 
 	return ginCtx, recorder, teamID
 }
@@ -556,32 +558,22 @@ func TestSecretsValueForwardedUntouched(t *testing.T) {
 	}
 }
 
+// The limit is the team's resolved one, carried to the backend as the wire's
+// int32; a limit the wire cannot hold is clamped rather than wrapped.
 func TestPostSecretsProjectSecretsLimit(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name  string
 		tier  string
-		flag  func(*ldtestdata.TestDataSource, uuid.UUID)
-		limit int32
+		limit int64
+		sent  int32
 	}{
-		{name: "base tier default", tier: constants.BaseTierID, limit: baseTierProjectSecretsLimit},
-		{name: "paid tier default", tier: "pro_v1", limit: paidTierProjectSecretsLimit},
-		{name: "flag serving nothing keeps the tier default", tier: constants.BaseTierID, flag: func(td *ldtestdata.TestDataSource, _ uuid.UUID) {
-			td.Update(td.Flag(featureflags.MaxLiveSecretsPerProjectFlag.Key()).ValueForAll(ldvalue.Int(0)))
-		}, limit: baseTierProjectSecretsLimit},
-		{name: "flag rule on the tier wins", tier: "pro_v1", flag: func(td *ldtestdata.TestDataSource, _ uuid.UUID) {
-			td.Update(td.Flag(featureflags.MaxLiveSecretsPerProjectFlag.Key()).
-				Variations(ldvalue.Int(0), ldvalue.Int(250)).
-				FallthroughVariationIndex(0).
-				VariationIndexForKey(featureflags.TierKind, "pro_v1", 1))
-		}, limit: 250},
-		{name: "flag rule on the team UUID wins", tier: constants.BaseTierID, flag: func(td *ldtestdata.TestDataSource, teamID uuid.UUID) {
-			td.Update(td.Flag(featureflags.MaxLiveSecretsPerProjectFlag.Key()).
-				Variations(ldvalue.Int(0), ldvalue.Int(40)).
-				FallthroughVariationIndex(0).
-				VariationIndexForKey(featureflags.TeamKind, teamID.String(), 1))
-		}, limit: 40},
+		{name: "tier limit", limit: 10, sent: 10},
+		{name: "pushed limit", limit: 250, sent: 250},
+		{name: "limit above the wire's range is clamped", limit: math.MaxInt32 + 1, sent: math.MaxInt32},
+		{name: "cached before the limit, base tier", tier: constants.BaseTierID, limit: 0, sent: 10},
+		{name: "cached before the limit, paid tier", tier: "pro_v1", limit: 0, sent: 100},
 	}
 
 	for _, tt := range tests {
@@ -592,25 +584,18 @@ func TestPostSecretsProjectSecretsLimit(t *testing.T) {
 			require.NoError(t, err)
 
 			ginCtx, recorder, teamID := newSecretsRequest(t, http.MethodPost, "/secrets", string(body))
-			sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{Team: &authqueries.Team{ID: teamID, Tier: tt.tier}})
-			middleware.InitLaunchDarklyContext(ginCtx)
-
-			td := ldtestdata.DataSource()
-			td.Update(td.Flag(featureflags.CustomerSecretsFlag.Key()).VariationForAll(true))
-			if tt.flag != nil {
-				tt.flag(td, teamID)
-			}
-			ff, err := featureflags.NewClientWithDatasource(td)
-			require.NoError(t, err)
-			t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
+			sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{
+				Team:   &authqueries.Team{ID: teamID, Tier: tt.tier},
+				Limits: &types.TeamLimits{MaxSecrets: tt.limit},
+			})
 
 			backend := &fakeSecretsBackend{secret: backendSecret()}
-			store := &APIStore{featureFlags: ff, secretsManagement: startSecretsBackend(t, backend)}
+			store := newSecretsStore(t, startSecretsBackend(t, backend), true)
 			store.PostSecrets(ginCtx)
 
 			require.Equal(t, http.StatusCreated, recorder.Code)
 			require.Len(t, backend.createRequests, 1)
-			require.Equal(t, tt.limit, backend.createRequests[0].GetProjectSecretsLimit())
+			require.Equal(t, tt.sent, backend.createRequests[0].GetProjectSecretsLimit())
 		})
 	}
 }

@@ -182,7 +182,9 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   value. What a caller stores is a runtime marker, not a resolved secret; orchestrator-ee resolves
   a marker to a value at sandbox egress, never here. Without a configured address, or with the flag
   off, the routes stay registered and answer 403. Responses are `Cache-Control: no-store`, request bodies are capped at 512 KiB, and values
-  at 64 KiB.
+  at 64 KiB. A create carries the cap on live secrets the backend enforces: `max_secrets` is one
+  of the team's limits and resolves with the rest of them through the `team_limits` view (a pushed
+  `project_limits` value, else the tier's `max_secrets` plus active add-ons' `extra_max_secrets`).
 - **Sandbox events and webhooks**: `/events/sandboxes` reads a team's sandbox lifecycle events,
   and `/events/webhooks` manages the webhook subscriptions those events are delivered to, along
   with each subscription's delivery attempts and delivery statistics. The API stores none of

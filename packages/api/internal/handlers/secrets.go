@@ -43,7 +43,9 @@ const (
 	secretsBackendTimeout  = 25 * time.Second
 	secretLimitReachedCode = "secret_limit_reached"
 
-	// Live secrets a project may hold unless a flag rule says otherwise.
+	// What a tier allowed before the limit was resolved with the others, for a
+	// cached team written before it existed. Delete once no such entry can be
+	// read.
 	baseTierProjectSecretsLimit = 10
 	paidTierProjectSecretsLimit = 100
 
@@ -139,7 +141,7 @@ func (a *APIStore) PostSecrets(c *gin.Context) {
 		Name:                name,
 		Value:               value,
 		Metadata:            secretMetadataValues(body.Metadata),
-		ProjectSecretsLimit: a.projectSecretsLimit(ctx, team.Tier),
+		ProjectSecretsLimit: projectSecretsLimit(team),
 	})
 	if err != nil {
 		a.sendSecretsBackendError(c, err)
@@ -360,21 +362,20 @@ func (a *APIStore) secretsBackend(c *gin.Context) (managementv1.SecretManagement
 	return a.secretsManagement, projectID, team, true
 }
 
-// projectSecretsLimit resolves the cap the backend enforces on a create. The
-// flag is evaluated with the request's contexts plus the team's tier, so a
-// rule can target the team or the tier; when it serves nothing, the tier
-// decides.
-func (a *APIStore) projectSecretsLimit(ctx context.Context, tier string) int32 {
-	limit := a.featureFlags.IntFlag(ctx, featureflags.MaxLiveSecretsPerProjectFlag, featureflags.TierContext(tier, tier))
-	if limit > 0 {
-		return int32(min(limit, math.MaxInt32))
+// projectSecretsLimit is the cap the backend enforces on a create: the team's
+// resolved limit, clamped to what the wire carries. A team cached by a binary
+// without the limit decodes it as zero, which the backend would read as no
+// limit sent; the tier decides for it instead.
+func projectSecretsLimit(team *types.Team) int32 {
+	limit := team.Limits.MaxSecrets
+	if limit <= 0 {
+		limit = paidTierProjectSecretsLimit
+		if team.Tier == constants.BaseTierID {
+			limit = baseTierProjectSecretsLimit
+		}
 	}
 
-	if tier == constants.BaseTierID {
-		return baseTierProjectSecretsLimit
-	}
-
-	return paidTierProjectSecretsLimit
+	return int32(min(limit, math.MaxInt32))
 }
 
 // rejectSecretsRequest answers a request the API itself refused. reason is a

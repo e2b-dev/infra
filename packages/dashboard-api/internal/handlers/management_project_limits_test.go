@@ -29,6 +29,7 @@ const validLimitsBody = `{
 	"events_ttl_days": 14,
 	"default_free_disk_size_mb": 10240,
 	"api_team_rps_list": 60,
+	"max_secrets": 25,
 	"max_disk_size_mb": 51200
 }`
 
@@ -158,6 +159,54 @@ func TestUpsertProjectLimitsRejectsANegativeListRate(t *testing.T) {
 	store, auth := newLimitsStore(db)
 
 	body := strings.Replace(validLimitsBody, `"api_team_rps_list": 60`, `"api_team_rps_list": -1`, 1)
+	recorder := callUpsertProjectLimits(t, store, teamID, body)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Empty(t, auth.invalidated)
+}
+
+func TestUpsertProjectLimitsCarriesTheSecretLimitToTheView(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, db)
+	store, _ := newLimitsStore(db)
+
+	body := strings.Replace(validLimitsBody, `"max_secrets": 25`, `"max_secrets": 37`, 1)
+	recorder := callUpsertProjectLimits(t, store, teamID, body)
+	require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
+
+	var limit int64
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
+		func(rows pgx.Rows) error {
+			rows.Next()
+
+			return rows.Scan(&limit)
+		}, teamID))
+	require.EqualValues(t, 37, limit)
+
+	body = strings.Replace(validLimitsBody, `"max_secrets": 25,`, ``, 1)
+	body = strings.Replace(body, `"revision": 2`, `"revision": 3`, 1)
+	recorder = callUpsertProjectLimits(t, store, teamID, body)
+	require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
+		func(rows pgx.Rows) error {
+			rows.Next()
+
+			return rows.Scan(&limit)
+		}, teamID))
+	require.EqualValues(t, 10, limit, "a body without the limit leaves it to the tier")
+}
+
+func TestUpsertProjectLimitsRejectsAZeroSecretLimit(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, db)
+	store, auth := newLimitsStore(db)
+
+	body := strings.Replace(validLimitsBody, `"max_secrets": 25`, `"max_secrets": 0`, 1)
 	recorder := callUpsertProjectLimits(t, store, teamID, body)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	require.Empty(t, auth.invalidated)

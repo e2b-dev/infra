@@ -16,4 +16,6 @@ type TeamLimits struct {
 
 	APITeamRPSList   int64
 	APITeamRPSDelete int64
+
+	MaxSecrets int64
 }
