@@ -517,11 +517,11 @@ The shared error response supports an optional `error_code`, defined by the dash
 may omit it. Callers use that stable code rather than the human-readable message, and treat
 uncoded or unknown reasons as generic errors.
 
-`DELETE /v1/management/projects/{projectID}` soft-deletes a project. A project that is a
-member's default project is that member's personal project and is refused with 409 before
-anything changes. `envs`, `snapshots` and `volumes` reference `teams` with `ON DELETE NO
-ACTION`, so the team row stays. One transaction locks the row (404 if it is missing), sets
-`teams.deleted_at`, blocks the team (a CHECK keeps every deleted team blocked), clears its
+`DELETE /v1/management/projects/{projectID}` soft-deletes any project, including a member's
+default project; whether a project may be deleted is the caller's decision. `envs`,
+`snapshots` and `volumes` reference `teams` with `ON DELETE NO ACTION`, so the team row
+stays. One transaction locks the row (404 if it is missing), sets `teams.deleted_at`,
+blocks the team (a CHECK keeps every deleted team blocked), clears its
 cluster assignment, scrubs its name and email to `DELETED` and its slug to
 `deleted-<project ID>` (releasing the old slug for reuse), deletes its memberships and API
 keys, soft-deletes its templates, snapshot templates and paused-sandbox snapshots the way a

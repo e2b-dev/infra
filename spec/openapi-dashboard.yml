@@ -2193,8 +2193,7 @@ paths:
         deleted-<project ID>, which releases the old slug for reuse, deletes
         its memberships and API keys, soft-deletes its templates and
         snapshots, and enqueues the teardown of its running sandboxes, all in
-        one transaction. The project row remains. A project that is a
-        member's default project is refused with 409. Afterwards the project
+        one transaction. The project row remains. Afterwards the project
         answers 404 to other management writes. Repeating the call answers
         204 and repeats every step except the deletion time: it re-blocks and
         re-scrubs the project, clears a cluster assignment written since,
@@ -2212,8 +2211,6 @@ paths:
           $ref: "#/components/responses/401"
         "404":
           $ref: "#/components/responses/404"
-        "409":
-          $ref: "#/components/responses/409"
         "500":
           $ref: "#/components/responses/500"
 

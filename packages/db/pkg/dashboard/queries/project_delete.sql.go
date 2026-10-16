@@ -94,21 +94,6 @@ func (q *Queries) MarkProjectDeleted(ctx context.Context, arg MarkProjectDeleted
 	return err
 }
 
-const projectIsMemberDefault = `-- name: ProjectIsMemberDefault :one
-SELECT EXISTS (
-    SELECT 1 FROM public.users_teams
-    WHERE team_id = $1::uuid AND is_default
-) AS is_default
-`
-
-// A default project is a member's personal project, which is not deleted here.
-func (q *Queries) ProjectIsMemberDefault(ctx context.Context, projectID uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, projectIsMemberDefault, projectID)
-	var is_default bool
-	err := row.Scan(&is_default)
-	return is_default, err
-}
-
 const softDeleteProjectEnvironments = `-- name: SoftDeleteProjectEnvironments :many
 UPDATE public.envs
 SET deleted_at = NOW(), updated_at = NOW()

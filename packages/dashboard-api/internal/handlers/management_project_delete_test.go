@@ -38,7 +38,7 @@ func TestDeleteProjectSoftDeletesItAndEnqueuesItsTeardown(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx, `UPDATE public.teams SET cluster_id = $2 WHERE id = $1`, projectID, clusterID))
-	addProjectMember(t, db, projectID, false)
+	addProjectMember(t, db, projectID)
 	addProjectAPIKey(t, db, projectID)
 	publicTemplate := testutils.CreateTestTemplate(t, db, projectID)
 	privateTemplate := testutils.CreateTestTemplate(t, db, projectID)
@@ -118,7 +118,7 @@ func TestDeleteProjectRetryRepairsWhatRacedTheDeletion(t *testing.T) {
 	queryRow(t, db, `SELECT deleted_at FROM public.teams WHERE id = $1`, []any{projectID}, &firstDeletedAt)
 	lateSnapshot := testutils.UpsertTestSnapshot(t, ctx, db, "snapshot-"+uuid.NewString(), "sandbox-"+uuid.NewString(), projectID, baseTemplate)
 	addProjectAPIKey(t, db, projectID)
-	addProjectMember(t, db, projectID, false)
+	addProjectMember(t, db, projectID)
 	clusterID, err := db.SqlcClient.Dashboard.CreateCluster(ctx, dashboardqueries.CreateClusterParams{
 		Name: "raced-cluster", Endpoint: "https://cluster.example.test", Token: "test-token",
 	})
@@ -265,28 +265,6 @@ func TestDeleteProjectEvictsTheDeletedKeysCachedAuth(t *testing.T) {
 	require.Equal(t, http.StatusUnauthorized, apiErr.Code)
 }
 
-// A member's default project is their personal project, so it is refused
-// before anything changes.
-func TestDeleteProjectRefusesAMembersDefaultProject(t *testing.T) {
-	t.Parallel()
-
-	db := testutils.SetupDatabase(t)
-	store := newDeleteStore(t, db)
-	projectID := testutils.CreateTestTeam(t, db)
-	addProjectMember(t, db, projectID, true)
-
-	response := callDeleteProject(t, store, projectID)
-
-	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
-	var deleted bool
-	queryRow(t, db, `SELECT deleted_at IS NOT NULL FROM public.teams WHERE id = $1`, []any{projectID}, &deleted)
-	require.False(t, deleted)
-	members, err := db.AuthDB.GetTeamMemberIDs(t.Context(), projectID)
-	require.NoError(t, err)
-	require.Len(t, members, 1)
-	require.Zero(t, teardownJobs(t, db, projectID))
-}
-
 func newDeleteStore(t *testing.T, db *testutils.Database) *APIStore {
 	t.Helper()
 
@@ -308,13 +286,13 @@ func callDeleteProject(t *testing.T, store *APIStore, projectID uuid.UUID) *http
 	return response
 }
 
-func addProjectMember(t *testing.T, db *testutils.Database, projectID uuid.UUID, isDefault bool) {
+func addProjectMember(t *testing.T, db *testutils.Database, projectID uuid.UUID) {
 	t.Helper()
 
 	userID := uuid.New()
 	require.NoError(t, db.AuthDB.UpsertPublicUser(t.Context(), userID))
 	require.NoError(t, db.AuthDB.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
-		UserID: userID, TeamID: projectID, IsDefault: isDefault,
+		UserID: userID, TeamID: projectID,
 	}))
 }
 

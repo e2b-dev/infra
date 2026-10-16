@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -20,8 +19,6 @@ import (
 
 const projectDeletionReason = "Project deletion"
 
-var errDefaultProjectDeletion = errors.New("project is a member's default project")
-
 // ManagementDeleteProject soft-deletes a project and hands the teardown of its
 // workloads to the api through the outbox. Repeating it answers 204 again,
 // repeats the cleanup, and enqueues another teardown, which is a no-op while
@@ -32,12 +29,6 @@ func (s *APIStore) ManagementDeleteProject(c *gin.Context, projectID api.Project
 	telemetry.SetAttributes(ctx, attrs...)
 
 	keyHashes, err := s.deleteProject(ctx, projectID)
-	if errors.Is(err, errDefaultProjectDeletion) {
-		telemetry.ReportErrorByCode(ctx, http.StatusConflict, "delete project refused", err, attrs...)
-		s.sendAPIStoreError(c, http.StatusConflict, "Project is a member's default project and cannot be deleted")
-
-		return
-	}
 	if dberrors.IsNotFoundError(err) {
 		telemetry.ReportErrorByCode(ctx, http.StatusNotFound, "delete project failed", err, attrs...)
 		s.sendAPIStoreError(c, http.StatusNotFound, "Project not found")
@@ -72,17 +63,6 @@ func (s *APIStore) deleteProject(ctx context.Context, projectID uuid.UUID) ([]st
 
 	if _, err := txDB.Dashboard.LockProjectForDeletion(ctx, projectID); err != nil {
 		return nil, fmt.Errorf("lock project: %w", err)
-	}
-
-	// A member's default project is their personal project, which is not
-	// deleted through this route. Checked under the row lock, which member
-	// deliveries also take, so a membership cannot become default meanwhile.
-	isDefault, err := txDB.Dashboard.ProjectIsMemberDefault(ctx, projectID)
-	if err != nil {
-		return nil, fmt.Errorf("check default project: %w", err)
-	}
-	if isDefault {
-		return nil, errDefaultProjectDeletion
 	}
 
 	keyHashes, err := softDeleteProject(ctx, txDB, projectID)
