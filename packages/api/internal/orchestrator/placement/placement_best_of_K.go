@@ -143,6 +143,10 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	}
 
 	if bestNode == nil {
+		if unavailableNodeWouldFit(nodes, excludedNodes, cpu, features, filterByLabels, requiredLabels) {
+			return nil, NoNodesAvailableError{}
+		}
+
 		return nil, FailedToPlaceSandboxError{
 			filterByLabels: filterByLabels,
 			requiredLabels: requiredLabels,
@@ -179,6 +183,22 @@ func (e FailedToPlaceSandboxError) Error() string {
 	}
 
 	return message
+}
+
+// unavailableNodeWouldFit reports whether a node that cannot take new sandboxes
+// right now would otherwise satisfy the requirements.
+func unavailableNodeWouldFit(nodes []*nodemanager.Node, excludedNodes map[string]struct{}, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) bool {
+	for _, n := range nodes {
+		if _, ok := excludedNodes[n.ID]; ok || n.CanAcceptNewRequests() {
+			continue
+		}
+
+		if NodeSatisfiesCPU(n, cpu) && NodeSatisfiesFeatures(n, features) && (!filterByLabels || isNodeLabelsCompatible(n, requiredLabels)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // sample returns up to k items chosen uniformly from those passing ok.
