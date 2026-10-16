@@ -4,6 +4,7 @@ package network
 
 import (
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/google/nftables/expr"
 )
 
 type EgressProxy interface {
@@ -15,6 +16,10 @@ type EgressProxy interface {
 	// SupportsBYOP reports whether this build can tunnel TCP egress
 	// through a user-supplied SOCKS5 proxy.
 	SupportsBYOP() bool
+
+	// HeadFilterRules returns rules the slot firewall installs ahead of its
+	// default filter chain on every ApplyRules, never on DenyEgress.
+	HeadFilterRules(s *Slot) [][]expr.Any
 }
 
 // NoopEgressProxy is a no-op implementation of EgressProxy.
@@ -40,4 +45,8 @@ func (NoopEgressProxy) CABundle() string {
 
 func (NoopEgressProxy) SupportsBYOP() bool {
 	return false
+}
+
+func (NoopEgressProxy) HeadFilterRules(_ *Slot) [][]expr.Any {
+	return nil
 }

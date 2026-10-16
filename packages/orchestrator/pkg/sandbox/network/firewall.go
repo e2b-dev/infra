@@ -43,9 +43,16 @@ type Firewall struct {
 	tapInterface string
 
 	allowedRanges []string
+
+	// headFilter holds the egress proxy's rules installRules puts ahead of
+	// its own.
+	headFilter [][]expr.Any
 }
 
-func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string) (_ *Firewall, err error) {
+// NewFirewall installs the slot firewall for tapIf. headFilter lists the
+// expressions of the rules the egress proxy puts ahead of the firewall's
+// own, EgressProxy.HeadFilterRules.
+func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs []string, headFilter [][]expr.Any) (_ *Firewall, err error) {
 	conn, err := nftables.New(nftables.AsLasting())
 	if err != nil {
 		return nil, fmt.Errorf("new nftables conn: %w", err)
@@ -108,6 +115,7 @@ func NewFirewall(tapIf string, orchestratorInternalIP string, extraAllowedCIDRs 
 			extraAllowedCIDRs...,
 		),
 		filterChain: filterChain,
+		headFilter:  headFilter,
 	}
 
 	// Install default rules and initial set data in a single flush.
@@ -276,6 +284,14 @@ func (fw *Firewall) addEstablishedAcceptRule() {
 	})
 }
 
+// addHeadFilterRules buffers the egress proxy's head rules. Buffer-only;
+// the caller flushes.
+func (fw *Firewall) addHeadFilterRules() {
+	for _, exprs := range fw.headFilter {
+		fw.conn.AddRule(&nftables.Rule{Table: fw.table, Chain: fw.filterChain, Exprs: exprs})
+	}
+}
+
 // addTapDropRule buffers a rule that drops every packet from the tap interface,
 // regardless of protocol or destination. Buffer-only; the caller flushes.
 func (fw *Firewall) addTapDropRule() {
@@ -293,12 +309,17 @@ func (fw *Firewall) addTapDropRule() {
 // all protocols. Buffer-only; the caller must Flush.
 func (fw *Firewall) installRules(byop bool) {
 	// FILTER CHAIN (PREROUTING, priority -150)
+	//   0. EgressProxy.HeadFilterRules, if any
 	//   1. ESTABLISHED/RELATED → accept
 	//   2. predefinedAllowSet → accept (all protocols)
 	//   3. predefinedDenySet → DROP (all protocols, or non-TCP only when byop)
 	//   4. Non-TCP: userAllowSet → accept
 	//   5. Non-TCP: userDenySet → DROP
 	//   6. Default: ACCEPT (TCP handled by iptables REDIRECT in host netns)
+
+	// Rule 0: the egress proxy's head rules, ahead of every rule of the
+	// firewall's own.
+	fw.addHeadFilterRules()
 
 	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
 	// This ensures response packets are allowed even if the source is in predefinedDenySet
@@ -400,7 +421,8 @@ func (fw *Firewall) ApplyRules(ctx context.Context, byop bool, allowedCIDRs, den
 // needs the guest to open a connection outward. It backs the throwaway
 // pause-resume prefetch harvest sandbox, whose envd init must not egress — the
 // throwaway is also resumed with its volume mounts suppressed so /init does not
-// attempt the (now-blocked) NFS mount.
+// attempt the (now-blocked) NFS mount. The egress proxy's head rules are left
+// out: they extend the ordinary policy, and there is none here.
 //
 // Like ApplyRules the chain is rebuilt from scratch and committed in a single
 // flush; on failure the conn is reset so a poisoned batch cannot leak into a

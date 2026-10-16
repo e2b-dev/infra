@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
+	"github.com/google/nftables/expr"
 	"github.com/inetaf/tcpproxy"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -200,6 +201,10 @@ func (p *Proxy) CABundle() string {
 
 func (p *Proxy) SupportsBYOP() bool {
 	return false
+}
+
+func (p *Proxy) HeadFilterRules(_ *network.Slot) [][]expr.Any {
+	return nil
 }
 
 // egressConn is one connection the proxy has admitted — past the per-sandbox

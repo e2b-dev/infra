@@ -235,7 +235,7 @@ func (s *Slot) InitializeFirewall() error {
 		return fmt.Errorf("firewall is already initialized for slot %s", s.Key)
 	}
 
-	fw, err := NewFirewall(s.TapName(), s.config.OrchestratorInSandboxIPAddress, s.config.AllowSandboxInternalCIDRs)
+	fw, err := NewFirewall(s.TapName(), s.config.OrchestratorInSandboxIPAddress, s.config.AllowSandboxInternalCIDRs, s.egressProxy.HeadFilterRules(s))
 	if err != nil {
 		return fmt.Errorf("error initializing firewall: %w", err)
 	}
