@@ -82,3 +82,15 @@ func TestParse_InvalidOrchestratorPortReturnsError(t *testing.T) {
 		})
 	}
 }
+
+func TestParse_TLS(t *testing.T) {
+	t.Setenv("E2B_TLS_API_CLIENT_MODE", "on")
+	t.Setenv("E2B_TLS_API_EXPECT", "spiffe://td.example.internal/ns/control/sa/api")
+	t.Setenv("E2B_TLS_API_SERVER_NAME", "api.example.internal")
+
+	cfg, err := Parse()
+	require.NoError(t, err)
+	require.Equal(t, "on", cfg.TLS.API.Mode)
+	require.Equal(t, []string{"spiffe://td.example.internal/ns/control/sa/api"}, cfg.TLS.API.Expect)
+	require.Equal(t, "api.example.internal", cfg.TLS.API.ServerName)
+}

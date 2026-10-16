@@ -35,6 +35,10 @@ const (
 	// A filesystem-only checkpoint refused because filesystem-only-checkpoint is
 	// off on the node; the API answers it like its own pre-flight (400).
 	UserErrorCode_FILESYSTEM_ONLY_CHECKPOINT_DISABLED UserErrorCode = 7
+	// A sandbox create the node refused for a reason no other node and no
+	// retry changes (its vcpu request is out of bounds); the API reports it as
+	// a refusal, not a failure to retry.
+	UserErrorCode_SANDBOX_CREATE_REFUSED UserErrorCode = 8
 )
 
 // Enum value maps for UserErrorCode.
@@ -48,6 +52,7 @@ var (
 		5: "DEPTH_OUT_OF_RANGE",
 		6: "INVALID_REQUEST",
 		7: "FILESYSTEM_ONLY_CHECKPOINT_DISABLED",
+		8: "SANDBOX_CREATE_REFUSED",
 	}
 	UserErrorCode_value = map[string]int32{
 		"UNKNOWN_USER_ERROR_CODE":             0,
@@ -58,6 +63,7 @@ var (
 		"DEPTH_OUT_OF_RANGE":                  5,
 		"INVALID_REQUEST":                     6,
 		"FILESYSTEM_ONLY_CHECKPOINT_DISABLED": 7,
+		"SANDBOX_CREATE_REFUSED":              8,
 	}
 )
 
@@ -1885,7 +1891,7 @@ const file_volume_proto_rawDesc = "" +
 	"\x04_gid\"6\n" +
 	"\x12UpdatePathResponse\x12 \n" +
 	"\x05entry\x18\x01 \x01(\v2\n" +
-	".EntryInfoR\x05entry*\xda\x01\n" +
+	".EntryInfoR\x05entry*\xf6\x01\n" +
 	"\rUserErrorCode\x12\x1b\n" +
 	"\x17UNKNOWN_USER_ERROR_CODE\x10\x00\x12\x12\n" +
 	"\x0ePATH_NOT_FOUND\x10\x01\x12\x17\n" +
@@ -1894,7 +1900,8 @@ const file_volume_proto_rawDesc = "" +
 	"\rNOT_SUPPORTED\x10\x04\x12\x16\n" +
 	"\x12DEPTH_OUT_OF_RANGE\x10\x05\x12\x13\n" +
 	"\x0fINVALID_REQUEST\x10\x06\x12'\n" +
-	"#FILESYSTEM_ONLY_CHECKPOINT_DISABLED\x10\a*i\n" +
+	"#FILESYSTEM_ONLY_CHECKPOINT_DISABLED\x10\a\x12\x1a\n" +
+	"\x16SANDBOX_CREATE_REFUSED\x10\b*i\n" +
 	"\bFileType\x12\x19\n" +
 	"\x15FILE_TYPE_UNSPECIFIED\x10\x00\x12\x12\n" +
 	"\x0eFILE_TYPE_FILE\x10\x01\x12\x17\n" +

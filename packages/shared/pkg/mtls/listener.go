@@ -110,6 +110,7 @@ func NewListener(inner net.Listener, cfg ServerConfig, opts ...ListenerOption) *
 	}
 	l.tlsConfig = cfg.serverTLSConfig(l.nextProtos)
 	l.cfg.policy(context.Background())
+	cfg.watched.register(l)
 	go l.acceptLoop()
 
 	return l
@@ -152,12 +153,13 @@ func (l *Listener) ConnState(remoteAddr string) (ConnState, bool) {
 	return l.conns.lookup(remoteAddr)
 }
 
-// CloseUnverified closes every open connection a required handshake would
-// refuse now, the plaintext ones, the TLS ones whose chain did not verify and
-// the TLS ones whose name is not on the allow-list, and returns how many:
-// what a service calls when its mode flips to required, so callers reconnect
-// and meet the new policy instead of riding a connection opened under the
-// old one.
+// CloseUnverified closes every open connection required would not admit
+// now, the plaintext ones a weaker mode admitted, the TLS ones whose chain
+// did not verify and the TLS ones whose name is not on the allow-list, and
+// returns how many: what a service calls when its mode flips to required,
+// so callers reconnect and meet the new policy instead of riding a
+// connection opened under the old one. A plaintext connection required
+// itself admitted, for a health check, stays open.
 func (l *Listener) CloseUnverified() (int, error) {
 	return l.conns.closeUnverified(l.cfg.Allow.Allows)
 }
@@ -199,19 +201,21 @@ func (l *Listener) acceptLoop() {
 			continue
 		}
 
-		if l.cfg.policy(ctx).mode == ModeOff {
-			l.deliver(l.plaintext(ctx, remoteKey(conn), conn))
+		mode := l.cfg.policy(ctx).mode
+		if mode == ModeOff {
+			l.deliver(l.plaintext(ctx, remoteKey(conn), conn, mode))
 
 			continue
 		}
 
-		go l.classify(ctx, conn)
+		go l.classify(ctx, conn, mode)
 	}
 }
 
 // classify runs in its own goroutine for one connection: peek, then either
 // mark it plaintext or complete the TLS handshake, all under one deadline.
-func (l *Listener) classify(ctx context.Context, raw net.Conn) {
+// mode is the one read when the connection was accepted.
+func (l *Listener) classify(ctx context.Context, raw net.Conn, mode Mode) {
 	key := remoteKey(raw)
 	metrics := l.cfg.metrics()
 	_ = raw.SetDeadline(time.Now().Add(l.cfg.handshakeTimeout()))
@@ -228,7 +232,7 @@ func (l *Listener) classify(ctx context.Context, raw net.Conn) {
 
 	if !isTLS {
 		_ = conn.SetDeadline(time.Time{})
-		l.deliver(l.plaintext(ctx, key, conn))
+		l.deliver(l.plaintext(ctx, key, conn, mode))
 
 		return
 	}
@@ -246,7 +250,7 @@ func (l *Listener) classify(ctx context.Context, raw net.Conn) {
 
 	// The server behind the listener sets its own deadlines from here on.
 	_ = tlsConn.SetDeadline(time.Time{})
-	if !l.conns.add(key, hooked, ConnState{TLS: true, ChainVerified: hooked.chainVerified, State: tlsConn.ConnectionState()}) {
+	if !l.conns.add(key, hooked, ConnState{TLS: true, ChainVerified: hooked.chainVerified, State: tlsConn.ConnectionState()}, false) {
 		warnSharedRemote(ctx, l.cfg, key)
 	}
 	metrics.handshake(ctx, l.cfg.Name, OutcomeTLS)
@@ -255,8 +259,8 @@ func (l *Listener) classify(ctx context.Context, raw net.Conn) {
 
 // plaintext marks conn as admitted without TLS, records it and counts it:
 // one handshake with the plaintext outcome, and one open plaintext connection
-// until it closes.
-func (l *Listener) plaintext(ctx context.Context, key string, conn net.Conn) *PlaintextConn {
+// until it closes. mode is the one its handshake read.
+func (l *Listener) plaintext(ctx context.Context, key string, conn net.Conn, mode Mode) *PlaintextConn {
 	metrics := l.cfg.metrics()
 	metrics.handshake(ctx, l.cfg.Name, OutcomePlaintext)
 	metrics.plaintextConn(ctx, l.cfg.Name, 1)
@@ -264,10 +268,9 @@ func (l *Listener) plaintext(ctx context.Context, key string, conn net.Conn) *Pl
 		l.conns.remove(key)
 		metrics.plaintextConn(ctx, l.cfg.Name, -1)
 	}}}
-	if !l.conns.add(key, plain, ConnState{}) {
+	if !l.conns.add(key, plain, ConnState{}, mode == ModeRequired) {
 		warnSharedRemote(ctx, l.cfg, key)
 	}
-	l.cfg.log().Debug(ctx, "mtls: plaintext connection admitted", zap.String("listener", l.cfg.Name), zap.String("remote", key))
 
 	return plain
 }

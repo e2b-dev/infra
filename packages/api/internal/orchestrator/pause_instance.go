@@ -33,7 +33,7 @@ func (o *Orchestrator) pauseSandbox(ctx context.Context, node *nodemanager.Node,
 	// The requested kind is recorded only once the pause has succeeded: a pause
 	// the node refuses leaves the sandbox running on its previous build, whose
 	// kind the row must keep describing.
-	currentKind, result, err := o.upsertSnapshotKeepingKind(ctx, sbx, node)
+	currentKind, result, err := o.upsertSnapshotKeepingKind(ctx, sbx, node, filesystemOnly)
 	if err != nil {
 		telemetry.ReportCriticalError(ctx, "error inserting snapshot for env", err)
 
@@ -120,7 +120,10 @@ func (o *Orchestrator) WaitForStateChange(ctx context.Context, teamID uuid.UUID,
 	return o.sandboxStore.WaitForStateChange(ctx, teamID, sandboxID)
 }
 
-func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node, filesystemOnly bool) queries.UpsertSnapshotParams {
+// buildUpsertSnapshotParams labels the row with currentKind, the kind of its
+// latest ready build, and the new build with filesystemOnly, the kind it is
+// being taken as.
+func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node, currentKind, filesystemOnly bool) queries.UpsertSnapshotParams {
 	metadata := types.JSONBStringMap(sbx.Metadata)
 	if metadata == nil {
 		metadata = types.JSONBStringMap{}
@@ -156,7 +159,7 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node, file
 			Network:                 sbx.Network,
 			AutoResume:              sbx.AutoResume,
 			VolumeMounts:            sbx.VolumeMounts,
-			FilesystemOnly:          filesystemOnly,
+			FilesystemOnly:          currentKind,
 			AutoPauseFilesystemOnly: sbx.AutoPauseFilesystemOnly,
 			Iam:                     sbx.Iam,
 		},
@@ -164,7 +167,8 @@ func buildUpsertSnapshotParams(sbx sandbox.Sandbox, node *nodemanager.Node, file
 		Status:       types.BuildStatusSnapshotting,
 		// Pin the snapshot's CPU info to the source build instead of the executing
 		// node, so a pause/resume across CPU generations stays compatible.
-		SourceBuildID: sbx.BuildID,
+		SourceBuildID:       sbx.BuildID,
+		BuildFilesystemOnly: filesystemOnly,
 	}
 }
 

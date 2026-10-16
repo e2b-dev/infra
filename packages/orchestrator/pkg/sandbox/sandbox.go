@@ -56,6 +56,12 @@ import (
 var (
 	meter                         = otel.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox")
 	envdInitCalls                 = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitCalls))
+	envdInitTimestampAge          = utils.Must(telemetry.GetFloatHistogram(meter, telemetry.EnvdInitTimestampAgeHistogramName))
+	envdInitClockCorrection       = utils.Must(telemetry.GetFloatHistogram(meter, telemetry.EnvdInitClockCorrectionHistogramName))
+	envdInitUnobservedHandlers    = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitUnobservedHandlers))
+	envdInitSlowDials             = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitSlowDials))
+	harvestThaw                   = utils.Must(telemetry.GetCounter(meter, telemetry.PauseResumePrefetchHarvestThaw))
+	envdReinitCut                 = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdReinitCut))
 	waitForEnvdDurationHistogram  = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
 	envdCollapseDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdCollapseDurationHistogramName))
 	envdFreezeDurationHistogram   = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeDurationHistogramName))
@@ -310,11 +316,86 @@ func (m *Metadata) SetEndAt(t time.Time) {
 	m.endAt = t
 }
 
+// ErrSandboxUpdateClosed reports that sandbox teardown owns update admission.
+var ErrSandboxUpdateClosed = errors.New("sandbox is closing or closed")
+
+// updateAdmission owns the boundary between live Update callbacks and
+// teardown. updatesClosed is the authoritative monotonic admission state;
+// activeDone identifies the one callback serialized by Sandbox.updateMu.
+type updateAdmission struct {
+	stateMu sync.Mutex
+
+	updatesClosed chan struct{}
+	activeDone    chan struct{}
+}
+
+func (a *updateAdmission) initialize() {
+	a.stateMu.Lock()
+	_ = a.closedSignalLocked()
+	a.stateMu.Unlock()
+}
+
+func (a *updateAdmission) closedSignalLocked() chan struct{} {
+	if a.updatesClosed == nil {
+		a.updatesClosed = make(chan struct{})
+	}
+
+	return a.updatesClosed
+}
+
+func (a *updateAdmission) closedSignal() <-chan struct{} {
+	a.stateMu.Lock()
+	closed := a.closedSignalLocked()
+	a.stateMu.Unlock()
+
+	return closed
+}
+
+func (a *updateAdmission) admit() (chan struct{}, error) {
+	a.stateMu.Lock()
+	defer a.stateMu.Unlock()
+
+	select {
+	case <-a.closedSignalLocked():
+		return nil, ErrSandboxUpdateClosed
+	default:
+	}
+
+	activeDone := make(chan struct{})
+	a.activeDone = activeDone
+
+	return activeDone, nil
+}
+
+func (a *updateAdmission) complete(activeDone chan struct{}) {
+	a.stateMu.Lock()
+	if a.activeDone == activeDone {
+		a.activeDone = nil
+		close(activeDone)
+	}
+	a.stateMu.Unlock()
+}
+
+func (a *updateAdmission) closeAndSnapshotActive() <-chan struct{} {
+	a.stateMu.Lock()
+	closed := a.closedSignalLocked()
+	select {
+	case <-closed:
+	default:
+		close(closed)
+	}
+	activeDone := a.activeDone
+	a.stateMu.Unlock()
+
+	return activeDone
+}
+
 type Sandbox struct {
 	*Resources
 	*Metadata
 
-	updateMu sync.Mutex
+	updateMu        sync.Mutex
+	updateAdmission updateAdmission
 
 	// fphMu serialises free-page-hinting runs (the pre-pause drain and the
 	// periodic hinter): FC accepts one hinting cycle at a time, and Pause takes
@@ -356,12 +437,14 @@ type Sandbox struct {
 	process      *fc.Process
 	cgroupHandle *cgroup.CgroupHandle
 
-	// inPlaceCheckpointInFlight excludes concurrent in-place checkpoints of
-	// this sandbox: it stays live and addressable through one (no MarkStopping),
-	// so nothing else prevents a second Checkpoint RPC from racing
-	// Pause/CreateSnapshot/ResumeInPlace on the same FC process. See
-	// Server.checkpointInPlace.
-	inPlaceCheckpointInFlight atomic.Bool
+	// checkpointInFlight excludes concurrent checkpoints of this sandbox
+	// on either route: it stays live and addressable through an in-place
+	// one (no MarkStopping), and a resume-fresh one claims it before its
+	// reservation takes it out of the live map, so nothing else prevents a
+	// second Checkpoint RPC from racing Pause/CreateSnapshot/ResumeInPlace on
+	// the same FC process. See Server.checkpointInPlace and
+	// Server.registerDetachedCheckpoint.
+	checkpointInFlight atomic.Bool
 	// lastCheckpointEndedAt (unix nanos) marks the end of the last in-place
 	// checkpoint: the periodic hinter stays quiet for QuietAfterStart after it.
 	lastCheckpointEndedAt atomic.Int64
@@ -395,6 +478,24 @@ type Sandbox struct {
 	// upgrade trigger uses this ground truth — not the template built-with, which
 	// never changes across live upgrades — to decide, label, and confirm upgrades.
 	liveEnvdVersion atomic.Pointer[string]
+	// envdTargets is the node's resolved upgrade target versions (Factory.envdTargets).
+	envdTargets *envdTargetVersions
+	// offlineEnvdVersion is the envd version an offline upgrade swapped onto the rootfs
+	// before this boot, nil when none did.
+	offlineEnvdVersion atomic.Pointer[string]
+	// deliveredEnvdVersion is the envd version a confirmed live upgrade delivered in this
+	// life (MarkEnvdDelivered), nil until one does.
+	deliveredEnvdVersion atomic.Pointer[string]
+	// envdReinit is the most recent post-checkpoint re-init's handle (startEnvdReinit),
+	// which a following Pause stops before freezing. envdReinitHolds, under envdReinitMu,
+	// counts the Pauses between their cut and their freeze (cutEnvdReinit,
+	// releaseEnvdReinit): while one is held, no fresh handle is published.
+	envdReinit      atomic.Pointer[envdReinit]
+	envdReinitMu    sync.Mutex
+	envdReinitHolds int
+	// lastEnvdInitLoop is the readiness loop the handle's most recent initEnvd ran, which
+	// labels the envd-init duration histogram beside the init call counter.
+	lastEnvdInitLoop atomic.Pointer[envdInitLoop]
 	// handoverResult is the live-upgrade handover outcome the running envd
 	// reported on its most recent /init (X-Envd-Handover header), or nil if the
 	// running envd did not boot from a handover.
@@ -471,8 +572,8 @@ type Sandbox struct {
 	rootfsSealDone *utils.SetOnce[struct{}]
 
 	// startupRecorded guards ALL first-WaitForEnvd recording — the envd-init
-	// duration + uffd.startup.* histograms, the envd-init call counter and the
-	// envd memory-protection histogram (both in initEnvd), and SetStartedAt — so
+	// duration + uffd.startup.* histograms, the envd init instruments initEnvd
+	// records on a start (it also skips them for a throwaway), and SetStartedAt — so
 	// they fire only on the actual sandbox start. A later WaitForEnvd on the same
 	// handler (the post-upgrade readiness
 	// re-check, or the envd-binary swap + restart in a template build) re-runs
@@ -483,28 +584,43 @@ type Sandbox struct {
 	startupRecorded atomic.Bool
 
 	// skipStartupMetrics suppresses the per-start KPI histograms (envd-init
-	// duration, uffd startup pages/source-pages/bytes) for a throwaway resume,
-	// so the warm harvest never pollutes the customer resume distributions. Set
+	// duration, uffd startup pages/source-pages/bytes) and the envd init
+	// instruments for a throwaway resume, so the warm harvest never pollutes the
+	// customer resume distributions. Set
 	// from the WithoutLiveRegistration resume option.
 	skipStartupMetrics bool
+
+	// skipThaw comes from the resume option WithSkippedThaw. inheritedEnvdVersion is the
+	// envd version the resumed snapshot was taken from (resumeGateEnvdVersion).
+	skipThaw             bool
+	inheritedEnvdVersion string
 }
 
-// BeginInPlaceCheckpoint marks an in-place checkpoint in flight; false means
-// one is already running and the caller must refuse. Pair with
-// EndInPlaceCheckpoint.
-func (s *Sandbox) BeginInPlaceCheckpoint() bool {
-	return s.inPlaceCheckpointInFlight.CompareAndSwap(false, true)
+// BeginCheckpoint marks a checkpoint of this sandbox in flight, in place or
+// resume-fresh; false means one is already running and the caller must
+// refuse. Pair with EndCheckpoint.
+func (s *Sandbox) BeginCheckpoint() bool {
+	return s.checkpointInFlight.CompareAndSwap(false, true)
 }
 
-// EndInPlaceCheckpoint clears the in-flight marker set by BeginInPlaceCheckpoint.
-func (s *Sandbox) EndInPlaceCheckpoint() {
+// EndCheckpoint clears the in-flight marker set by BeginCheckpoint.
+func (s *Sandbox) EndCheckpoint() {
 	s.lastCheckpointEndedAt.Store(time.Now().UnixNano())
-	s.inPlaceCheckpointInFlight.Store(false)
+	s.checkpointInFlight.Store(false)
 }
 
 func (s *Sandbox) RunUpdate(update func() error) error {
 	s.updateMu.Lock()
 	defer s.updateMu.Unlock()
+
+	activeDone, err := s.updateAdmission.admit()
+	if err != nil {
+		return err
+	}
+	// Registered after Unlock's defer so LIFO closes the active event before
+	// updateMu is released. Close can then start cleanup only after the callback
+	// and its admission have both ended.
+	defer s.updateAdmission.complete(activeDone)
 
 	return update()
 }
@@ -592,6 +708,20 @@ func (m *Metadata) SetStopReason(reason StopReason) {
 	m.stopReason = reason
 }
 
+// MarkKilledDuringCheckpoint replaces a checkpointing stop reason with killed:
+// a Delete that ended the checkpoint is why the execution ended, not the
+// checkpoint it interrupted. Any other recorded reason stays. The lifecycle
+// goroutine may have sampled the reason already, as the snapshot closes the
+// VM; that sample then reflects the checkpoint's intent, as for Pause.
+func (m *Metadata) MarkKilledDuringCheckpoint() {
+	m.rwmu.Lock()
+	defer m.rwmu.Unlock()
+
+	if m.stopReason == "" || m.stopReason == StopReasonCheckpointing {
+		m.stopReason = StopReasonKilled
+	}
+}
+
 // GetStopReason returns the recorded teardown reason. An execution that ended
 // with none was never asked to stop, so it crashed. Only meaningful once the
 // execution has ended.
@@ -632,6 +762,9 @@ type Factory struct {
 	egressProxy       network.EgressProxy
 	networkAssignHook NetworkAssignHook
 	envdBinCache      *envdbin.Cache
+	// envdTargets are the envd versions this node's upgrade targets resolved to, shared
+	// with every sandbox it creates for the running-version label.
+	envdTargets *envdTargetVersions
 
 	// swapEnvdBinary is the offline envd upgrade's one call into the host. Nil
 	// means rootfs.SwapEnvdBinary; a test substitutes it to drive the decision
@@ -694,6 +827,7 @@ func NewFactory(
 		// paths silently off, with warms{} flat at zero, which is the one state the
 		// warm counter exists to make distinguishable from a working node.
 		envdBinCache: newEnvdBinCache(config.OrchestratorBaseDir),
+		envdTargets:  &envdTargetVersions{},
 	}
 
 	// Warm the promoted binary now rather than leaving it to the first resume that
@@ -816,6 +950,12 @@ func (f *Factory) EnvdBinCache() *envdbin.Cache {
 	return f.envdBinCache
 }
 
+// RecordingEnvdTargetVersion wraps a live upgrade's target version probe so that the
+// running-version label of this node's sandboxes holds every version it reads.
+func (f *Factory) RecordingEnvdTargetVersion(get func(context.Context, string) (string, error)) func(context.Context, string) (string, error) {
+	return f.envdTargets.recording(get)
+}
+
 // runNetworkAssignHook calls the configured NetworkAssignHook.OnNetworkAssign
 // synchronously and imposes no timeout. The implementation is responsible for
 // constraining its own duration. The code recovers any panic here to keep it from
@@ -922,7 +1062,7 @@ func (f *Factory) CreateSandbox(
 	defer func() {
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
-			e = errors.Join(e, cleanupErr)
+			e = errors.Join(preserveConstructionCause(ctx, e), cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
 		}
@@ -942,7 +1082,7 @@ func (f *Factory) CreateSandbox(
 	cgroupRemovalRegistered := false
 	defer cleanupIfNotRegistered(ctx, &e, &cgroupRemovalRegistered, cgroupHandle.Remove)
 
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased, runtime.SandboxType.EgressClass())
+	ipsPromise := f.getNetworkSlot(ctx, cleanup, config, runtime, lifecycleID)
 
 	rootFS, err := template.Rootfs()
 	if err != nil {
@@ -1056,6 +1196,7 @@ func (f *Factory) CreateSandbox(
 	sbx := &Sandbox{
 		LifecycleID:        lifecycleID,
 		LifecycleStartedAt: time.Now().UTC(),
+		envdTargets:        f.envdTargets,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -1077,6 +1218,7 @@ func (f *Factory) CreateSandbox(
 		exit: exit,
 	}
 
+	sbx.updateAdmission.initialize()
 	f.Sandboxes.AssignNetwork(ctx, sbx)
 	f.Sandboxes.reclaimLiveEntryOnCleanup(ctx, cleanup, runtime, sbx.LifecycleID)
 
@@ -1178,6 +1320,10 @@ type resumeOptions struct {
 	// (not addressable, not counted, no health checks) for throwaways the caller
 	// reaps itself.
 	skipLiveRegistration bool
+	// skipThaw makes a held /init ask envd to leave the workload frozen.
+	skipThaw bool
+	// inheritedEnvdVersion is the source handle's envd version for the held-init gate.
+	inheritedEnvdVersion string
 	// deferMarkRunning skips only MarkRunning and health-check startup inside
 	// ResumeSandbox, leaving everything else (metrics, host stats, network
 	// assignment) intact, so the caller can promote the sandbox to live itself
@@ -1198,12 +1344,11 @@ type resumeOptions struct {
 //
 // The counters that follow it, exhaustively: the per-start KPI histograms (via
 // skipStartupMetrics), the two envd-defaults volume counters recordEnvdDefaults emits,
-// builtin_fallback in compareEnvdDefaults, and the resume wp_mode counter. Deliberately NOT
-// the mismatch counter, which reports a defect rather than sizing a population — a defect on
-// a throwaway resume is still a defect. Also deliberately NOT the envd memory-protection
-// histogram, which follows the envd.init.calls predicate instead so that it can be divided
-// by that counter's exit_type=success series over the starts whose header decoded;
-// init.calls counts throwaways, so the histogram must too.
+// builtin_fallback in compareEnvdDefaults, the resume wp_mode counter, and the envd init
+// instruments initEnvd records on a handle's first customer start: the call counter, the
+// timestamp age, clock-correction and memory-protection histograms and the
+// unobserved-handler and slow-dial counters. Deliberately NOT the mismatch counter, which reports a
+// defect rather than sizing a population — a defect on a throwaway resume is still a defect.
 func (o *resumeOptions) describesCustomerStart() bool {
 	return !o.skipLiveRegistration
 }
@@ -1252,7 +1397,26 @@ func WithDeferredLiveRegistration() ResumeOption {
 // live registry. It is the single source of truth for that option set so callers
 // can't drift, and so the set can be asserted in one place.
 func ThrowawayResumeOptions() []ResumeOption {
-	return []ResumeOption{WithDenyEgress(), WithoutLiveRegistration()}
+	return []ResumeOption{WithDenyEgress(), WithoutLiveRegistration(), WithSkippedThaw()}
+}
+
+// WithSkippedThaw makes a resume whose /init takes the held request send thaw: "skip", so
+// envd leaves the workload frozen and the workload never runs. For the prefetch harvest's
+// throwaway, whose trace then holds no workload fault past the /init response, and which
+// is reaped once that trace is read. No other resume may carry it: nothing would thaw that
+// workload. On a resume that runs the legacy loop it changes nothing, and envd thaws inline
+// as it does today.
+func WithSkippedThaw() ResumeOption {
+	return func(o *resumeOptions) { o.skipThaw = true }
+}
+
+// WithInheritedEnvdVersion gives the held-init gate the envd version of the handle a
+// throwaway is resumed from, read ahead of the template-baked one: the snapshot was taken
+// from that envd process, so its version describes the envd that will answer, even when a
+// live upgrade left the build record's version behind. It outranks the version the snapshot
+// recorded at pause (metadata.Template.RunningEnvdVersion). An empty v is ignored.
+func WithInheritedEnvdVersion(v string) ResumeOption {
+	return func(o *resumeOptions) { o.inheritedEnvdVersion = v }
 }
 
 // ErrVcpuExceedsSnapshot is fc.ErrVcpuExceedsSnapshot, so a refusal before and after the snapshot loads match.
@@ -1304,7 +1468,7 @@ func (f *Factory) ResumeSandbox(
 	defer func() {
 		if e != nil {
 			cleanupErr := cleanup.Run(ctx)
-			e = errors.Join(e, cleanupErr)
+			e = errors.Join(preserveConstructionCause(ctx, e), cleanupErr)
 			handleSpanError(execSpan, &e)
 			execSpan.End()
 		}
@@ -1464,7 +1628,7 @@ func (f *Factory) ResumeSandbox(
 	}()
 
 	// Slot initialization
-	ipsPromise := getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkReleased, runtime.SandboxType.EgressClass())
+	ipsPromise := f.getNetworkSlot(ctx, cleanup, config, runtime, lifecycleID)
 
 	// Rootfs initialization
 	overlayPromise := utils.NewPromise(func() (rootfs.Provider, error) {
@@ -1660,6 +1824,7 @@ func (f *Factory) ResumeSandbox(
 	sbx := &Sandbox{
 		LifecycleID:        lifecycleID,
 		LifecycleStartedAt: time.Now().UTC(),
+		envdTargets:        f.envdTargets,
 
 		Resources:    resources,
 		Metadata:     metadata,
@@ -1683,6 +1848,9 @@ func (f *Factory) ResumeSandbox(
 		// of the per-resume KPI histograms (see WaitForEnvd).
 		skipStartupMetrics: !ropts.describesCustomerStart(),
 		resolvedVmVcpus:    resolvedVmVcpus,
+
+		skipThaw:             ropts.skipThaw,
+		inheritedEnvdVersion: resumeGateEnvdVersion(ropts.inheritedEnvdVersion, meta.RunningEnvdVersion),
 	}
 	// Known before the VM starts for templates built with the field, so the
 	// resume working set is labelled; older templates are labelled by
@@ -1732,6 +1900,7 @@ func (f *Factory) ResumeSandbox(
 	// Register the sandbox IP before Resume so it is findable by source address
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
+	sbx.updateAdmission.initialize()
 	f.Sandboxes.AssignNetwork(ctx, sbx)
 	f.Sandboxes.reclaimLiveEntryOnCleanup(ctx, cleanup, runtime, sbx.LifecycleID)
 
@@ -1823,7 +1992,7 @@ func (f *Factory) ResumeSandbox(
 		err = sbx.WaitForEnvd(
 			ctx,
 			StartTypeResume,
-			f.GetEnvdTimeout(ctx),
+			envdWaitForVolumes(ctx, f.GetEnvdTimeout(ctx), len(config.VolumeMounts)),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to wait for sandbox start: %w", err)
@@ -1916,6 +2085,12 @@ func (s *Sandbox) MemoryHandlerErr() error {
 }
 
 func (s *Sandbox) Close(ctx context.Context) error {
+	// Stop admission, then join the exact live callback before any teardown.
+	// No admission or update lock is held across resource cleanup.
+	if activeDone := s.updateAdmission.closeAndSnapshotActive(); activeDone != nil {
+		<-activeDone
+	}
+
 	// The live-map entry is reclaimed inside the chain, by the callback
 	// Map.reclaimLiveEntryOnCleanup registers. Close must not reclaim it here:
 	// a writer at this point runs after the whole chain, which would move the
@@ -2148,11 +2323,26 @@ func (s *Sandbox) Pause(
 		return nil, fmt.Errorf("previous memory capture did not complete: %w", err)
 	}
 
+	// Stop a post-checkpoint envd re-init before anything freezes the guest, so a held one
+	// writes nothing after the pre-pause freeze. Here, after the waits above and before
+	// anything is torn down, so a Pause that fails on the waits has not cancelled it.
+	// pauseLanded is set once the VM pause is known to have landed; see its use below.
+	// Setting it also releases the cut's hold on fresh re-inits, which the cut's cleanup
+	// releases instead for a Pause that fails before it.
+	pauseLanded := false
+	landed := func() {
+		pauseLanded = true
+		s.releaseEnvdReinit()
+	}
+	if err := s.cutEnvdReinitForPause(ctx, cleanup, &pauseLanded); err != nil {
+		return nil, err
+	}
+
 	// Stop the health check before pausing the VM
 	s.Checks.Stop()
 	// Restart it on any failed exit that leaves the sandbox live. Registered
-	// first, so it runs last in the cleanup chain, after the resume in place
-	// below, and ahead of the filesystem quiesce, whose error return would
+	// before the resume in place below, so it runs after it (the chain runs in
+	// reverse), and ahead of the filesystem quiesce, whose error return would
 	// otherwise skip it.
 	restartChecksOnError := pauseOpts.maintainSandbox
 	// The in-place error path resumes the VM, so its registered thaw escalates;
@@ -2227,6 +2417,8 @@ func (s *Sandbox) Pause(
 	// Persist whether the rootfs was frozen so a later feature can safely decide
 	// this snapshot is one it may cold-boot / rewrite without journal repair.
 	m = m.MarkFsQuiesced(pauseOpts.filesystemSnapshot && frozen)
+	// The envd version the next life's first /init gates on, before its envd reports one.
+	m = m.WithRunningEnvdVersion(s.snapshotEnvdVersion(pauseOpts.filesystemSnapshot))
 	// Device truth over lineage: a cold-booted sandbox has no balloon whatever
 	// its template was built with, and its snapshots must say so.
 	if mode := userfaultfd.BalloonMode(s.balloonMode.Load()); mode != userfaultfd.BalloonModeUnknown {
@@ -2253,12 +2445,13 @@ func (s *Sandbox) Pause(
 	// rule: a pause whose round-trip failed may still have landed in FC, and
 	// resuming a never-paused VM is an idempotent no-op (a running vCPU
 	// answers Resumed), so skipping the resume on any "failed" pause is what
-	// would hand the API a frozen VM labeled healthy. pauseLanded gates only
+	// would hand the API a frozen VM labeled healthy. Here pauseLanded gates
 	// the freeze metric and the clock re-sync: a pause KNOWN to have failed
-	// before reaching the guest froze nothing and drifted nothing.
+	// before reaching the guest froze nothing and drifted nothing. It also gates,
+	// the other way round, the restart of a re-init this Pause stopped
+	// (cutEnvdReinitForPause's cleanup), a failed round-trip included.
 	// resumeOnError is cleared just before the real ResumeInPlace on the
 	// success path.
-	pauseLanded := false
 	// memExportDeferred records whether the memory export took the deferred
 	// (CoW window) path — the treated arm of the ramp. Set after
 	// processMemorySnapshot; read by the guest_freeze records below (the
@@ -2315,7 +2508,7 @@ func (s *Sandbox) Pause(
 				// The failed checkpoint restores a live sandbox, so it needs
 				// the same clock re-sync as the success path — the guest was
 				// paused just as long.
-				go s.bestEffortEnvdReinit(ctx)
+				s.startEnvdReinit(ctx)
 			}
 
 			return nil
@@ -2337,14 +2530,16 @@ func (s *Sandbox) Pause(
 		if err != nil {
 			return nil, fmt.Errorf("failed to pause VM: %w", err)
 		}
-		pauseLanded = true
+		landed()
 	} else {
 		// Destroy path: no resume cleanup exists (resumeOnError is false), so
-		// the ambiguity above has no consumer; keep the plain request-scoped
-		// call.
+		// the ambiguity above has no resume to drive; keep the plain
+		// request-scoped call. pauseLanded still tells the re-init restart that
+		// the guest stopped.
 		if err := s.process.Pause(ctx); err != nil {
 			return nil, fmt.Errorf("failed to pause VM: %w", err)
 		}
+		landed()
 	}
 
 	// The guest stops executing here; the snapshot, rootfs export and upload
@@ -2507,7 +2702,7 @@ func (s *Sandbox) Pause(
 			}
 		}
 
-		go s.bestEffortEnvdReinit(ctx)
+		s.startEnvdReinit(ctx)
 
 		s.Checks = NewChecks(s)
 		go s.Checks.Start(context.WithoutCancel(ctx))
@@ -3963,57 +4158,6 @@ func (s *Sandbox) awaitSnapshotAdmission(ctx context.Context, grace time.Duratio
 	}
 }
 
-// bestEffortEnvdReinit re-runs the envd /init a real resume makes, after an
-// in-place resume (success or error-cleanup path). The FC-paused window
-// stopped the guest's clocks; envd steps CLOCK_REALTIME from /init's host
-// timestamp when it lags by >50ms — less than a single checkpoint's pause
-// window — so without this every checkpoint leaves the guest's wall clock
-// behind by the paused duration and repeated checkpoints accumulate the
-// drift. Best-effort: it is the same /init every resume already makes against
-// a live envd, and a failure only leaves the clock lagging until the next
-// resume. WithoutCancel so a dying request ctx can't skip it.
-//
-// The episode budget is the envd-timeout flag (~10s) — the same bound a real
-// resume gives WaitForEnvd — NOT EnvdInitRequestTimeout: that 50ms value is
-// the PER-ATTEMPT deadline inside initEnvd's retry loop, calibrated for
-// fail-fast-and-retry, and using it as the total would allow exactly one
-// attempt against a guest that is busy working through its post-freeze
-// backlog. Callers run this on a goroutine: a sick envd must cost the
-// checkpoint nothing, and a missed sync only lasts until the next /init.
-func (s *Sandbox) bestEffortEnvdReinit(ctx context.Context) {
-	budget := time.Duration(s.featureFlags.IntFlag(ctx, featureflags.EnvdTimeoutMilliseconds)) * time.Millisecond
-	initCtx, cancel := context.WithCancelCause(context.WithoutCancel(ctx))
-	defer cancel(nil)
-
-	// The same race WaitForEnvd runs around this exact retry loop: bound it on
-	// sandbox LIVENESS, not just time. Detached from the request, a re-init
-	// that only times out would outlive a sandbox killed mid-budget — and
-	// outlive the network pool's 3s slot drain, POSTing this sandbox's /init
-	// body (access token, env vars, CA bundle) at whichever tenant is handed
-	// the recycled slot IP next.
-	go func() {
-		select {
-		case <-time.After(budget):
-			cancel(errors.New("envd re-init budget exceeded"))
-		case <-initCtx.Done():
-			return
-		case <-s.process.Exit.Done():
-			// Exit.Error() is nil for every orchestrator-initiated teardown
-			// (SIGTERM/SIGKILL both store nil); a nil %w renders as
-			// %!w(<nil>), garbling the dominant cause string.
-			if exitErr := s.process.Exit.Error(); exitErr != nil {
-				cancel(fmt.Errorf("%w: %w", ErrFcProcessExited, exitErr))
-			} else {
-				cancel(ErrFcProcessExited)
-			}
-		}
-	}()
-
-	if err := s.initEnvd(initCtx, StartTypeResume, false); err != nil {
-		s.log().Warn(ctx, "envd re-init after in-place resume failed (guest clock may lag)", zap.Error(err))
-	}
-}
-
 // waitForRootfsSeal blocks until the most recent in-place background rootfs seal
 // of this sandbox has completed (its fold made the writable COW cache whole
 // again). Returns immediately if none has run. A failed prior seal surfaces its
@@ -4267,6 +4411,18 @@ func createCgroup(ctx context.Context, cgroupManager cgroup.Manager, cgroupName 
 	}, trace.WithAttributes(attribute.String("cgroup_name", cgroupName)))
 }
 
+// Both fresh and resumed sandboxes acquire their slot with this lifecycle's
+// release callback. The pool retains it with the slot's cleanup owner.
+func (f *Factory) getNetworkSlot(
+	ctx context.Context,
+	cleanup *Cleanup,
+	config *Config,
+	runtime sandboxtypes.RuntimeMetadata,
+	lifecycleID string,
+) *utils.Promise[*network.Slot] {
+	return getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkRelease(runtime.SandboxID, lifecycleID), runtime.SandboxType.EgressClass())
+}
+
 func getNetworkSlot(
 	ctx context.Context,
 	networkPool network.PoolInterface,
@@ -4310,13 +4466,22 @@ func serveMemory(
 
 	telemetry.ReportEvent(ctx, "started uffd")
 
-	cleanup.Add(ctx, func(ctx context.Context) error {
+	cleanup.AddPriority(ctx, func(ctx context.Context) error {
 		_, span := tracer.Start(ctx, "uffd-stop")
 		defer span.End()
 
 		if err := fcUffd.Stop(); err != nil {
 			return fmt.Errorf("failed to stop uffd: %w", err)
 		}
+
+		return nil
+	})
+	cleanup.Add(ctx, func(context.Context) error {
+		// Stop only requests exit. Keep the memory handler's descriptors and
+		// borrowed template data owned until its receive/serve work has joined.
+		// The handler's operational error is already published through Exit and
+		// MemoryHandlerErr; it is not a cleanup failure after the owner joined.
+		_ = fcUffd.Exit().Wait()
 
 		return nil
 	})
@@ -4399,7 +4564,7 @@ func (s *Sandbox) WaitForEnvd(
 		}
 	}()
 
-	if err := s.initEnvd(ctx, startType, firstStart); err != nil {
+	if err := s.initEnvd(ctx, startType, firstStart, envdInitOptions{budget: timeout}); err != nil {
 		return fmt.Errorf("failed to init new envd: %w", err)
 	}
 
@@ -4423,10 +4588,21 @@ func (s *Sandbox) waitForEnvdDurationAttrs(startType StartType, e error) []attri
 		attribute.Bool("success", e == nil),
 		attribute.String("start_type", string(startType)),
 		attribute.String("exit_type", string(classifyEnvdInitExit(e))),
+		s.envdRunningVersionAttr(),
+		attribute.String("loop", string(s.envdInitLoop())),
 		s.teamAttr(),
 	}
 
 	return append(attrs, s.envdProtectionAttrs()...)
+}
+
+// envdInitLoop is the loop the handle's most recent initEnvd ran, legacy before any ran.
+func (s *Sandbox) envdInitLoop() envdInitLoop {
+	if l := s.lastEnvdInitLoop.Load(); l != nil {
+		return *l
+	}
+
+	return envdInitLoopLegacy
 }
 
 func releaseCgroupFD(ctx context.Context, cgroupHandle *cgroup.CgroupHandle, sandboxID string) {
@@ -4441,6 +4617,38 @@ func (f *Factory) GetEnvdInitRequestTimeout(ctx context.Context) time.Duration {
 	envdInitRequestTimeoutMs := f.featureFlags.IntFlag(ctx, featureflags.EnvdInitTimeoutMilliseconds)
 
 	return time.Duration(envdInitRequestTimeoutMs) * time.Millisecond
+}
+
+const (
+	// envdWaitPerVolume extends the envd wait for each volume. envd mounts volumes one at
+	// a time on every start and resume, about 28 ms each with a healthy NFS proxy.
+	envdWaitPerVolume = 100 * time.Millisecond
+
+	// envdWaitForStalledMount lets envd report which volume failed before the wait ends.
+	// envd gives one volume at most 20 s (nfsVolumeBudget: two 10 s mount attempts, the
+	// mount point created within them); the extra 10 s covers another volume that stalls
+	// once and then mounts.
+	envdWaitForStalledMount = 30 * time.Second
+
+	// envdWaitDeadlineMargin is left before the request's deadline, so a resume whose
+	// volumes run out of time fails and cleans up before the request is cancelled.
+	envdWaitDeadlineMargin = 2 * time.Second
+)
+
+// envdWaitForVolumes is how long to wait for envd's /init to mount volumes. The time
+// added for volumes ends envdWaitDeadlineMargin before ctx's deadline; the wait is never
+// shorter than envdTimeout.
+func envdWaitForVolumes(ctx context.Context, envdTimeout time.Duration, volumes int) time.Duration {
+	if volumes == 0 {
+		return envdTimeout
+	}
+
+	wait := envdTimeout + envdWaitForStalledMount + time.Duration(volumes)*envdWaitPerVolume
+	if deadline, ok := ctx.Deadline(); ok {
+		wait = max(envdTimeout, min(wait, time.Until(deadline)-envdWaitDeadlineMargin))
+	}
+
+	return wait
 }
 
 func (f *Factory) GetEnvdTimeout(ctx context.Context) time.Duration {

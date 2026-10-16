@@ -200,3 +200,19 @@ func TestParseInstanceGroupName(t *testing.T) {
 		assert.Equal(t, "orch-client-pool-region-rig", config.InstanceGroupName)
 	})
 }
+
+func TestParseTLS(t *testing.T) {
+	t.Setenv("E2B_TLS_GRPC_MODE", "permissive")
+	t.Setenv("E2B_TLS_GRPC_HEALTH_PATHS", "/health")
+	t.Setenv("E2B_TLS_PEERS_CLIENT_MODE", "on")
+	t.Setenv("E2B_TLS_PEERS_EXPECT", "spiffe://td.example.internal/ns/nodes/sa/node")
+	t.Setenv("E2B_TLS_PEERS_SERVER_NAME", "node.td.example.internal")
+
+	config, err := Parse()
+	require.NoError(t, err)
+	assert.Equal(t, "permissive", config.TLS.GRPC.Mode)
+	assert.Equal(t, []string{"/health"}, config.TLS.GRPC.HealthPaths)
+	assert.Equal(t, "on", config.TLS.Peers.Mode)
+	assert.Equal(t, []string{"spiffe://td.example.internal/ns/nodes/sa/node"}, config.TLS.Peers.Expect)
+	assert.Equal(t, "node.td.example.internal", config.TLS.Peers.ServerName)
+}

@@ -2,6 +2,7 @@ package team
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,6 +44,32 @@ func TestCheckTeamBanned(t *testing.T) {
 
 			var forbidden *ForbiddenError
 			assert.ErrorAs(t, err, &forbidden)
+		})
+	}
+}
+
+func TestCheckTeamDeletedRefusesOnlyADeletedTeam(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		team    authqueries.Team
+		allowed bool
+	}{
+		"live team":    {team: authqueries.Team{}, allowed: true},
+		"deleted team": {team: authqueries.Team{IsBlocked: true, DeletedAt: new(time.Now())}, allowed: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := CheckTeamDeleted(tc.team)
+			if tc.allowed {
+				require.NoError(t, err)
+
+				return
+			}
+
+			var forbidden *ForbiddenError
+			require.ErrorAs(t, err, &forbidden)
 		})
 	}
 }

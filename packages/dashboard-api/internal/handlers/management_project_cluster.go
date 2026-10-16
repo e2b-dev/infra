@@ -27,6 +27,9 @@ func (s *APIStore) ManagementRegisterCluster(c *gin.Context, clusterID api.Clust
 		Token:              body.Token,
 		SandboxProxyDomain: body.SandboxProxyDomain,
 		AuthOrgID:          body.AuthOrgId,
+		// An authorized replacement keeps the descriptor and assignments but
+		// generates a new edge credential. Generic admin creation stays strict.
+		RefreshToken: true,
 		// A cluster registered through the management API belongs to a
 		// deployment its caller also tears down, so it starts unprotected.
 		// Registering an existing cluster again keeps its stored protection.

@@ -209,6 +209,21 @@ Each service reads its configuration from a `.env.local` file in its package dir
 | `packages/shared/scripts/.env.local` | Build scripts: API keys and URL for template builds |
 | `tests/integration/.env.local` | Integration test config: API URL, test credentials |
 
+# Unit tests that need PostgreSQL
+
+The database tests in `packages/db`, `packages/api`, `packages/dashboard-api` and `packages/local-dev` share one PostgreSQL server, named by `PG_TEST_DATABASE_URL`. Each test gets its own database, copied from a template, and dropped when the test ends. A disposable server tuned for tests keeps them fast:
+
+```bash
+docker run -d --rm --name e2b-test-postgres -p 55432:5432 --tmpfs /var/lib/postgresql \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_INITDB_ARGS="--no-sync -c max_connections=500 -c fsync=off -c synchronous_commit=off -c full_page_writes=off" \
+  postgres:18-alpine
+export PG_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:55432/postgres?sslmode=disable"
+(cd packages/db && go test ./...)
+```
+
+Without the variable those tests fail; `go test -short` skips them.
+
 # Troubleshooting
 
 ### `/dev/kvm` not found

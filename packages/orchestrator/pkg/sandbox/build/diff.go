@@ -29,6 +29,9 @@ const (
 type Diff interface {
 	io.Closer
 	block.FramedReader
+	// FramedSlicer must return caller-owned bytes whose lifetime does not depend
+	// on the Diff remaining open; cache eviction may close a Diff immediately
+	// after Slice returns.
 	block.FramedSlicer
 	CacheKey() DiffStoreKey
 	CachePath(ctx context.Context) (string, error)

@@ -211,6 +211,24 @@ func (e SandboxOnTimeout) Valid() bool {
 	}
 }
 
+// Defines values for SandboxPauseMode.
+const (
+	Filesystem SandboxPauseMode = "filesystem"
+	Full       SandboxPauseMode = "full"
+)
+
+// Valid indicates whether the value is a known member of the SandboxPauseMode enum.
+func (e SandboxPauseMode) Valid() bool {
+	switch e {
+	case Filesystem:
+		return true
+	case Full:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for SandboxState.
 const (
 	Paused  SandboxState = "paused"
@@ -1047,6 +1065,9 @@ type SandboxDetail struct {
 	Metadata *SandboxMetadata      `json:"metadata,omitempty"`
 	Network  *SandboxNetworkConfig `json:"network,omitempty"`
 
+	// PauseMode What the sandbox's latest pause saved. `full` saved the filesystem and the memory, and resuming restores the sandbox where it left off. `filesystem` saved only the filesystem, and resuming reboots the sandbox from disk. Returned for a paused sandbox once its pause has finished, and omitted while it is still pausing.
+	PauseMode *SandboxPauseMode `json:"pauseMode,omitempty"`
+
 	// SandboxID Identifier of the sandbox
 	SandboxID string `json:"sandboxID"`
 
@@ -1299,6 +1320,9 @@ type SandboxNetworkUpdateConfig struct {
 
 // SandboxOnTimeout Action taken when the sandbox times out.
 type SandboxOnTimeout string
+
+// SandboxPauseMode What the sandbox's latest pause saved. `full` saved the filesystem and the memory, and resuming restores the sandbox where it left off. `filesystem` saved only the filesystem, and resuming reboots the sandbox from disk. Returned for a paused sandbox once its pause has finished, and omitted while it is still pausing.
+type SandboxPauseMode string
 
 // SandboxPauseRequest defines model for SandboxPauseRequest.
 type SandboxPauseRequest struct {

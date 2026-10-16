@@ -16,6 +16,15 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
+// RequestTimeout is the context deadline applied to each API request. It
+// bounds work a request leaves running for other requests too, such as the
+// shared sandbox list read, which must never be cut shorter than a request's
+// own read would have been. It must stay below the HTTP server's write
+// timeout so the context cancels before the write deadline kills the
+// connection (WriteTimeout does NOT cancel r.Context(); see
+// https://github.com/golang/go/issues/59602).
+const RequestTimeout = 70 * time.Second
+
 const (
 	// ServiceDiscoveryProviderNomad queries Nomad's HTTP API (the original / Nomad-based deploy).
 	ServiceDiscoveryProviderNomad = "nomad"
@@ -174,6 +183,9 @@ type Config struct {
 	// OutboxBacklogInterval is how often the outbox backlog gauges are read
 	// from the database.
 	OutboxBacklogInterval time.Duration `env:"OUTBOX_BACKLOG_INTERVAL" envDefault:"30s"`
+
+	// TLS is the mutual TLS settings of the api's ports and client hops.
+	TLS TLSConfig
 }
 
 type FailureCondition string

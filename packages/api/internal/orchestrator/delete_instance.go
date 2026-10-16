@@ -100,6 +100,10 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 				return PauseQueueExhaustedError{}
 			}
 
+			if errors.Is(err, sandbox.ErrExecutionMismatch) {
+				return ErrExecutionChanged
+			}
+
 			logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 			return ErrSandboxOperationFailed

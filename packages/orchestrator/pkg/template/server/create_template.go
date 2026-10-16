@@ -176,7 +176,6 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		telemetry.WithBuildID(cfg.GetBuildID()),
 		telemetry.WithKernelVersion(kernelVersion),
 		telemetry.WithFirecrackerVersion(firecrackerVersion),
-		attribute.String("env.start_cmd", cfg.GetStartCommand()),
 		attribute.Int64("env.memory_mb", int64(cfg.GetMemoryMB())),
 		attribute.Int64("env.vcpu_count", int64(cfg.GetVCpuCount())),
 		attribute.Bool("env.huge_pages", hugePages),

@@ -12,6 +12,8 @@ import (
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
 	clickhouse "github.com/e2b-dev/infra/packages/clickhouse/pkg"
@@ -39,6 +41,7 @@ type Cluster struct {
 	ID            uuid.UUID
 	SandboxDomain *string
 	AuthOrgID     string
+	edgeToken     string
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[servicediscovery.Instance, *Instance]
@@ -76,16 +79,18 @@ func newLocalCluster(
 	sandboxLogsReader ClickhouseLogsReader,
 	featureFlags *featureflags.Client,
 	config cfg.Config,
+	localCreds credentials.TransportCredentials,
+	onInstanceJoined func(),
 ) *Cluster {
 	clusterID := consts.LocalClusterID
 
 	instances := smap.New[*Instance]()
 	instanceCreation := func(ctx context.Context, item servicediscovery.Instance) (*Instance, error) {
 		// For local cluster we are doing direct connection to instance IP and API port and without additional cluster auth.
-		return newInstance(ctx, tel, nil, clusterID, item, item.Address(), false)
+		return newInstance(ctx, tel, nil, clusterID, item, item.Address(), false, localCreds)
 	}
 
-	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation}
+	store := instancesSyncStore{clusterID: clusterID, instances: instances, discovery: storeDiscovery, instanceCreation: instanceCreation, onInsert: onInstanceJoined}
 
 	c := NewCluster(
 		clusterID,
@@ -146,7 +151,7 @@ func newRemoteCluster(
 	instanceCreation := func(ctx context.Context, item servicediscovery.Instance) (*Instance, error) {
 		// A remote cluster is reached through an endpoint acting as a gRPC proxy,
 		// which handles auth and routing for us.
-		return newInstance(ctx, tel, remoteInstanceAuthorization(secret, endpointTLS, item), clusterID, item, endpoint, endpointTLS)
+		return newInstance(ctx, tel, remoteInstanceAuthorization(secret, endpointTLS, item), clusterID, item, endpoint, endpointTLS, insecure.NewCredentials())
 	}
 
 	storeDiscovery := servicediscovery.NewRemote(httpClient)
@@ -160,6 +165,7 @@ func newRemoteCluster(
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
 	)
+	c.edgeToken = secret
 
 	return c, nil
 }

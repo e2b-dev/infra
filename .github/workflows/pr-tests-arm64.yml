@@ -33,6 +33,12 @@ jobs:
           go-version-file: go.work
           cache: false
 
+      # One reset of a module proxy stream fails the job otherwise; see
+      # go-setup-cache for the mechanism.
+      - name: Retry module proxy errors
+        shell: bash
+        run: echo 'GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct' | tee -a "$GITHUB_ENV"
+
       - name: Restore ARM64 Go cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -79,13 +85,43 @@ jobs:
       GIN_MODE: test
       # Parallel `go test ./...` binaries derive the same Ryuk session id
       # and race on `reaper_<hash>` creation. Disable Ryuk; t.Cleanup
-      # handles normal exit, the prune step below handles abnormal exit.
+      # handles normal exit, and every shard runs on a fresh VM, so
+      # containers left by an abnormal exit die with it.
       TESTCONTAINERS_RYUK_DISABLED: "true"
+      # The shards that set postgres share one server: each test copies its
+      # own database from a migrated template on it.
+      PG_TEST_DATABASE_URL: ${{ matrix.postgres && 'postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' || '' }}
+    # Service containers take no server flags, so the settings go in through
+    # POSTGRES_INITDB_ARGS, which writes them into postgresql.conf. Durability
+    # is traded for speed, and max_connections covers the parallel tests of
+    # every package go test runs at once. An empty image skips the service.
+    services:
+      postgres:
+        image: ${{ matrix.postgres && 'postgres:18-alpine' || '' }}
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_INITDB_ARGS: >-
+            --no-sync
+            -c max_connections=500
+            -c fsync=off
+            -c synchronous_commit=off
+            -c full_page_writes=off
+        ports:
+          - 5432:5432
+        options: >-
+          --tmpfs /var/lib/postgresql
+          --health-cmd "pg_isready --host 127.0.0.1 --username postgres"
+          --health-interval 2s
+          --health-start-period 30s
+          --health-start-interval 200ms
+          --health-timeout 5s
+          --health-retries 30
     strategy:
       matrix:
         include:
           - package: packages/api
             test_path: ./...
+            postgres: true
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404-arm
           - package: packages/client-proxy
@@ -94,6 +130,7 @@ jobs:
             runner: blacksmith-4vcpu-ubuntu-2404-arm
           - package: packages/db
             test_path: ./...
+            postgres: true
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404-arm
           # envd mounts via bindfs (FUSE, no modprobe); this shard doubles as
@@ -126,25 +163,6 @@ jobs:
 
       - name: Use the Docker Hub mirror
         uses: ./.github/actions/docker-hub-mirror
-
-      - name: Reap orphaned Testcontainers from previous runs
-        # Persistent runner + Ryuk disabled: prune leftover containers
-        # from SIGKILL/timeout/OOM in prior jobs.
-        # Two `docker ps` calls because different filter keys AND inside
-        # one call. Don't anchor `name=^reaper_` — Docker silently drops
-        # anchored patterns (docker/cli#1201).
-        run: |
-          set -euo pipefail
-          ids=$(
-            {
-              docker ps -aq --filter "label=org.testcontainers=true"
-              docker ps -aq --filter "name=reaper_"
-            } | sort -u
-          )
-          if [ -n "${ids}" ]; then
-            # shellcheck disable=SC2086
-            docker rm -f ${ids}
-          fi
 
       - name: Setup envd tests
         run: |

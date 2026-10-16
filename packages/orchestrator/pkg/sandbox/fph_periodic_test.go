@@ -187,10 +187,10 @@ func TestHintDecisionInput_CheckpointEndIsNeverMissed(t *testing.T) {
 				return
 			default:
 			}
-			if !assert.True(t, s.BeginInPlaceCheckpoint()) {
+			if !assert.True(t, s.BeginCheckpoint()) {
 				return
 			}
-			s.EndInPlaceCheckpoint()
+			s.EndCheckpoint()
 		}
 	})
 	require.Eventually(t, func() bool { return s.lastCheckpointEndedAt.Load() != 0 }, time.Second, time.Millisecond)
@@ -390,14 +390,14 @@ func TestRunPeriodicHintingLoop_ObserveOnly(t *testing.T) {
 
 	// The control is gated like a treated sandbox: a tick the gate would have
 	// skipped is labelled by the reason and stays out of the baseline.
-	require.True(t, s.BeginInPlaceCheckpoint())
+	require.True(t, s.BeginCheckpoint())
 	require.Eventually(t, func() bool { return o.has("skipped-checkpoint-in-flight") }, 2*time.Second, 5*time.Millisecond)
 	mem.pages.Add(4)
 	require.Eventually(t, func() bool {
 		return slices.Contains(o.faultsFor(hintWindowInterval, "skipped-checkpoint-in-flight")["served"], int64(4))
 	}, 2*time.Second, 5*time.Millisecond)
 	assert.NotContains(t, o.faultsFor(hintWindowInterval, hintLabelObserveOnly)["served"], int64(4))
-	s.EndInPlaceCheckpoint()
+	s.EndCheckpoint()
 }
 
 // A sandbox inside its quiet window is never drained.
@@ -420,7 +420,7 @@ func TestRunPeriodicHintingLoop_QuietAfterStart(t *testing.T) {
 func TestRunPeriodicHintingLoop_CheckpointGate(t *testing.T) {
 	t.Parallel()
 	s, o := newFPHTestSandboxAt(time.Now().Add(-time.Minute))
-	require.True(t, s.BeginInPlaceCheckpoint())
+	require.True(t, s.BeginCheckpoint())
 	r := &fakeRunner{}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -432,7 +432,7 @@ func TestRunPeriodicHintingLoop_CheckpointGate(t *testing.T) {
 		assert.Equal(t, "skipped-checkpoint-in-flight", oc)
 	}
 
-	s.EndInPlaceCheckpoint()
+	s.EndCheckpoint()
 	require.Eventually(t, func() bool { return o.has("skipped-quiet-after-checkpoint") }, 2*time.Second, 5*time.Millisecond, "the end of a checkpoint opens a quiet window")
 	assert.Zero(t, r.drains.Load(), "no runs inside the quiet window")
 
@@ -816,12 +816,12 @@ func TestRunPeriodicHintingLoop_LatchedRetryNotSpentBySkips(t *testing.T) {
 
 	// The retry cadence passes while a checkpoint is in flight: every tick in
 	// that window is skipped and must not re-arm the retry.
-	require.True(t, s.BeginInPlaceCheckpoint())
+	require.True(t, s.BeginCheckpoint())
 	time.Sleep(650 * time.Millisecond)
 	assert.True(t, o.has("skipped-checkpoint-in-flight"))
 	drains := r.drains.Load()
 	engaged.Store(true)
-	s.EndInPlaceCheckpoint()
+	s.EndCheckpoint()
 	start := time.Now()
 	require.Eventually(t, func() bool { return r.drains.Load() > drains }, 2*time.Second, 5*time.Millisecond)
 	assert.Less(t, time.Since(start), 250*time.Millisecond, "the attempt follows the quiet window, not a fresh retry period")

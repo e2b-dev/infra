@@ -1391,6 +1391,22 @@ func TestRestoreRunning_RefusesAnotherExecution(t *testing.T) {
 	require.ErrorIs(t, err, sandboxtypes.ErrExecutionMismatch, "an empty pin does not match a record that carries an execution")
 }
 
+func TestStorage_RecordWithoutNetworkPlacement(t *testing.T) {
+	t.Parallel()
+
+	storage, client := setupTestStorage(t)
+	ctx := t.Context()
+
+	teamID := uuid.New()
+	old := `{"sandboxID":"sbx-old","teamID":"` + teamID.String() + `","executionID":"exec-1","nodeID":"node-1","state":"running"}`
+	require.NoError(t, client.Set(ctx, getSandboxKey(teamID.String(), "sbx-old"), old, time.Minute).Err())
+
+	got, err := storage.Get(ctx, teamID, "sbx-old")
+	require.NoError(t, err)
+	assert.Equal(t, "exec-1", got.ExecutionID)
+	assert.Nil(t, got.NetworkPlacement)
+}
+
 // Add bypasses the storage lock and can replace the record before the CAS.
 func TestRestoreRunning_RefusesWhenTheRecordChangesUnderIt(t *testing.T) {
 	t.Parallel()

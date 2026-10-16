@@ -94,7 +94,7 @@ func TestOfflineGateDefersWhenTheBinaryIsNotCached(t *testing.T) {
 	// Cache empty: the resolver misses, refuses to probe the source, and the swap
 	// must be deferred rather than staged off the mount during a boot.
 	require.Nil(t,
-		f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true),
+		f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true, nil),
 		"an uncached binary must defer the swap, not read the mount")
 
 	drainWarm(t, f, src)
@@ -118,8 +118,65 @@ func TestOfflineGateSwapsOnceTheBinaryIsCached(t *testing.T) {
 	// returns a pre-boot to run. Without this, the test above would pass just as
 	// well against a gate that refuses everything.
 	require.NotNil(t,
-		f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true),
+		f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true, nil),
 		"a cached binary newer than built-with must still swap")
+}
+
+func TestOfflineSwapRecordsTheVersionItPutOnTheRootfs(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		swapErr error
+		want    string
+	}{
+		{name: "swapped", want: "0.9.0"},
+		{name: "swap failed, original kept", swapErr: errors.New("swap failed"), want: ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := t.TempDir()
+			src := filepath.Join(dir, "envd")
+			writeEnvdImage(t, src, "0.9.0")
+
+			f := offlineGateFactory(t, src, filepath.Join(dir, "cache"), true)
+			require.NoError(t, f.envdBinCache.Warm(t.Context(), src))
+			f.swapEnvdBinary = func(context.Context, string, string) (rootfs.SwapResult, error) {
+				return rootfs.SwapResult{}, tc.swapErr
+			}
+
+			config := &Config{Envd: EnvdMetadata{Version: "0.6.12"}}
+			runtime := sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}
+			var swappedTo string
+			preBoot := f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true, &swappedTo)
+			require.NotNil(t, preBoot)
+			require.NoError(t, preBoot(t.Context(), filepath.Join(dir, "rootfs")))
+
+			require.Equal(t, tc.want, swappedTo, "the running-version label holds only a version that reached the rootfs")
+		})
+	}
+}
+
+func TestOfflineResolutionRecordsTheTargetVersionItRead(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	src := filepath.Join(dir, "envd")
+	writeEnvdImage(t, src, "0.9.0")
+
+	f := offlineGateFactory(t, src, filepath.Join(dir, "cache"), true)
+	f.envdTargets = &envdTargetVersions{}
+	require.NoError(t, f.envdBinCache.Warm(t.Context(), src))
+
+	// Already on the target: no swap, but a sandbox upgraded to it in an earlier life
+	// reports it, so the label must hold it.
+	config := &Config{Envd: EnvdMetadata{Version: "0.9.0"}}
+	runtime := sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}
+	require.Nil(t, f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true, nil))
+
+	require.True(t, f.envdTargets.holds("0.9.0"), "the resolved target version is held")
+	require.False(t, f.envdTargets.holds("0.6.12"), "nothing else is")
 }
 
 // writeEnvdImage writes a stand-in envd that is a well-formed ELF image the
@@ -190,7 +247,7 @@ func TestOfflineGateFlagOffStillReadsTheSource(t *testing.T) {
 	runtime := sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}
 
 	require.NotNil(t,
-		f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true),
+		f.envdOfflineUpgradePreBoot(t.Context(), config, runtime, true, nil),
 		"flag off must keep swapping from the source, cache or no cache")
 }
 
@@ -293,7 +350,7 @@ func TestOfflinePreBootDefersWhenTheCachedCopyIsRetired(t *testing.T) {
 
 	preBoot := f.envdOfflineUpgradePreBoot(t.Context(),
 		&Config{Envd: EnvdMetadata{Version: "0.6.12"}},
-		sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}, true)
+		sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}, true, nil)
 	require.NotNil(t, preBoot, "a cached target newer than built-with resolves a swap")
 
 	// Exactly what a promotion does between the resolve and the boot.
@@ -325,7 +382,7 @@ func TestOfflinePreBootSwapsFromTheCachedCopy(t *testing.T) {
 
 	preBoot := f.envdOfflineUpgradePreBoot(t.Context(),
 		&Config{Envd: EnvdMetadata{Version: "0.6.12"}},
-		sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}, true)
+		sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}, true, nil)
 	require.NotNil(t, preBoot)
 
 	rootfsPath := filepath.Join(dir, "rootfs.ext4")
@@ -375,7 +432,7 @@ func TestOfflinePreBootFailsTheBootOnlyWhenTheRootfsIsUnbootable(t *testing.T) {
 
 			preBoot := f.envdOfflineUpgradePreBoot(t.Context(),
 				&Config{Envd: EnvdMetadata{Version: "0.6.12"}},
-				sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}, true)
+				sandboxtypes.RuntimeMetadata{SandboxID: "sbx", TemplateID: "tpl"}, true, nil)
 			require.NotNil(t, preBoot)
 
 			err := preBoot(t.Context(), filepath.Join(dir, "rootfs.ext4"))

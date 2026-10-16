@@ -60,7 +60,7 @@ func TestPlaceSandbox_RefusedNodeIsRetried(t *testing.T) {
 
 	var picks []string
 	result, err := placeSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-retry"),
-		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{})
+		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{}, time.Time{})
 
 	require.NoError(t, err)
 	assert.Equal(t, only.ID, result.Node.ID)
@@ -108,7 +108,7 @@ func TestPlaceSandbox_DeadlineEndsRefusalBackoff(t *testing.T) {
 	var picks []string
 	start := time.Now()
 	result, err := placeSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-deadline"),
-		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{base: time.Hour, max: time.Hour})
+		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{base: time.Hour, max: time.Hour}, time.Time{})
 
 	assert.Less(t, time.Since(start), 5*time.Second)
 

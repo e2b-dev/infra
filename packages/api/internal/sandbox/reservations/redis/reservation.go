@@ -21,11 +21,19 @@ const (
 	// PubSub wakeup arrives
 	fallbackPollInterval = 1 * time.Second
 
-	// staleTTL is the maximum age of a pending entry before it is considered stale
+	// StaleTTL is the maximum age of a pending entry before it is considered stale
 	// and cleaned up. This handles the case where an API instance crashes mid-creation.
 	// 90 seconds is well beyond any realistic sandbox creation time.
-	staleTTL = 90 * time.Second
+	StaleTTL = 90 * time.Second
 )
+
+// ReapableAt is the earliest instant another reserver can purge a pending
+// entry reserved at reservedAt: the entry's score and the purge cutoff are
+// whole seconds and the purge is inclusive. Work that runs on for a caller
+// that left (a resume create and its bookkeeping) must end before it.
+func ReapableAt(reservedAt time.Time) time.Time {
+	return reservedAt.Truncate(time.Second).Add(StaleTTL)
+}
 
 var _ sandboxtypes.ReservationStorage = (*ReservationStorage)(nil)
 
@@ -54,7 +62,7 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	resultKeyStr := getResultKey(teamIDStr, sandboxID)
 
 	now := float64(time.Now().Unix())
-	staleCutoff := float64(time.Now().Add(-staleTTL).Unix())
+	staleCutoff := float64(time.Now().Add(-StaleTTL).Unix())
 
 	result, err := reserveScript.Run(ctx, s.redisClient,
 		[]string{storageIndexKey, pendingSetKey, resultKeyStr},

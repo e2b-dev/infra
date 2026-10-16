@@ -95,3 +95,39 @@ func TestGetTeamsDefaultProject(t *testing.T) {
 		})
 	}
 }
+
+// A deleted default team keeps its membership, but the listing leaves it out,
+// mints it no key, and falls back to the remaining team as the default.
+func TestGetTeamsLeavesOutADeletedTeam(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	userID := uuid.New()
+	require.NoError(t, db.AuthDB.UpsertPublicUser(t.Context(), userID))
+	deletedTeam := testutils.CreateTestTeam(t, db)
+	liveTeam := testutils.CreateTestTeam(t, db)
+	for teamID, isDefault := range map[uuid.UUID]bool{deletedTeam: true, liveTeam: false} {
+		require.NoError(t, db.AuthDB.CreateTeamMembership(t.Context(), authqueries.CreateTeamMembershipParams{
+			UserID: userID, TeamID: teamID, IsDefault: isDefault,
+		}))
+	}
+	require.NoError(t, db.AuthDB.TestsRawSQL(t.Context(),
+		"UPDATE public.teams SET deleted_at = now(), is_blocked = true WHERE id = $1", deletedTeam))
+
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/teams", nil)
+	auth.SetUserIDForTest(t, ctx, userID)
+
+	(&APIStore{authDB: db.AuthDB}).GetTeams(ctx)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+	var teams []api.Team
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &teams))
+	require.Len(t, teams, 1)
+	require.Equal(t, liveTeam.String(), teams[0].TeamID)
+	require.True(t, teams[0].IsDefault)
+	keys, err := db.AuthDB.GetTeamAPIKeyHashes(t.Context(), deletedTeam)
+	require.NoError(t, err)
+	require.Empty(t, keys)
+}

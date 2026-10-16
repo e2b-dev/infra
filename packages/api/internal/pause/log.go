@@ -21,13 +21,17 @@ const (
 	SkipReasonAlreadyPaused SkipReason = "already_paused"
 	SkipReasonNotEvictable  SkipReason = "not_evictable"
 	SkipReasonNotFound      SkipReason = "not_found"
-	// SkipReasonStateChanged: the sandbox moved, between the expiry scan and
-	// the removal, into a state pause cannot start from.
+	// SkipReasonStateChanged: between the caller's read and the removal, the
+	// sandbox moved into a state pause cannot start from, or a resume
+	// replaced the execution the pause was pinned to.
 	SkipReasonStateChanged     SkipReason = "state_changed"
 	SkipReasonAdmissionRefused SkipReason = "admission_refused"
 	// SkipReasonDraining: this replica is shutting down and stopped admitting
 	// pauses, so the sandbox is left running for a retry elsewhere.
 	SkipReasonDraining SkipReason = "draining"
+	// SkipReasonRateLimited: the sandbox used up its pause budget for the
+	// period, so the sandbox is left running.
+	SkipReasonRateLimited SkipReason = "rate_limited"
 )
 
 // fsOnly rides on every pause event so the snapshot kind can be joined to the

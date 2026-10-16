@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -410,6 +411,23 @@ func (b *StorageDiff) BlockSize() int64 {
 // Side-effect-free.
 func (b *StorageDiff) IsCached(ctx context.Context, off, length int64) bool {
 	return b.chunker.IsCached(ctx, off, length)
+}
+
+// WaitFetched returns once no fetch overlaps [off, off+length) in the
+// chunker, or ctx ends. See block.Chunker.WaitFetched.
+func (b *StorageDiff) WaitFetched(ctx context.Context, off, length int64) error {
+	return b.chunker.WaitFetched(ctx, off, length)
+}
+
+// FetchTimeout is the chunker's bound on a single chunk fetch.
+func (b *StorageDiff) FetchTimeout() time.Duration {
+	return b.chunker.FetchTimeout()
+}
+
+// DiscardRuns returns the runs to not-present in the chunker's cache and
+// punches them, so a later read refetches from upstream. See block.Chunker.DiscardRuns.
+func (b *StorageDiff) DiscardRuns(runs []block.Range) (block.DiscardStats, error) {
+	return b.chunker.DiscardRuns(runs)
 }
 
 func refreshHeader(ctx context.Context, persistence storage.StorageProvider, buildID uuid.UUID, diffType DiffType, cause string) (*header.Header, error) {

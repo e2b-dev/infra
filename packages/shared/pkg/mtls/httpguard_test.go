@@ -129,6 +129,18 @@ func TestHTTPGuardRequiredAdmitsPlaintextOnlyToHealth(t *testing.T) {
 	assert.False(t, reached)
 }
 
+// A list read from the environment is split on commas untrimmed.
+func TestHTTPGuardTrimsHealthPaths(t *testing.T) {
+	t.Parallel()
+
+	fx := newFixture(t, serverDNS)
+	cfg := newServerConfig(t, fx, StaticMode(ModeRequired), clientID)
+
+	code, _, reached := guarded(t, cfg, []string{"/health", " /ready", ""}, plainRequest(t, http.MethodGet, "/ready"))
+	assert.Equal(t, http.StatusNoContent, code)
+	assert.True(t, reached)
+}
+
 func TestHTTPGuardRefusesHealthLookAlikes(t *testing.T) {
 	t.Parallel()
 

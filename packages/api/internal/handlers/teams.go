@@ -35,6 +35,12 @@ func (a *APIStore) GetTeams(c *gin.Context) {
 		return bytes.Compare(a.Team.ID[:], b.Team.ID[:])
 	})
 
+	// A deleted team keeps its memberships but is no longer the user's to use,
+	// so it is not listed and gets no new API key.
+	results = slices.DeleteFunc(results, func(row authqueries.GetTeamsWithUsersTeamsRow) bool {
+		return row.Team.DeletedAt != nil
+	})
+
 	teams := make([]api.Team, len(results))
 	hasDefault := false
 	for i, row := range results {

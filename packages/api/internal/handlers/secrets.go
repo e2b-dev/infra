@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -16,7 +17,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	_ "google.golang.org/grpc/health" // Registers the client side of healthCheckConfig.
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -24,11 +25,13 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware"
-	managementv1 "github.com/e2b-dev/infra/packages/api/internal/secretsstore/management/v1"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	managementv1 "github.com/e2b-dev/infra/packages/shared/pkg/grpc/contracts/secretsstore/management"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/secretsstore"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -39,6 +42,10 @@ const (
 	// is already shorter wins, since context.WithTimeout keeps the earlier one.
 	secretsBackendTimeout  = 25 * time.Second
 	secretLimitReachedCode = "secret_limit_reached"
+
+	// Live secrets a project may hold unless a flag rule says otherwise.
+	baseTierProjectSecretsLimit = 10
+	paidTierProjectSecretsLimit = 100
 
 	// secretsReadinessService is the health service a backend reports SERVING
 	// only while it can take management calls.
@@ -59,17 +66,18 @@ var (
 
 // newSecretsManagementClient dials nothing: grpc.NewClient only prepares the
 // connection, so a backend that is down or not yet deployed cannot keep the API
-// from starting. The hop is private, in-cluster and plaintext by decision, it
-// carries no credential of any kind, and a call that may have reached the
-// backend is never replayed by the transport. gRPC may still transparently
-// retry a call that it knows never reached the server's application code.
+// from starting. The hop is private and in-cluster; it dials through creds,
+// plaintext while its mutual TLS mode is off, and carries no other credential.
+// A call that may have reached the backend is never replayed by the transport.
+// gRPC may still transparently retry a call that it knows never reached the
+// server's application code.
 //
 // address is a gRPC target used as given. A plain "host:port" goes through
 // the default DNS resolver. With a headless Service name every ready backend
 // address becomes its own connection. The client resolves again whenever a
 // connection closes, so a backend that rotates its connections by age lets it
 // find replicas added later.
-func newSecretsManagementClient(address string) (*grpc.ClientConn, error) {
+func newSecretsManagementClient(address string, creds credentials.TransportCredentials) (*grpc.ClientConn, error) {
 	// Calls are spread over every resolved backend address, and only to a
 	// backend whose readiness health service reports SERVING. A backend without
 	// the health service is still picked: gRPC treats its UNIMPLEMENTED answer
@@ -84,7 +92,7 @@ func newSecretsManagementClient(address string) (*grpc.ClientConn, error) {
 
 	conn, err := grpc.NewClient(
 		address,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(otelgrpc.NewClientHandler()),
 		// Turns off configured retries, whatever any service config says.
 		grpc.WithDisableRetry(),
@@ -102,7 +110,7 @@ func newSecretsManagementClient(address string) (*grpc.ClientConn, error) {
 
 // PostSecrets creates a secret with its first version.
 func (a *APIStore) PostSecrets(c *gin.Context) {
-	client, projectID, ok := a.secretsBackend(c)
+	client, projectID, team, ok := a.secretsBackend(c)
 	if !ok {
 		return
 	}
@@ -127,10 +135,11 @@ func (a *APIStore) PostSecrets(c *gin.Context) {
 	defer cancel()
 
 	response, err := client.CreateSecret(ctx, &managementv1.CreateSecretRequest{
-		ProjectId: projectID,
-		Name:      name,
-		Value:     value,
-		Metadata:  secretMetadataValues(body.Metadata),
+		ProjectId:           projectID,
+		Name:                name,
+		Value:               value,
+		Metadata:            secretMetadataValues(body.Metadata),
+		ProjectSecretsLimit: a.projectSecretsLimit(ctx, team.Tier),
 	})
 	if err != nil {
 		a.sendSecretsBackendError(c, err)
@@ -150,7 +159,7 @@ func (a *APIStore) PostSecrets(c *gin.Context) {
 
 // GetSecrets lists the project's secrets.
 func (a *APIStore) GetSecrets(c *gin.Context, params api.GetSecretsParams) {
-	client, projectID, ok := a.secretsBackend(c)
+	client, projectID, _, ok := a.secretsBackend(c)
 	if !ok {
 		return
 	}
@@ -201,7 +210,7 @@ func (a *APIStore) GetSecrets(c *gin.Context, params api.GetSecretsParams) {
 
 // GetSecretsSecretID returns one secret's metadata.
 func (a *APIStore) GetSecretsSecretID(c *gin.Context, secretID api.SecretID) {
-	client, projectID, ok := a.secretsBackend(c)
+	client, projectID, _, ok := a.secretsBackend(c)
 	if !ok {
 		return
 	}
@@ -238,7 +247,7 @@ func (a *APIStore) GetSecretsSecretID(c *gin.Context, secretID api.SecretID) {
 
 // PostSecretsSecretID replaces a secret's value by appending a version.
 func (a *APIStore) PostSecretsSecretID(c *gin.Context, secretID api.SecretID) {
-	client, projectID, ok := a.secretsBackend(c)
+	client, projectID, _, ok := a.secretsBackend(c)
 	if !ok {
 		return
 	}
@@ -293,7 +302,7 @@ func (a *APIStore) PostSecretsSecretID(c *gin.Context, secretID api.SecretID) {
 
 // DeleteSecretsSecretID revokes a secret.
 func (a *APIStore) DeleteSecretsSecretID(c *gin.Context, secretID api.SecretID) {
-	client, projectID, ok := a.secretsBackend(c)
+	client, projectID, _, ok := a.secretsBackend(c)
 	if !ok {
 		return
 	}
@@ -325,14 +334,14 @@ func (a *APIStore) DeleteSecretsSecretID(c *gin.Context, secretID api.SecretID) 
 // The gate is evaluated after authentication, and a missing backend address is
 // indistinguishable from a closed gate, so an unauthenticated or ungated caller
 // learns nothing about the rollout.
-func (a *APIStore) secretsBackend(c *gin.Context) (managementv1.SecretManagementServiceClient, string, bool) {
+func (a *APIStore) secretsBackend(c *gin.Context) (managementv1.SecretManagementServiceClient, string, *types.Team, bool) {
 	ctx := c.Request.Context()
 
 	team, ok := auth.GetTeamInfo(c)
 	if !ok || team == nil {
 		a.sendAPIStoreError(c, http.StatusUnauthorized, middleware.SecretsUnauthorizedMessage)
 
-		return nil, "", false
+		return nil, "", nil, false
 	}
 
 	telemetry.SetAttributes(ctx, telemetry.WithTeamID(team.ID.String()))
@@ -340,7 +349,7 @@ func (a *APIStore) secretsBackend(c *gin.Context) (managementv1.SecretManagement
 	if a.secretsManagement == nil || !a.featureFlags.BoolFlag(ctx, featureflags.CustomerSecretsFlag) {
 		a.sendAPIStoreError(c, http.StatusForbidden, middleware.SecretsUnavailableMessage)
 
-		return nil, "", false
+		return nil, "", nil, false
 	}
 
 	// The project is the team under the name the backend uses. The UUID is
@@ -348,7 +357,24 @@ func (a *APIStore) secretsBackend(c *gin.Context) (managementv1.SecretManagement
 	// wire, and no tenant field a client sent is consulted.
 	projectID := uuid.UUID(id.ConvertTeamIDToProjectID(team.ID)).String()
 
-	return a.secretsManagement, projectID, true
+	return a.secretsManagement, projectID, team, true
+}
+
+// projectSecretsLimit resolves the cap the backend enforces on a create. The
+// flag is evaluated with the request's contexts plus the team's tier, so a
+// rule can target the team or the tier; when it serves nothing, the tier
+// decides.
+func (a *APIStore) projectSecretsLimit(ctx context.Context, tier string) int32 {
+	limit := a.featureFlags.IntFlag(ctx, featureflags.MaxLiveSecretsPerProjectFlag, featureflags.TierContext(tier, tier))
+	if limit > 0 {
+		return int32(min(limit, math.MaxInt32))
+	}
+
+	if tier == constants.BaseTierID {
+		return baseTierProjectSecretsLimit
+	}
+
+	return paidTierProjectSecretsLimit
 }
 
 // rejectSecretsRequest answers a request the API itself refused. reason is a

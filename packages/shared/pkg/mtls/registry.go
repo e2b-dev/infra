@@ -18,6 +18,9 @@ type connEntry struct {
 	state ConnState
 	// peer is the SPIFFE ID of a TLS peer with one valid SPIFFE SAN; empty otherwise.
 	peer string
+	// underRequired marks a plaintext connection whose handshake read
+	// required, which admits plaintext only for its health checks.
+	underRequired bool
 }
 
 // connRegistry tracks open connections by remote address: what the
@@ -38,9 +41,9 @@ func newConnRegistry() *connRegistry {
 // address, which TCP keeps unique among open connections; on a transport
 // that does not, or with an empty key, a second open connection under the
 // key cannot be told from the first, so the record is kept unverified for
-// both and the caller logs it.
-func (r *connRegistry) add(key string, conn net.Conn, state ConnState) bool {
-	entry := &connEntry{conn: conn, state: state}
+// both, underRequired unset, and the caller logs it.
+func (r *connRegistry) add(key string, conn net.Conn, state ConnState, underRequired bool) bool {
+	entry := &connEntry{conn: conn, state: state, underRequired: underRequired}
 	if state.TLS && len(state.State.PeerCertificates) > 0 {
 		if id, err := PeerID(state.State.PeerCertificates[0]); err == nil {
 			entry.peer = id
@@ -87,13 +90,18 @@ func (r *connRegistry) lookup(key string) (ConnState, bool) {
 	return entry.state, true
 }
 
-// closeUnverified closes every connection a required handshake would refuse
-// now: plaintext ones, TLS ones whose chain did not verify, and TLS ones
-// whose peer has no identity or one that allowed does not admit. Permissive
-// admitted all of them; after a flip they are what must reconnect.
+// closeUnverified closes every connection required would not admit now:
+// plaintext ones a weaker mode admitted, TLS ones whose chain did not
+// verify, and TLS ones whose peer has no identity or one that allowed does
+// not admit. After a flip they are what must reconnect. A plaintext
+// connection required itself admitted, for a health check, stays.
 func (r *connRegistry) closeUnverified(allowed func(id string) bool) (int, error) {
 	return r.closeWhere(func(e *connEntry) bool {
-		return !e.state.TLS || !e.state.ChainVerified || e.peer == "" || !allowed(e.peer)
+		if !e.state.TLS {
+			return !e.underRequired
+		}
+
+		return !e.state.ChainVerified || e.peer == "" || !allowed(e.peer)
 	})
 }
 

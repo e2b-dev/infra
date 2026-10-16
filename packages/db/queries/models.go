@@ -72,6 +72,7 @@ type EnvBuild struct {
 	CpuFlags           []string
 	StatusGroup        types.BuildStatusGroup
 	TeamID             *uuid.UUID
+	FilesystemOnly     bool
 }
 
 type Snapshot struct {

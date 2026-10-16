@@ -315,6 +315,22 @@ func NewFlagClientModeSource(reader FlagReader, key string, fallback ClientMode,
 	return &FlagClientModeSource{newFlagSource(reader, key, "client hop", fallback, ParseClientMode, nil, "", opts)}
 }
 
+// refuseOnWithout makes s refuse a flip to on while expected is empty, as
+// FlagModeSource refuses required with an empty allow-list: such a hop
+// would refuse every server it dials. Call it before s is first read.
+func (s *FlagClientModeSource) refuseOnWithout(expected *AllowList) *FlagClientModeSource {
+	s.accept = func(mode ClientMode) error {
+		if mode == ClientOn && expected.Len() == 0 {
+			return ErrInvalidAllowList
+		}
+
+		return nil
+	}
+	s.refused = "mtls: hop mode flag asks for on with no expected server names; staying"
+
+	return s
+}
+
 // ClientMode implements ClientModeSource.
 func (s *FlagClientModeSource) ClientMode(ctx context.Context) ClientMode { return s.read(ctx) }
 

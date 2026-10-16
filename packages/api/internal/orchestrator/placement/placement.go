@@ -2,6 +2,7 @@ package placement
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -13,6 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	sharedutils "github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement")
@@ -40,7 +42,31 @@ type Algorithm interface {
 // PlaceSandbox derives sbxRequest's orchestrator-capability requirement and
 // places it. The requirement is read off the request rather than supplied by
 // the caller, so it cannot disagree with the bytes the orchestrator receives.
+//
+// PlaceSandbox places with the caller's context end to end: a create under
+// way is cut with the caller.
 func PlaceSandbox(
+	ctx context.Context,
+	algorithm Algorithm,
+	clusterNodes []*nodemanager.Node,
+	node *nodemanager.Node,
+	sbxRequest *orchestrator.SandboxCreateRequest,
+	cpu CPURequirement,
+	labelFilteringEnabled bool,
+	requiredLabels []string,
+) (PlacementResult, error) {
+	return PlaceSandboxCompletingStartedCreate(ctx, algorithm, clusterNodes, node, sbxRequest, cpu, labelFilteringEnabled, requiredLabels, time.Time{})
+}
+
+// PlaceSandboxCompletingStartedCreate places like PlaceSandbox, except that a
+// node create already under way when the caller leaves runs on until
+// completeStartedCreateUntil instead of being cut: a resume the control plane
+// has begun must not be cancelled half way for a client that comes back. A
+// caller that stays keeps its own context's end. The loop between creates
+// still ends with the caller, and a node's answer that arrives after the
+// caller left is reported as that answer, never as a timeout. A zero time
+// cuts the create with the caller.
+func PlaceSandboxCompletingStartedCreate(
 	ctx context.Context,
 	algorithm Algorithm,
 	clusterNodes []*nodemanager.Node,
@@ -49,8 +75,9 @@ func PlaceSandbox(
 	cpu CPURequirement,
 	labelFilteringEnabled bool,
 	requiredLabels []string,
+	completeStartedCreateUntil time.Time,
 ) (PlacementResult, error) {
-	return placeSandbox(ctx, algorithm, clusterNodes, preferredNode, sbxRequest, cpu, requiredFeatures(sbxRequest), labelFilteringEnabled, requiredLabels, defaultRefusalBackoff)
+	return placeSandbox(ctx, algorithm, clusterNodes, preferredNode, sbxRequest, cpu, requiredFeatures(sbxRequest), labelFilteringEnabled, requiredLabels, defaultRefusalBackoff, completeStartedCreateUntil)
 }
 
 func placeSandbox(
@@ -64,6 +91,7 @@ func placeSandbox(
 	labelFilteringEnabled bool,
 	requiredLabels []string,
 	backoff refusalBackoff,
+	completeStartedCreateUntil time.Time,
 ) (PlacementResult, error) {
 	ctx, span := tracer.Start(ctx, "place-sandbox")
 	defer span.End()
@@ -94,17 +122,23 @@ func placeSandbox(
 
 	var lastCreateErr error
 
+	// createDetached: the last create ran on past a caller that left, until
+	// completeStartedCreateUntil. createCut: it ended with its context, not
+	// with a node's answer.
+	var createDetached, createCut bool
+
 	// failed reports the warming node only when the failure was caused by the
-	// request context being cancelled or timing out (ctx.Err() != nil). Hard
-	// failures (where the context is still live) carry no node, so callers never
-	// pin a retry to a node that genuinely refused the sandbox.
+	// request context being cancelled or timing out (ctx.Err() != nil) or by
+	// the create being cut at completeStartedCreateUntil. Hard failures (where
+	// the context is still live) carry no node, so callers never pin a retry
+	// to a node that genuinely refused the sandbox.
 	//
 	// TODO [EN-1099]: We key off ctx.Err() rather than the gRPC status code because
 	// the orchestrator currently collapses a timed-out resume into codes.Internal
 	// (it folds the deadline cause into the message, not the code),
 	// so the code alone cannot tell a timeout apart from a hard failure.
 	failed := func(err error) (PlacementResult, error) {
-		if ctx.Err() == nil {
+		if ctx.Err() == nil && !createCut {
 			return PlacementResult{}, err
 		}
 
@@ -113,6 +147,16 @@ func placeSandbox(
 
 	attempt := 0
 	refusals := 0
+
+	// answered reports what the nodes said to a caller that left while a
+	// detached create ran: never a timeout, so no node is pinned for a remap.
+	answered := func() (PlacementResult, error) {
+		if attempt == 0 {
+			return PlacementResult{}, NoNodesAvailableError{}
+		}
+
+		return PlacementResult{}, SandboxCreateError{Attempts: attempt, LastErr: lastCreateErr}
+	}
 
 	// Nothing but capacity refusals before the deadline is capacity, not a slow placement.
 	deadline := func() (PlacementResult, error) {
@@ -163,7 +207,14 @@ func placeSandbox(
 			telemetry.WithNodeID(node.ID),
 			telemetry.WithClusterID(node.ClusterID),
 		)
-		resp, err := node.SandboxCreate(ctx, sbxRequest)
+		createCtx, cancelCreate := ctx, context.CancelFunc(func() {})
+		createDetached = completeStartedCreateUntil.After(time.Now())
+		if createDetached {
+			createCtx, cancelCreate = sharedutils.ContextExtendedTo(ctx, completeStartedCreateUntil)
+		}
+		resp, err := node.SandboxCreate(createCtx, sbxRequest)
+		createCut = createCtx.Err() != nil
+		cancelCreate()
 		span.End()
 		if err == nil {
 			node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
@@ -198,15 +249,40 @@ func placeSandbox(
 
 			delay := backoff.delay(refusals)
 			logger.L().Warn(ctx, "Node exhausted, trying another node", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithNodeID(failedNode.ID), zap.Int("refusals", refusals), zap.Duration("retry_in", delay), zap.Error(utils.UnwrapGRPCError(err)))
+			// The loop ends with the caller.
+			if createDetached && ctx.Err() != nil {
+				return answered()
+			}
 			if !sleep(ctx, delay) {
 				return deadline()
 			}
 		default:
+			// A refusal the node marks as for good is the same on every
+			// node and says nothing about this one: no exclusion, no
+			// failure sample, no other attempt. A node that predates the
+			// mark gets the other attempts. Not reported through failed:
+			// a request context that ended meanwhile makes no timeout of
+			// it, and no warmed node, or a resume's origin would be
+			// remapped to the node that just refused for good.
+			if ok && createRefusedForGood(st) {
+				failedNode.PlacementMetrics.Skip(sbxRequest.GetSandbox().GetSandboxId())
+				logger.L().Warn(ctx, "Sandbox refused by the node for good", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()), logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()), logger.WithNodeID(failedNode.ID), zap.Error(utils.UnwrapGRPCError(err)))
+
+				return PlacementResult{}, SandboxCreateError{Attempts: attempt + 1, LastErr: err}
+			}
 			nodesExcluded[failedNode.ID] = struct{}{}
 			failedNode.PlacementMetrics.Fail(sbxRequest.GetSandbox().GetSandboxId())
 			logger.L().Error(ctx, "Failed to create sandbox", logger.WithSandboxID(sbxRequest.GetSandbox().GetSandboxId()), logger.WithTemplateID(sbxRequest.GetSandbox().GetTemplateId()), logger.WithBuildID(sbxRequest.GetSandbox().GetBuildId()), logger.WithNodeID(failedNode.ID), zap.Int("attempt", attempt+1), zap.Error(utils.UnwrapGRPCError(err)))
 			lastCreateErr = err
 			attempt++
+
+			if createCut {
+				return deadline()
+			}
+			// The loop ends with the caller.
+			if createDetached && ctx.Err() != nil {
+				return answered()
+			}
 		}
 	}
 
@@ -216,4 +292,16 @@ func placeSandbox(
 	}
 
 	return failed(SandboxCreateError{Attempts: attempt, LastErr: lastCreateErr})
+}
+
+// createRefusedForGood reports a create the node refused with the typed
+// detail that says no other node and no retry changes the answer.
+func createRefusedForGood(st *status.Status) bool {
+	for _, detail := range st.Details() {
+		if userErr, ok := detail.(*orchestrator.UserError); ok && userErr.GetCode() == orchestrator.UserErrorCode_SANDBOX_CREATE_REFUSED {
+			return true
+		}
+	}
+
+	return false
 }

@@ -233,6 +233,66 @@ func (q *Queries) DetachTeamCluster(ctx context.Context, arg DetachTeamClusterPa
 	return i, err
 }
 
+const registerManagedCluster = `-- name: RegisterManagedCluster :one
+INSERT INTO public.clusters (
+    id,
+    name,
+    endpoint,
+    endpoint_tls,
+    token,
+    sandbox_proxy_domain,
+    auth_org_id,
+    deletion_protection
+)
+VALUES (
+    COALESCE($1::uuid, gen_random_uuid()),
+    $2::text,
+    $3::text,
+    $4::boolean,
+    $5::text,
+    $6::text,
+    $7::text,
+    $8::boolean
+)
+ON CONFLICT (id) DO UPDATE
+SET token = EXCLUDED.token
+WHERE clusters.name = EXCLUDED.name
+  AND clusters.endpoint = EXCLUDED.endpoint
+  AND clusters.endpoint_tls = EXCLUDED.endpoint_tls
+  AND clusters.sandbox_proxy_domain IS NOT DISTINCT FROM EXCLUDED.sandbox_proxy_domain
+  AND clusters.auth_org_id IS NOT DISTINCT FROM EXCLUDED.auth_org_id
+RETURNING id
+`
+
+type RegisterManagedClusterParams struct {
+	ClusterID          *uuid.UUID
+	Name               string
+	Endpoint           string
+	EndpointTls        bool
+	Token              string
+	SandboxProxyDomain *string
+	AuthOrgID          *string
+	DeletionProtection bool
+}
+
+// Management registration refreshes only the credential of an unchanged
+// cluster descriptor. Assignments and stored deletion protection survive.
+func (q *Queries) RegisterManagedCluster(ctx context.Context, arg RegisterManagedClusterParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, registerManagedCluster,
+		arg.ClusterID,
+		arg.Name,
+		arg.Endpoint,
+		arg.EndpointTls,
+		arg.Token,
+		arg.SandboxProxyDomain,
+		arg.AuthOrgID,
+		arg.DeletionProtection,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const releaseEnvironmentsAliases = `-- name: ReleaseEnvironmentsAliases :exec
 DELETE FROM public.env_aliases
 WHERE env_id = ANY($1::text[])

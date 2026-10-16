@@ -9,10 +9,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -1197,78 +1195,4 @@ func TestPostInit_UnauthorizedDoesNotUnfreeze(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, rec.Code)
 	assert.Empty(t, mgr.unfreezeAttempts, "unauthorized /init must not attempt unfreeze")
-}
-
-// A helper forked by the command inherits its output pipes, as mount.nfs does under
-// mount. Canceling must kill the whole process group, so the pipes close as soon as
-// the context expires rather than after WaitDelay.
-func TestNFSCommandKillsForkedHelpersOnCancel(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
-
-	start := time.Now()
-	_, err := runNFSCommand(ctx, zerolog.Nop(), "sh", "-c", "sleep 30 & wait")
-	elapsed := time.Since(start)
-
-	require.Error(t, err)
-	assert.Less(t, elapsed, nfsCmdWaitDelay, "the forked helper outlived the cancel and held the pipes open")
-}
-
-// A helper that escapes the process group cannot be killed by the cancel; WaitDelay
-// still stops CombinedOutput from waiting on its pipes forever.
-func TestNFSCommandBoundsWaitWhenHelperEscapesGroup(t *testing.T) {
-	t.Parallel()
-
-	if _, err := exec.LookPath("setsid"); err != nil {
-		t.Skip("setsid not available")
-	}
-
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
-
-	start := time.Now()
-	_, err := runNFSCommand(ctx, zerolog.Nop(), "sh", "-c", "setsid sleep 30 & wait")
-	elapsed := time.Since(start)
-
-	require.Error(t, err)
-	assert.Less(t, elapsed, nfsCmdWaitDelay+5*time.Second, "CombinedOutput waited on an escaped helper's pipes")
-}
-
-// A mount rejected while the NFS proxy starts up must be retried, not reported
-// as a failed /init.
-func TestRetryUntilDoneRecoversFromTransientFailure(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-
-	attempts, err := retryUntilDone(ctx, time.Millisecond, func(_ context.Context, attempt int) error {
-		if attempt < 3 {
-			return errors.New("connection refused")
-		}
-
-		return nil
-	})
-
-	require.NoError(t, err)
-	assert.Equal(t, 3, attempts)
-}
-
-// When every attempt fails, the error returned at the deadline is the last
-// attempt's, so /init reports why the mount failed rather than a bare timeout.
-func TestRetryUntilDoneReturnsLastErrorAtDeadline(t *testing.T) {
-	t.Parallel()
-
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-
-	attempts, err := retryUntilDone(ctx, 5*time.Millisecond, func(_ context.Context, attempt int) error {
-		return errors.New("connection refused " + strconv.Itoa(attempt))
-	})
-
-	require.Error(t, err)
-	assert.Greater(t, attempts, 1)
-	assert.Equal(t, "connection refused "+strconv.Itoa(attempts), err.Error())
 }

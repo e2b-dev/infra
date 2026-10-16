@@ -124,6 +124,7 @@ func admissionTestServer(t *testing.T, graceMs *int) *Server {
 		pauseAdmissionCounter:      utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxPauseAdmissionCounterName)),
 		pauseAdmissionWaitDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxPauseAdmissionWaitDurationName)),
 		featureFlags:               admissionFlagClient(t, graceMs),
+		detachedCheckpoints:        map[string]*detachedCheckpoint{},
 	}
 }
 
@@ -209,6 +210,48 @@ func TestPause_AdmissionAdmitsWhenSwapResolvesMidGrace(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return sbx.GetStopReason() == sandbox.StopReasonPaused
 	}, 2*time.Second, time.Millisecond)
+}
+
+// A Pause that read the sandbox live and then lost the marking to a
+// checkpoint's reservation taken during its admission wait is refused
+// retryably, as a Pause whose read missed is: the API removes the record on
+// any other answer and the sandbox the checkpoint resumes is killed as an
+// orphan.
+func TestPause_LostTheMarkingToACheckpointIsRetryable(t *testing.T) {
+	t.Parallel()
+
+	durable := utils.NewSetOnce[*header.Header]()
+	s := admissionTestServer(t, new(5000))
+	sbx := admissionTestSandbox(t, "sbx-admission-lost-marking", 16, durable)
+	require.NoError(t, s.sandboxFactory.Sandboxes.MarkRunning(t.Context(), sbx))
+
+	go func() {
+		<-admissionWaitBegun(sbx)
+		_, op, ok := s.registerDetachedCheckpoint(context.WithoutCancel(t.Context()), sbx)
+		if !ok {
+			return
+		}
+		reservation, err := s.sandboxFactory.Sandboxes.MarkStoppingReserved(context.WithoutCancel(t.Context()), sbx.Runtime.SandboxID, sbx.LifecycleID)
+		if err != nil {
+			op.release()
+
+			return
+		}
+		t.Cleanup(func() {
+			op.release()
+			reservation.Release()
+		})
+		hdr, err := header.NewHeader(&header.Metadata{Version: 3, BlockSize: 4096, Size: 4096}, nil)
+		if err == nil {
+			_ = durable.SetValue(hdr)
+		}
+	}()
+
+	_, err := s.Pause(t.Context(), &orchestrator.SandboxPauseRequest{SandboxId: "sbx-admission-lost-marking"})
+	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
+	require.ErrorContains(t, err, "please retry")
+	_, live := s.sandboxFactory.Sandboxes.Get("sbx-admission-lost-marking")
+	assert.False(t, live, "the checkpoint's reservation holds the sandbox out of the live map")
 }
 
 // Flag absent (and explicitly negative) means no pre-flight — with the
@@ -467,6 +510,7 @@ func admissionMetricsServer(t *testing.T, graceMs int) (*Server, *sdkmetric.Manu
 		pauseAdmissionCounter:      utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxPauseAdmissionCounterName)),
 		pauseAdmissionWaitDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxPauseAdmissionWaitDurationName)),
 		featureFlags:               admissionFlagClient(t, &graceMs),
+		detachedCheckpoints:        map[string]*detachedCheckpoint{},
 	}, reader
 }
 

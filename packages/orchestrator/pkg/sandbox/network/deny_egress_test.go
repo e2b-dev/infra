@@ -63,6 +63,44 @@ func TestDenyEgress_InstallsAllProtocolDrop(t *testing.T) { //nolint:paralleltes
 		"DenyEgress must NOT accept any allow-set/destination — all guest-initiated egress is dropped, including to the orchestrator IP; got %+v", got)
 }
 
+// headFilterProxy is an EgressProxy whose head rule accepts everything from
+// the tap.
+type headFilterProxy struct{ NoopEgressProxy }
+
+func (headFilterProxy) HeadFilterRules(s *Slot) [][]expr.Any {
+	return [][]expr.Any{{
+		&expr.Meta{Key: expr.MetaKeyIIFNAME, Register: 1},
+		&expr.Cmp{Register: 1, Op: expr.CmpOpEq, Data: append([]byte(s.TapName()), 0)},
+		&expr.Verdict{Kind: expr.VerdictAccept},
+	}}
+}
+
+// TestHeadFilterRules_LeadEveryPolicy verifies that the egress proxy's head
+// rules come first after a policy replacement and are absent after DenyEgress.
+// Needs root; skips otherwise.
+func TestHeadFilterRules_LeadEveryPolicy(t *testing.T) { //nolint:paralleltest // mutates the caller's netns via LockOSThread + netns.Set; cannot run in parallel
+	if os.Geteuid() != 0 {
+		t.Skip("requires root for netns + nftables")
+	}
+
+	config, err := ParseConfig()
+	require.NoError(t, err)
+
+	slot, err := NewSlot("head-filter-test", reserveNSTestIdx(t), config, headFilterProxy{})
+	require.NoError(t, err)
+
+	require.NoError(t, slot.CreateNetwork(t.Context()))
+	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+
+	require.True(t, summarizeFilterChain(t, slot.NamespaceID()).plainAcceptFirst, "the head rule leads the initial rules")
+
+	require.NoError(t, slot.Firewall.ApplyRules(t.Context(), true, []string{"192.0.2.0/24"}, []string{"0.0.0.0/0"}))
+	require.True(t, summarizeFilterChain(t, slot.NamespaceID()).plainAcceptFirst, "the head rule leads a replaced policy")
+
+	require.NoError(t, slot.DenyEgress(t.Context()))
+	require.False(t, summarizeFilterChain(t, slot.NamespaceID()).hasPlainAccept, "DenyEgress installs no head rule")
+}
+
 // TestDenyEgress_NilFirewallErrors verifies DenyEgress fails fast — returning an
 // error rather than panicking, and without marking custom rules — when the slot's
 // firewall is not initialized (so a later ResetInternet during cleanup can't hit
@@ -93,6 +131,10 @@ type filterChainSummary struct {
 	// dropIsLast is true when the final rule in the chain is the unconditional
 	// drop — i.e. it is the catch-all that every unaccepted packet falls through to.
 	dropIsLast bool
+	// hasPlainAccept is an accept with no protocol/set/conntrack qualifier,
+	// which only an egress proxy's head rule installs; plainAcceptFirst when
+	// the chain starts with one.
+	hasPlainAccept, plainAcceptFirst bool
 }
 
 // summarizeFilterChain enters the slot's network namespace and classifies the
@@ -148,6 +190,13 @@ func summarizeFilterChain(t *testing.T, nsName string) filterChainSummary {
 		}
 
 		isUnconditionalDrop := drop && !l4proto && !setLookup && !ct
+		plainAccept := accept && !l4proto && !setLookup && !ct
+		if plainAccept {
+			s.hasPlainAccept = true
+		}
+		if i == 0 {
+			s.plainAcceptFirst = plainAccept
+		}
 		if l4proto {
 			s.hasProtocolQualifiedRule = true
 		}

@@ -255,6 +255,20 @@ type Template struct {
 	// This is a building block: it lets a later feature decide safely whether a
 	// snapshot is one it can cold-boot / rewrite without repairing the journal.
 	FsQuiesced bool `json:"fs_quiesced,omitempty"`
+
+	// RunningEnvdVersion is the version of the envd running in this memory snapshot when it
+	// differs from the template-baked one: the version the running envd last reported, else
+	// the one a confirmed live upgrade delivered, else the one this life was resumed with.
+	// Empty is the baked version, which is what every snapshot from before the field has. A
+	// memory resume of this snapshot gates its first envd /init on it, before the restored
+	// envd has reported anything, unless the resume is given a version
+	// (WithInheritedEnvdVersion); a cold boot runs the rootfs binary, which a live upgrade
+	// does not replace, so it never reads the field. Stamped at every pause and empty for a
+	// filesystem-only one. SameVersionTemplate, NewVersionTemplate and BasedOn drop it;
+	// WithPrefetch keeps it, since it rewrites the same snapshot's metadata, as do the
+	// in-place stamps. V1 metadata discards it, and such a lineage gates on the baked
+	// version unless given one.
+	RunningEnvdVersion string `json:"running_envd_version,omitempty"`
 }
 
 // IsFilesystemOnly reports whether this snapshot persists only the filesystem
@@ -372,19 +386,28 @@ func (t Template) WithVcpuCount(vcpus int64) Template {
 // WithPrefetch returns a copy of the template with the given prefetch mapping.
 func (t Template) WithPrefetch(prefetch *Prefetch) Template {
 	return Template{
-		Version:          t.Version,
-		Template:         t.Template,
-		Context:          t.Context,
-		Start:            t.Start,
-		FromTemplate:     t.FromTemplate,
-		FromImage:        t.FromImage,
-		Prefetch:         prefetch,
-		CmdlineArgs:      t.CmdlineArgs,
-		Balloon:          t.Balloon,
-		CPUTemplate:      t.CPUTemplate,
-		BuildCPUTemplate: t.BuildCPUTemplate,
-		VcpuCount:        t.VcpuCount,
+		Version:            t.Version,
+		Template:           t.Template,
+		Context:            t.Context,
+		Start:              t.Start,
+		FromTemplate:       t.FromTemplate,
+		FromImage:          t.FromImage,
+		Prefetch:           prefetch,
+		CmdlineArgs:        t.CmdlineArgs,
+		Balloon:            t.Balloon,
+		CPUTemplate:        t.CPUTemplate,
+		BuildCPUTemplate:   t.BuildCPUTemplate,
+		VcpuCount:          t.VcpuCount,
+		RunningEnvdVersion: t.RunningEnvdVersion,
 	}
+}
+
+// WithRunningEnvdVersion returns a copy of the template stamped with the envd version
+// running in its memory snapshot, or "" for the template-baked one.
+func (t Template) WithRunningEnvdVersion(v string) Template {
+	t.RunningEnvdVersion = v
+
+	return t
 }
 
 func (t Template) ToFile(path string) error {

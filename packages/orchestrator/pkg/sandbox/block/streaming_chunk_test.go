@@ -9,8 +9,10 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"runtime"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
@@ -65,6 +67,7 @@ type testControl struct {
 	advance  chan struct{} // close to release reads
 	consumed chan struct{} // receives after each read step
 	opened   chan struct{} // receives when OpenRangeReader is called
+	parked   chan struct{} // receives when a read is parked on advance
 	closed   chan struct{} // receives when reader is closed (fetch done)
 	onOpen   func()        // optional callback on OpenRangeReader
 }
@@ -105,6 +108,7 @@ func (s *fakeSeekable) OpenRangeReader(_ context.Context, offsetU int64, length 
 			step:     max(16*1024, testBlockSize),
 			advance:  s.ctrl.advance,
 			consumed: s.ctrl.consumed,
+			parked:   s.ctrl.parked,
 			closed:   s.ctrl.closed,
 		}, storage.SourceFS, nil
 	}
@@ -185,6 +189,19 @@ var allChunkerTestCases = []chunkerTestCase{
 	},
 }
 
+// FetchTimeout reports the budget the chunker applies to each of its
+// fetches: the default for a new chunker, its own value otherwise.
+func TestFetchTimeoutIsTheChunkerBudget(t *testing.T) {
+	t.Parallel()
+
+	chunker := newTestChunker(t, testBlockSize)
+	defer chunker.Close()
+
+	require.Equal(t, defaultFetchTimeout, chunker.FetchTimeout())
+	chunker.fetchTimeout = 7 * time.Second
+	require.Equal(t, 7*time.Second, chunker.FetchTimeout(), "the instance's value, not the package default")
+}
+
 func TestChunker_BasicSlice(t *testing.T) {
 	t.Parallel()
 
@@ -200,6 +217,82 @@ func TestChunker_BasicSlice(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, data[:testBlockSize], slice)
 		})
+	}
+}
+
+func TestChunkerSliceOwnsReturnedBytes(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range allChunkerTestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			data := makeTestData(testFileSize)
+			chunker, file, ft := tc.newChunker(t, data)
+			slice, err := chunker.Slice(t.Context(), 0, testBlockSize, file, ft)
+			require.NoError(t, err)
+			require.NoError(t, chunker.Close())
+
+			var first byte
+			err = RunFaultSafe(t.Context(), func() error {
+				first = slice[0]
+
+				return nil
+			})
+			require.NoError(t, err, "Chunker.Slice returned bytes backed by an unmapped cache")
+			require.Equal(t, data[0], first)
+		})
+	}
+}
+
+func BenchmarkChunkerCachedReadAt(b *testing.B) {
+	data := makeTestData(testBlockSize)
+	chunker, err := NewChunker(&featureflags.Client{}, int64(len(data)), testBlockSize, b.TempDir()+"/cache", newTestMetrics(b), storage.MemfileObjectType)
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = chunker.Close() })
+
+	upstream := new(fakeSeekable)
+	upstream.data = data
+	buf := make([]byte, testBlockSize)
+	ctx := b.Context()
+	_, err = chunker.ReadAt(ctx, buf, 0, upstream, nil)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.SetBytes(testBlockSize)
+	b.ResetTimer()
+	for b.Loop() {
+		if _, err := chunker.ReadAt(ctx, buf, 0, nil, nil); err != nil {
+			b.Fatal(err)
+		}
+	}
+}
+
+// BenchmarkChunkerCachedSlice measures the caller-owned copy on the cached
+// Slice path. ReadAt above remains the caller-buffer baseline.
+func BenchmarkChunkerCachedSlice(b *testing.B) {
+	data := makeTestData(testBlockSize)
+	chunker, err := NewChunker(&featureflags.Client{}, int64(len(data)), testBlockSize, b.TempDir()+"/cache", newTestMetrics(b), storage.MemfileObjectType)
+	require.NoError(b, err)
+	b.Cleanup(func() { _ = chunker.Close() })
+
+	upstream := &fakeSeekable{data: data}
+	ctx := b.Context()
+	_, err = chunker.Slice(ctx, 0, testBlockSize, upstream, nil)
+	require.NoError(b, err)
+
+	b.ReportAllocs()
+	b.SetBytes(testBlockSize)
+	b.ResetTimer()
+	for b.Loop() {
+		slice, sliceErr := chunker.Slice(ctx, 0, testBlockSize, nil, nil)
+		if sliceErr != nil {
+			b.Fatal(sliceErr)
+		}
+		if len(slice) != testBlockSize {
+			b.Fatalf("Slice length=%d, want %d", len(slice), testBlockSize)
+		}
+		runtime.KeepAlive(slice)
 	}
 }
 
@@ -314,11 +407,11 @@ func TestChunker_EarlyReturn(t *testing.T) {
 
 	go func() {
 		slice, sliceErr := chunker.Slice(t.Context(), 0, testBlockSize, nil)
-		earlyDone <- result{data: bytes.Clone(slice), err: sliceErr} // clone: slice backed by mutable mmap
+		earlyDone <- result{data: slice, err: sliceErr}
 	}()
 	go func() {
 		slice, sliceErr := chunker.Slice(t.Context(), lastOff, testBlockSize, nil)
-		lateDone <- result{data: bytes.Clone(slice), err: sliceErr}
+		lateDone <- result{data: slice, err: sliceErr}
 	}()
 
 	// Advance exactly one read step (16KB). This covers offset 0 but is
@@ -604,6 +697,7 @@ func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
 		advance:  make(chan struct{}),
 		consumed: make(chan struct{}, 10),
 		opened:   make(chan struct{}, 10),
+		parked:   make(chan struct{}, 10),
 		closed:   make(chan struct{}, 10),
 	}
 	file := &fakeSeekable{data: data, ctrl: ctrl}
@@ -616,13 +710,15 @@ func newControlledChunker(t *testing.T, data []byte) *controlledChunker {
 }
 
 // controlledReader yields data in fixed-size steps, blocking on advance
-// before each Read. After advance is closed, reads proceed immediately.
+// before each Read and signalling parked, if set, as it does. After advance
+// is closed, reads proceed immediately.
 type controlledReader struct {
 	data     []byte
 	pos      int
 	step     int
 	advance  chan struct{}
 	consumed chan struct{}
+	parked   chan struct{}
 	closed   chan struct{}
 }
 
@@ -631,6 +727,10 @@ func (r *controlledReader) Read(p []byte) (int, error) {
 		return 0, io.EOF
 	}
 
+	select {
+	case r.parked <- struct{}{}:
+	default:
+	}
 	<-r.advance
 
 	end := min(r.pos+min(len(p), r.step), len(r.data))

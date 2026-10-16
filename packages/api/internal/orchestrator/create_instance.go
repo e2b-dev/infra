@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	redisreservations "github.com/e2b-dev/infra/packages/api/internal/sandbox/reservations/redis"
 	teamtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/pkg/builds"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
@@ -74,7 +75,9 @@ type SandboxMetadata struct {
 	FilesystemBoot bool
 	// FilesystemOnlySnapshot marks a resume whose snapshot persists only the
 	// rootfs. Unlike FilesystemBoot it describes the stored artifact rather than
-	// the request, so every path that resumes such a snapshot sets it.
+	// the request, so every path that resumes such a snapshot sets it. It is read
+	// from the snapshot row, which also covers builds older than
+	// Build.FilesystemOnly.
 	FilesystemOnlySnapshot bool
 }
 
@@ -203,6 +206,32 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	return orchNetwork
 }
 
+// A resume create that runs on past its caller ends before the reservation
+// can be reaped, leaving resumeBookkeepingBound for the store write and then
+// resumePublishMargin for the result publish and for clock skew between API
+// instances.
+const (
+	resumeBookkeepingBound = 5 * time.Second
+	resumePublishMargin    = 5 * time.Second
+)
+
+// CreateOption adjusts one CreateSandbox call.
+type CreateOption func(*createOptions)
+
+type createOptions struct {
+	completeStartedCreate bool
+}
+
+// CompleteStartedCreate lets a resume create under way, and the bookkeeping
+// that registers the sandbox, run on past a caller that left, until the
+// reservation can be reaped: for a caller that comes back for the sandbox
+// rather than for this answer, such as client-proxy's resume flight, which
+// never demands a filesystem boot. Without it the create is cut with the
+// caller, which a REST request's write timeout assumes.
+func CompleteStartedCreate() CreateOption {
+	return func(o *createOptions) { o.completeStartedCreate = true }
+}
+
 func (o *Orchestrator) CreateSandbox(
 	ctx context.Context,
 	sandboxID,
@@ -215,14 +244,21 @@ func (o *Orchestrator) CreateSandbox(
 	isResume bool,
 	demandFilesystemBoot bool,
 	creationMeta sandbox.CreationMetadata,
+	options ...CreateOption,
 ) (sbx sandbox.Sandbox, apiErr *api.APIError) {
 	ctx, childSpan := tracer.Start(ctx, "create-sandbox")
 	defer childSpan.End()
+
+	var opts createOptions
+	for _, option := range options {
+		option(&opts)
+	}
 
 	// Calculate total concurrent instances including addons
 	totalConcurrentInstances := team.Limits.SandboxConcurrency
 
 	// Check if team has reached max instances
+	reservedAt := time.Now()
 	finishStart, waitForStart, err := o.sandboxStore.Reserve(ctx, team.Team.ID, sandboxID, int(totalConcurrentInstances))
 	if err != nil {
 		var limitErr *sandbox.LimitExceededError
@@ -284,6 +320,23 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	telemetry.ReportEvent(ctx, "Reserved sandbox for team")
+
+	// A resume create under way completes for the client that comes back:
+	// tracked, so a drain waits for it and for the result it publishes, and
+	// ended with margin before the reservation can be reaped, so the run-on
+	// never lets a fresh reservation start a second one. A caller that stays
+	// keeps its own context's end, as before; a resume admitted behind a
+	// drain keeps the caller's cut.
+	var completeStartedCreateUntil, bookkeepingUntil time.Time
+	if isResume && opts.completeStartedCreate {
+		if releaseWork, ok := o.TrackWork(); ok {
+			defer releaseWork()
+
+			bookkeepingUntil = redisreservations.ReapableAt(reservedAt).Add(-resumePublishMargin)
+			completeStartedCreateUntil = bookkeepingUntil.Add(-resumeBookkeepingBound)
+		}
+	}
+
 	defer func() {
 		// Don't change this handling
 		// https://go.dev/play/p/4oy02s7BDMc
@@ -438,7 +491,7 @@ func (o *Orchestrator) CreateSandbox(
 
 	allLabels, labelFilteringEnabled := o.generateRequiredNodeLabels(ctx, sandboxID, team, sbxData)
 
-	placed, err := placement.PlaceSandbox(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, cpuRequirement, labelFilteringEnabled, allLabels)
+	placed, err := placement.PlaceSandboxCompletingStartedCreate(ctx, o.placementAlgorithm, clusterNodes, node, sbxRequest, cpuRequirement, labelFilteringEnabled, allLabels, completeStartedCreateUntil)
 	if err != nil {
 		if isResume && placed.TimedOut {
 			// Remap by the snapshot's own sandbox ID: when forking, the started
@@ -454,6 +507,14 @@ func (o *Orchestrator) CreateSandbox(
 	}
 
 	node = placed.Node
+
+	if !bookkeepingUntil.IsZero() {
+		// The create completed; its bookkeeping must too, for the joiners of
+		// the reservation, even if this caller has left meanwhile.
+		var cancel context.CancelFunc
+		ctx, cancel = ut.ContextExtendedTo(ctx, bookkeepingUntil)
+		defer cancel()
+	}
 
 	// The sandbox was created successfully
 	attributes := []attribute.KeyValue{
@@ -517,6 +578,7 @@ func (o *Orchestrator) CreateSandbox(
 		sbxData.Iam,
 	)
 	sbx.FirecrackerVersionResolved = resolvedFCVersion
+	sbx.NetworkPlacement = placed.Response.GetNetworkPlacement()
 
 	// An orchestrator that predates the filesystem_boot field ignores it and
 	// memory-restores; only the echo proves the demand was honored. Kill the
@@ -641,14 +703,26 @@ func (o *Orchestrator) maybeRemapResumeOriginNode(ctx context.Context, sandboxID
 // resolveCPURequirement builds the CPU constraint placement filters nodes with.
 //
 // A memory restore may move to the newer models IsCompatibleWith treats as
-// supersets. A filesystem-only snapshot is instead confined to one CPU model,
-// keeping the cold-boot resume on a single generation while that path is
-// unproven across them. FsOnlyResumeCPUModelFlag names the model, and empty
-// returns filesystem-only resumes to the shared rule.
+// supersets. A cold boot (any start from a filesystem-only build, including a
+// sandbox created from a memory:false snapshot template, or a memory:false
+// resume) is instead confined to one CPU model, keeping it on a single
+// generation while that path is unproven across them. FsOnlyResumeCPUModelFlag
+// names the model, and empty returns cold boots to the shared rule.
+//
+// ExtraCompatibleNodeModelsFlag adds model pairs to the shared rule for every
+// placement; the pin still narrows on top of them.
 func (o *Orchestrator) resolveCPURequirement(ctx context.Context, sandboxID string, team *teamtypes.Team, sbxData SandboxMetadata) placement.CPURequirement {
-	requirement := placement.CPURequirement{Build: builds.ToMachineInfo(sbxData.Build)}
+	requirement := placement.CPURequirement{
+		Build: builds.ToMachineInfo(sbxData.Build),
+		ExtraNodeModels: featureflags.GetExtraCompatibleNodeModels(ctx, o.featureFlagsClient,
+			featureflags.TeamContext(team.ID.String()),
+			featureflags.SandboxContext(sandboxID),
+			featureflags.ClusterContext(clusters.WithClusterFallback(team.ClusterID)),
+		),
+	}
 
-	if !sbxData.FilesystemOnlySnapshot {
+	coldBoot := sbxData.FilesystemOnlySnapshot || sbxData.Build.FilesystemOnly || sbxData.FilesystemBoot
+	if !coldBoot {
 		return requirement
 	}
 

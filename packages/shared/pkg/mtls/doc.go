@@ -113,9 +113,11 @@
 // not verify; a name removed from the allow-list is refused at every request
 // or RPC but keeps its connection. Listener and ServerCredentials record the
 // connections they admitted, in every mode. CloseUnverified closes every
-// connection a required handshake would refuse now, plaintext, unverified
-// TLS and a name the allow-list does not admit alike, which a service calls
-// when its mode flips to required. CloseByPeer
+// connection a required handshake would refuse now, plaintext a weaker mode
+// admitted, unverified TLS and a name the allow-list does not admit alike,
+// which a service calls while its mode is required; for a configuration
+// from Process.Listener over a flag the process's watcher does it, so the
+// service adds no flip handler of its own. CloseByPeer
 // closes every TLS connection of one name, which is how a removed name's
 // keep-alive HTTP connection ends, since http.Server has no connection age.
 // gRPC connections also end at the server's maximum connection age.

@@ -28,6 +28,9 @@ type Config struct {
 	APIEdgeGRPCOAuthClientID     string `env:"API_EDGE_GRPC_OAUTH_CLIENT_ID"`
 	APIEdgeGRPCOAuthClientSecret string `env:"API_EDGE_GRPC_OAUTH_CLIENT_SECRET"`
 	APIEdgeGRPCOAuthTokenURL     string `env:"API_EDGE_GRPC_OAUTH_TOKEN_URL"`
+
+	// TLS is the mutual TLS settings of the hop to the api.
+	TLS TLSConfig
 }
 
 func Parse() (Config, error) {

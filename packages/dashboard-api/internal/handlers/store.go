@@ -7,6 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/riverqueue/river"
 	"go.opentelemetry.io/otel/metric"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -31,6 +33,7 @@ type APIStore struct {
 	authService       sharedauth.Service
 	identityService   identity.Service
 	managementService *management.Service
+	riverClient       *river.Client[pgx.Tx]
 }
 
 func NewAPIStore(
@@ -41,6 +44,7 @@ func NewAPIStore(
 	authService sharedauth.Service,
 	identityService identity.Service,
 	meterProvider metric.MeterProvider,
+	riverClient *river.Client[pgx.Tx],
 ) *APIStore {
 	return &APIStore{
 		config:            config,
@@ -50,6 +54,7 @@ func NewAPIStore(
 		authService:       authService,
 		identityService:   identityService,
 		managementService: management.NewService(authDB, db, authService, meterProvider),
+		riverClient:       riverClient,
 	}
 }
 

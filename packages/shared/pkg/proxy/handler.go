@@ -15,6 +15,18 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
+// resumeRetryAfter is sent with every answer a resumed sandbox can turn into a
+// success on retry, so SDKs and browsers wait before asking again.
+const resumeRetryAfter = "2"
+
+// setRetryAfter sends the retry delay and lists it for cross-origin
+// callers: a browser lets a page read only the headers the response
+// exposes, so without that the delay would reach a script as nothing.
+func setRetryAfter(w http.ResponseWriter) {
+	w.Header().Set("Retry-After", resumeRetryAfter)
+	w.Header().Set("Access-Control-Expose-Headers", "Retry-After")
+}
+
 func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Destination, error), connLimitConfig *ConnectionLimitConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -29,6 +41,17 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 		}
 
 		d, err := getDestination(r)
+
+		// The request ended before it was routed. A client that only
+		// half-closed its connection is still reading, and an unwritten
+		// answer would reach it as an empty 200, so the status says the
+		// request ended; a client that is gone reads nothing either way.
+		if ctxErr := ctx.Err(); err != nil && ctxErr != nil && errors.Is(err, ctxErr) {
+			l.Debug(ctx, "request ended before it was routed", zap.String("host", r.Host))
+			cors.Error(w, "Request ended before it was routed", http.StatusRequestTimeout)
+
+			return
+		}
 
 		// With no destination there is nobody upstream to answer the preflight,
 		// and a browser drops the real request unless the preflight gets a 2xx.
@@ -105,12 +128,45 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 				zap.String("host", r.Host),
 				logger.WithSandboxID(stillTransitioningErr.SandboxId))
 
-			err := template.
-				NewSandboxStillTransitioningError(stillTransitioningErr.SandboxId, r.Host).
-				HandleError(w, r)
+			setRetryAfter(w)
+			page := template.NewSandboxStillTransitioningError(stillTransitioningErr.SandboxId, r.Host)
+			if stillTransitioningErr.Unavailable {
+				page = template.NewSandboxStillTransitioningUnavailableError(stillTransitioningErr.SandboxId, r.Host)
+			}
+			err := page.HandleError(w, r)
 			if err != nil {
 				l.Error(ctx, "failed to handle sandbox still transitioning error", zap.Error(err), logger.WithSandboxID(stillTransitioningErr.SandboxId))
 				cors.Error(w, "Failed to handle sandbox still transitioning error", http.StatusInternalServerError)
+
+				return
+			}
+
+			return
+		}
+
+		if capacityErr, ok := errors.AsType[*SandboxCapacityError](err); ok {
+			// The proxy that produced it logged it with the request's
+			// fields; this line only ties the page to the answer.
+			l.Debug(ctx, capacityErr.Error(),
+				zap.String("host", r.Host),
+				zap.String("reason", capacityErr.Message),
+				zap.Bool("permanent", capacityErr.Permanent),
+				logger.WithSandboxID(capacityErr.SandboxId))
+
+			page := template.NewSandboxCapacityError(capacityErr.SandboxId, r.Host)
+			switch {
+			case capacityErr.Permanent:
+				// No retry helps, so no retry hint.
+				page = template.NewSandboxPlacementRefusedError(capacityErr.SandboxId, r.Host, capacityErr.ErrorCode, capacityErr.StatusCode)
+			case capacityErr.Shed:
+				page = template.NewSandboxShedError(capacityErr.SandboxId, r.Host)
+			default:
+				setRetryAfter(w)
+			}
+			err := page.HandleError(w, r)
+			if err != nil {
+				l.Error(ctx, "failed to handle sandbox capacity error", zap.Error(err), logger.WithSandboxID(capacityErr.SandboxId))
+				cors.Error(w, "Failed to handle sandbox capacity error", http.StatusInternalServerError)
 
 				return
 			}

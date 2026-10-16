@@ -314,7 +314,7 @@ func TestCheckpoint_RecordsRouteAndBalloonMode(t *testing.T) {
 	t.Parallel()
 	s, reader := routeTestServer(t, true, false)
 	sbx := liveRouteSandbox(t, s, "ckpt-labels", 41, fixedCaps(fc.BalloonCaps{Hinting: true}, nil))
-	require.True(t, sbx.BeginInPlaceCheckpoint(), "hold the in-place guard so the RPC completes on the guard's refusal")
+	require.True(t, sbx.BeginCheckpoint(), "hold the in-place guard so the RPC completes on the guard's refusal")
 
 	_, ckptErr := s.Checkpoint(t.Context(), &orchestrator.SandboxCheckpointRequest{SandboxId: "ckpt-labels"})
 	require.Error(t, ckptErr)
@@ -373,7 +373,7 @@ func TestCheckpoint_FilesystemOnlyGoesInPlaceOnItsOwnFlag(t *testing.T) {
 
 		return fc.BalloonCaps{}, nil
 	})
-	require.True(t, sbx.BeginInPlaceCheckpoint())
+	require.True(t, sbx.BeginCheckpoint())
 
 	_, ckptErr := s.Checkpoint(t.Context(), &orchestrator.SandboxCheckpointRequest{SandboxId: "ckpt-fs-only", FilesystemOnly: true})
 	require.Error(t, ckptErr)

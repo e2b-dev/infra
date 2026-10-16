@@ -219,6 +219,45 @@ func TestFailedCheckpointRetainsReservationUntilBothCleanupsFinish(t *testing.T)
 	}
 }
 
+// A create whose registration is refused because the ID went live under
+// another lifecycle while it held the reservation (a stopping sandbox the
+// map put back after a subscriber panic) answers AlreadyExists, as the same
+// condition does at the reservation: Internal would read as a node failure
+// and send the caller to make a second VM elsewhere while this one is live.
+func TestCreate_RegistrationRefusedByALiveEntryAnswersAlreadyExists(t *testing.T) {
+	t.Parallel()
+
+	s := duplicateCreateTestServer()
+	old := drainTestSandbox(t, "lifecycle-old")
+	old.Runtime.ExecutionID = "exec-old"
+	require.NoError(t, s.sandboxFactory.Sandboxes.MarkRunning(t.Context(), old))
+	var r *sandbox.Reservation
+	var once sync.Once
+	s.sandboxFactory.Sandboxes.Subscribe(stoppingProbe{probe: func() {
+		once.Do(func() {
+			var err error
+			r, err = s.sandboxFactory.Sandboxes.Reserve(old.Runtime.SandboxID)
+			require.NoError(t, err)
+			panic("subscriber panicked")
+		})
+	}})
+	require.Panics(t, func() { s.sandboxFactory.Sandboxes.MarkStopping(t.Context(), old.Runtime.SandboxID, old.LifecycleID) })
+	t.Cleanup(r.Release)
+
+	created := drainTestSandbox(t, "lifecycle-created")
+	err := s.markSandboxLive(t.Context(), created, r, false)
+	require.ErrorIs(t, err, sandbox.ErrSandboxAlreadyRunning)
+	st, ok := status.FromError(s.registrationRefused(t.Context(), old.Runtime.SandboxID, "exec-new", err))
+	require.True(t, ok)
+	assert.Equal(t, codes.AlreadyExists, st.Code())
+	require.ErrorContains(t, st.Err(), "already running on this node")
+
+	got, ok := s.sandboxFactory.Sandboxes.Get(old.Runtime.SandboxID)
+	require.True(t, ok)
+	assert.Same(t, old, got, "the restored sandbox keeps the ID")
+	require.ErrorContains(t, s.registrationRefused(t.Context(), old.Runtime.SandboxID, "exec-new", errors.New("other")), "failed to register sandbox")
+}
+
 func TestMarkSandboxLiveRejectsForeignReservationBeforeHealthChecks(t *testing.T) {
 	t.Parallel()
 
@@ -230,7 +269,7 @@ func TestMarkSandboxLiveRejectsForeignReservationBeforeHealthChecks(t *testing.T
 	require.NoError(t, err)
 	t.Cleanup(foreign.Release)
 	sbx := drainTestSandbox(t, "candidate")
-	require.Error(t, s.markSandboxLive(t.Context(), sbx, foreign))
+	require.Error(t, s.markSandboxLive(t.Context(), sbx, foreign, false))
 	require.Equal(t, sandbox.StopReasonRegistrationFailed, sbx.GetStopReason())
 	require.Empty(t, s.sandboxFactory.Sandboxes.Items())
 	require.NoError(t, owner.MarkRunning(t.Context(), sbx))
@@ -248,7 +287,7 @@ func TestCheckpointRefusesBusyReservationWithoutStoppingSandbox(t *testing.T) {
 
 	resp, err := s.checkpointResumeFresh(t.Context(), sbx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.Runtime.SandboxID,
-	})
+	}, func() {})
 	require.Nil(t, resp)
 	require.Equal(t, codes.FailedPrecondition, status.Code(err), "the API must preserve the healthy sandbox")
 	live, ok := s.sandboxFactory.Sandboxes.Get(sbx.Runtime.SandboxID)
@@ -380,6 +419,9 @@ func duplicateCreateTestServer() *Server {
 		sandboxFactory:        &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()},
 		startingSandboxes:     utils.Must(utils.NewAdjustableSemaphore(1)),
 		sandboxCreateDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationName)),
+		sandboxPauseDuration:  utils.Must(telemetry.GetHistogram(meter, telemetry.PauseDurationHistogramName)),
+		sandboxKilledCounter:  noop.Int64Counter{},
+		detachedCheckpoints:   map[string]*detachedCheckpoint{},
 	}
 	s.info.MaxSandboxes.Store(10)
 

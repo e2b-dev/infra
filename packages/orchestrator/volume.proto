@@ -40,6 +40,10 @@ enum UserErrorCode {
   // A filesystem-only checkpoint refused because filesystem-only-checkpoint is
   // off on the node; the API answers it like its own pre-flight (400).
   FILESYSTEM_ONLY_CHECKPOINT_DISABLED = 7;
+  // A sandbox create the node refused for a reason no other node and no
+  // retry changes (its vcpu request is out of bounds); the API reports it as
+  // a refusal, not a failure to retry.
+  SANDBOX_CREATE_REFUSED = 8;
 }
 
 message UserError {

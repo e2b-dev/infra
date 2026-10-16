@@ -135,6 +135,7 @@ func NewBalloonTestSandbox(id, firecrackerVersion string, read func(context.Cont
 		},
 		Resources:       &Resources{memory: uffd.NewNoopMemory(1<<30, 2<<20)},
 		readBalloonCaps: read,
+		cleanup:         NewCleanup(),
 	}
 }
 

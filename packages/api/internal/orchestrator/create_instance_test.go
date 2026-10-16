@@ -2,18 +2,27 @@ package orchestrator
 
 import (
 	"context"
+	"fmt"
 	"net/http"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
@@ -25,7 +34,9 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -62,7 +73,14 @@ func newCreateSandboxTestOrchestrator(t *testing.T, nodeOpts ...nodemanager.Test
 func newCreateSandboxTestOrchestratorWithFlags(t *testing.T, flagSource *ldtestdata.TestDataSource, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
 	t.Helper()
 
-	client := redis_utils.SetupInstance(t)
+	return newCreateSandboxTestOrchestratorOnRedis(t, redis_utils.SetupInstance(t), flagSource, nodeOpts...)
+}
+
+// newCreateSandboxTestOrchestratorOnRedis builds one API instance on client, so
+// several instances can share a Redis server.
+func newCreateSandboxTestOrchestratorOnRedis(t *testing.T, client redis.UniversalClient, flagSource *ldtestdata.TestDataSource, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
+	t.Helper()
+
 	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider(), nil)
 	require.NoError(t, err)
 	go storage.Start(t.Context())
@@ -439,12 +457,13 @@ func TestCreateSandbox_StoresResolvedFirecrackerVersion(t *testing.T) {
 	})
 }
 
-// buildOnCPU returns testBuild() recorded as having been built on cpuModel.
-func buildOnCPU(cpuModel string) queries.EnvBuild {
+// buildOnIceLake returns testBuild() recorded as having been built on an n2 (Ice Lake) host.
+func buildOnIceLake() queries.EnvBuild {
 	build := testBuild()
 	arch, family := "x86_64", "6"
 	build.CpuArchitecture = &arch
 	build.CpuFamily = &family
+	cpuModel := machineinfo.IceLakeModel
 	build.CpuModel = &cpuModel
 
 	return build
@@ -517,7 +536,7 @@ func TestCreateSandbox_FilesystemOnlySnapshotPinsCPUModel(t *testing.T) {
 			return SandboxMetadata{
 				TemplateID:             "tpl",
 				BaseTemplateID:         "base-tpl",
-				Build:                  buildOnCPU(machineinfo.IceLakeModel),
+				Build:                  buildOnIceLake(),
 				NodeID:                 &nodeID,
 				FilesystemOnlySnapshot: filesystemOnly,
 			}, nil
@@ -621,6 +640,274 @@ func TestCreateSandbox_FilesystemOnlySnapshotWithoutBuildCPUStillPinned(t *testi
 	}
 }
 
+// A memory:false resume of a memory snapshot cold-boots too, so it is pinned
+// like a filesystem-only snapshot; a plain memory restore is not.
+func TestCreateSandbox_MemoryFalseResumePinsCPUModel(t *testing.T) {
+	t.Parallel()
+
+	extra := ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}})
+
+	tests := []struct {
+		name           string
+		pin            string
+		extra          ldvalue.Value
+		filesystemBoot bool
+		nodeCPUModel   string
+		wantErrCode    string
+	}{
+		{"memory:false, pinned to n2: n4 node refused", machineinfo.IceLakeModel, ldvalue.Null(), true, machineinfo.EmeraldRapidsModel, errCodeNoCompatibleNode},
+		{"memory:false, pinned to n2: n2 node accepted", machineinfo.IceLakeModel, ldvalue.Null(), true, machineinfo.IceLakeModel, ""},
+		{"memory:false, empty pin: n4 node accepted", "", ldvalue.Null(), true, machineinfo.EmeraldRapidsModel, ""},
+		{"memory:false, pinned to n2, extra pair: c4 node refused", machineinfo.IceLakeModel, extra, true, machineinfo.GraniteRapidsModel, errCodeNoCompatibleNode},
+		{"memory restore, pinned to n2: n4 node accepted", machineinfo.IceLakeModel, ldvalue.Null(), false, machineinfo.EmeraldRapidsModel, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := fsOnlyPinFlagSource(tt.pin)
+			source.Update(source.Flag("extra-compatible-node-models").ValueForAll(tt.extra))
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, source,
+				nodemanager.WithCPUInfo("x86_64", "6", tt.nodeCPUModel))
+			now := time.Now()
+			nodeID := "node-1"
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-memfalse-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), func(_ context.Context) (SandboxMetadata, *api.APIError) {
+					return SandboxMetadata{
+						TemplateID:     "tpl",
+						BaseTemplateID: "base-tpl",
+						Build:          buildOnIceLake(),
+						NodeID:         &nodeID,
+						FilesystemBoot: tt.filesystemBoot,
+					}, nil
+				},
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// A sandbox created from a memory:false snapshot template cold-boots, so it is
+// pinned like a filesystem-only resume. Such a create has no snapshot row; only
+// the build records the kind.
+func TestCreateSandbox_FilesystemOnlyBuildPinsCPUModel(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		filesystemOnly bool
+		nodeCPUModel   string
+		wantErrCode    string
+	}{
+		{"fs-only build, pinned to n2: n4 node refused", true, machineinfo.EmeraldRapidsModel, errCodeNoCompatibleNode},
+		{"fs-only build, pinned to n2: n2 node accepted", true, machineinfo.IceLakeModel, ""},
+		{"memory build, pinned to n2: n4 node accepted", false, machineinfo.EmeraldRapidsModel, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, fsOnlyPinFlagSource(machineinfo.IceLakeModel),
+				nodemanager.WithCPUInfo("x86_64", "6", tt.nodeCPUModel))
+			build := buildOnIceLake()
+			build.FilesystemOnly = tt.filesystemOnly
+			now := time.Now()
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-fsbuild-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), func(_ context.Context) (SandboxMetadata, *api.APIError) {
+					return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "tpl", Build: build}, nil
+				},
+				now, now.Add(time.Hour), time.Hour, false, false, sandbox.CreationMetadata{})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// extra-compatible-node-models lets an n2 build run on a Granite Rapids node
+// for memory and filesystem-only resumes alike, and adds nothing when unset.
+func TestCreateSandbox_ExtraCompatibleNodeModels(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		extra          ldvalue.Value
+		filesystemOnly bool
+		wantErrCode    string
+	}{
+		{"memory, flag unset: refused", ldvalue.Null(), false, errCodeNoCompatibleNode},
+		{"memory, pair listed: accepted", ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}}), false, ""},
+		{"fs-only, pair listed: accepted", ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}}), true, ""},
+		{"memory, other pair listed: refused", ldvalue.FromJSONMarshal(map[string][]string{"207": {"173"}}), false, errCodeNoCompatibleNode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag("extra-compatible-node-models").ValueForAll(tt.extra))
+
+			o := newCreateSandboxTestOrchestratorWithFlags(t, source,
+				nodemanager.WithCPUInfo("x86_64", "6", machineinfo.GraniteRapidsModel))
+			now := time.Now()
+			nodeID := "node-1"
+
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-extra-"+uuid.New().String()[:8], uuid.New().String(),
+				testTeam(), func(_ context.Context) (SandboxMetadata, *api.APIError) {
+					return SandboxMetadata{
+						TemplateID:             "tpl",
+						BaseTemplateID:         "base-tpl",
+						Build:                  buildOnIceLake(),
+						NodeID:                 &nodeID,
+						FilesystemOnlySnapshot: tt.filesystemOnly,
+					}, nil
+				},
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// createOnNodeModel resumes an n2-built snapshot on a single node reporting
+// nodeModel, and returns the placement error.
+func createOnNodeModel(t *testing.T, source *ldtestdata.TestDataSource, team *teamtypes.Team, nodeModel string, filesystemOnly bool) *api.APIError {
+	t.Helper()
+
+	o := newCreateSandboxTestOrchestratorWithFlags(t, source, nodemanager.WithCPUInfo("x86_64", "6", nodeModel))
+	now := time.Now()
+	nodeID := "node-1"
+
+	_, apiErr := o.CreateSandbox(t.Context(), "sbx-extra-"+uuid.New().String()[:8], uuid.New().String(),
+		team, func(_ context.Context) (SandboxMetadata, *api.APIError) {
+			return SandboxMetadata{
+				TemplateID:             "tpl",
+				BaseTemplateID:         "base-tpl",
+				Build:                  buildOnIceLake(),
+				NodeID:                 &nodeID,
+				FilesystemOnlySnapshot: filesystemOnly,
+			}, nil
+		},
+		now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+
+	return apiErr
+}
+
+// A rule targeting one cluster admits the extra pair for that cluster's teams
+// only (a team without a cluster is on the local cluster), so the cluster
+// context must reach the flag evaluation.
+func TestCreateSandbox_ExtraCompatibleNodeModelsTargetsCluster(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		targeted    uuid.UUID
+		wantErrCode string
+	}{
+		{"rule targets the team's cluster: accepted", consts.LocalClusterID, ""},
+		{"rule targets another cluster: refused", uuid.New(), errCodeNoCompatibleNode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag("extra-compatible-node-models").
+				Variations(ldvalue.Null(), ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}})).
+				FallthroughVariationIndex(0).
+				VariationIndexForKey(featureflags.ClusterKind, tt.targeted.String(), 1))
+
+			apiErr := createOnNodeModel(t, source, testTeam(), machineinfo.GraniteRapidsModel, false)
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
+// The fs-only pin narrows rather than yields to the extra pairs.
+func TestCreateSandbox_FsOnlyPinNarrowsExtraCompatibleNodeModels(t *testing.T) {
+	t.Parallel()
+
+	source := ldtestdata.DataSource()
+	source.Update(source.Flag("fs-only-resume-cpu-model").ValueForAll(ldvalue.String(machineinfo.IceLakeModel)))
+	source.Update(source.Flag("extra-compatible-node-models").ValueForAll(ldvalue.FromJSONMarshal(map[string][]string{"106": {"173"}})))
+
+	apiErr := createOnNodeModel(t, source, testTeam(), machineinfo.GraniteRapidsModel, true)
+
+	require.NotNil(t, apiErr)
+	assert.Equal(t, errCodeNoCompatibleNode, apiErr.ErrorCode)
+}
+
+// A malformed flag never blocks a start: placement continues on the hardcoded
+// rule, which admits 207 for a 106 build, and the extras stay empty.
+func TestCreateSandbox_MalformedExtraCompatibleNodeModelsKeepsHardcodedRule(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		nodeModel   string
+		wantErrCode string
+	}{
+		{"hardcoded pair: accepted", machineinfo.EmeraldRapidsModel, ""},
+		{"extra-only pair: refused", machineinfo.GraniteRapidsModel, errCodeNoCompatibleNode},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag("extra-compatible-node-models").ValueForAll(ldvalue.FromJSONMarshal(map[string]string{"106": "173"})))
+
+			apiErr := createOnNodeModel(t, source, testTeam(), tt.nodeModel, false)
+
+			if tt.wantErrCode == "" {
+				assert.Nil(t, apiErr)
+
+				return
+			}
+
+			require.NotNil(t, apiErr)
+			assert.Equal(t, tt.wantErrCode, apiErr.ErrorCode)
+		})
+	}
+}
+
 func TestCreateSandbox_CreatedCounterCarriesTeam(t *testing.T) {
 	t.Parallel()
 
@@ -651,4 +938,169 @@ func TestCreateSandbox_CreatedCounterCarriesTeam(t *testing.T) {
 	teamID, ok := sum.DataPoints[0].Attributes.Value("team.id")
 	require.True(t, ok)
 	assert.Equal(t, team.ID.String(), teamID.AsString())
+}
+
+type placementSandboxClient struct {
+	orchestrator.SandboxServiceClient
+
+	placement *orchestrator.SandboxNetworkPlacement
+}
+
+func (c *placementSandboxClient) Create(context.Context, *orchestrator.SandboxCreateRequest, ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	return &orchestrator.SandboxCreateResponse{NetworkPlacement: c.placement}, nil
+}
+
+func (c *placementSandboxClient) Update(context.Context, *orchestrator.SandboxUpdateRequest, ...grpc.CallOption) (*emptypb.Empty, error) {
+	return &emptypb.Empty{}, nil
+}
+
+func requirePlacement(t *testing.T, want, got *orchestrator.SandboxNetworkPlacement) {
+	t.Helper()
+
+	require.Truef(t, proto.Equal(want, got), "network placement: want %v, got %v", want, got)
+}
+
+func plainSandboxData(_ context.Context) (SandboxMetadata, *api.APIError) {
+	return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "base-tpl", Build: testBuild()}, nil
+}
+
+func storedPlacement(t *testing.T, o *Orchestrator, teamID uuid.UUID, sandboxID string) *orchestrator.SandboxNetworkPlacement {
+	t.Helper()
+
+	stored, err := o.sandboxStore.Get(t.Context(), teamID, sandboxID)
+	require.NoError(t, err)
+
+	return stored.NetworkPlacement
+}
+
+// pendingProbeHook closes probed when its client checks whether a reservation
+// is still pending, which a joining caller does only after it subscribed to
+// the result and found none.
+type pendingProbeHook struct {
+	probed chan struct{}
+	once   sync.Once
+}
+
+func (h *pendingProbeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *pendingProbeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func (h *pendingProbeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		err := next(ctx, cmd)
+		if cmd.Name() == "zscore" && strings.HasSuffix(fmt.Sprint(cmd.Args()[1]), ":reservations:pending") {
+			h.once.Do(func() { close(h.probed) })
+		}
+
+		return err
+	}
+}
+
+func TestCreateSandbox_RetainsWinningPlacement(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		placement *orchestrator.SandboxNetworkPlacement
+	}{
+		{name: "legacy"},
+		{name: "egress-router", placement: &orchestrator.SandboxNetworkPlacement{
+			NetworkMode:    "egress-router",
+			RouterId:       "router-a",
+			IngressAddress: "10.0.0.11",
+			IngressPort:    5007,
+		}},
+		{name: "full-router", placement: &orchestrator.SandboxNetworkPlacement{
+			NetworkMode:    "full-router",
+			RouterId:       "router-b",
+			IngressAddress: "10.8.0.2",
+			IngressPort:    5010,
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			executionID := uuid.NewString()
+			want := tt.placement
+			if want != nil {
+				want.ExecutionId = executionID
+			}
+			client := redis_utils.SetupInstance(t)
+			rpc := &placementSandboxClient{placement: want}
+			o := newCreateSandboxTestOrchestratorOnRedis(t, client, ldtestdata.DataSource(),
+				func(node *nodemanager.TestNode) { node.SetSandboxClient(rpc) })
+			origin := nodemanager.NewTestNode("node-origin", api.NodeStatusReady, 0, 8,
+				nodemanager.WithSandboxCreateError(status.Error(codes.Internal, "create failed")))
+			origin.ClusterID = uuid.Nil
+			o.registerNode(origin)
+
+			joinerClient := redis.NewClient(&redis.Options{Addr: client.(*redis.Client).Options().Addr})
+			t.Cleanup(func() { _ = joinerClient.Close() })
+			probe := &pendingProbeHook{probed: make(chan struct{})}
+			joinerClient.AddHook(probe)
+			joinerAPI := newCreateSandboxTestOrchestratorOnRedis(t, joinerClient, ldtestdata.DataSource())
+			joined := make(chan sandbox.Sandbox, 1)
+			team := testTeam()
+			sandboxID := "sbx-placement"
+			now := time.Now()
+
+			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
+			defer cancel()
+			sbx, apiErr := o.CreateSandbox(ctx, sandboxID, executionID, team,
+				func(ctx context.Context) (SandboxMetadata, *api.APIError) {
+					// The winner has reserved the start. Hold it until the other API is waiting.
+					go func() {
+						result, joinErr := joinerAPI.CreateSandbox(ctx, sandboxID, uuid.NewString(), team, plainSandboxData,
+							now, now.Add(time.Hour), time.Hour, false, false, sandbox.CreationMetadata{})
+						assert.Nil(t, joinErr)
+						joined <- result
+					}()
+					select {
+					case <-probe.probed:
+					case <-ctx.Done():
+						t.Fatal("joiner did not wait on the pending start")
+					}
+
+					data, err := plainSandboxData(ctx)
+					data.NodeID = &origin.ID // Fail on the snapshot's worker before retrying node-1.
+
+					return data, err
+				}, now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+			require.Nil(t, apiErr)
+			assert.Equal(t, "node-1", sbx.NodeID)
+			requirePlacement(t, want, sbx.NetworkPlacement)
+			joiner := <-joined
+			assert.Equal(t, executionID, joiner.ExecutionID)
+			assert.Equal(t, sbx.NodeID, joiner.NodeID)
+			requirePlacement(t, want, joiner.NetworkPlacement)
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+
+			_, apiErr = o.KeepAliveFor(ctx, team.ID, sandboxID, 2*time.Hour, false)
+			require.Nil(t, apiErr)
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+			require.Nil(t, o.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, []string{"1.1.1.1"}, nil, nil, nil, nil))
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+
+			transition, _, finish, err := o.sandboxStore.StartRemoving(ctx, team.ID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})
+			require.NoError(t, err)
+			requirePlacement(t, want, transition.Sandbox.NetworkPlacement)
+			restored, err := o.sandboxStore.RestoreRunning(ctx, transition, 0)
+			require.NoError(t, err)
+			finish(ctx, sandbox.ErrTransitionRestored)
+			requirePlacement(t, want, restored.NetworkPlacement)
+			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+
+			o.sandboxStore.Remove(ctx, team.ID, sandboxID)
+			rpc.placement = nil
+			sbx, apiErr = o.CreateSandbox(ctx, sandboxID, uuid.NewString(), team, plainSandboxData,
+				now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{IsResume: true})
+			require.Nil(t, apiErr)
+			requirePlacement(t, nil, sbx.NetworkPlacement)
+			requirePlacement(t, nil, storedPlacement(t, o, team.ID, sandboxID))
+		})
+	}
 }

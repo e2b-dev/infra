@@ -71,16 +71,19 @@ func TestNewGRPCServerRecoveryHandler(t *testing.T) {
 	require.Equal(t, fixedPanicMessage, status.Convert(err).Message())
 	require.NotContains(t, err.Error(), panicSentinel)
 	require.NotContains(t, flattenLogs(logs), panicSentinel)
+	require.Len(t, logs.All(), 1)
+	require.Equal(t, codes.Internal.String(), logs.All()[0].ContextMap()["grpc.code"])
 }
 
 //nolint:paralleltest // the middleware logs through the global logger, which this test replaces
-func TestNewGRPCServerWithoutPayloadLogging(t *testing.T) {
+func TestNewGRPCServerLogsOneLinePerCallWithoutPayloads(t *testing.T) {
 	logs := captureLogs(t)
-	client := serveSandboxService(t, respondingService{}, WithoutPayloadLogging())
+	client := serveSandboxService(t, respondingService{})
 
 	_, err := client.ResumeSandbox(t.Context(), &proxygrpc.SandboxResumeRequest{SandboxId: panicSentinel})
 
 	require.NoError(t, err)
+	require.Len(t, logs.All(), 1)
 	require.NotContains(t, flattenLogs(logs), panicSentinel)
 }
 

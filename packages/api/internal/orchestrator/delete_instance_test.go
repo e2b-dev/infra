@@ -363,6 +363,23 @@ func TestRemoveSandbox_FailedRestoreKillsTheRefusedSandbox(t *testing.T) {
 	assert.Equal(t, map[string]int64{"restore_failed/request": 1}, f.restoreOutcomes(t))
 }
 
+// A request pause pinned to an execution a resume has since replaced leaves
+// the new execution's record alone and reports the change, so the caller can
+// check the new execution before pausing it.
+func TestRemoveSandbox_PinnedPauseOfReplacedExecution(t *testing.T) {
+	t.Parallel()
+
+	f := newRefusalFixture(t, false, consts.LocalClusterID, nil)
+
+	err := f.o.RemoveSandbox(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, ExpectExecutionID: uuid.NewString()})
+	require.ErrorIs(t, err, ErrExecutionChanged)
+
+	stored, err := f.o.sandboxStore.Get(t.Context(), f.sbx.TeamID, f.sbx.SandboxID)
+	require.NoError(t, err)
+	assert.Equal(t, f.sbx.ExecutionID, stored.ExecutionID)
+	assert.Equal(t, sandbox.StateRunning, stored.State)
+}
+
 // A refused pause whose record was removed and the ID reclaimed by a new
 // incarnation while the RPC was in flight must leave that incarnation alone:
 // its record is not rewritten with the stale one, not removed, and its VM is

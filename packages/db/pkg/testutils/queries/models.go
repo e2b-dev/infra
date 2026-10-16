@@ -137,6 +137,7 @@ type EnvBuild struct {
 	CpuFlags           []string
 	StatusGroup        string
 	TeamID             *uuid.UUID
+	FilesystemOnly     bool
 }
 
 type EnvBuildAssignment struct {
@@ -231,6 +232,7 @@ type Team struct {
 	SandboxSchedulingLabels []string
 	SsoOrganizationID       *uuid.UUID
 	SsoAutoJoin             bool
+	DeletedAt               *time.Time
 	Slug                    string
 }
 

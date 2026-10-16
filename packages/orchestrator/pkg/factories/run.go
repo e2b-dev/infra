@@ -72,6 +72,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/limit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/mtls"
 	sandboxcatalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -87,6 +88,7 @@ type Deps struct {
 	Logger              logger.Logger
 	Sandboxes           *sandbox.Map
 	FeatureFlags        *featureflags.Client
+	MTLS                *mtls.Process // for an edition's own client hops
 	ClickhouseEndpoints []ClickhouseEndpoint
 }
 
@@ -273,12 +275,32 @@ type closer struct {
 	close func(ctx context.Context) error
 }
 
+func networkPoolCloser(pool network.PoolInterface) closer {
+	return closer{"network pool", func(ctx context.Context) error {
+		// FORCE_STOP cancels the shared shutdown context before invoking closers.
+		// The pool must still publish closed and stop its Populate service before
+		// run joins that service; direct pool callers retain their cancel contract.
+		return pool.Close(context.WithoutCancel(ctx))
+	}}
+}
+
 type serviceDoneError struct {
 	name string
 }
 
 func (e serviceDoneError) Error() string {
 	return fmt.Sprintf("service %s finished", e.name)
+}
+
+func newServiceErrorChannel() chan error {
+	return make(chan error, 1)
+}
+
+func reportServiceError(serviceError chan<- error, err error) {
+	select {
+	case serviceError <- err:
+	default:
+	}
 }
 
 // Run starts the orchestrator, blocking until shutdown.
@@ -347,22 +369,37 @@ func acquireOrchestratorLock(path string) (*flock.Flock, error) {
 	}
 
 	// Record our PID so a future conflicting instance can report it. We hold the
-	// exclusive advisory lock, so no other process writes this file concurrently.
-	if err := writeLockHolderPID(path); err != nil {
-		_ = fileLock.Unlock()
-
-		return nil, fmt.Errorf("write lock holder pid: %w", err)
+	// exclusive advisory lock, but its pathname may have been replaced while
+	// TryLock was opening it. Bind the metadata writer to the held inode.
+	lockedInfo, err := fileLock.Stat()
+	if err != nil {
+		return nil, errors.Join(fmt.Errorf("stat held lock file: %w", err), fileLock.Unlock())
+	}
+	if err := writeLockHolderPID(path, lockedInfo); err != nil {
+		return nil, errors.Join(fmt.Errorf("write lock holder pid: %w", err), fileLock.Unlock())
 	}
 
 	return fileLock, nil
 }
 
-func writeLockHolderPID(path string) error {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o644)
+func writeLockHolderPID(path string, lockedInfo os.FileInfo) error {
+	// Do not truncate through the pathname before confirming this descriptor
+	// refers to the inode that we actually locked.
+	f, err := os.OpenFile(path, os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("open lock file: %w", err)
 	}
 	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return fmt.Errorf("stat lock metadata file: %w", err)
+	}
+	if !os.SameFile(lockedInfo, info) {
+		return errors.New("lock file path changed during acquisition")
+	}
+	if err := f.Truncate(0); err != nil {
+		return fmt.Errorf("truncate lock file: %w", err)
+	}
 
 	if _, err := fmt.Fprintf(f, "%d\n", os.Getpid()); err != nil {
 		return fmt.Errorf("write pid: %w", err)
@@ -403,17 +440,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 			log.Fatalf("Failed to acquire orchestrator lock %s: %v", config.OrchestratorLockPath, err)
 		}
 		defer func() {
-			fileErr := f.Close()
-			if fileErr != nil {
-				log.Printf("Failed to close lock file %s: %v", config.OrchestratorLockPath, fileErr)
-			}
-			// Remove the lock file on clean shutdown so a rollback to the older
-			// stat-based release can start: that guard exits whenever the lock
-			// file exists and cannot tell that this process is already gone.
-			// TODO: Remove this os.Remove once all hosts run a flock-based
-			// release and rollback to the stat-based guard is no longer possible.
-			if rmErr := os.Remove(config.OrchestratorLockPath); rmErr != nil && !os.IsNotExist(rmErr) {
-				log.Printf("Failed to remove lock file %s: %v", config.OrchestratorLockPath, rmErr)
+			if err := releaseOrchestratorLock(config.OrchestratorLockPath, f.Close); err != nil {
+				log.Printf("Failed to release lock file %s: %v", config.OrchestratorLockPath, err)
 			}
 		}()
 	}
@@ -438,7 +466,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	serviceInfo := service.NewInfoContainer(nodeID, version, commitSHA, serviceInstanceID, machineInfo, config)
 
-	serviceError := make(chan error)
+	serviceError := newServiceErrorChannel()
 	defer close(serviceError)
 
 	var g errgroup.Group
@@ -531,12 +559,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 				l.Error(ctx, "service returned an error", zap.Error(err))
 			}
 
-			select {
-			case serviceError <- err:
-			default:
-				// Don't block if the serviceError channel is already closed
-				// or if the error is already sent
-			}
+			reportServiceError(serviceError, err)
 
 			return serviceDoneError{name: name}
 		})
@@ -570,6 +593,20 @@ func run(config cfg.Config, opts Options) (success bool) {
 
 	featureFlags.RegisterContextProvider(orchestratorContextProvider(nodeID, commitSHA))
 	featureFlags.RegisterContextProvider(instanceGroupContextProvider(config.InstanceGroupName))
+
+	tlsProcess, err := mtls.NewProcess(ctx, tel.MeterProvider, featureFlags.StringReader(), globalLogger)
+	if err != nil {
+		logger.L().Fatal(ctx, "failed to set up mutual TLS", zap.Error(err))
+	}
+	sharedPortTLS, err := newPortTLS(tlsProcess, config.TLS)
+	if err != nil {
+		logger.L().Fatal(ctx, "invalid mutual TLS configuration for the shared port", zap.Error(err))
+	}
+	peersHop, err := tlsProcess.Hop("peers", peersHopFlag, config.TLS.Peers)
+	if err != nil {
+		logger.L().Fatal(ctx, "invalid mutual TLS configuration for the peer hop", zap.Error(err))
+	}
+	peersCreds := mtls.NewClientCredentials(peersHop)
 
 	// Not a service and no closer: pacing stays in force through the sandbox
 	// drain and ends with the process.
@@ -627,7 +664,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// redis (initialized before template cache so the peer registry can be passed to NewCache)
-	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
+	redisClient, err := sharedFactories.NewRedisClient(sig, sharedFactories.RedisConfig{
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
@@ -648,7 +685,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	peerResolver := peerclient.NopResolver()
 	if nodeAddress := config.NodeAddress(); redisClient != nil && nodeAddress != nil {
 		peerRegistry = peerclient.NewRedisRegistry(redisClient, *nodeAddress)
-		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress)
+		peerResolver = peerclient.NewResolver(peerRegistry, *nodeAddress, peersCreds)
 	}
 
 	templateCache, err := template.NewCache(config, featureFlags, persistence, blockMetrics, peerResolver)
@@ -758,6 +795,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		Logger:              globalLogger,
 		Sandboxes:           sandboxes,
 		FeatureFlags:        featureFlags,
+		MTLS:                tlsProcess,
 		ClickhouseEndpoints: clickhouseEndpoints,
 	}
 
@@ -882,7 +920,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 		// defense so future parsing and selection logic cannot silently diverge.
 		logger.L().Fatal(ctx, "unsupported NETWORK_VERSION after validated config", zap.Int("network_version", config.NetworkConfig.NetworkVersion))
 	}
-	closers = append(closers, closer{"network pool", networkPool.Close})
+	closers = append(closers, networkPoolCloser(networkPool))
 
 	datapathRegistration, err := network.RegisterDatapathMetric(tel.MeterProvider, selectedNetworkVersion)
 	if err != nil {
@@ -985,7 +1023,9 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// No connection age: ChunkService and VolumeService streams may outlive the
 	// shared default's age plus grace, and how their clients behave on the
 	// GOAWAY has not been measured.
-	grpcServer := e2bgrpc.NewGRPCServer(tel, e2bgrpc.WithSandboxMetricAttributes(), e2bgrpc.WithMaxConnectionAge(0, 0))
+	grpcServer := e2bgrpc.NewGRPCServer(tel, append([]e2bgrpc.ServerOption{
+		e2bgrpc.WithSandboxMetricAttributes(), e2bgrpc.WithMaxConnectionAge(0, 0),
+	}, sharedPortTLS.grpcOptions()...)...)
 	orchestrator.RegisterSandboxServiceServer(grpcServer, orchestratorService)
 	orchestrator.RegisterVolumeServiceServer(grpcServer, volumeService)
 	orchestrator.RegisterChunkServiceServer(grpcServer, orchestratorService)
@@ -1032,7 +1072,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	grpc_health_v1.RegisterHealthServer(grpcServer, grpcHealth)
 
 	// cmux server, allows us to reuse the same TCP port between grpc and HTTP requests
-	cmuxServer, err := NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider)
+	cmuxServer, err := NewCMUXServer(ctx, config.GRPCPort, tel.MeterProvider, sharedPortTLS.wrap)
 	if err != nil {
 		logger.L().Fatal(ctx, "failed to create cmux server", zap.Error(err))
 	}
@@ -1064,15 +1104,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 		logger.L().Fatal(ctx, "failed to create healthcheck", zap.Error(err))
 	}
 
-	httpMux := http.NewServeMux()
-	httpMux.Handle("/health", healthcheck.CreateHandler())
-
-	if localUploadHandler != nil {
-		httpMux.Handle("/upload", localUploadHandler)
-	}
-
 	httpServer := NewHTTPServer()
-	httpServer.Handler = httpMux
+	httpServer.Handler = sharedPortTLS.guard(newHTTPHandler(healthcheck.CreateHandler(), localUploadHandler))
 
 	startService("http server", func() error {
 		err := httpServer.Serve(httpListener)
@@ -1093,6 +1126,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 	})
 	closers = append(closers, closer{"grpc server", func(context.Context) error {
 		logger.L().Info(ctx, "Shutting down grpc server")
+		// Detached checkpoints hold handlers open for minutes; end them first.
+		orchestratorService.BeginShutdown()
 		grpcServer.GracefulStop()
 
 		return nil

@@ -20,6 +20,7 @@ type (
 
 const (
 	ApiRateLimitRequests                 CounterType = "api.rate_limit.requests"
+	ApiSandboxPauseRateLimit             CounterType = "api.sandbox_pause.rate_limit"
 	ApiOrchestratorCreatedSandboxes      CounterType = "api.orchestrator.created_sandboxes"
 	ApiOrchestratorResumeOriginNodeRemap CounterType = "api.orchestrator.resume_origin_node_remapped"
 	// ApiOrchestratorPauseRefusalRestore counts what became of a pause the
@@ -28,6 +29,12 @@ const (
 	// superseded: the ID was reclaimed by a new incarnation meanwhile; nothing
 	// was restored, removed, or killed.
 	ApiOrchestratorPauseRefusalRestore CounterType = "api.orchestrator.pause_refusal_restore"
+	// ApiSandboxListReads counts sandbox list requests by team and by how the
+	// team's store read was served: disabled (no lag allowed, own read) | read
+	// (started the shared read) | shared (joined one in flight) | hit (a live
+	// snapshot). The read plus disabled rate is the team's store sweeps per
+	// second; hit over the total is what the snapshot saves.
+	ApiSandboxListReads CounterType = "api.sandbox.list.reads"
 	// ApiEvictorFsOnlyAutoPause counts timeout auto-pauses whose policy asked
 	// for a filesystem-only snapshot. Unlabeled since the fs-only version
 	// gate was dropped: every counted eviction takes the fs-only path.
@@ -43,6 +50,15 @@ const (
 	TeamSandboxCreated CounterType = "e2b.team.sandbox.created"
 
 	EnvdInitCalls CounterType = "orchestrator.sandbox.envd.init.calls"
+	// envd's count of /init handlers that thawed inline after their client had gone, read
+	// off the served /init of a first customer start that succeeded.
+	EnvdInitUnobservedHandlers CounterType = "orchestrator.sandbox.envd.init.unobserved_handlers"
+	// Held envd init dials that took over 500 ms on a first customer start, by how that
+	// attempt ended.
+	EnvdInitSlowDials CounterType = "orchestrator.sandbox.envd.init.slow_dials"
+	// Held post-checkpoint envd re-inits stopped before they returned, by what stopped
+	// them: a following pause, or the sandbox's Firecracker exiting.
+	EnvdReinitCut CounterType = "orchestrator.sandbox.envd.reinit.cut"
 
 	// 2 MiB chunks the pre-pause envd heap collapse attempted, split by the
 	// result attribute (collapsed|skipped): attempts = total, successful =
@@ -350,6 +366,9 @@ const (
 	// throwaway is absent from Prometheus otherwise (registration-skip), so this
 	// is the harvest-activity / failure-rate signal.
 	PauseResumePrefetchHarvestAttempts CounterType = "orchestrator.sandbox.pause_resume_prefetch.harvest.attempts"
+	// Harvest throwaways whose held envd /init was served a 204, by whether envd skipped
+	// the thaw.
+	PauseResumePrefetchHarvestThaw CounterType = "orchestrator.sandbox.pause_resume_prefetch.harvest.thaw"
 
 	ApiRedisStoragePublisherPublished CounterType = "api.redis_storage.publisher.published"
 	ApiRedisStoragePublisherDropped   CounterType = "api.redis_storage.publisher.dropped"
@@ -372,6 +391,14 @@ const (
 	// a transition. A sustained high rate means transitions pile up at the
 	// front of the index, e.g. evictions near their concurrency limit.
 	ApiRedisStorageExpirationIndexDeferred CounterType = "api.redis_storage.expiration_index.deferred"
+
+	// ClientProxyResumeFlightCounterName counts callers of the per-sandbox
+	// resume flight by role (leader|joiner|none) and result
+	// (served|error|canceled); none is a caller that joined no flight.
+	ClientProxyResumeFlightCounterName CounterType = "client_proxy.resume.flight.total"
+	// ClientProxyResumeParkingRejectedCounterName counts callers shed with a
+	// 503 because the parking lot was full when their flight first retried.
+	ClientProxyResumeParkingRejectedCounterName CounterType = "client_proxy.resume.parking.rejected"
 )
 
 const (
@@ -385,6 +412,7 @@ const (
 	ClientProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "client_proxy.proxy.server.connections.open"
 	ClientProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "client_proxy.proxy.pool.connections.open"
 	ClientProxyPoolSizeMeterCounterName          ObservableUpDownCounterType = "client_proxy.proxy.pool.size"
+	ClientProxyResumeParkingActiveName           ObservableUpDownCounterType = "client_proxy.resume.parking.active"
 
 	OrchestratorProxyServerConnectionsMeterCounterName ObservableUpDownCounterType = "orchestrator.proxy.server.connections.open"
 	OrchestratorProxyPoolConnectionsMeterCounterName   ObservableUpDownCounterType = "orchestrator.proxy.pool.connections.open"
@@ -417,6 +445,8 @@ const (
 	// Sandbox timing histograms
 	OrchestratorSandboxCreateDurationName HistogramType = "orchestrator.sandbox.create.duration"
 	WaitForEnvdDurationHistogramName      HistogramType = "orchestrator.sandbox.envd.init.duration"
+	EnvdInitTimestampAgeHistogramName     HistogramType = "orchestrator.sandbox.envd.init.timestamp_age"
+	EnvdInitClockCorrectionHistogramName  HistogramType = "orchestrator.sandbox.envd.init.clock_correction"
 	GuestSyncDurationHistogramName        HistogramType = "orchestrator.sandbox.guest_sync.duration"
 	PauseDurationHistogramName            HistogramType = "orchestrator.sandbox.pause.duration"
 	SnapshotProcessMemoryDurationName     HistogramType = "orchestrator.sandbox.snapshot.process_memory.duration"
@@ -528,6 +558,11 @@ const (
 	// Ingress proxy histograms
 	IngressProxyConnectionDurationHistogramName    HistogramType = "orchestrator.proxy.connection.duration"
 	IngressProxyConnectionsPerSandboxHistogramName HistogramType = "orchestrator.proxy.connections.per_sandbox"
+
+	// ClientProxyResumeParkingWaitDurationName is how long a request waited
+	// in the parking lot, labeled by outcome
+	// (served|budget_exhausted|canceled|error).
+	ClientProxyResumeParkingWaitDurationName HistogramType = "client_proxy.resume.parking.wait.duration"
 )
 
 const (
@@ -613,6 +648,15 @@ const (
 
 const (
 	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
+	// ApiSandboxListAge is the age of a served sandbox list, by team and
+	// outcome (see ApiSandboxListReads), recorded only for teams whose lag
+	// flag is set: for a read, the store sweep's duration; for a shared read,
+	// the wait from the sweep's start to the joiner's result; for a hit, how
+	// far the snapshot lagged the store. Tune the list lag flag against it: hits
+	// parked at the allowance mean it decides the team's lifetime; sweeps
+	// longer than the lifetime mean the store is being read as fast as the
+	// allowance permits. Exported with explicit buckets (metrics.go).
+	ApiSandboxListAge HistogramType = "api.sandbox.list.age"
 
 	// Firecracker net histograms — per-sandbox distribution per metrics flush, no sandbox_id.
 	// Firecracker serializes SharedIncMetric as per-flush deltas (default flush interval: 60 s).
@@ -703,17 +747,22 @@ const (
 
 var counterDesc = map[CounterType]string{
 	ApiRateLimitRequests:                         "Number of API group rate-limit checks, by team, group, mode, and decision",
+	ApiSandboxPauseRateLimit:                     "Pause requests checked against the per-sandbox pause rate limit, by team and decision (allowed|deduplicated|limited|error)",
 	SandboxCreateMeterName:                       "Number of currently waiting requests to create a new sandbox",
 	ApiOrchestratorCreatedSandboxes:              "Number of successfully created sandboxes",
 	ApiEvictorFsOnlyAutoPause:                    "Timeout auto-pauses with a filesystem-only policy.",
 	ApiEvictorAutoPauseDegraded:                  "Timeout auto-pauses degraded to filesystem-only after a node refusal, by cause (admission_refused | overstay_budget).",
 	ApiOrchestratorResumeOriginNodeRemap:         "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
 	ApiOrchestratorPauseRefusalRestore:           "Outcomes of restoring a sandbox whose pause the node refused retryably, by outcome and caller.",
+	ApiSandboxListReads:                          "Sandbox list requests by team and by how the team's store read was served: disabled | read | shared | hit.",
 	BuildResultCounterName:                       "Number of template build results",
 	BuildCacheResultCounterName:                  "Number of build cache results",
 	TeamSandboxCreated:                           "Counter of started sandboxes for the team in the interval",
 	OrchestratorHostBalanceDirtyPagesThreads:     "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
 	EnvdInitCalls:                                "Number of envd initialization calls",
+	EnvdReinitCut:                                "Post-checkpoint envd re-inits stopped before they returned, by what first stopped them, recorded when it did and counted once the re-init returns: pause (a following pause stopped a held one before its pre-pause freeze: cancelled it whatever it had written, or, before its gate chose the held loop, kept it from writing), kill (the sandbox's Firecracker process exited during a held one) or replace (a fresh re-init took its place: cancelled a held one in flight, or kept one from writing on either loop before its gate chose one)",
+	EnvdInitSlowDials:                            "Held envd init dials that took over 500 ms on a first customer start, by how that attempt ended: connect, write, response or success",
+	EnvdInitUnobservedHandlers:                   "Envd /init handlers that thawed the workload inline and completed after their client had gone, as envd counts them on the served /init of a first customer start that succeeded (X-Envd-Init-Unobserved)",
 	EnvdCollapseChunks:                           "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:         "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSandboxCrashedCounterName:        "Sandbox executions that ended without a recorded stop reason, labeled by cause (clean_exit/exit_error/external_signal/fault/memory_handler_failed/requested_signal/unknown)",
@@ -745,6 +794,7 @@ var counterDesc = map[CounterType]string{
 	OrchestratorEnvdBinaryCacheDeliveries:        "Host envd binary reads at delivery time, by outcome (copy|stale) and upgrade path",
 	OrchestratorEnvdBinaryCacheWarms:             "Host envd binary cache warms, by result (ok|superseded|suppressed|pinned|already_warming|bad_target|failed)",
 	OrchestratorEnvdUpgradeHandover:              "Live-upgrade handover items by item (proc|retained|watcher) and result (ok|failed)",
+	PauseResumePrefetchHarvestThaw:               "Harvest throwaways whose envd /init took the held request and was served a 204, by skipped: true when envd answered X-Envd-Thaw: skip and left the workload frozen, false when it thawed inline and the workload ran into the trace (an envd version the gate admitted that does not skip); envd_running_version is the version the gate read, kept when the orchestrator holds it, else other",
 	PauseResumePrefetchHarvestAttempts:           "Resume prefetch harvest attempts after a pause or an in-place checkpoint, by result (success | resume_failed | collect_failed | skipped = seal did not settle | slot_timeout = no start slot | persist_deadline) and path (pause | checkpoint)",
 	TCPFirewallConnectionsTotal:                  "Total number of TCP firewall connections processed",
 	TCPFirewallErrorsTotal:                       "Total number of TCP firewall errors",
@@ -776,21 +826,29 @@ var counterDesc = map[CounterType]string{
 	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution|invalid)",
 	ApiRedisStorageExpirationIndexRescored: "Live expiration index members re-scored after drifting from the stored EndTime",
 	ApiRedisStorageExpirationIndexDeferred: "Expired expiration index members moved out of the evictor scan window while their sandbox is in a transition",
+
+	ClientProxyResumeFlightCounterName:          "Callers of the per-sandbox resume flight at the client proxy (role=leader|joiner|none, result=served|error|canceled)",
+	ClientProxyResumeParkingRejectedCounterName: "Requests shed with a 503 because the client proxy parking lot was full at their flight's first retry",
 }
 
 var counterUnits = map[CounterType]string{
 	ApiRateLimitRequests:                         "{request}",
+	ApiSandboxPauseRateLimit:                     "{request}",
 	SandboxCreateMeterName:                       "{sandbox}",
 	ApiOrchestratorCreatedSandboxes:              "{sandbox}",
 	ApiEvictorFsOnlyAutoPause:                    "{pause}",
 	ApiEvictorAutoPauseDegraded:                  "{pause}",
 	ApiOrchestratorResumeOriginNodeRemap:         "{snapshot}",
 	ApiOrchestratorPauseRefusalRestore:           "{pause}",
+	ApiSandboxListReads:                          "{request}",
 	BuildResultCounterName:                       "{build}",
 	BuildCacheResultCounterName:                  "{layer}",
 	TeamSandboxCreated:                           "{sandbox}",
 	OrchestratorHostBalanceDirtyPagesThreads:     "{thread}",
 	EnvdInitCalls:                                "1",
+	EnvdInitUnobservedHandlers:                   "{handler}",
+	EnvdInitSlowDials:                            "{dial}",
+	EnvdReinitCut:                                "{reinit}",
 	EnvdCollapseChunks:                           "{chunk}",
 	OrchestratorSandboxKilledCounterName:         "{sandbox}",
 	OrchestratorSandboxCrashedCounterName:        "{sandbox}",
@@ -823,8 +881,11 @@ var counterUnits = map[CounterType]string{
 	OrchestratorEnvdBinaryCacheDeliveries:        "{read}",
 	OrchestratorEnvdUpgradeHandover:              "{item}",
 	PauseResumePrefetchHarvestAttempts:           "{attempt}",
+	PauseResumePrefetchHarvestThaw:               "{throwaway}",
 	TCPFirewallConnectionsTotal:                  "{connection}",
 	TCPFirewallErrorsTotal:                       "{error}",
+	ClientProxyResumeFlightCounterName:           "{request}",
+	ClientProxyResumeParkingRejectedCounterName:  "{request}",
 	TCPFirewallDecisionsTotal:                    "{decision}",
 
 	OrchestratorTemplateCacheAncestorResolutionsCounterName: "{ancestor}",
@@ -870,6 +931,7 @@ var observableUpDownCounterDesc = map[ObservableUpDownCounterType]string{
 	ClientProxyServerConnectionsMeterCounterName:       "Open connections to the client proxy from load balancer.",
 	ClientProxyPoolConnectionsMeterCounterName:         "Open connections from the client proxy to the orchestrator proxy.",
 	ClientProxyPoolSizeMeterCounterName:                "Size of the client proxy pool.",
+	ClientProxyResumeParkingActiveName:                 "Requests parked at the client proxy waiting on a retried resume.",
 	OrchestratorProxyServerConnectionsMeterCounterName: "Open connections to the orchestrator proxy from client proxies.",
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "Open connections from the orchestrator proxy to sandboxes.",
 	OrchestratorProxyPoolSizeMeterCounterName:          "Size of the orchestrator proxy pool.",
@@ -886,6 +948,7 @@ var observableUpDownCounterUnits = map[ObservableUpDownCounterType]string{
 	ClientProxyServerConnectionsMeterCounterName:       "{connection}",
 	ClientProxyPoolConnectionsMeterCounterName:         "{connection}",
 	ClientProxyPoolSizeMeterCounterName:                "{transport}",
+	ClientProxyResumeParkingActiveName:                 "{request}",
 	OrchestratorProxyServerConnectionsMeterCounterName: "{connection}",
 	OrchestratorProxyPoolConnectionsMeterCounterName:   "{connection}",
 	OrchestratorProxyPoolSizeMeterCounterName:          "{transport}",
@@ -1035,6 +1098,7 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
+	ApiSandboxListAge:                       "Age of a served sandbox list: the store sweep's duration for a read, the wait from the sweep's start for a joined (shared) read, the snapshot's lag for a hit",
 
 	FPHRunDurationName:                                "Duration of a completed free-page-hinting drain or run, labeled by phase",
 	FPHStopDurationName:                               "Duration of the stop of an abandoned hinting cycle, acknowledgement wait included",
@@ -1050,6 +1114,8 @@ var histogramDesc = map[HistogramType]string{
 	OrchestratorEnvdUpgradeDurationName:               "Wall-time of a resume-time envd upgrade (delivery + trigger + WaitForEnvd)",
 	OrchestratorEnvdUpgradePhaseDurationName:          "Wall-time of one resume-time envd upgrade phase (resolve|deliver|ready); resolve is absent from the combined histogram",
 	WaitForEnvdDurationHistogramName:                  "Time taken for Envd to initialize successfully",
+	EnvdInitTimestampAgeHistogramName:                 "Age of the host timestamp carried by the served envd /init when its response arrived, on a handle's first customer start that succeeded. envd steps the guest clock to that timestamp, so this bounds how far behind the host the guest clock is left by it: the age also holds the rest of the handler and the response's transit, which come after the step, and an envd that corrects the timestamp (clock_correction) removes its own share before the step",
+	EnvdInitClockCorrectionHistogramName:              "Time envd added to the served /init timestamp before its clock rules, its own time from reading the request body to those rules whether or not they stepped the clock, in whole milliseconds as reported on X-Envd-Init-Clock-Correction, on a handle's first customer start that succeeded; absent when the envd sends no such header",
 	EnvdCollapseDurationHistogramName:                 "Time taken for the pre-pause envd heap collapse round-trip",
 	GuestSyncDurationHistogramName:                    "Time taken for the mandatory pre-pause guest sync (filesystem-only pause)",
 	PauseDurationHistogramName:                        "Time taken to pause a sandbox, labeled by fs_only (filesystem-only vs memory) and success",
@@ -1113,10 +1179,13 @@ var histogramDesc = map[HistogramType]string{
 	UploadUncompressedBytes: "Per-upload uncompressed artifact size",
 	UploadCompressedBytes:   "Per-upload compressed artifact size",
 	UploadCompressionRatio:  "Per-upload compressed/uncompressed ratio (1.0 = no compression)",
+
+	ClientProxyResumeParkingWaitDurationName: "Time a request waited in the client proxy parking lot, labeled by outcome (served|budget_exhausted|canceled|error)",
 }
 
 var histogramUnits = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "ms",
+	ApiSandboxListAge:                       "ms",
 
 	FPHRunDurationName:                                "ms",
 	FPHStopDurationName:                               "ms",
@@ -1135,6 +1204,8 @@ var histogramUnits = map[HistogramType]string{
 	OrchestratorEnvdBinaryCacheSourceStatDurationName: "ms",
 	OrchestratorFsRecoveryDurationName:                "ms",
 	WaitForEnvdDurationHistogramName:                  "ms",
+	EnvdInitTimestampAgeHistogramName:                 "ms",
+	EnvdInitClockCorrectionHistogramName:              "ms",
 	EnvdCollapseDurationHistogramName:                 "ms",
 	GuestSyncDurationHistogramName:                    "ms",
 	PauseDurationHistogramName:                        "ms",
@@ -1192,6 +1263,8 @@ var histogramUnits = map[HistogramType]string{
 	UploadUncompressedBytes: "{By}",
 	UploadCompressedBytes:   "{By}",
 	UploadCompressionRatio:  "{1}",
+
+	ClientProxyResumeParkingWaitDurationName: "ms",
 }
 
 // GetHistogram returns an Int64 histogram with the registered description and

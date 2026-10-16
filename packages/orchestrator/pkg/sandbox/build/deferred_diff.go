@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -16,6 +17,9 @@ import (
 // such as the pause-upload retry loop match on it to stop retrying a diff that
 // can never materialize (rather than burning the whole retry budget on it).
 var ErrDeferredSealFailed = errors.New("deferred rootfs seal failed")
+
+// ErrDiffUnresolved is returned while a deferred diff's seal has not resolved, so there is no cached data to discard yet.
+var ErrDiffUnresolved = errors.New("deferred diff has not resolved")
 
 // deferredDiff is a Diff whose backing data is produced asynchronously. It is
 // returned synchronously from a pause that seals the rootfs in the background:
@@ -109,6 +113,25 @@ func (d *deferredDiff) FileSize(ctx context.Context) (int64, error) {
 	}
 
 	return inner.FileSize(ctx)
+}
+
+// DiscardRuns forwards to the materialized diff when it is Discardable. It
+// never blocks on the seal: an unresolved seal is refused with ErrDiffUnresolved
+// and a failed seal returns its error, like every other data-bearing method.
+func (d *deferredDiff) DiscardRuns(runs []block.Range) (block.DiscardStats, error) {
+	if !d.sealed() {
+		return block.DiscardStats{}, ErrDiffUnresolved
+	}
+	inner, err := d.inner.Result()
+	if err != nil {
+		return block.DiscardStats{}, err
+	}
+	disc, ok := inner.(Discardable)
+	if !ok {
+		return block.DiscardStats{}, ErrDiffNotDiscardable
+	}
+
+	return disc.DiscardRuns(runs)
 }
 
 // Close waits for the seal to resolve and closes the materialized diff. If the

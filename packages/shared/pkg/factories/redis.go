@@ -16,6 +16,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
+	"github.com/e2b-dev/infra/packages/shared/pkg/retry"
 )
 
 var ErrRedisDisabled = errors.New("redis is disabled")
@@ -49,6 +50,22 @@ const (
 	// so connections expire between 20-40 minutes instead of all at exactly 30 minutes.
 	connMaxLifetimeJitter = 10 * time.Minute
 )
+
+// startupPingPolicy outlasts a Redis failover; most callers exit when no client is created.
+var startupPingPolicy = retry.Policy{
+	TotalBudget:    5 * time.Minute,
+	AttemptTimeout: 5 * time.Second,
+	InitialBackoff: 250 * time.Millisecond,
+	MaxBackoff:     5 * time.Second,
+	Multiplier:     2,
+}
+
+// pingRetryable gives up on failures a retry cannot fix: rejected credentials and an untrusted certificate.
+func pingRetryable(err error) bool {
+	var certErr *tls.CertificateVerificationError
+
+	return !redis.IsAuthError(err) && !redis.IsPermissionError(err) && !errors.As(err, &certErr)
+}
 
 // resolvePoolSize computes the effective pool size and minimum idle connections
 // from the given config, applying defaults and floors.
@@ -252,7 +269,9 @@ func NewRedisClient(ctx context.Context, config RedisConfig) (redis.UniversalCli
 		return nil, errors.Join(fmt.Errorf("failed to enable redis metrics: %w", err), closeErr)
 	}
 
-	if _, err := redisClient.Ping(ctx).Result(); err != nil {
+	if err := retry.Do(ctx, startupPingPolicy, pingRetryable, func(ctx context.Context) error {
+		return redisClient.Ping(ctx).Err()
+	}, nil); err != nil {
 		closeErr := redisClient.Close()
 
 		return nil, errors.Join(fmt.Errorf("failed to ping redis: %w", err), closeErr)

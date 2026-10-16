@@ -10,6 +10,9 @@ ARG DEBIAN_VERSION=bookworm
 
 # Dockerfile for running orchestrator golang tests
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS base
+# Fall through to a retry on any module proxy error; see
+# .github/actions/go-setup-cache/action.yml for the mechanism.
+ENV GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct
 
 WORKDIR /build/shared
 

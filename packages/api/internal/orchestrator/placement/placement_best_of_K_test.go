@@ -393,9 +393,45 @@ func TestBestOfK_ChooseNode_NoAvailableNodes(t *testing.T) {
 	}
 
 	selected, err := algo.chooseNode(ctx, nodes, excludedNodes, resources, CPURequirement{}, FeatureRequirement{}, false, nil)
-	require.Error(t, err)
 	assert.Nil(t, selected)
-	assert.Contains(t, err.Error(), "no node available")
+	var noNodes NoNodesAvailableError
+	require.ErrorAs(t, err, &noNodes)
+}
+
+// An unavailable node that would fit is a capacity shortage; one that would not
+// fit is still an incompatibility.
+func TestBestOfK_ChooseNode_UnavailableNodeIsCapacity(t *testing.T) {
+	t.Parallel()
+
+	for name, tt := range map[string]struct {
+		status       api.NodeStatus
+		labels       []string
+		wantCapacity bool
+	}{
+		"draining node that fits":              {status: api.NodeStatusDraining, labels: []string{"gpu"}, wantCapacity: true},
+		"unhealthy node that fits":             {status: api.NodeStatusUnhealthy, labels: []string{"gpu"}, wantCapacity: true},
+		"draining node without required label": {status: api.NodeStatusDraining, wantCapacity: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			algo := NewBestOfK(DefaultBestOfKConfig()).(*BestOfK)
+			node := nodemanager.NewTestNode("node1", tt.status, 0, 8, nodemanager.WithLabels(tt.labels))
+
+			_, err := algo.chooseNode(t.Context(), []*nodemanager.Node{node}, nil,
+				nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512}, CPURequirement{}, FeatureRequirement{}, true, []string{"gpu"})
+
+			if tt.wantCapacity {
+				var noNodes NoNodesAvailableError
+				require.ErrorAs(t, err, &noNodes)
+
+				return
+			}
+
+			var placeErr FailedToPlaceSandboxError
+			require.ErrorAs(t, err, &placeErr)
+		})
+	}
 }
 
 func TestFailedToPlaceSandboxError_Error(t *testing.T) {

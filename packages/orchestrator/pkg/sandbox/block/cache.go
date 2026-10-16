@@ -3,6 +3,7 @@
 package block
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -34,6 +36,9 @@ const (
 
 var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block")
 
+// ErrCacheNoUpstream is returned when the cache holds the only copy of its bytes, so nothing can be discarded.
+var ErrCacheNoUpstream = errors.New("block cache has no upstream to refetch from")
+
 type CacheClosedError struct {
 	filePath string
 }
@@ -57,15 +62,35 @@ type Cache struct {
 	tracker   *Tracker // Dirty: payload in mmap; Zero: punched, emitted as Empty in the diff
 	dirtyFile bool
 	closed    atomic.Bool
+	// refetchable is set only by the chunker, whose upstream can serve any block again.
+	refetchable bool
+	// discardGen counts discards; bumped once per discard, inside its write-locked punch.
+	discardGen atomic.Uint64
+	// streamMu is held shared by a fetch streaming into the mapping and exclusively
+	// by Close, so a stream never holds mu and a discard never waits on an upstream.
+	streamMu sync.RWMutex
 }
 
-func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (*Cache, error) {
-	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
+func NewCache(size, blockSize int64, filePath string, dirtyFile bool) (_ *Cache, retErr error) {
+	f, err := os.OpenFile(filePath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
+	created := err == nil
+	if errors.Is(err, os.ErrExist) {
+		// Existing paths may hold a completed diff. Ownership transfers only
+		// on success, so a failed constructor must leave them to their caller.
+		f, err = os.OpenFile(filePath, os.O_RDWR|os.O_CREATE, 0o644)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+		if retErr != nil && created {
+			if err := os.Remove(filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+				retErr = errors.Join(retErr, fmt.Errorf("remove failed cache file: %w", err))
+			}
+		}
+	}()
 
 	if size == 0 {
 		return &Cache{
@@ -431,6 +456,63 @@ func (c *Cache) ReadAt(b []byte, off int64) (int, error) {
 	return copy(b, slice), nil
 }
 
+// readAtDirect copies from the mmap while holding the close-exclusion lock but
+// deliberately skips the tracker check. Chunker uses it only after its fetch
+// session waiters have proved every requested byte is ready; uncompressed
+// sessions release blocks progressively before the whole chunk is marked
+// cached, so the public ReadAt would reject valid early reads.
+func (c *Cache) readAtDirect(ctx context.Context, b []byte, off int64) (int, error) {
+	// Non-cancellable callers keep the ordinary RWMutex path. Cancellable
+	// callers cannot block in RLock: a pending Close or
+	// unrelated writer would otherwise hide cancellation behind that writer.
+	locked := true
+	if ctx.Done() == nil {
+		c.mu.RLock()
+	} else {
+		locked = c.mu.TryRLock()
+	}
+
+	if !locked {
+		if err := ctx.Err(); err != nil {
+			return 0, err
+		}
+
+		timer := time.NewTimer(time.Millisecond)
+		defer timer.Stop()
+
+		for !locked {
+			select {
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			case <-timer.C:
+				if err := ctx.Err(); err != nil {
+					return 0, err
+				}
+				locked = c.mu.TryRLock()
+				if !locked {
+					timer.Reset(time.Millisecond)
+				}
+			}
+		}
+	}
+
+	defer c.mu.RUnlock()
+
+	if c.mmap == nil {
+		return 0, nil
+	}
+	if c.isClosed() {
+		return 0, NewErrCacheClosed(c.filePath)
+	}
+	if off < 0 || off >= c.size {
+		return 0, BytesNotAvailableError{}
+	}
+
+	end := min(off+int64(len(b)), c.size)
+
+	return copy(b, (*c.mmap)[off:end]), nil
+}
+
 func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -447,6 +529,8 @@ func (c *Cache) WriteAt(b []byte, off int64) (int, error) {
 }
 
 func (c *Cache) Close() (e error) {
+	c.streamMu.Lock()
+	defer c.streamMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -498,26 +582,6 @@ func (c *Cache) Slice(off, length int64) ([]byte, error) {
 	return nil, BytesNotAvailableError{}
 }
 
-// sliceDirect returns a slice of the mmap without checking isCached.
-// Used by the streaming chunker after the waiter mechanism has confirmed data availability.
-func (c *Cache) sliceDirect(off, length int64) ([]byte, error) {
-	if c.isClosed() {
-		return nil, NewErrCacheClosed(c.filePath)
-	}
-
-	if c.mmap == nil {
-		return nil, nil
-	}
-
-	if off < 0 || off >= c.size {
-		return nil, BytesNotAvailableError{}
-	}
-
-	end := min(off+length, c.size)
-
-	return (*c.mmap)[off:end], nil
-}
-
 // Zero blocks are treated as cached: the mmap region reads back as zero (punched).
 func (c *Cache) isCached(off, length int64) bool {
 	start := uint32(header.BlockIdx(off, c.blockSize))
@@ -538,6 +602,86 @@ func (c *Cache) punchHole(off, length int64) {
 	if err := unix.Madvise((*c.mmap)[off:off+length], unix.MADV_REMOVE); err != nil {
 		clear((*c.mmap)[off : off+length])
 	}
+}
+
+// DiscardStats reports one discard. Present is the bytes the tracker held as
+// present when punched (the savings figure); Punched is the extent punched,
+// which also covers bytes a fetch had published but not yet marked present.
+type DiscardStats struct {
+	Present int64
+	Punched int64
+}
+
+// discardLocked returns every run to not-present and punches it, so the next
+// read refetches it from upstream, reporting the bytes that were present, the
+// extent punched and the runs clipped to the file. Block-aligned runs only; a bad run refuses the
+// whole call before anything is punched. The runs need not be sorted or
+// disjoint: they are coalesced first, so both figures are exact and a byte is
+// punched once. Refused on a cache without an
+// upstream: only the chunker's cache, whose upstream can serve any block
+// again, is refetchable, and its reads copy out of the mapping under the lock.
+// The caller holds the write lock, which a reader's copy, a fetch's publish
+// and Close share, and bumps discardGen before releasing it, so a reader
+// proves and copies either wholly before the punch or wholly after the bump.
+// Chunker.DiscardRuns is the one entry point: it also records the discard for
+// its fetch sessions.
+func (c *Cache) discardLocked(runs []Range) (DiscardStats, []Range, error) {
+	for _, r := range runs {
+		if c.blockSize <= 0 || r.Start < 0 || r.Size < 0 || r.Start%c.blockSize != 0 || r.Size%c.blockSize != 0 {
+			return DiscardStats{}, nil, fmt.Errorf("misaligned discard: off=%d len=%d block=%d", r.Start, r.Size, c.blockSize)
+		}
+	}
+	if c.isClosed() {
+		return DiscardStats{}, nil, NewErrCacheClosed(c.filePath)
+	}
+	if !c.refetchable {
+		return DiscardStats{}, nil, ErrCacheNoUpstream
+	}
+	if c.mmap == nil {
+		return DiscardStats{}, nil, nil
+	}
+
+	var stats DiscardStats
+	var clipped []Range
+	last := uint32(header.BlockIdx(c.size-1, c.blockSize))
+	for _, r := range coalesceRuns(runs) {
+		end := min(r.End(), c.size)
+		if end <= r.Start {
+			continue
+		}
+		clipped = append(clipped, Range{Start: r.Start, Size: end - r.Start})
+
+		start := uint32(header.BlockIdx(r.Start, c.blockSize))
+		stop := uint32(header.BlockCeilIdx(end, c.blockSize))
+		// The last block holds only the bytes up to the file size.
+		if stop > last {
+			stats.Present += int64(c.tracker.Discard(last, stop)) * (c.size - int64(last)*c.blockSize)
+			stop = last
+		}
+		stats.Present += int64(c.tracker.Discard(start, stop)) * c.blockSize
+		stats.Punched += end - r.Start
+		c.punchHole(r.Start, end-r.Start)
+	}
+
+	return stats, clipped, nil
+}
+
+// coalesceRuns returns runs sorted by start with adjacent and overlapping
+// runs merged, leaving the input untouched.
+func coalesceRuns(runs []Range) []Range {
+	sorted := slices.Clone(runs)
+	slices.SortFunc(sorted, func(a, b Range) int { return cmp.Compare(a.Start, b.Start) })
+	merged := sorted[:0]
+	for _, r := range sorted {
+		if n := len(merged); n > 0 && r.Start <= merged[n-1].End() {
+			merged[n-1].Size = max(merged[n-1].End(), r.End()) - merged[n-1].Start
+
+			continue
+		}
+		merged = append(merged, r)
+	}
+
+	return merged
 }
 
 // WriteAtShared is WriteAt under the read (shared) lock: callers that
@@ -734,35 +878,46 @@ func (c *Cache) address(off int64) (*byte, error) {
 	return &(*c.mmap)[off], nil
 }
 
-// addressBytes returns a slice of the mmap and a function to release the read lock which blocks the cache from being closed.
-func (c *Cache) addressBytes(off, length int64) ([]byte, func(), error) {
-	c.mu.RLock()
-
-	if c.mmap == nil {
-		c.mu.RUnlock()
-
-		return nil, func() {}, nil
-	}
+// holdStream takes the stream lock for a fetch, which blocks the cache from
+// being closed but not from being discarded; the fetch touches the mapping
+// only through writeAbsentLocked, under mu.
+func (c *Cache) holdStream() (release func(), err error) {
+	c.streamMu.RLock()
 
 	if c.isClosed() {
-		c.mu.RUnlock()
+		c.streamMu.RUnlock()
 
-		return nil, func() {}, NewErrCacheClosed(c.filePath)
+		return nil, NewErrCacheClosed(c.filePath)
 	}
 
-	if off >= c.size {
-		c.mu.RUnlock()
+	return c.streamMu.RUnlock, nil
+}
 
-		return nil, func() {}, fmt.Errorf("offset %d is out of bounds", off)
+// writeAbsentLocked copies b to off, skipping every block the tracker already
+// holds as present. The caller holds mu in either mode and is the range's only
+// writer; the tracker is not updated here (markFetched does that per chunk).
+func (c *Cache) writeAbsentLocked(b []byte, off int64) error {
+	if c.isClosed() {
+		return NewErrCacheClosed(c.filePath)
+	}
+	if c.mmap == nil {
+		return nil
+	}
+	if off < 0 || off >= c.size {
+		return fmt.Errorf("offset %d is out of bounds", off)
 	}
 
-	releaseCacheCloseLock := func() {
-		c.mu.RUnlock()
+	end := min(off+int64(len(b)), c.size)
+	for cur := off; cur < end; {
+		idx := uint32(header.BlockIdx(cur, c.blockSize))
+		blockEnd := min(header.BlockOffset(int64(idx)+1, c.blockSize), end)
+		if !c.tracker.Present(idx, idx+1) {
+			copy((*c.mmap)[cur:blockEnd], b[cur-off:blockEnd-off])
+		}
+		cur = blockEnd
 	}
 
-	end := min(off+length, c.size)
-
-	return (*c.mmap)[off:end], releaseCacheCloseLock, nil
+	return nil
 }
 
 func (c *Cache) BlockSize() int64 {

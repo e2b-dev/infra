@@ -6,4 +6,7 @@ var (
 	ErrSandboxNotFound        = errors.New("sandbox not found")
 	ErrAccessForbidden        = errors.New("access forbidden")
 	ErrSandboxOperationFailed = errors.New("sandbox operation failed")
+	// ErrExecutionChanged: a pause pinned with RemoveOpts.ExpectExecutionID
+	// found a different execution stored; nothing was changed.
+	ErrExecutionChanged = errors.New("sandbox execution changed")
 )

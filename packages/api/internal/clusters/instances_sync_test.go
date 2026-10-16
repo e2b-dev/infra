@@ -2,21 +2,29 @@ package clusters
 
 import (
 	"context"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/db/queries"
+	infogrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	"github.com/e2b-dev/infra/packages/shared/pkg/servicediscovery"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/synchronization"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // storeWithInstances builds a sync store whose creation step is a stub, so the
@@ -327,14 +335,17 @@ func TestPoolCloseAndParentCancellationPreventLateStartupMutation(t *testing.T) 
 func newLifecycleTestPool(lifecycleCtx context.Context, cancel context.CancelFunc) *Pool {
 	clusters := smap.New[*Cluster]()
 	p := &Pool{
-		clusters:      clusters,
-		cancel:        cancel,
-		lifecycleDone: lifecycleCtx.Done(),
-		startupReady:  make(chan struct{}),
-		lifecycleMu:   &sync.Mutex{},
+		clusters:       clusters,
+		cancel:         cancel,
+		lifecycleDone:  lifecycleCtx.Done(),
+		startupReady:   make(chan struct{}),
+		lifecycleMu:    &sync.Mutex{},
+		localInstances: make(chan struct{}, 1),
 	}
 	p.store = clustersSyncStore{
-		clusters: clusters,
+		clusters:        clusters,
+		onLocalInstance: p.notifyLocalInstance,
+		localCreds:      insecure.NewCredentials(),
 		activateCluster: func(cluster *Cluster, mode initialSyncMode) error {
 			return p.activateCluster(lifecycleCtx, cluster, mode)
 		},
@@ -351,4 +362,106 @@ func mustGet(t *testing.T, instances *smap.Map[*Instance], key string) *Instance
 	require.True(t, found, "expected an instance keyed %q", key)
 
 	return instance
+}
+
+func TestInstancesSyncStore_ReportsAJoinAfterTheInsert(t *testing.T) {
+	t.Parallel()
+
+	store, instances := storeWithInstances(t)
+
+	var joins atomic.Int32
+	store.onInsert = func() {
+		assert.Positive(t, instances.Count(), "the hook must run after the insert")
+		joins.Add(1)
+	}
+
+	store.PoolInsert(t.Context(), servicediscovery.Instance{WorkloadID: "alloc-1", NodeID: "node-a"})
+	require.Equal(t, int32(1), joins.Load())
+
+	store.instanceCreation = func(context.Context, servicediscovery.Instance) (*Instance, error) {
+		return nil, errors.New("unreachable")
+	}
+	store.PoolInsert(t.Context(), servicediscovery.Instance{WorkloadID: "alloc-2", NodeID: "node-b"})
+	assert.Equal(t, int32(1), joins.Load(), "a failed creation inserts nothing and reports nothing")
+	assert.Equal(t, 1, instances.Count())
+}
+
+func TestPoolLocalInstanceJoinedCoalescesAndKeepsTheToken(t *testing.T) {
+	t.Parallel()
+
+	lifecycleCtx, cancel := context.WithCancel(t.Context())
+	pool := newLifecycleTestPool(lifecycleCtx, cancel)
+
+	for range 3 {
+		pool.notifyLocalInstance()
+	}
+
+	select {
+	case <-pool.LocalInstanceJoined():
+	default:
+		t.Fatal("a join sent before anyone received must be kept")
+	}
+	select {
+	case <-pool.LocalInstanceJoined():
+		t.Fatal("joins must coalesce into one token")
+	default:
+	}
+}
+
+// fakeInfoServer answers ServiceInfo as a healthy process serving both roles,
+// which is what the local backend's one instance reports.
+type fakeInfoServer struct {
+	infogrpc.UnimplementedInfoServiceServer
+}
+
+func (s *fakeInfoServer) ServiceInfo(context.Context, *emptypb.Empty) (*infogrpc.ServiceInfoResponse, error) {
+	return &infogrpc.ServiceInfoResponse{
+		NodeId:        "local",
+		ServiceId:     "svc-1",
+		ServiceStatus: infogrpc.ServiceInfoStatus_Healthy,
+		ServiceRoles:  []infogrpc.ServiceInfoRole{infogrpc.ServiceInfoRole_Orchestrator, infogrpc.ServiceInfoRole_TemplateBuilder},
+	}, nil
+}
+
+// The real wiring, Pool.newCluster -> newLocalCluster -> newInstance ->
+// PoolInsert, reports the local cluster's first instance. The server's cleanup
+// is registered first so the pool, and with it the instance's connection,
+// closes before the server stops.
+func TestPoolReportsTheLocalClusterFirstInstance(t *testing.T) {
+	t.Parallel()
+
+	lis, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	srv := grpc.NewServer()
+	infogrpc.RegisterInfoServiceServer(srv, &fakeInfoServer{})
+
+	go func() { _ = srv.Serve(lis) }()
+
+	t.Cleanup(srv.Stop)
+
+	discovery, err := servicediscovery.NewLocal(lis.Addr().String())
+	require.NoError(t, err)
+
+	lifecycleCtx, cancel := context.WithCancel(t.Context())
+	pool := newLifecycleTestPool(lifecycleCtx, cancel)
+	t.Cleanup(func() { pool.Close(t.Context()) })
+	pool.store.tel = telemetry.NewNoopClient()
+	pool.store.local = localClusterConfig()
+	pool.store.localDiscovery = discovery
+
+	local, err := pool.store.newCluster(*localClusterConfig())
+	require.NoError(t, err)
+	require.NoError(t, pool.activateCluster(lifecycleCtx, local, syncImmediately))
+
+	// The wait spans one failed round and the next one.
+	select {
+	case <-pool.LocalInstanceJoined():
+	case <-time.After(instancesSyncTimeout + instancesSyncInterval):
+		t.Fatal("the local cluster's first instance did not report a join")
+	}
+
+	_, found := pool.GetClusterById(local.ID)
+	require.True(t, found, "a reported join must find its cluster in the pool")
+	assert.Len(t, local.GetOrchestrators(), 1)
 }
