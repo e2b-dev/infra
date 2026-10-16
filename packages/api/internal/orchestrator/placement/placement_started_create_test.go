@@ -60,7 +60,7 @@ type placementOutcome struct {
 func placeHeld(ctx context.Context, algorithm Algorithm, nodes []*nodemanager.Node, preferred *nodemanager.Node, until time.Time) <-chan placementOutcome {
 	out := make(chan placementOutcome, 1)
 	go func() {
-		result, err := PlaceSandboxCompletingStartedCreate(ctx, algorithm, nodes, preferred, testSbxRequest("sbx"), CPURequirement{}, false, nil, until)
+		result, err := PlaceSandboxCompletingStartedCreate(ctx, algorithm, nodes, preferred, testSbxRequest("sbx"), Requirements{}, false, nil, until)
 		out <- placementOutcome{result: result, err: err}
 	}()
 

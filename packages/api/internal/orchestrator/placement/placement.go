@@ -32,16 +32,24 @@ type PlacementResult struct {
 	Response *orchestrator.SandboxCreateResponse
 }
 
+// Requirements are what a node must meet to take a sandbox; a zero field
+// imposes nothing.
+type Requirements struct {
+	CPU      CPURequirement
+	Features FeatureRequirement
+	Memory   MemoryRequirement
+}
+
 // Algorithm defines the interface for sandbox placement strategies.
 // Implementations should choose an optimal node based on available resources
 // and current load distribution.
 type Algorithm interface {
-	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error)
+	chooseNode(ctx context.Context, nodes []*nodemanager.Node, nodesExcluded map[string]struct{}, requested nodemanager.SandboxResources, requirements Requirements, filterByLabels bool, requiredLabels []string) (*nodemanager.Node, error)
 }
 
-// PlaceSandbox derives sbxRequest's orchestrator-capability requirement and
-// places it. The requirement is read off the request rather than supplied by
-// the caller, so it cannot disagree with the bytes the orchestrator receives.
+// PlaceSandbox places sbxRequest on a node meeting requirements. Features is
+// read off the request, replacing any the caller set, so it cannot disagree
+// with the bytes the orchestrator receives.
 //
 // PlaceSandbox places with the caller's context end to end: a create under
 // way is cut with the caller.
@@ -51,11 +59,11 @@ func PlaceSandbox(
 	clusterNodes []*nodemanager.Node,
 	node *nodemanager.Node,
 	sbxRequest *orchestrator.SandboxCreateRequest,
-	cpu CPURequirement,
+	requirements Requirements,
 	labelFilteringEnabled bool,
 	requiredLabels []string,
 ) (PlacementResult, error) {
-	return PlaceSandboxCompletingStartedCreate(ctx, algorithm, clusterNodes, node, sbxRequest, cpu, labelFilteringEnabled, requiredLabels, time.Time{})
+	return PlaceSandboxCompletingStartedCreate(ctx, algorithm, clusterNodes, node, sbxRequest, requirements, labelFilteringEnabled, requiredLabels, time.Time{})
 }
 
 // PlaceSandboxCompletingStartedCreate places like PlaceSandbox, except that a
@@ -72,12 +80,14 @@ func PlaceSandboxCompletingStartedCreate(
 	clusterNodes []*nodemanager.Node,
 	preferredNode *nodemanager.Node,
 	sbxRequest *orchestrator.SandboxCreateRequest,
-	cpu CPURequirement,
+	requirements Requirements,
 	labelFilteringEnabled bool,
 	requiredLabels []string,
 	completeStartedCreateUntil time.Time,
 ) (PlacementResult, error) {
-	return placeSandbox(ctx, algorithm, clusterNodes, preferredNode, sbxRequest, cpu, requiredFeatures(sbxRequest), labelFilteringEnabled, requiredLabels, defaultRefusalBackoff, completeStartedCreateUntil)
+	requirements.Features = requiredFeatures(sbxRequest)
+
+	return placeSandbox(ctx, algorithm, clusterNodes, preferredNode, sbxRequest, requirements, labelFilteringEnabled, requiredLabels, defaultRefusalBackoff, completeStartedCreateUntil)
 }
 
 func placeSandbox(
@@ -86,8 +96,7 @@ func placeSandbox(
 	clusterNodes []*nodemanager.Node,
 	preferredNode *nodemanager.Node,
 	sbxRequest *orchestrator.SandboxCreateRequest,
-	cpu CPURequirement,
-	features FeatureRequirement,
+	requirements Requirements,
 	labelFilteringEnabled bool,
 	requiredLabels []string,
 	backoff refusalBackoff,
@@ -99,13 +108,17 @@ func placeSandbox(
 	nodesExcluded := make(map[string]struct{})
 	var err error
 
-	resources := nodemanager.SandboxResources{CPUs: sbxRequest.GetSandbox().GetVcpu(), MiBMemory: sbxRequest.GetSandbox().GetRamMb()}
+	resources := nodemanager.SandboxResources{
+		CPUs:      sbxRequest.GetSandbox().GetVcpu(),
+		MiBMemory: sbxRequest.GetSandbox().GetRamMb(),
+		HugePages: sbxRequest.GetSandbox().GetHugePages(),
+	}
 
 	var node *nodemanager.Node
 	// Vetted here rather than trusted: the preferred node skips chooseNode, so
 	// affinity would otherwise outrank the CPU and feature requirements on
-	// every resume.
-	if preferredNode != nil && NodeSatisfiesCPU(preferredNode, cpu) && NodeSatisfiesFeatures(preferredNode, features) {
+	// every resume. Memory is checked when the placement is recorded below.
+	if preferredNode != nil && NodeSatisfiesCPU(preferredNode, requirements.CPU) && NodeSatisfiesFeatures(preferredNode, requirements.Features) {
 		node = preferredNode
 	}
 
@@ -113,8 +126,8 @@ func placeSandbox(
 	// timeout after burning the deadline on nodes that can never serve it. An
 	// empty cluster and an already-cancelled request are left to the loop, which
 	// classifies them better.
-	if node == nil && len(clusterNodes) > 0 && ctx.Err() == nil && !anyNodeSatisfiesFeatures(clusterNodes, features) {
-		return PlacementResult{}, UnsupportedFeatureError{Features: features.FeatureNames(), MinVersion: features.MinVersion()}
+	if node == nil && len(clusterNodes) > 0 && ctx.Err() == nil && !anyNodeSatisfiesFeatures(clusterNodes, requirements.Features) {
+		return PlacementResult{}, UnsupportedFeatureError{Features: requirements.Features.FeatureNames(), MinVersion: requirements.Features.MinVersion()}
 	}
 
 	// First node that attempted the create (not a fast ResourceExhausted refusal).
@@ -147,6 +160,9 @@ func placeSandbox(
 
 	attempt := 0
 	refusals := 0
+	// A node refused at the record step is excluded, so chooseNode no longer
+	// sees its full pool.
+	poolsFull := false
 
 	// answered reports what the nodes said to a caller that left while a
 	// detached create ran: never a timeout, so no node is pinned for a remap.
@@ -160,7 +176,7 @@ func placeSandbox(
 
 	// Nothing but capacity refusals before the deadline is capacity, not a slow placement.
 	deadline := func() (PlacementResult, error) {
-		if attempt == 0 && refusals > 0 {
+		if attempt == 0 && (refusals > 0 || poolsFull) {
 			return failed(NoNodesAvailableError{})
 		}
 
@@ -178,7 +194,7 @@ func placeSandbox(
 		if node != nil {
 			telemetry.ReportEvent(ctx, "Placing sandbox on the preferred node", telemetry.WithNodeID(node.ID))
 		} else {
-			if len(nodesExcluded) >= len(clusterNodes) {
+			if allExcluded(clusterNodes, nodesExcluded) {
 				if lastCreateErr != nil {
 					return failed(SandboxCreateError{Attempts: attempt, LastErr: lastCreateErr})
 				}
@@ -186,12 +202,16 @@ func placeSandbox(
 				return failed(NoNodesAvailableError{})
 			}
 
-			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, resources, cpu, features, labelFilteringEnabled, requiredLabels)
+			node, err = algorithm.chooseNode(ctx, clusterNodes, nodesExcluded, resources, requirements, labelFilteringEnabled, requiredLabels)
 			if err != nil {
 				// A create was already attempted: its error explains the failure
 				// better than the empty candidate set it caused.
 				if lastCreateErr != nil {
 					return failed(SandboxCreateError{Attempts: attempt, LastErr: lastCreateErr})
+				}
+
+				if poolsFull {
+					return failed(NoNodesAvailableError{})
 				}
 
 				return failed(err)
@@ -200,7 +220,17 @@ func placeSandbox(
 			telemetry.ReportEvent(ctx, "Placing sandbox on the node", telemetry.WithNodeID(node.ID))
 		}
 
-		node.PlacementMetrics.StartPlacing(sbxRequest.GetSandbox().GetSandboxId(), resources)
+		chosen := node
+		if !node.PlacementMetrics.StartPlacingIf(sbxRequest.GetSandbox().GetSandboxId(), resources, func() bool {
+			return NodeSatisfiesMemory(chosen, resources, requirements.Memory)
+		}) {
+			telemetry.ReportEvent(ctx, "Node's hugepage pool is full", telemetry.WithNodeID(node.ID))
+			nodesExcluded[node.ID] = struct{}{}
+			node = nil
+			poolsFull = true
+
+			continue
+		}
 
 		ctx, span := tracer.Start(ctx, "create-sandbox")
 		span.SetAttributes(
@@ -217,12 +247,13 @@ func placeSandbox(
 		cancelCreate()
 		span.End()
 		if err == nil {
-			node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
-
 			// Optimistic update: assume resources are occupied after successful creation.
 			// Manually update node.metrics with the newly allocated resources.
 			// This will be overwritten by the next real Metrics report for auto-correction.
+			// Added before the in-flight entry is dropped, so a concurrent
+			// memory check always counts this sandbox somewhere.
 			node.OptimisticAdd(resources)
+			node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
 
 			return PlacementResult{Node: node, Response: resp}, nil
 		}
@@ -304,4 +335,17 @@ func createRefusedForGood(st *status.Status) bool {
 	}
 
 	return false
+}
+
+// allExcluded reports whether every listed node is excluded. A preferred node
+// that has left the list can be excluded as well, so comparing counts would
+// end placement before every listed node was tried.
+func allExcluded(nodes []*nodemanager.Node, excluded map[string]struct{}) bool {
+	for _, n := range nodes {
+		if _, ok := excluded[n.ID]; !ok {
+			return false
+		}
+	}
+
+	return true
 }

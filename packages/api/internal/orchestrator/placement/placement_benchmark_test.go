@@ -430,7 +430,7 @@ func runBenchmark(b *testing.B, algorithm Algorithm, config BenchmarkConfig, nod
 							SandboxId: sbx.ID,
 							Vcpu:      sbx.RequestedCPU,
 							RamMb:     sbx.RequestedMemory,
-						}}, CPURequirement{}, false, nil)
+						}}, Requirements{}, false, nil)
 
 						placementTime := time.Since(placementStart)
 						sbx.PlacementLatency = placementTime
@@ -749,7 +749,7 @@ func BenchmarkPlacementDistribution(b *testing.B) {
 									Vcpu:      s.RequestedCPU,
 									RamMb:     s.RequestedMemory,
 								},
-							}, CPURequirement{}, false, nil)
+							}, Requirements{}, false, nil)
 
 							if err == nil && result.Node != nil {
 								if simNode, ok := nodeMap[result.Node.ID]; ok {

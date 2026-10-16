@@ -38,6 +38,7 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) error {
 			return fmt.Errorf("grpc connection to node %s is shut down", n.ID)
 		}
 
+		requestedAt := time.Now()
 		nodeInfo, err := client.Info.ServiceInfo(ctx, &emptypb.Empty{})
 		if err != nil {
 			logger.L().Error(ctx, "Error getting node info", zap.Error(err), logger.WithNodeID(n.ID))
@@ -70,7 +71,7 @@ func (n *Node) Sync(ctx context.Context, store *sandbox.Store) error {
 			},
 		)
 		// Update host metrics from service info
-		n.UpdateMetricsFromServiceInfoResponse(nodeInfo)
+		n.UpdateMetricsFromSync(nodeInfo, requestedAt)
 
 		orphanCandidates, instancesErr := n.GetOrphanCandidates(ctx)
 		if instancesErr != nil {

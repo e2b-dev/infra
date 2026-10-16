@@ -44,7 +44,7 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		cpuMetrics = &metrics.CPUMetrics{}
 	}
 
-	memoryMetrics, err := s.hostMetrics.GetMemoryMetrics()
+	memoryMetrics, err := s.hostMetrics.GetMemoryMetrics(ctx)
 	if err != nil {
 		logger.L().Warn(ctx, "Failed to get host metrics", zap.Error(err))
 		memoryMetrics = &metrics.MemoryMetrics{}
@@ -107,6 +107,7 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		MetricHugepagesUsed:     memoryMetrics.HugePagesUsed,
 		MetricHugepagesReserved: memoryMetrics.HugePagesReserved,
 		MetricHugepageSizeBytes: memoryMetrics.HugePageSizeBytes,
+		MetricHugepagesCapacity: memoryMetrics.HugePagesCapacity,
 
 		// Detailed disk metrics
 		MetricDisks: convertDiskMetrics(diskMetrics),

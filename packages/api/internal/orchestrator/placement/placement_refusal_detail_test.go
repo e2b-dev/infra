@@ -74,7 +74,7 @@ func TestPlaceSandbox_StopsOnACreateRefusedForGood(t *testing.T) {
 				return nil, assert.AnError
 			}}
 
-			_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), CPURequirement{}, false, nil)
+			_, err := PlaceSandbox(t.Context(), algorithm, nodes, nil, testSbxRequest("test-sandbox"), Requirements{}, false, nil)
 
 			var createErr SandboxCreateError
 			require.ErrorAs(t, err, &createErr)
@@ -108,7 +108,7 @@ func TestPlaceSandbox_RefusedForGoodAfterTheContextEndedIsNoTimeout(t *testing.T
 	node := nodemanager.NewTestNode("node-refusing", api.NodeStatusReady, 0, 8)
 	node.SetSandboxClient(erroringClient(cancel, refused))
 
-	result, err := PlaceSandbox(ctx, failIfCalled(t), []*nodemanager.Node{node}, node, testSbxRequest("sbx-refused"), CPURequirement{}, false, nil)
+	result, err := PlaceSandbox(ctx, failIfCalled(t), []*nodemanager.Node{node}, node, testSbxRequest("sbx-refused"), Requirements{}, false, nil)
 
 	var createErr SandboxCreateError
 	require.ErrorAs(t, err, &createErr)

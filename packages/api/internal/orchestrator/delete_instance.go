@@ -375,10 +375,15 @@ func (o *Orchestrator) killSandboxOnNode(
 		return fmt.Errorf("failed to delete sandbox: %w", err)
 	}
 
-	node.OptimisticRemove(ctx, nodemanager.SandboxResources{
-		CPUs:      sbx.VCpu,
-		MiBMemory: sbx.RamMB,
-	})
+	node.OptimisticRemove(ctx, nodeSandboxResources(sbx))
 
 	return nil
+}
+
+func nodeSandboxResources(sbx sandbox.NodeSandbox) nodemanager.SandboxResources {
+	return nodemanager.SandboxResources{
+		CPUs:      sbx.VCpu,
+		MiBMemory: sbx.RamMB,
+		HugePages: sbx.HugePages,
+	}
 }

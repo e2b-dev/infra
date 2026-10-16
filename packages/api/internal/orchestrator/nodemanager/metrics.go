@@ -1,6 +1,8 @@
 package nodemanager
 
 import (
+	"time"
+
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
@@ -29,6 +31,7 @@ type Metrics struct {
 	HugePagesUsed     uint64
 	HugePagesReserved uint64
 	HugePageSizeBytes uint64
+	HugePagesCapacity uint64 // pool ceiling, base pool plus overcommit allowance; 0 when not reported
 
 	// Detailed disk metrics
 	HostDisks []DiskMetrics
@@ -38,6 +41,24 @@ func (n *Node) UpdateMetricsFromServiceInfoResponse(info *orchestratorinfo.Servi
 	n.metricsMu.Lock()
 	defer n.metricsMu.Unlock()
 
+	n.updateMetrics(info)
+}
+
+// UpdateMetricsFromSync applies a sample requested at requestedAt. A hugepage
+// placement recorded after that may be missing from the sample, so the view
+// keeps its hugepage counts until the next sync.
+func (n *Node) UpdateMetricsFromSync(info *orchestratorinfo.ServiceInfoResponse, requestedAt time.Time) {
+	n.metricsMu.Lock()
+	defer n.metricsMu.Unlock()
+
+	used, reserved := n.metrics.HugePagesUsed, n.metrics.HugePagesReserved
+	n.updateMetrics(info)
+	if n.lastHugePageAdd.After(requestedAt) {
+		n.metrics.HugePagesUsed, n.metrics.HugePagesReserved = used, reserved
+	}
+}
+
+func (n *Node) updateMetrics(info *orchestratorinfo.ServiceInfoResponse) {
 	// Update host usage metrics
 	n.metrics.CpuPercent = info.GetMetricCpuPercent()
 	n.metrics.MemoryUsedBytes = info.GetMetricMemoryUsedBytes()
@@ -62,6 +83,7 @@ func (n *Node) UpdateMetricsFromServiceInfoResponse(info *orchestratorinfo.Servi
 	n.metrics.HugePagesUsed = info.GetMetricHugepagesUsed()
 	n.metrics.HugePagesReserved = info.GetMetricHugepagesReserved()
 	n.metrics.HugePageSizeBytes = info.GetMetricHugepageSizeBytes()
+	n.metrics.HugePagesCapacity = info.GetMetricHugepagesCapacity()
 
 	// Update detailed disk metrics
 	disks := info.GetMetricDisks()
@@ -96,6 +118,7 @@ func (n *Node) Metrics() Metrics {
 		HugePagesUsed:     n.metrics.HugePagesUsed,
 		HugePagesReserved: n.metrics.HugePagesReserved,
 		HugePageSizeBytes: n.metrics.HugePageSizeBytes,
+		HugePagesCapacity: n.metrics.HugePagesCapacity,
 
 		HostDisks: make([]DiskMetrics, len(n.metrics.HostDisks)),
 	}

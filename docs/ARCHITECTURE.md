@@ -171,7 +171,12 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   fast as they are refused. A node that reports no pool scores 0.5. Hugepage scoring
   is on by default (`BEST_OF_K_HUGEPAGE_MEMORY`); set it false to rank on
   CPU alone. K, overcommit ratio, and alpha are tunable live via feature
-  flags.
+  flags. With `placement-hugepage-limit-percent` above 0, a hugepage sandbox
+  is also refused by any node whose committed hugepages would pass that share
+  of the node's pool ceiling (base pool plus overcommit allowance, reported by
+  the orchestrator); within an API replica the check and the in-flight record
+  are one step per node, and when the compatible nodes are all full placement
+  answers with a capacity error, not "no compatible node".
 - **State**: writes sandbox records to Redis (source of truth for *running* sandboxes). It does
   not write routing: client-proxy reads the orchestrator-written `sandbox:routing:{id}` (see
   "Sandbox routing records"). Persistent entities (templates, builds, snapshots, teams) live in
@@ -852,7 +857,8 @@ sequenceDiagram
     of pausing it uncounted. The key expires once the budget is full again, at most one period
     after the last counted pause. Timeout auto-pauses are not limited.
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
-  is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
+  is still in its local cache, resume avoids any object-storage reads. The origin node gets
+  the same hugepage-limit check as any other node, so a full origin is skipped. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
 - **Post-checkpoint re-init and the pre-pause cut**: after an in-place checkpoint the sandbox
   keeps running, so the orchestrator re-sends `/init` in the background to re-sync the guest

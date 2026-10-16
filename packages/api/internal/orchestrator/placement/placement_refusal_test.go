@@ -60,7 +60,7 @@ func TestPlaceSandbox_RefusedNodeIsRetried(t *testing.T) {
 
 	var picks []string
 	result, err := placeSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-retry"),
-		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{}, time.Time{})
+		Requirements{}, false, nil, refusalBackoff{}, time.Time{})
 
 	require.NoError(t, err)
 	assert.Equal(t, only.ID, result.Node.ID)
@@ -85,7 +85,7 @@ func TestPlaceSandbox_RefusalsArePaced(t *testing.T) {
 	nodes := []*nodemanager.Node{busyA, busyB}
 
 	var picks []string
-	result, err := PlaceSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-paced"), CPURequirement{}, false, nil)
+	result, err := PlaceSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-paced"), Requirements{}, false, nil)
 
 	var noNodesErr NoNodesAvailableError
 	require.ErrorAs(t, err, &noNodesErr, "refusals until the deadline are still classified as capacity")
@@ -108,7 +108,7 @@ func TestPlaceSandbox_DeadlineEndsRefusalBackoff(t *testing.T) {
 	var picks []string
 	start := time.Now()
 	result, err := placeSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-deadline"),
-		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{base: time.Hour, max: time.Hour}, time.Time{})
+		Requirements{}, false, nil, refusalBackoff{base: time.Hour, max: time.Hour}, time.Time{})
 
 	assert.Less(t, time.Since(start), 5*time.Second)
 

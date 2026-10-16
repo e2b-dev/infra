@@ -227,6 +227,14 @@ func WithHugePages(total, used, reserved, pageSizeBytes uint64) TestOptions {
 	}
 }
 
+// WithHugePagesCapacity sets the reported pool ceiling (base pool plus
+// overcommit allowance).
+func WithHugePagesCapacity(capacity uint64) TestOptions {
+	return func(node *TestNode) {
+		node.metrics.HugePagesCapacity = capacity
+	}
+}
+
 // MockSandboxClientCustom allows custom error logic per call
 type MockSandboxClientCustom struct {
 	orchestrator.SandboxServiceClient

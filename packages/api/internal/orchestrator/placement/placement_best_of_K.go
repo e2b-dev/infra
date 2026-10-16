@@ -44,7 +44,9 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 	pendingMiB := int64(0)
 	for _, res := range node.PlacementMetrics.InProgress() {
 		pendingCPUs += res.CPUs
-		pendingMiB += res.MiBMemory
+		if res.HugePages {
+			pendingMiB += res.MiBMemory
+		}
 	}
 
 	// to avoid division by zero
@@ -122,12 +124,12 @@ func (b *BestOfK) UpdateConfig(config BestOfKConfig) {
 }
 
 // chooseNode selects the best node for placing a VM with the given quota
-func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
+func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, requirements Requirements, filterByLabels bool, requiredLabels []string) (bestNode *nodemanager.Node, err error) {
 	// Fix the config, we want to dynamically update it
 	config := b.getConfig()
 
 	// Filter eligible nodes
-	candidates := b.sample(nodes, config, excludedNodes, cpu, features, filterByLabels, requiredLabels)
+	candidates, poolsFull := b.sample(nodes, config, excludedNodes, resources, requirements, filterByLabels, requiredLabels)
 
 	// Find the best node among candidates
 	bestScore := math.MaxFloat64
@@ -143,15 +145,17 @@ func (b *BestOfK) chooseNode(_ context.Context, nodes []*nodemanager.Node, exclu
 	}
 
 	if bestNode == nil {
-		if unavailableNodeWouldFit(nodes, excludedNodes, cpu, features, filterByLabels, requiredLabels) {
+		// Full pools, or an unavailable node that would fit, are a shortage that
+		// clears, not a mismatch.
+		if poolsFull || unavailableNodeWouldFit(nodes, excludedNodes, requirements, filterByLabels, requiredLabels) {
 			return nil, NoNodesAvailableError{}
 		}
 
 		return nil, FailedToPlaceSandboxError{
 			filterByLabels: filterByLabels,
 			requiredLabels: requiredLabels,
-			cpu:            cpu,
-			features:       features,
+			cpu:            requirements.CPU,
+			features:       requirements.Features,
 		}
 	}
 
@@ -187,13 +191,13 @@ func (e FailedToPlaceSandboxError) Error() string {
 
 // unavailableNodeWouldFit reports whether a node that cannot take new sandboxes
 // right now would otherwise satisfy the requirements.
-func unavailableNodeWouldFit(nodes []*nodemanager.Node, excludedNodes map[string]struct{}, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) bool {
+func unavailableNodeWouldFit(nodes []*nodemanager.Node, excludedNodes map[string]struct{}, requirements Requirements, filterByLabels bool, requiredLabels []string) bool {
 	for _, n := range nodes {
 		if _, ok := excludedNodes[n.ID]; ok || n.CanAcceptNewRequests() {
 			continue
 		}
 
-		if NodeSatisfiesCPU(n, cpu) && NodeSatisfiesFeatures(n, features) && (!filterByLabels || isNodeLabelsCompatible(n, requiredLabels)) {
+		if NodeSatisfiesCPU(n, requirements.CPU) && NodeSatisfiesFeatures(n, requirements.Features) && (!filterByLabels || isNodeLabelsCompatible(n, requiredLabels)) {
 			return true
 		}
 	}
@@ -201,10 +205,11 @@ func unavailableNodeWouldFit(nodes []*nodemanager.Node, excludedNodes map[string
 	return false
 }
 
-// sample returns up to k items chosen uniformly from those passing ok.
-func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, cpu CPURequirement, features FeatureRequirement, filterByLabels bool, requiredLabels []string) []*nodemanager.Node {
+// sample returns up to k items chosen uniformly from those passing ok, and
+// whether any node passed every check but memory.
+func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, excludedNodes map[string]struct{}, resources nodemanager.SandboxResources, requirements Requirements, filterByLabels bool, requiredLabels []string) (candidates []*nodemanager.Node, poolsFull bool) {
 	if config.K <= 0 || len(items) == 0 {
-		return nil
+		return nil, false
 	}
 
 	indices := make([]int, len(items))
@@ -212,7 +217,7 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 		indices[i] = i
 	}
 
-	candidates := make([]*nodemanager.Node, 0, config.K)
+	candidates = make([]*nodemanager.Node, 0, config.K)
 	remaining := len(indices) // active pool is indices[:remaining]
 
 	for len(candidates) < config.K && remaining > 0 {
@@ -237,12 +242,12 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 		}
 
 		// Skip if node is not CPU compatible
-		if !NodeSatisfiesCPU(n, cpu) {
+		if !NodeSatisfiesCPU(n, requirements.CPU) {
 			continue
 		}
 
 		// Skip if the node's orchestrator predates a requested feature
-		if !NodeSatisfiesFeatures(n, features) {
+		if !NodeSatisfiesFeatures(n, requirements.Features) {
 			continue
 		}
 
@@ -251,8 +256,14 @@ func (b *BestOfK) sample(items []*nodemanager.Node, config BestOfKConfig, exclud
 			continue
 		}
 
+		if !NodeSatisfiesMemory(n, resources, requirements.Memory) {
+			poolsFull = true
+
+			continue
+		}
+
 		candidates = append(candidates, n)
 	}
 
-	return candidates
+	return candidates, poolsFull
 }
