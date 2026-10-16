@@ -648,8 +648,9 @@ const (
 
 const (
 	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
-	// ApiSandboxListAge is the age of a served sandbox list, by team and
-	// outcome (see ApiSandboxListReads), recorded only for teams whose lag
+	// ApiSandboxListAge is the age of a served sandbox list, by outcome only
+	// (see ApiSandboxListReads; a per-team histogram would multiply the counter's
+	// series by its buckets once the flag is fleet-wide), recorded only for teams whose lag
 	// flag is set: for a read, the store sweep's duration; for a shared read,
 	// the wait from the sweep's start to the joiner's result; for a hit, how
 	// far the snapshot lagged the store. Tune the list lag flag against it: hits

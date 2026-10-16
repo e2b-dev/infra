@@ -573,12 +573,18 @@ func (f *listFixture) metrics(t *testing.T) (reads map[string]int64, ages map[st
 				sum, ok := m.Data.(metricdata.Sum[int64])
 				require.True(t, ok)
 				for _, dp := range sum.DataPoints {
+					_, hasTeam := dp.Attributes.Value("team.id")
+					assert.True(t, hasTeam, "the counter is the per-team signal")
 					reads[outcome(dp.Attributes)] += dp.Value
 				}
 			case string(telemetry.ApiSandboxListAge):
 				hist, ok := m.Data.(metricdata.Histogram[int64])
 				require.True(t, ok)
 				for _, dp := range hist.DataPoints {
+					// Per outcome only: with the flag set fleet-wide, a per-team
+					// histogram would multiply the counter's series by its buckets.
+					_, hasTeam := dp.Attributes.Value("team.id")
+					assert.False(t, hasTeam, "the age histogram must not carry the team")
 					ages[outcome(dp.Attributes)] += dp.Count
 				}
 			}

@@ -247,10 +247,12 @@ func (o *Orchestrator) ListSandboxes(ctx context.Context, teamID uuid.UUID, stat
 	if err != nil {
 		return nil, err
 	}
-	// The age series exist only for teams the flag is set for, so an unflagged
-	// deploy adds the counter and nothing else.
+	// The age is recorded per outcome, not per team: with the flag set
+	// fleet-wide a per-team histogram would multiply the counter's series by
+	// its buckets. The counter keeps the team, and the age series exist only
+	// once some team's flag is set.
 	if read.outcome != listSnapshotDisabled {
-		o.listAgeHistogram.Record(ctx, read.age.Milliseconds(), attrs)
+		o.listAgeHistogram.Record(ctx, read.age.Milliseconds(), metric.WithAttributes(attribute.String("outcome", string(read.outcome))))
 	}
 
 	return read.items, nil
