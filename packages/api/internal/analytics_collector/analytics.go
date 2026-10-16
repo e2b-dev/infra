@@ -46,6 +46,11 @@ const (
 type PosthogClient struct {
 	client posthog.Client
 
+	// posthog-go closes its message channel in Close; closed keeps Enqueue
+	// from sending once Close has started.
+	mu     sync.RWMutex
+	closed bool
+
 	// identifiedTeams maps a team ID to the name last sent to PostHog.
 	identifiedTeams *ttlcache.Cache[string, string]
 	// identifying marks the teams with an identify in flight. Concurrent
@@ -125,7 +130,28 @@ func (f identifyFailures) Failure(msg posthog.APIMessage, _ error) {
 }
 
 func (p *PosthogClient) Close() error {
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+
+		return nil
+	}
+	p.closed = true
+	p.mu.Unlock()
+
 	return p.client.Close()
+}
+
+// enqueue drops the message once Close has started.
+func (p *PosthogClient) enqueue(msg posthog.Message) error {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+
+	if p.closed {
+		return nil
+	}
+
+	return p.client.Enqueue(msg)
 }
 
 // IdentifyAnalyticsTeam sets the team group's properties in PostHog. Handlers
@@ -154,7 +180,7 @@ func (p *PosthogClient) IdentifyAnalyticsTeam(ctx context.Context, teamID string
 	// that Delete has to land after this Set.
 	p.identifiedTeams.Set(teamID, teamName, ttlcache.DefaultTTL)
 
-	err := p.client.Enqueue(posthog.GroupIdentify{
+	err := p.enqueue(posthog.GroupIdentify{
 		Type: teamGroup,
 		Key:  teamID,
 		Properties: posthog.NewProperties().
@@ -175,7 +201,7 @@ func (p *PosthogClient) teamIdentified(teamID, teamName string) bool {
 }
 
 func (p *PosthogClient) CreateAnalyticsTeamEvent(ctx context.Context, teamID, event string, properties posthog.Properties) {
-	err := p.client.Enqueue(posthog.Capture{
+	err := p.enqueue(posthog.Capture{
 		DistinctId: placeholderTeamGroupUser,
 		Event:      event,
 		Properties: properties.Set(infraVersionKey, infraVersion).Set(teamIDKey, teamID),
