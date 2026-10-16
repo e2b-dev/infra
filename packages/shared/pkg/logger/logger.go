@@ -76,8 +76,8 @@ func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
 
 	config := zap.Config{
 		DisableStacktrace: loggerConfig.DisableStacktrace,
-		// Takes stacktraces more liberally
-		Development: true,
+		// Development mode would attach a stack trace to every Warn.
+		Development: false,
 		Sampling:    nil,
 
 		Encoding:         encoding,
