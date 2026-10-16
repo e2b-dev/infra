@@ -14,6 +14,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// stacktracesDisabledEnv set to "true" overrides LoggerConfig.DisableStacktrace.
+const stacktracesDisabledEnv = "E2B_DISABLE_STACKTRACES"
+
 type contextFieldsKey struct{}
 
 const edgeTraceIDField = "edge_trace_id"
@@ -44,6 +47,10 @@ type LoggerConfig struct {
 }
 
 func NewLogger(loggerConfig LoggerConfig) (Logger, error) {
+	if os.Getenv(stacktracesDisabledEnv) == "true" {
+		loggerConfig.DisableStacktrace = true
+	}
+
 	var level zap.AtomicLevel
 	if loggerConfig.IsDebug {
 		level = zap.NewAtomicLevelAt(zap.DebugLevel)
