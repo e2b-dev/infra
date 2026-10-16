@@ -43,8 +43,9 @@ type ProjectLimitsProjection struct {
 	MaxFreeDiskSizeMB        int64
 	APITeamRPSList           int64
 
-	// Nil when the sender predates the limit; the tier then decides.
-	MaxSecrets *int64
+	// Nil when the sender has not resolved the limit; the tier then decides.
+	APITeamRPSDelete *int64
+	MaxSecrets       *int64
 }
 
 // ApplyProjectLimits records a project's effective limits, behind the revision
@@ -127,6 +128,7 @@ func (s *Service) applyProjectLimits(ctx context.Context, projection ProjectLimi
 		DefaultFreeDiskSizeMb:    projection.DefaultFreeDiskSizeMB,
 		MaxFreeDiskSizeMb:        projection.MaxFreeDiskSizeMB,
 		ApiTeamRpsList:           projection.APITeamRPSList,
+		ApiTeamRpsDelete:         projection.APITeamRPSDelete,
 		MaxSecrets:               projection.MaxSecrets,
 	}); err != nil {
 		if dberrors.IsCheckViolation(err) {
@@ -144,7 +146,8 @@ func (s *Service) applyProjectLimits(ctx context.Context, projection ProjectLimi
 }
 
 // The floors are the management contract's minimums. Zero is a value only for
-// the default free disk and the list rate, where it disables the limit.
+// the default free disk and the list and delete rates, where it disables the
+// limit.
 func validateProjectLimitsProjection(projection ProjectLimitsProjection) error {
 	if projection.ProjectID == uuid.Nil {
 		return fmt.Errorf("%w: project_id is required", ErrInvalidProjectLimits)
@@ -171,6 +174,11 @@ func validateProjectLimitsProjection(projection ProjectLimitsProjection) error {
 			return fmt.Errorf("%w: %s must be at least %d, got %d",
 				ErrInvalidProjectLimits, floored.field, floored.floor, floored.value)
 		}
+	}
+
+	if projection.APITeamRPSDelete != nil && *projection.APITeamRPSDelete < 0 {
+		return fmt.Errorf("%w: api_team_rps_delete must be at least 0, got %d",
+			ErrInvalidProjectLimits, *projection.APITeamRPSDelete)
 	}
 
 	if projection.MaxSecrets != nil && *projection.MaxSecrets < 1 {

@@ -122,6 +122,10 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   Delete rates default to zero until configured.
   A group's rate is one of the team's limits and resolves with the rest of them through the
   `team_limits` view, which authentication caches; it has no source of its own.
+  Propagated project limits carry the list rate and, once the caller has resolved
+  it, the delete rate; each accepted revision replaces what it carries. A team
+  without a pushed rate uses the tier and active add-ons; zero disables group
+  limiting.
   A positive rate sets both requests per second and burst capacity. Redis enforces a separate
   budget for each team, HTTP method, and route template across API replicas: groups select
   rates, but routes do not share a budget. Exhausted budgets return HTTP 429 with rate-limit

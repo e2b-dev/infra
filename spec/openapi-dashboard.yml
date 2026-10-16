@@ -1406,6 +1406,15 @@ components:
           description: >-
             Requests per second a project may make to each list endpoint. Zero
             disables the limit.
+        api_team_rps_delete:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Requests per second a project may make to each delete endpoint. Zero
+            disables the limit. Absent from a sender that has not resolved it;
+            this side then stores no value and the project's tier and add-ons
+            decide.
         max_secrets:
           type: integer
           format: int32
