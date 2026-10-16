@@ -37,7 +37,6 @@ type ServerOption func(*serverOptions)
 type serverOptions struct {
 	maxMessageSize              *int
 	withSandboxMetricAttributes bool
-	withoutPayloadLogging       bool
 	recoveryHandler             recovery.RecoveryHandlerFunc
 	unaryDeadline               grpc.UnaryServerInterceptor
 	unaryInterceptors           []grpc.UnaryServerInterceptor
@@ -75,12 +74,7 @@ func WithRecoveryHandler(handler recovery.RecoveryHandlerFunc) ServerOption {
 	return func(o *serverOptions) { o.recoveryHandler = handler }
 }
 
-// WithoutPayloadLogging omits request and response payloads from server logs.
-func WithoutPayloadLogging() ServerOption {
-	return func(o *serverOptions) { o.withoutPayloadLogging = true }
-}
-
-// WithUnaryInterceptors appends interceptors after recovery, logging, and the
+// WithUnaryInterceptors appends interceptors after logging, recovery, and the
 // unary deadline, so they run with a bounded context and inside the recovery.
 func WithUnaryInterceptors(interceptors ...grpc.UnaryServerInterceptor) ServerOption {
 	return func(o *serverOptions) { o.unaryInterceptors = append(o.unaryInterceptors, interceptors...) }
@@ -141,12 +135,9 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 	}
 
 	callEvents := []logging.LoggableEvent{logging.StartCall, logging.FinishCall}
-	logEvents := callEvents
-	if !cfg.withoutPayloadLogging {
-		logEvents = append(logEvents, logging.PayloadReceived, logging.PayloadSent)
-	}
 	logOpts := []logging.Option{
-		logging.WithLogOnEvents(logEvents...),
+		// One line per call: FinishCall carries the method, status code and duration.
+		logging.WithLogOnEvents(logging.FinishCall),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
 	}
 	// A stream logs a payload event per message, so one call carrying
@@ -177,12 +168,13 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 		recoveryOpts = append(recoveryOpts, recovery.WithRecoveryHandler(cfg.recoveryHandler))
 	}
 
+	// Recovery runs inside logging, so a recovered panic still logs its finished call.
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		recovery.UnaryServerInterceptor(recoveryOpts...),
 		selector.UnaryServerInterceptor(
 			logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), logOpts...),
 			ignoredLoggingRoutes,
 		),
+		recovery.UnaryServerInterceptor(recoveryOpts...),
 	}
 	if cfg.unaryDeadline != nil {
 		unaryInterceptors = append(unaryInterceptors, cfg.unaryDeadline)
