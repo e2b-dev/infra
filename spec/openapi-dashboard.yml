@@ -1406,6 +1406,14 @@ components:
           description: >-
             Requests per second a project may make to each list endpoint. Zero
             disables the limit.
+        max_secrets:
+          type: integer
+          format: int32
+          minimum: 1
+          description: >-
+            Live secrets the project may hold. Absent from a sender that
+            predates the field; this side then stores no value and the
+            project's tier decides.
         decided_at:
           $ref: "#/components/schemas/ManagementDecidedAt"
 
