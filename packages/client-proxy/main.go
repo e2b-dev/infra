@@ -121,7 +121,7 @@ func run() int {
 		return 1
 	}
 
-	redisClient, err := factories.NewRedisClient(ctx, factories.RedisConfig{
+	redisClient, err := factories.NewRedisClient(signalCtx, factories.RedisConfig{
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,

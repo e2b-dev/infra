@@ -664,7 +664,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 
 	// redis (initialized before template cache so the peer registry can be passed to NewCache)
-	redisClient, err := sharedFactories.NewRedisClient(ctx, sharedFactories.RedisConfig{
+	redisClient, err := sharedFactories.NewRedisClient(sig, sharedFactories.RedisConfig{
 		RedisURL:         config.RedisURL,
 		RedisClusterURL:  config.RedisClusterURL,
 		RedisTLSCABase64: config.RedisTLSCABase64,
