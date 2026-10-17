@@ -54,24 +54,9 @@ runs:
         CLICKHOUSE_PORT: "9000"
         CLICKHOUSE_DATABASE: "default"
       run: |
-        wait_healthy() {
-          local name="$1" timeout="${2:-120}" i
-          for ((i = 0; i < timeout; i += 2)); do
-            if [ "$(docker inspect -f '{{.State.Health.Status}}' "$name" 2>/dev/null)" = "healthy" ]; then
-              echo "$name is healthy!"
-              return 0
-            fi
-            echo "Waiting for $name to be healthy..."
-            sleep 2
-          done
-          echo "::error::$name did not become healthy within ${timeout}s"
-          docker logs "$name" 2>&1 | tail -50 || true
-          return 1
-        }
-
-        wait_healthy postgres 120
-        wait_healthy clickhouse 120
-        wait_healthy redis 60
+        ./.github/actions/start-services/wait-healthy.sh postgres 120
+        ./.github/actions/start-services/wait-healthy.sh clickhouse 120
+        ./.github/actions/start-services/wait-healthy.sh redis 60
 
         # Install extensions
         docker exec postgres psql -U postgres -d mydatabase -c "CREATE SCHEMA extensions; CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA extensions;"
