@@ -126,7 +126,7 @@ runs:
     # the box idle. Output is buffered per package so logs stay readable.
     - name: Build Packages
       run: |
-        packages=(tests/integration packages/db packages/orchestrator packages/api packages/envd packages/client-proxy)
+        packages=(tests/integration packages/db packages/clickhouse packages/orchestrator packages/api packages/envd packages/client-proxy)
 
         pids=()
         for package in "${packages[@]}"; do

@@ -149,8 +149,9 @@ runs:
         ./scripts/start-service.sh "OtelCollector" packages/otel-collector run ~/logs/otel-collector.log http://localhost:13133/healthz
 
 
+        # Both services default to pprof on 6060; the API keeps it, as in Embed.
         echo "Start orchestrator"
-        ./scripts/start-service.sh "Orchestrator" "${ORCHESTRATOR_MAKE_PATH}" run-debug ~/logs/orchestrator.log http://localhost:5008/health
+        PPROF_PORT=6061 ./scripts/start-service.sh "Orchestrator" "${ORCHESTRATOR_MAKE_PATH}" run-debug ~/logs/orchestrator.log http://localhost:5008/health
 
         echo "Start API"
         STARTUP_TIMEOUT=60 ./scripts/start-service.sh "API" packages/api run ~/logs/api.log http://localhost:3000/health
