@@ -1,6 +1,7 @@
 package tracking
 
 import (
+	"errors"
 	"net"
 	"sync/atomic"
 
@@ -32,5 +33,21 @@ func (l *Listener) Accept() (net.Conn, error) {
 		return nil, err
 	}
 
-	return NewConnection(conn, l.counter, l.connections), nil
+	return &serverConnection{Connection: NewConnection(conn, l.counter, l.connections)}, nil
+}
+
+// serverConnection gives net/http the half-close it does before closing a
+// connection over an unread request body. Pool connections do without it: a
+// protocol upgrade half-closes through it and then waits for the other side.
+type serverConnection struct {
+	*Connection
+}
+
+func (c *serverConnection) CloseWrite() error {
+	cw, ok := c.Conn.(interface{ CloseWrite() error })
+	if !ok {
+		return errors.ErrUnsupported
+	}
+
+	return cw.CloseWrite()
 }

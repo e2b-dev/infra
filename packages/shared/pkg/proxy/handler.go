@@ -308,6 +308,11 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 		ctx = pool.WithDestination(ctx, d)
 		r = r.WithContext(ctx)
 
+		// Keep the request body readable while the response streams; serveStream settles what is left of it.
+		if err := http.NewResponseController(w).EnableFullDuplex(); err != nil {
+			l.Warn(ctx, "failed to enable full duplex", zap.Error(err), logger.WithSandboxID(d.SandboxId))
+		}
+
 		proxy := p.Get(ctx, d)
 		serveStream(w, r, proxy, fmt.Sprintf("the connection to sandbox %s ended before the stream completed", d.SandboxId))
 	}
