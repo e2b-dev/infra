@@ -126,11 +126,15 @@ type Lifecycle struct {
 }
 
 func (l *Lifecycle) Bootstrap(args *testharness.BootstrapArgs, _ *testharness.BootstrapReply) error {
-	if int64(len(args.Content)) != args.TotalSize {
-		return fmt.Errorf("content size %d != expected %d", len(args.Content), args.TotalSize)
+	content, err := os.ReadFile(args.ContentPath)
+	if err != nil {
+		return fmt.Errorf("read content: %w", err)
+	}
+	if int64(len(content)) != args.TotalSize {
+		return fmt.Errorf("content size %d != expected %d", len(content), args.TotalSize)
 	}
 
-	data := NewMemorySlicer(args.Content, args.Pagesize)
+	data := NewMemorySlicer(content, args.Pagesize)
 
 	mapping := memory.NewMapping([]memory.Region{
 		{

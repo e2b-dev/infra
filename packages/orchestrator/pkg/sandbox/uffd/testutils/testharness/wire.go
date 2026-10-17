@@ -14,7 +14,9 @@ type BootstrapArgs struct {
 	AlwaysWP  bool
 	// Barriers gates the test-only worker hooks (off by default).
 	Barriers bool
-	Content  []byte
+	// ContentPath names a file holding the source pages. Inline hugepage
+	// content as JSON costs seconds per Bootstrap under -race.
+	ContentPath string
 }
 
 type BootstrapReply struct{}
@@ -59,8 +61,8 @@ type CoWStateReply struct {
 	Canceled    bool
 	CancelCause string
 	// Sink is the identity-offset sink contents (pre-images captured so far;
-	// unwritten ranges are zero). Sized like the guest memory — fine at test
-	// scale, and consistent with Bootstrap shipping Content the same way.
+	// unwritten ranges are zero). Sized like the guest memory — fine at the
+	// 4k-page scale the CoW tests use.
 	Sink []byte
 }
 
