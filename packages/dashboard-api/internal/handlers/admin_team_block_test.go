@@ -18,7 +18,7 @@ func TestPutAdminTeamsTeamIDBlockBlocksTeamWithReason(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	authService := &recordingCacheAuthService{}
 	store := &APIStore{db: db.SqlcClient, authService: authService}
 
@@ -35,7 +35,7 @@ func TestPutAdminTeamsTeamIDBlockReplacesTheReason(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
 
 	require.Equal(t, http.StatusNoContent, callBlockTeam(t, store, teamID, `{"reason":"first"}`).Code)
@@ -50,7 +50,7 @@ func TestPutAdminTeamsTeamIDBlockRejectsAMissingReason(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	authService := &recordingCacheAuthService{}
 	store := &APIStore{db: db.SqlcClient, authService: authService}
 
@@ -68,7 +68,7 @@ func TestDeleteAdminTeamsTeamIDBlockClearsBlockAndReason(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
 		`UPDATE public.teams SET is_blocked = true, blocked_reason = 'abuse' WHERE id = $1`, teamID))
 	authService := &recordingCacheAuthService{}

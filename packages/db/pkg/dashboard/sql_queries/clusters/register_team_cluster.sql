@@ -119,8 +119,7 @@ WHERE id = sqlc.arg(team_id)::uuid
 
 -- name: AssignTeamCluster :one
 WITH locked_team AS MATERIALIZED (
-    SELECT cluster_id,
-           POSITION('enterprise' IN LOWER(tier)) > 0 AS enterprise_eligible
+    SELECT cluster_id
     FROM public.teams
     WHERE id = sqlc.arg(team_id)::uuid
     FOR UPDATE
@@ -131,24 +130,13 @@ assigned AS (
     FROM locked_team
     WHERE team.id = sqlc.arg(team_id)::uuid
       AND (
-          locked_team.cluster_id IS NOT DISTINCT FROM sqlc.arg(cluster_id)::uuid
-          OR (
-              locked_team.enterprise_eligible
-              AND (
-                  NOT sqlc.arg(preserve_existing)::boolean
-                  OR locked_team.cluster_id IS NULL
-              )
-          )
+          NOT sqlc.arg(preserve_existing)::boolean
+          OR locked_team.cluster_id IS NULL
+          OR locked_team.cluster_id = sqlc.arg(cluster_id)::uuid
       )
     RETURNING TRUE
 )
 SELECT locked_team.cluster_id,
-       EXISTS (
-           SELECT
-           FROM locked_team AS eligible_team
-           WHERE eligible_team.enterprise_eligible
-              OR eligible_team.cluster_id IS NOT DISTINCT FROM sqlc.arg(cluster_id)::uuid
-       ) AS assignment_eligible,
        EXISTS (SELECT FROM assigned) AS assigned
 FROM locked_team;
 

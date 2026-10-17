@@ -509,9 +509,8 @@ The management surface also owns a replay-safe cluster lifecycle. A caller regis
 cluster UUID with immutable connection details, assigns it only to the named project, detaches that
 exact assignment before provider cleanup, and deletes the cluster only after no project references
 it. Replaying the same registration or assignment succeeds, while a changed descriptor, a different
-assignment, an inexact detach, or deletion of a referenced cluster returns a conflict. A new or
-replacement assignment requires the project's tier identifier to contain `enterprise`,
-case-insensitively; an identical assignment remains replayable after a later tier change.
+assignment, an inexact detach, or deletion of a referenced cluster returns a conflict. The
+assignment does not check the project's tier; the caller decides which projects may use a cluster.
 A cluster first registered through this surface starts without deletion protection; one created any
 other way starts protected, a later registration never changes it, and deleting a protected cluster
 or checking its destroy readiness returns a conflict.

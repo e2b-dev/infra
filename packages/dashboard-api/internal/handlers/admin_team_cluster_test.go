@@ -149,7 +149,7 @@ func TestDeleteAdminClustersClusterIDWaitsForConcurrentTeamReference(t *testing.
 
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	clusterID := uuid.New()
 	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
 		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token, deletion_protection) VALUES ($1, 'managed', 'api.example.test:5008', true, 'token', false)`,
@@ -230,7 +230,7 @@ func TestDeleteClusterSoftDeletesItsEnvironmentsWhenNoTeamIsAssigned(t *testing.
 			t.Parallel()
 			db := testutils.SetupDatabase(t)
 			ctx := t.Context()
-			teamID := createClusterAssignmentTestTeam(t, db)
+			teamID := testutils.CreateTestTeam(t, db)
 			clusterID, otherClusterID := uuid.New(), uuid.New()
 			for _, id := range []uuid.UUID{clusterID, otherClusterID} {
 				require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
@@ -390,7 +390,7 @@ func TestDeleteClusterRefusesTheLocalCluster(t *testing.T) {
 
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	// The local cluster's environments store a NULL cluster_id; one stored
 	// under the nil ID would match by equality, so both must survive.
 	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx,
@@ -424,7 +424,7 @@ func TestGetAdminTeamsTeamIDClusterReturnsOnlyAssignment(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	clusterID := uuid.New()
 	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
 		`INSERT INTO public.clusters (id, name, endpoint, endpoint_tls, token) VALUES ($1, 'managed', 'api.example.test:5008', true, 'secret-token')`,
@@ -466,7 +466,7 @@ func TestDeleteClusterRefusesAProtectedCluster(t *testing.T) {
 		AuthOrgId:          registration.AuthOrgId,
 	})
 	require.Equal(t, http.StatusCreated, created.Code, created.Body.String())
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	templateID := testutils.CreateTestTemplate(t, db, teamID)
 	require.NoError(t, db.SqlcClient.TestsRawSQL(ctx, `UPDATE public.envs SET cluster_id = $2 WHERE id = $1`, templateID, clusterID))
 	// Registering the same cluster through the management API, which creates
@@ -559,37 +559,4 @@ func (s *configurableCacheAuthService) InvalidateTeamCache(_ context.Context, te
 	s.invalidated = append(s.invalidated, teamID)
 
 	return s.invalidateErr
-}
-
-func createClusterAssignmentTestTeam(t *testing.T, db *testutils.Database) uuid.UUID {
-	t.Helper()
-
-	teamID := uuid.New()
-	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(), `
-		INSERT INTO public.tiers (
-			id,
-			name,
-			disk_mb,
-			concurrent_instances,
-			max_length_hours,
-			max_vcpu,
-			max_ram_mb,
-			concurrent_template_builds,
-			events_ttl_days,
-			default_free_disk_size_mb,
-			max_disk_size_mb
-		)
-		VALUES
-			('Enterprise_cluster_assignment_test', 'Enterprise cluster assignment test', 512, 20, 1, 8, 8096, 20, 7, 512, 25512),
-			('cluster_assignment_test', 'Cluster assignment test', 512, 20, 1, 8, 8096, 20, 7, 512, 25512)
-	`))
-	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
-		`INSERT INTO public.teams (id, name, tier, email, slug) VALUES ($1, $2, 'Enterprise_cluster_assignment_test', $3, $4)`,
-		teamID,
-		"Cluster assignment test team",
-		"cluster-"+teamID.String()+"@example.com",
-		"cluster-"+teamID.String()[:8],
-	))
-
-	return teamID
 }

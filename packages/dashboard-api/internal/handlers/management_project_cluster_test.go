@@ -20,7 +20,7 @@ func TestManagementClusterLifecycleReplaysAndEndsAbsent(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	projectID := createClusterAssignmentTestTeam(t, db)
+	projectID := testutils.CreateTestTeam(t, db)
 	clusterID := uuid.New()
 	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
 	registration := managementClusterRegistration()
@@ -79,7 +79,7 @@ func TestManagementRegisterClusterRejectsDescriptorChange(t *testing.T) {
 func TestManagementRegisterClusterRefreshesOnlyToken(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
-	projectID := createClusterAssignmentTestTeam(t, db)
+	projectID := testutils.CreateTestTeam(t, db)
 	clusterID := uuid.New()
 	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
 	registration := managementClusterRegistration()
@@ -143,7 +143,7 @@ func TestManagementAssignProjectClusterRejectsReservedClusterID(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	projectID := createClusterAssignmentTestTeam(t, db)
+	projectID := testutils.CreateTestTeam(t, db)
 	response := callManagementAssignProjectCluster(
 		t,
 		&APIStore{db: db.SqlcClient},
@@ -159,7 +159,7 @@ func TestManagementAssignProjectClusterRejectsDifferentAssignment(t *testing.T) 
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	projectID := createClusterAssignmentTestTeam(t, db)
+	projectID := testutils.CreateTestTeam(t, db)
 	firstID := uuid.New()
 	secondID := uuid.New()
 	authService := &recordingCacheAuthService{}
@@ -175,84 +175,45 @@ func TestManagementAssignProjectClusterRejectsDifferentAssignment(t *testing.T) 
 	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
 	requireClusterErrorCode(t, response, api.ClusterAssignmentAlreadyAssigned)
 	require.Equal(t, []uuid.UUID{projectID}, authService.invalidated)
+	require.Equal(t, firstID, assignedProjectCluster(t, db, projectID))
 }
 
-func TestManagementAssignProjectClusterRejectsNonEnterpriseProjectWithoutMutation(t *testing.T) {
+func TestManagementAssignProjectClusterIgnoresTheProjectTier(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	projectID := createClusterAssignmentTestTeam(t, db)
+	projectID := testutils.CreateTestTeam(t, db)
 	clusterID := uuid.New()
 	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
-		`UPDATE public.teams SET tier = 'cluster_assignment_test' WHERE id = $1`,
+		`UPDATE public.teams SET tier = 'base_v1' WHERE id = $1`,
 		projectID,
 	))
-
 	authService := &recordingCacheAuthService{}
 	store := &APIStore{db: db.SqlcClient, authService: authService}
 	require.Equal(t, http.StatusNoContent,
 		callManagementRegisterCluster(t, store, clusterID, managementClusterRegistration()).Code)
 
 	response := callManagementAssignProjectCluster(t, store, projectID, clusterID)
-	require.Equal(t, http.StatusConflict, response.Code, response.Body.String())
-	requireClusterErrorCode(t, response, api.ClusterAssignmentRequiresEnterprise)
-	require.Empty(t, authService.invalidated)
-
-	var assignedClusterID *uuid.UUID
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		`SELECT cluster_id FROM public.teams WHERE id = $1`,
-		func(rows pgx.Rows) error {
-			require.True(t, rows.Next())
-
-			return rows.Scan(&assignedClusterID)
-		},
-		projectID,
-	))
-	require.Nil(t, assignedClusterID)
+	require.Equal(t, http.StatusNoContent, response.Code, response.Body.String())
+	require.Equal(t, []uuid.UUID{projectID}, authService.invalidated)
+	require.Equal(t, clusterID, assignedProjectCluster(t, db, projectID))
 }
 
-func TestManagementAssignProjectClusterReplaysAfterDowngradeButRejectsReplacement(t *testing.T) {
-	t.Parallel()
+func assignedProjectCluster(t *testing.T, db *testutils.Database, projectID uuid.UUID) uuid.UUID {
+	t.Helper()
 
-	db := testutils.SetupDatabase(t)
-	projectID := createClusterAssignmentTestTeam(t, db)
-	clusterID := uuid.New()
-	replacementClusterID := uuid.New()
-	authService := &recordingCacheAuthService{}
-	store := &APIStore{db: db.SqlcClient, authService: authService}
-	registration := managementClusterRegistration()
-	replacementRegistration := managementClusterRegistration()
-	replacementRegistration.AuthOrgId = new("org_replacement")
-
-	require.Equal(t, http.StatusNoContent,
-		callManagementRegisterCluster(t, store, clusterID, registration).Code)
-	require.Equal(t, http.StatusNoContent,
-		callManagementRegisterCluster(t, store, replacementClusterID, replacementRegistration).Code)
-	require.Equal(t, http.StatusNoContent,
-		callManagementAssignProjectCluster(t, store, projectID, clusterID).Code)
-	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
-		`UPDATE public.teams SET tier = 'cluster_assignment_test' WHERE id = $1`,
-		projectID,
-	))
-
-	replayed := callManagementAssignProjectCluster(t, store, projectID, clusterID)
-	require.Equal(t, http.StatusNoContent, replayed.Code, replayed.Body.String())
-	replacement := callManagementAssignProjectCluster(t, store, projectID, replacementClusterID)
-	require.Equal(t, http.StatusConflict, replacement.Code, replacement.Body.String())
-	require.Contains(t, replacement.Body.String(), enterpriseClusterAssignmentPolicyMessage)
-	require.Equal(t, []uuid.UUID{projectID, projectID}, authService.invalidated)
-
-	var assignedClusterID uuid.UUID
+	var clusterID uuid.UUID
 	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
 		`SELECT cluster_id FROM public.teams WHERE id = $1`,
 		func(rows pgx.Rows) error {
 			require.True(t, rows.Next())
 
-			return rows.Scan(&assignedClusterID)
+			return rows.Scan(&clusterID)
 		},
 		projectID,
 	))
-	require.Equal(t, clusterID, assignedClusterID)
+
+	return clusterID
 }
 
 func managementClusterRegistration() api.ManagementClusterRegistrationRequest {
@@ -345,7 +306,7 @@ func requireClusterErrorCode(t *testing.T, response *httptest.ResponseRecorder, 
 func TestManagementAssignmentMissingResourcesHaveStableCodes(t *testing.T) {
 	t.Parallel()
 	db := testutils.SetupDatabase(t)
-	projectID := createClusterAssignmentTestTeam(t, db)
+	projectID := testutils.CreateTestTeam(t, db)
 	store := &APIStore{db: db.SqlcClient}
 	for _, test := range []struct {
 		name      string

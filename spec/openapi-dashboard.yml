@@ -345,7 +345,6 @@ components:
         - cluster_assignment_invalid
         - cluster_assignment_project_not_found
         - cluster_assignment_cluster_not_found
-        - cluster_assignment_requires_enterprise
         - cluster_assignment_already_assigned
 
     AdminAuthProviderProfile:
@@ -2363,9 +2362,8 @@ paths:
       operationId: managementAssignProjectCluster
       summary: Assign a cluster to a project (v1).
       description: >-
-        Assigns the cluster only when the project's tier identifier contains `enterprise`,
-        case-insensitively. Replaying the identical assignment succeeds even if the project's
-        tier later changes.
+        Assigns the cluster when the project has no cluster assigned. Replaying the identical
+        assignment succeeds; replacing a different assigned cluster returns a conflict.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []

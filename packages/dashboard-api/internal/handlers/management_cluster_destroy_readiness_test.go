@@ -22,7 +22,7 @@ func TestClusterDestroyReadinessRefusesOnlySharedClustersWithoutMutation(t *test
 
 	db := testutils.SetupDatabase(t)
 	ctx := t.Context()
-	owner := createClusterAssignmentTestTeam(t, db)
+	owner := testutils.CreateTestTeam(t, db)
 	other := testutils.CreateTestTeam(t, db)
 	foreignOwner := testutils.CreateTestTeam(t, db)
 	sharedA, sharedB := testutils.CreateTestTeam(t, db), testutils.CreateTestTeam(t, db)

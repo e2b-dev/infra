@@ -18,7 +18,7 @@ func TestPutAdminTeamsTeamIDBanBansTeam(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	authService := &recordingCacheAuthService{}
 	store := &APIStore{db: db.SqlcClient, authService: authService}
 
@@ -32,7 +32,7 @@ func TestPutAdminTeamsTeamIDBanIsIdempotent(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
 		`UPDATE public.teams SET is_banned = true WHERE id = $1`, teamID))
 	authService := &recordingCacheAuthService{}
@@ -48,7 +48,7 @@ func TestDeleteAdminTeamsTeamIDBanUnbansTeam(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(),
 		`UPDATE public.teams SET is_banned = true WHERE id = $1`, teamID))
 	authService := &recordingCacheAuthService{}
@@ -83,7 +83,7 @@ func TestPutAdminTeamsTeamIDBanReportsCacheInvalidationFailure(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
-	teamID := createClusterAssignmentTestTeam(t, db)
+	teamID := testutils.CreateTestTeam(t, db)
 	authService := &configurableCacheAuthService{invalidateErr: errors.New("cache unavailable")}
 	store := &APIStore{db: db.SqlcClient, authService: authService}
 
