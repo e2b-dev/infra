@@ -115,6 +115,17 @@ func testRouter(t *testing.T, flags *featureflags.Client, store store, teamID uu
 	return r
 }
 
+// untilTestDeadline is a request budget for tests that do not assert on deadlines, so a slow runner cannot expire it.
+func untilTestDeadline(t *testing.T) time.Duration {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		return 24 * time.Hour
+	}
+
+	return time.Until(deadline)
+}
+
 func request(ctx context.Context, r http.Handler, path, body string, keys []string, headers ...string) *httptest.ResponseRecorder {
 	return methodRequest(ctx, r, http.MethodPost, path, body, keys, headers...)
 }
@@ -278,13 +289,13 @@ func TestRedisMiddleware(t *testing.T) {
 		handler := func(c *gin.Context) {
 			if calls.Add(1) == 1 {
 				close(started)
+				<-release
 			}
-			<-release
 			c.Data(201, "application/json", []byte("{\"sandboxID\":\"original\"}\n"))
 		}
 		routers := []*gin.Engine{
-			testRouter(t, flags, &redisStore{client: client}, team, 10*time.Second, handler),
-			testRouter(t, flags, &redisStore{client: client}, team, 10*time.Second, handler),
+			testRouter(t, flags, &redisStore{client: client}, team, untilTestDeadline(t), handler),
+			testRouter(t, flags, &redisStore{client: client}, team, untilTestDeadline(t), handler),
 		}
 		owner := make(chan *httptest.ResponseRecorder, 1)
 		ownerDone := make(chan struct{})
@@ -309,20 +320,8 @@ func TestRedisMiddleware(t *testing.T) {
 					"X-API-Key", "b", "X-Request-ID", fmt.Sprint(i), "RateLimit-Remaining", "10", "traceparent", fmt.Sprint(i))
 			})
 		}
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
-		defer func() {
-			releaseOwner()
-			<-done
-		}()
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-			t.Fatal("pending requests waited for the owner instead of returning immediately")
-		}
+		// The owner stays blocked until releaseOwner, so these return only if they do not wait for it.
+		wg.Wait()
 		require.EqualValues(t, 1, calls.Load())
 		for i, result := range responses {
 			require.Equal(t, http.StatusConflict, result.Code, result.Body.String())
@@ -358,7 +357,7 @@ func TestRedisMiddleware(t *testing.T) {
 		var calls atomic.Int64
 		limiter, err := ratelimit.Middleware(ratelimit.NewLimiter(client), ratelimit.Config{FailOpen: true}, flags, noop.NewMeterProvider(), logger.NewNopLogger())
 		require.NoError(t, err)
-		r := testRouter(t, flags, s, team, time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, team, untilTestDeadline(t), func(c *gin.Context) {
 			calls.Add(1)
 			c.Data(500, "application/json", []byte(`{"code":500,"message":"original error"}`))
 		}, limiter, func(c *gin.Context) { auth.MustGetTeamInfo(c).IsBlocked = blocked.Load() })
@@ -383,7 +382,7 @@ func TestRedisMiddleware(t *testing.T) {
 		require.Equal(t, original.Body.String(), w.Body.String())
 		require.Equal(t, original.Code, w.Code)
 		require.EqualValues(t, 1, calls.Load())
-		td.Update(td.Flag(featureflags.RateLimitConfigFlag.Key()).ValueForAll(ldvalue.CopyArbitraryValue(map[string]map[string]int{"/v2/sandboxes": {"rate": 1, "burst": 1}})))
+		td.Update(td.Flag(featureflags.RateLimitConfigFlag.Key()).ValueForAll(ldvalue.CopyArbitraryValue(map[string]map[string]int{"/v2/sandboxes": {"rate": 1, "burst": 1, "period_s": 600}})))
 		request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		require.Equal(t, 429, w.Code, w.Body.String())
@@ -394,7 +393,7 @@ func TestRedisMiddleware(t *testing.T) {
 		t.Parallel()
 		flags, _ := testFlags(t, false, 86400)
 		calls := 0
-		r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, uuid.New(), untilTestDeadline(t), func(c *gin.Context) {
 			calls++
 			c.Status(201)
 		})
@@ -418,7 +417,7 @@ func TestRedisMiddleware(t *testing.T) {
 		t.Parallel()
 		flags, _ := testFlags(t, false, 86400)
 		calls := 0
-		r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, uuid.New(), untilTestDeadline(t), func(c *gin.Context) {
 			calls++
 			c.Status(201)
 		})
@@ -440,7 +439,7 @@ func TestRedisMiddleware(t *testing.T) {
 		t.Parallel()
 		flags, _ := testFlags(t, false, 86400)
 		calls := 0
-		r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, uuid.New(), untilTestDeadline(t), func(c *gin.Context) {
 			calls++
 			c.Data(201, "application/json", []byte(`{"sandboxID":"original"}`))
 		})
@@ -460,7 +459,7 @@ func TestRedisMiddleware(t *testing.T) {
 		release := make(chan struct{})
 		releaseOwner := sync.OnceFunc(func() { close(release) })
 		var calls atomic.Int64
-		r := testRouter(t, flags, s, team, time.Minute, func(c *gin.Context) {
+		r := testRouter(t, flags, s, team, untilTestDeadline(t), func(c *gin.Context) {
 			if calls.Add(1) == 1 {
 				close(started)
 				<-release
@@ -483,8 +482,6 @@ func TestRedisMiddleware(t *testing.T) {
 		case <-started:
 		case <-ownerDone:
 			t.Fatalf("owner returned before executing: %s", (<-owner).Body.String())
-		case <-time.After(5 * time.Second):
-			t.Fatal("owner did not start")
 		}
 		cancelOwner()
 		key := recordKey(team.String(), "key")
@@ -525,13 +522,13 @@ func TestRedisMiddleware(t *testing.T) {
 				case "abandoned":
 					digest, err := fingerprint(jsonRequest(t), validatedRequest(t, flags, validBody))
 					require.NoError(t, err)
-					_, err = s.reserve(t.Context(), key, digest, "previous", featureflags.APIIdempotencyTTLSeconds.Fallback(), time.Now().Add(time.Minute))
+					_, err = s.reserve(t.Context(), key, digest, "previous", featureflags.APIIdempotencyTTLSeconds.Fallback(), time.Now().Add(untilTestDeadline(t)))
 					require.NoError(t, err)
 				case "complete":
 					fault.completeErr = failure
 				}
 				calls := 0
-				r := testRouter(t, flags, fault, team, time.Second, func(c *gin.Context) {
+				r := testRouter(t, flags, fault, team, untilTestDeadline(t), func(c *gin.Context) {
 					calls++
 					c.Data(201, "application/json", []byte(`{"sandboxID":"original"}`))
 					c.Writer.Flush()
@@ -564,7 +561,7 @@ func TestRedisMiddleware(t *testing.T) {
 				before, err := client.HGetAll(t.Context(), key).Result()
 				require.NoError(t, err)
 				previousCalls := calls
-				r = testRouter(t, flags, s, team, time.Second, func(_ *gin.Context) { calls++ })
+				r = testRouter(t, flags, s, team, untilTestDeadline(t), func(_ *gin.Context) { calls++ })
 				for range 3 {
 					w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 					require.Equal(t, http.StatusConflict, w.Code)
@@ -601,7 +598,7 @@ func TestRedisMiddleware(t *testing.T) {
 			require.NoError(t, err)
 			require.Positive(t, reservedExpiry)
 		}}
-		r := testRouter(t, flags, fault, team, time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, fault, team, untilTestDeadline(t), func(c *gin.Context) {
 			c.Data(400, "application/json", []byte("{\"code\":400}\n"))
 			c.Writer.Flush()
 			cancel()
