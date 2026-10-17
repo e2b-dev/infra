@@ -456,6 +456,11 @@ type Sandbox struct {
 	// afterwards (see UseSyncWP).
 	useSyncWP bool
 
+	// networkPlacement is where the network-assign hook sent the execution's
+	// traffic; nil when the sandbox uses the worker's own network. Written
+	// once before the guest runs; read-only afterwards (see NetworkPlacement).
+	networkPlacement *orchestrator.SandboxNetworkPlacement
+
 	// balloonMode is the balloon's free-page mechanism as last stamped: from
 	// the template metadata at resume, the configuration at boot, or a device
 	// read (labelBalloonMode after start, ResolveBalloonMode at checkpoint).
@@ -630,6 +635,13 @@ func (s *Sandbox) RunUpdate(update func() error) error {
 // during resume before the sandbox is published, so it needs no locking.
 func (s *Sandbox) UseSyncWP() bool {
 	return s.useSyncWP
+}
+
+// NetworkPlacement is the placement the network-assign hook returned, nil
+// when the sandbox uses the worker's own network. Set once before the guest
+// runs, so it needs no locking.
+func (s *Sandbox) NetworkPlacement() *orchestrator.SandboxNetworkPlacement {
+	return s.networkPlacement
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
@@ -957,27 +969,34 @@ func (f *Factory) RecordingEnvdTargetVersion(get func(context.Context, string) (
 }
 
 // runNetworkAssignHook calls the configured NetworkAssignHook.OnNetworkAssign
-// synchronously and imposes no timeout. The implementation is responsible for
-// constraining its own duration. The code recovers any panic here to keep it from
-// crashing the whole process because there is no other recovery layer between
-// this call and the process's main goroutine.
-//
-// The synchronous call ensures the hook finishes before the resource becomes
-// active, preserving that ordering guarantee.
-func (f *Factory) runNetworkAssignHook(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) {
+// synchronously and imposes no timeout; the implementation constrains its
+// own duration. An error fails the start, unless the hook marked it
+// optional: then it is logged and the start goes on. A panic is recovered,
+// since nothing else between here and the process's main goroutine would,
+// and fails the start like an error: the network may be half complete.
+func (f *Factory) runNetworkAssignHook(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) (placement *orchestrator.SandboxNetworkPlacement, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			sbx.log().Error(ctx, "sandbox network-assign hook panicked, continuing",
+			sbx.log().Error(ctx, "sandbox network-assign hook panicked",
 				logger.WithLifecycleID(sbx.LifecycleID),
 				zap.Any("panic", r))
+			placement, err = nil, fmt.Errorf("sandbox network-assign hook panicked: %v", r)
 		}
 	}()
 
-	if err := f.networkAssignHook.OnNetworkAssign(ctx, sbx, reason); err != nil {
+	placement, err = f.networkAssignHook.OnNetworkAssign(ctx, sbx, reason)
+	if _, optional := errors.AsType[optionalNetworkAssignError](err); optional {
 		sbx.log().Warn(ctx, "sandbox network-assign hook failed, continuing",
 			logger.WithLifecycleID(sbx.LifecycleID),
 			zap.Error(err))
+
+		return placement, nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to complete the sandbox network: %w", err)
+	}
+
+	return placement, nil
 }
 
 func (f *Factory) EgressProxy() network.EgressProxy {
@@ -1224,8 +1243,10 @@ func (f *Factory) CreateSandbox(
 
 	// Do not move this call: it must run after AssignNetwork above and
 	// before fcHandle.Create below, so OnNetworkAssign always runs before
-	// the guest can execute.
-	f.runNetworkAssignHook(ctx, sbx, createOpts.networkAssignReason)
+	// the guest can execute. A failure fails the start.
+	if sbx.networkPlacement, err = f.runNetworkAssignHook(ctx, sbx, createOpts.networkAssignReason); err != nil {
+		return nil, err
+	}
 
 	initializeHostStatsCollector(execCtx, sbx, runtime, config, f.hostStatsDelivery)
 
@@ -1892,11 +1913,6 @@ func (f *Factory) ResumeSandbox(
 	// This is to prevent race condition of reporting unhealthy sandbox
 	sbx.Checks = NewChecks(sbx)
 
-	cleanup.AddPriority(ctx, func(ctx context.Context) error {
-		// Stop the sandbox first if it is still running, otherwise do nothing
-		return sbx.Stop(ctx)
-	})
-
 	// Register the sandbox IP before Resume so it is findable by source address
 	// during the resume (e.g. for TCP firewall lookups). On failure the deferred cleanup
 	// will remove it.
@@ -1910,8 +1926,18 @@ func (f *Factory) ResumeSandbox(
 	}
 	// Do not move this call: it must run after AssignNetwork above and
 	// before fcHandle.Resume below, so OnNetworkAssign always runs before
-	// the guest can resume (and, with it, resume any live connection).
-	f.runNetworkAssignHook(ctx, sbx, reason)
+	// the guest can resume (and, with it, resume any live connection). A
+	// failure fails the resume.
+	if sbx.networkPlacement, err = f.runNetworkAssignHook(ctx, sbx, reason); err != nil {
+		return nil, err
+	}
+
+	// Registered after the hook, whose failure leaves no Firecracker process
+	// for the stop to wait for.
+	cleanup.AddPriority(ctx, func(ctx context.Context) error {
+		// Stop the sandbox first if it is still running, otherwise do nothing
+		return sbx.Stop(ctx)
+	})
 
 	// A throwaway also skips host-stats collection, so it emits no per-sandbox
 	// host stats under its (unregistered) identity — consistent with not being in

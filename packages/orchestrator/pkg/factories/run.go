@@ -90,6 +90,10 @@ type Deps struct {
 	FeatureFlags        *featureflags.Client
 	MTLS                *mtls.Process // for an edition's own client hops
 	ClickhouseEndpoints []ClickhouseEndpoint
+	// NodeID and ServiceInstanceID name this node and process as ServiceInfo
+	// reports them.
+	NodeID            string
+	ServiceInstanceID string
 }
 
 type ClickhouseEndpoint struct {
@@ -248,7 +252,8 @@ type EgressSetup struct {
 	// Proxy is the network egress proxy for slot creation/deletion.
 	Proxy network.EgressProxy
 	// NetworkAssignHook runs right after the sandbox's network is assigned
-	// and strictly before its guest can run (or resume running).
+	// and strictly before its guest can run (or resume running). Its error
+	// fails the start; see sandbox.NetworkAssignHook.
 	NetworkAssignHook sandbox.NetworkAssignHook
 
 	// StartupReclaim removes network state the edition's previous process
@@ -259,8 +264,11 @@ type EgressSetup struct {
 	// later use of that state to refuse or clear.
 	StartupReclaim func(ctx context.Context) error
 
-	// Start is called as a managed service (optional).
-	// If nil, no service is started for the egress proxy.
+	// Start is called as a managed service (optional): it blocks for as long
+	// as the service runs. It starts once the sandbox runtime's startup
+	// reclaim ran and the network pool exists, so what it brings up is not
+	// reclaimed and no sandbox has started yet. If nil, no service is
+	// started for the egress proxy.
 	Start func(ctx context.Context) error
 
 	// Close is called during shutdown in reverse order (optional).
@@ -798,6 +806,8 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// egress proxy — built by the edition-specific factory
 	deps := &Deps{
 		Config:              config,
+		NodeID:              nodeID,
+		ServiceInstanceID:   serviceInstanceID,
 		Tel:                 tel,
 		MeterProvider:       tel.MeterProvider,
 		Logger:              globalLogger,
@@ -813,11 +823,6 @@ func run(config cfg.Config, opts Options) (success bool) {
 	}
 	if egressSetup == nil {
 		logger.L().Fatal(ctx, "EgressFactory returned nil EgressSetup without error")
-	}
-	if egressSetup.Start != nil {
-		startService("egress proxy", func() error {
-			return egressSetup.Start(ctx)
-		})
 	}
 	if egressSetup.Close != nil {
 		closers = append(closers, closer{"egress proxy", egressSetup.Close})
@@ -934,6 +939,14 @@ func run(config cfg.Config, opts Options) (success bool) {
 		logger.L().Fatal(ctx, "unsupported NETWORK_VERSION after validated config", zap.Int("network_version", config.NetworkConfig.NetworkVersion))
 	}
 	closers = append(closers, networkPoolCloser(networkPool))
+	// After the reclaim and the pool, so the edition's service can bring up
+	// state the reclaim would have removed; its closer was registered above,
+	// before the pool's, so it closes after the pool.
+	if egressSetup.Start != nil {
+		startService("egress proxy", func() error {
+			return egressSetup.Start(ctx)
+		})
+	}
 
 	datapathRegistration, err := network.RegisterDatapathMetric(tel.MeterProvider, selectedNetworkVersion)
 	if err != nil {

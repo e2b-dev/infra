@@ -6,21 +6,31 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/clickhouse/pkg/hoststats"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd/testutils"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 )
 
 type canceledConstructionTemplate struct {
@@ -126,6 +136,136 @@ func TestFactoryFailedConstructorsDoNotAttributeIndependentErrorsToCancellation(
 			require.Nil(t, sbx)
 			require.ErrorIs(t, err, primary)
 			require.NotErrorIs(t, err, cause, "an independent template error must not inherit an unrelated cancellation diagnosis")
+		})
+	}
+}
+
+// bootTemplate serves zeroed rootfs and memory devices of one MiB and a
+// snapfile, which are all a start reads before the guest runs.
+type bootTemplate struct {
+	capacityOnlyTemplate
+
+	snapfile string
+}
+
+func (bootTemplate) Files() storage.CachePaths { return storage.CachePaths{} }
+
+func (bootTemplate) Rootfs() (block.ReadonlyDevice, error) {
+	return testutils.NewZeroDevice(1<<20, header.RootfsBlockSize)
+}
+
+func (bootTemplate) Memfile(context.Context) (block.ReadonlyDevice, error) {
+	return testutils.NewZeroDevice(1<<20, header.PageSize)
+}
+
+func (t bootTemplate) Snapfile() (sbxtemplate.File, error) {
+	return sbxtemplate.NewLocalFileLink(t.snapfile), nil
+}
+
+// startedDevicePool returns a populated NBD device pool, which a resume's
+// rootfs connects to while the start goes on, and closes it on cleanup. It
+// is nil without root, which the nbd needs.
+func startedDevicePool(t *testing.T) *nbd.DevicePool {
+	t.Helper()
+	if os.Geteuid() != 0 {
+		return nil
+	}
+	devices, err := nbd.NewDevicePool(1)
+	require.NoError(t, err)
+	populating, stop := context.WithCancel(t.Context())
+	populated := make(chan struct{})
+	go func() {
+		defer close(populated)
+		devices.Populate(populating)
+	}()
+	t.Cleanup(func() {
+		stop()
+		<-populated
+		require.NoError(t, devices.Close(context.WithoutCancel(t.Context())))
+	})
+
+	return devices
+}
+
+// The actual constructors run the network-assign hook with the start's
+// reason after the sandbox is assigned its network and before Firecracker
+// starts: an error fails the start there, an optional one lets it go on to
+// Firecracker, and the slot is returned either way. A throwaway resume
+// denies its slot's egress before the hook, which this fixture's slot
+// cannot, so it is not started here.
+func TestFactoryConstructorsRunTheNetworkAssignHook(t *testing.T) {
+	t.Parallel()
+	builder := cfg.BuilderConfig{
+		FirecrackerVersionsDir: t.TempDir(), HostKernelsDir: t.TempDir(),
+		StorageConfig: storage.Config{SandboxCacheDir: t.TempDir()},
+	}
+	versions := fc.Config{KernelVersion: "kernel", FirecrackerVersion: "firecracker"}
+	for _, path := range []string{versions.FirecrackerPath(builder), versions.HostKernelPath(builder)} {
+		require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o755))
+		require.NoError(t, os.WriteFile(path, nil, 0o755))
+	}
+	flags, err := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = flags.Close(context.WithoutCancel(t.Context())) })
+	hookFailure := errors.New("the network could not be completed")
+	devices := startedDevicePool(t)
+
+	for _, tc := range []struct {
+		name  string
+		start func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error)
+		// devices is set for a resume, whose rootfs needs NBD devices.
+		devices  bool
+		reason   NetworkAssignReason
+		optional bool
+	}{
+		{name: "create", reason: NetworkAssignReasonCreate, start: func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error) {
+			return f.CreateSandbox(ctx, config, runtime, template, time.Minute, filepath.Join(filepath.Dir(template.snapfile), "rootfs"), fc.ProcessOptions{}, nil, nil)
+		}},
+		{name: "resume", devices: true, reason: NetworkAssignReasonResume, start: func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error) {
+			return f.ResumeSandbox(ctx, template, config, runtime, time.Time{}, time.Time{}, nil)
+		}},
+		{name: "create with an optional error", optional: true, reason: NetworkAssignReasonCreate, start: func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error) {
+			return f.CreateSandbox(ctx, config, runtime, template, time.Minute, filepath.Join(filepath.Dir(template.snapfile), "rootfs"), fc.ProcessOptions{}, nil, nil)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.devices && devices == nil {
+				t.Skip("the nbd requires root privileges to run")
+			}
+			pool := &factoryNetworkPool{slot: testMapSandbox(t, "pool").Slot}
+			asked := make(chan NetworkAssignReason, 1)
+			hook := networkAssignHookFunc(func(_ context.Context, sbx *Sandbox, reason NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
+				assert.Same(t, pool.slot, sbx.Slot, "the hook sees the slot the start took")
+				asked <- reason
+				if tc.optional {
+					return nil, OptionalNetworkAssignError(hookFailure)
+				}
+
+				return nil, hookFailure
+			})
+			factory := NewFactory(t.Context(), builder, pool, devices, flags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), hook, NewSandboxesMap())
+			runtime := sandboxtypes.RuntimeMetadata{SandboxID: uuid.NewString(), ExecutionID: uuid.NewString(), SandboxType: sandboxtypes.SandboxTypeSandbox}
+			config := NewConfig(Config{Vcpu: 1, Network: &orchestrator.SandboxNetworkConfig{}, FirecrackerConfig: versions})
+			template := bootTemplate{snapfile: filepath.Join(t.TempDir(), "snapfile")}
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+			defer cancel()
+
+			sbx, err := tc.start(ctx, factory, runtime, config, template)
+			require.Nil(t, sbx)
+			require.Error(t, err)
+			select {
+			case reason := <-asked:
+				require.Equal(t, tc.reason, reason, "the hook is asked with the start's reason")
+			default:
+				require.FailNow(t, "the hook did not run", "%v", err)
+			}
+			if tc.optional {
+				require.NotErrorIs(t, err, hookFailure, "the start went on past the hook, to Firecracker")
+			} else {
+				require.ErrorIs(t, err, hookFailure, "the start fails on the hook, before Firecracker starts")
+			}
+			require.Equal(t, 1, pool.returns, "the start returned its slot")
 		})
 	}
 }

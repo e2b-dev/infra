@@ -543,6 +543,9 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		// key off the running binary exactly instead of re-resolving the
 		// flag, which drifts from this frozen value whenever the flag moves.
 		ResolvedFirecrackerVersion: resolvedFCVersion,
+		// The placement of the network this execution started on; none when it
+		// uses the worker's own network.
+		NetworkPlacement: sbx.NetworkPlacement(),
 	}, nil
 }
 
