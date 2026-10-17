@@ -855,7 +855,7 @@ func TestKeyedCreatePreservesSchemaDefaults(t *testing.T) {
 	s := &redisStore{client: client}
 	flags, _ := testFlags(t, false, 86400)
 	var bodies []api.NewSandboxV2
-	r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+	r := testRouter(t, flags, s, uuid.New(), time.Minute, func(c *gin.Context) {
 		body := c.MustGet("parsedCreateBody").(api.NewSandboxV2)
 		bodies = append(bodies, body)
 		c.JSON(201, body)
