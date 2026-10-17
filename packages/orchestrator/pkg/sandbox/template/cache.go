@@ -1293,8 +1293,8 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 	// instance is dropped without ever being fetched and without ever reaching
 	// Close. Its cache directory exists all the same — storage.Paths.Cache
 	// creates it eagerly, at construction, before the cache is consulted — and
-	// nothing else would reclaim it: the startup sweep covers DefaultCacheDir,
-	// while these live under TemplateCacheDir. Left alone it would orphan one
+	// nothing else would reclaim it while this process runs; the startup sweep
+	// only clears what a previous process left. Left alone it would orphan one
 	// empty directory per cache hit, a leak that scales with lookups rather than
 	// with templates, on the hottest path there is. Removing it here is safe
 	// precisely because the instance was never fetched: the directory is its own,

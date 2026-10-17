@@ -331,6 +331,9 @@ Key mechanisms (all under `pkg/sandbox/`):
   pin holds it, its devices have resolved and its upload has landed, instead of staying until
   its TTL expires. A descendant's upload then heals that ancestor's build data from storage,
   and writes the same header bytes it would have written with the ancestor still cached.
+  The sandbox and template caches start empty after a restart: the template cache empties the
+  build-data directory, and startup reclaim empties the sandbox, template and template-build
+  scratch directories.
 - **Networking** (`network/`): each sandbox gets a slot — a network namespace with a veth pair
   and a tap device, unique host-side IP (from a /16), NAT, and per-slot nftables egress firewall
   (with SNI/Host-inspecting TCP firewall for domain allow/deny lists). Slots are pooled and

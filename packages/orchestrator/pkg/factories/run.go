@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -366,6 +367,44 @@ func ensureDirs(c cfg.Config) error {
 	}
 
 	return nil
+}
+
+// startupReclaimKeepPaths lists what the startup cache sweep must never remove.
+// DefaultCacheDir is among them because the template cache has already emptied
+// and reopened it by the time reclaim runs. Local template and build-cache
+// storage hold the only copies of their artifacts and may sit at a cache path,
+// as TEMPLATE_STORAGE_URL=file:///orchestrator/template does.
+func startupReclaimKeepPaths(c cfg.Config, templateStorage storage.Spec) ([]string, error) {
+	storages := []storage.Spec{templateStorage}
+	// Nodes that never build leave the build-cache bucket unset, so its
+	// resolution fails; only a local build cache can hold a path here.
+	buildCacheStorage, err := cfg.BuildCacheStorage()
+	switch {
+	case err == nil:
+		storages = append(storages, buildCacheStorage)
+	case cfg.BuildCacheStorageIsLocal():
+		return nil, fmt.Errorf("resolve local build cache storage: %w", err)
+	}
+
+	keep := []string{
+		c.OrchestratorBaseDir,
+		c.OrchestratorLockPath,
+		c.DefaultCacheDir,
+		c.SharedChunkCacheDir,
+		c.SandboxDir,
+		c.FirecrackerVersionsDir,
+		c.HostKernelsDir,
+		c.HostBusyboxDir,
+		c.HostEnvdPath,
+	}
+
+	for _, spec := range storages {
+		if spec.Provider == storage.LocalStorageProvider {
+			keep = append(keep, spec.BasePath)
+		}
+	}
+
+	return slices.AppendSeq(keep, maps.Values(c.PersistentVolumeMounts)), nil
 }
 
 func acquireOrchestratorLock(path string) (*flock.Flock, error) {
@@ -837,13 +876,23 @@ func run(config cfg.Config, opts Options) (success bool) {
 	reclaimRan := false
 	if usesSandboxRuntime && !config.DisableStartupReclaim {
 		reclaimRan = true
+		cacheDirs := []string{config.StorageConfig.SandboxCacheDir, config.StorageConfig.TemplateCacheDir, config.TemplatesDir}
+		keepPaths, err := startupReclaimKeepPaths(config, templateSpec)
+		if err != nil {
+			// Without every protected path the sweep could take one; skip it.
+			logger.L().Error(ctx, "startup reclaim: not resetting cache dirs", zap.Error(err))
+			cacheDirs = nil
+		}
 		summary := startupreclaim.Run(ctx, startupreclaim.Config{
 			NetworkConfig: config.NetworkConfig,
 			EgressProxy:   egressSetup.Proxy,
 			CgroupManager: cgroupManager,
 			StorageConfig: config.StorageConfig,
+			CacheDirs:     cacheDirs,
+			KeepPaths:     keepPaths,
 		})
-		reclaimClean = !summary.HasFailures()
+		// A cache dir the sweep left alone keeps only files, never slot state.
+		reclaimClean = !summary.HasRuntimeFailures()
 		if egressSetup.StartupReclaim != nil {
 			if err := egressSetup.StartupReclaim(ctx); err != nil {
 				logger.L().Error(ctx, "failed to reclaim edition network state", zap.Error(err))

@@ -1162,9 +1162,8 @@ func TestFootprint_OldestPinAgeFollowsTheHolder(t *testing.T) {
 // storage.Paths.Cache creates the instance's directory eagerly, at
 // construction — before the cache is consulted — so every lookup that loses the
 // race to an already-resident template leaves one behind. Nothing else reclaims
-// those: the startup sweep covers DefaultCacheDir, while these live under
-// TemplateCacheDir, and the discarded instance never reaches Close. The leak
-// scales with lookups rather than with templates, on the hot path.
+// those while the process runs, and the discarded instance never reaches Close.
+// The leak scales with lookups rather than with templates, on the hot path.
 func TestGetTemplate_DiscardedCandidateLeavesNoDirectory(t *testing.T) {
 	t.Parallel()
 
@@ -1198,9 +1197,9 @@ func TestGetTemplate_DiscardedCandidateLeavesNoDirectory(t *testing.T) {
 	require.Same(t, resident, got, "the resident template must win the lookup")
 	assert.NoDirExists(t, candidateDir, "the discarded candidate's directory must not be orphaned")
 
-	// And nothing else under this build's cache parent either, so the leak does
-	// not simply move up a level.
-	siblings, err := os.ReadDir(filepath.Join(root, buildID, "cache"))
+	// And nothing else under the cache root either, so the leak does not simply
+	// move up a level.
+	entries, err := os.ReadDir(root)
 	require.NoError(t, err)
-	assert.Empty(t, siblings, "no per-lookup directories may accumulate under the build")
+	assert.Empty(t, entries, "no per-lookup directories may accumulate")
 }

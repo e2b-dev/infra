@@ -65,6 +65,24 @@ func BuildCacheStorage() (storage.Spec, error) {
 		"build cache", "BUILD_CACHE_BUCKET_NAME", "/tmp/build-cache")
 }
 
+// BuildCacheStorageIsLocal reports whether the build-cache storage is configured
+// as local (file://) storage, without resolving it: a local role that fails to
+// resolve may still name a path on this disk, while a bucket role whose bucket
+// is unset, as on nodes that never build, names none. An environment it cannot
+// parse counts as local.
+func BuildCacheStorageIsLocal() bool {
+	e, err := env.ParseAs[storageEnv]()
+	if err != nil {
+		return true
+	}
+
+	if raw := strings.TrimSpace(e.BuildCacheURL); raw != "" {
+		return strings.HasPrefix(strings.ToLower(raw), "file:")
+	}
+
+	return e.Provider == storage.LocalStorageProvider
+}
+
 func resolveStorage(e storageEnv, rawURL, bucket, basePath, name, bucketEnv, defaultBasePath string) (storage.Spec, error) {
 	if raw := strings.TrimSpace(rawURL); raw != "" {
 		return storage.ParseStorageURL(raw)
