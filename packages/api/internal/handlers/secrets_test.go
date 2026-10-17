@@ -1041,11 +1041,12 @@ func TestSecretsManagementClientFindsAddedReplicaAfterRotation(t *testing.T) {
 func TestSecretsManagementClientTargetsDeadlinesAndCancellation(t *testing.T) {
 	t.Parallel()
 
-	deadlines, ended := make(chan time.Time, 2), make(chan error, 2)
+	arrivals, deadlines, ended := make(chan time.Time, 2), make(chan time.Time, 2), make(chan error, 2)
 	replica := startSecretsReplica(t, grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if _, list := req.(*managementv1.ListSecretsRequest); list {
 			return handler(ctx, req)
 		}
+		arrivals <- time.Now()
 		deadline, _ := ctx.Deadline()
 		deadlines <- deadline
 		<-ctx.Done()
@@ -1063,15 +1064,19 @@ func TestSecretsManagementClientTargetsDeadlinesAndCancellation(t *testing.T) {
 	}
 	require.Equal(t, codes.Unavailable, status.Code(getSecrets(t, dialSecretsManagement(t, "dns:///127.0.0.1:1"), 1)))
 	store := newSecretsStore(t, client, true)
-	// A caller deadline shorter than the API's own timeout reaches the backend.
-	deadlineCtx, cancelDeadline := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	// A caller deadline shorter than the API's own timeout reaches the backend. It outlasts a stall
+	// before the request is sent, which would otherwise expire it before the backend sees the call.
+	deadlineCtx, cancelDeadline := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancelDeadline()
 	callerDeadline, _ := deadlineCtx.Deadline()
 	ginCtx, recorder, _ := newSecretsRequest(t, http.MethodGet, "/secrets/my-secret", "")
 	ginCtx.Request = ginCtx.Request.WithContext(deadlineCtx)
+	sent := time.Now()
 	store.GetSecretsSecretID(ginCtx, "my-secret")
 	require.Equal(t, http.StatusGatewayTimeout, recorder.Code)
-	require.WithinDuration(t, callerDeadline, receiveWithin(t, deadlines, "the backend handler"), 100*time.Millisecond)
+	// The backend applies the caller's remaining time on arrival, so its deadline runs late by the transit.
+	transit := receiveWithin(t, arrivals, "the backend handler").Sub(sent)
+	require.WithinRange(t, receiveWithin(t, deadlines, "the backend handler"), callerDeadline, callerDeadline.Add(transit))
 	receiveWithin(t, ended, "the backend call to end")
 	// Without one the API's timeout applies. A caller that goes away cancels the call.
 	cancelCtx, cancel := context.WithCancel(t.Context())
