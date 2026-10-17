@@ -19,7 +19,8 @@ import (
 func TestRedisStore(t *testing.T) {
 	t.Parallel()
 	client := redisutils.SetupInstance(t)
-	responseDeadline := time.Now().Add(time.Minute)
+	// Parallel subtests start after this function returns, so each call takes a fresh deadline.
+	responseDeadline := func() time.Time { return time.Now().Add(time.Minute) }
 
 	t.Run("atomic across instances and fixed retention", func(t *testing.T) {
 		t.Parallel()
@@ -29,11 +30,12 @@ func TestRedisStore(t *testing.T) {
 		var winner string
 		var wg sync.WaitGroup
 		reserveErrors := make([]error, 32)
+		started := redisMillis(t, client)
 		for i := range reserveErrors {
 			wg.Go(func() {
 				s := &redisStore{client: client}
 				owner := uuid.NewString()
-				result, err := s.reserve(t.Context(), key, "hash", owner, 60, responseDeadline)
+				result, err := s.reserve(t.Context(), key, "hash", owner, 3600, responseDeadline())
 				reserveErrors[i] = err
 				if err != nil {
 					return
@@ -54,14 +56,16 @@ func TestRedisStore(t *testing.T) {
 		s := &redisStore{client: client}
 		ttl, err := client.PTTL(t.Context(), key).Result()
 		require.NoError(t, err)
-		require.Greater(t, ttl, 50*time.Second)
-		require.LessOrEqual(t, ttl, time.Minute)
+		elapsed := time.Duration(redisMillis(t, client)-started) * time.Millisecond
+		require.NotEqual(t, time.Duration(-1), ttl, "key has no expiry")
+		require.GreaterOrEqual(t, ttl, time.Hour-elapsed)
+		require.LessOrEqual(t, ttl, time.Hour)
 		expiresAt, err := client.PExpireTime(t.Context(), key).Result()
 		require.NoError(t, err)
-		pending, err := s.reserve(t.Context(), key, "hash", "retry", 3600, responseDeadline)
+		pending, err := s.reserve(t.Context(), key, "hash", "retry", 3600, responseDeadline())
 		require.NoError(t, err)
 		require.Equal(t, statePending, pending.state)
-		mismatch, err := s.reserve(t.Context(), key, "different", uuid.NewString(), 3600, responseDeadline)
+		mismatch, err := s.reserve(t.Context(), key, "different", uuid.NewString(), 3600, responseDeadline())
 		require.NoError(t, err)
 		require.Equal(t, stateMismatch, mismatch.state)
 		want := cachedResponse{Status: 503, Headers: http.Header{"Content-Type": {"application/json"}}, Body: []byte{0, 255, '\n'}}
@@ -74,7 +78,7 @@ func TestRedisStore(t *testing.T) {
 		completedExpiry, err := client.PExpireTime(t.Context(), key).Result()
 		require.NoError(t, err)
 		require.Equal(t, expiresAt, completedExpiry)
-		result, err := s.reserve(t.Context(), key, "hash", "retry", 3600, responseDeadline)
+		result, err := s.reserve(t.Context(), key, "hash", "retry", 3600, responseDeadline())
 		require.NoError(t, err)
 		require.Equal(t, stateComplete, result.state)
 		require.Equal(t, want, result.response)
@@ -85,28 +89,29 @@ func TestRedisStore(t *testing.T) {
 	})
 
 	for _, state := range []recordState{statePending, stateComplete} {
-		t.Run(string(state)+" expiry allows a new owner", func(t *testing.T) {
+		t.Run(string(state)+" removal allows a new owner", func(t *testing.T) {
 			t.Parallel()
 			s := &redisStore{client: client}
 			key := uuid.NewString()
-			_, err := s.reserve(t.Context(), key, "hash", "old", 1, responseDeadline)
+			_, err := s.reserve(t.Context(), key, "hash", "old", 60, responseDeadline())
 			require.NoError(t, err)
 			if state == stateComplete {
 				require.NoError(t, s.complete(t.Context(), key, "old", cachedResponse{Status: 201}))
 			}
-			require.Eventually(t, func() bool { return client.Exists(t.Context(), key).Val() == 0 }, 2*time.Second, 10*time.Millisecond)
+			// Redis drops an expired key on its next access, so a delete is what a lapsed retention looks like to the store.
+			require.NoError(t, client.Del(t.Context(), key).Err())
 			require.ErrorIs(t, s.complete(t.Context(), key, "old", cachedResponse{Status: 201}), errOwnershipLost)
 			require.Zero(t, client.Exists(t.Context(), key).Val())
-			result, err := s.reserve(t.Context(), key, "new-hash", "new", 60, responseDeadline)
+			result, err := s.reserve(t.Context(), key, "new-hash", "new", 60, responseDeadline())
 			require.NoError(t, err)
 			require.Equal(t, stateOwner, result.state)
 			require.ErrorIs(t, s.complete(t.Context(), key, "old", cachedResponse{Status: 201}), errOwnershipLost)
-			result, err = s.reserve(t.Context(), key, "new-hash", "retry", 3600, responseDeadline)
+			result, err = s.reserve(t.Context(), key, "new-hash", "retry", 3600, responseDeadline())
 			require.NoError(t, err)
 			require.Equal(t, statePending, result.state)
 			want := cachedResponse{Status: 202}
 			require.NoError(t, s.complete(t.Context(), key, "new", want))
-			result, err = s.reserve(t.Context(), key, "new-hash", "retry", 3600, responseDeadline)
+			result, err = s.reserve(t.Context(), key, "new-hash", "retry", 3600, responseDeadline())
 			require.NoError(t, err)
 			require.Equal(t, stateComplete, result.state)
 			require.Equal(t, want, result.response)
@@ -117,11 +122,11 @@ func TestRedisStore(t *testing.T) {
 		t.Parallel()
 		s := &redisStore{client: client}
 		key := uuid.NewString()
-		_, err := s.reserve(t.Context(), key, "hash", "owner", 0, responseDeadline)
+		_, err := s.reserve(t.Context(), key, "hash", "owner", 0, responseDeadline())
 		require.Error(t, err)
 		require.Zero(t, client.Exists(t.Context(), key).Val())
 		require.NoError(t, client.Set(t.Context(), key, "wrong type", time.Minute).Err())
-		_, err = s.reserve(t.Context(), key, "hash", "owner", 60, responseDeadline)
+		_, err = s.reserve(t.Context(), key, "hash", "owner", 60, responseDeadline())
 		require.Error(t, err)
 		require.Error(t, s.complete(t.Context(), key, "owner", cachedResponse{Status: 201}))
 		for _, values := range [][]string{

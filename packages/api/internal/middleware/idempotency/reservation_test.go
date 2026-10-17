@@ -205,8 +205,7 @@ func TestLateReservationCleanupWaitsForRedis(t *testing.T) {
 			var replacement map[string]string
 			var replacementExpiry time.Duration
 			if tc.replaceOwner {
-				require.NoError(t, client.PExpire(t.Context(), key, time.Millisecond).Err())
-				require.Eventually(t, func() bool { return client.Exists(t.Context(), key).Val() == 0 }, time.Second, time.Millisecond)
+				require.NoError(t, client.Del(t.Context(), key).Err())
 				newStore := &redisStore{client: client}
 				result, err := newStore.reserve(t.Context(), key, reserved["fingerprint"], "new-owner", 86400, time.Now().Add(time.Minute))
 				require.NoError(t, err)

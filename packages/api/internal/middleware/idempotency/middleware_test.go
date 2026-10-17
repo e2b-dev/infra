@@ -812,6 +812,7 @@ func TestRetentionFlagValidation(t *testing.T) {
 				calls++
 				c.Status(http.StatusCreated)
 			})
+			before := redisMillis(t, client)
 			w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 			require.Equal(t, tc.status, w.Code, w.Body.String())
 			key := recordKey(team.String(), "key")
@@ -822,12 +823,29 @@ func TestRetentionFlagValidation(t *testing.T) {
 				return
 			}
 			require.Equal(t, 1, calls)
-			ttl, err := client.Do(t.Context(), "TTL", key).Int64()
+			// Bounds come from the Redis clock, so a slow runner only widens the window the key may have aged by.
+			ttl, err := client.Do(t.Context(), "PTTL", key).Int64()
 			require.NoError(t, err)
-			require.GreaterOrEqual(t, ttl, max(tc.seconds-5, 0))
-			require.LessOrEqual(t, ttl, tc.seconds)
+			elapsed := redisMillis(t, client) - before
+			retention := tc.seconds * 1000
+			if ttl == -2 {
+				require.GreaterOrEqual(t, elapsed, retention, "key expired before its retention")
+
+				return
+			}
+			require.NotEqual(t, int64(-1), ttl, "key has no expiry")
+			require.LessOrEqual(t, ttl, retention)
+			require.GreaterOrEqual(t, ttl, retention-elapsed)
 		})
 	}
+}
+
+func redisMillis(t *testing.T, client redis.UniversalClient) int64 {
+	t.Helper()
+	now, err := client.Time(t.Context()).Result()
+	require.NoError(t, err)
+
+	return now.UnixMilli()
 }
 
 func TestInvalidRetentionDoesNotAffectBypassedRequests(t *testing.T) {
