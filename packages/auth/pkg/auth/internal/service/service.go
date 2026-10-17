@@ -17,6 +17,7 @@ import (
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
+	"github.com/e2b-dev/infra/packages/shared/pkg/api/apierror"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
@@ -101,7 +102,7 @@ func (s *AuthService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, a
 	if err != nil {
 		return nil, &APIError{
 			Err:       fmt.Errorf("failed to verify api key: %w", err),
-			ClientMsg: keys.InvalidAPIKeyFormat,
+			ClientMsg: apierror.InvalidAPIKeyFormat,
 			Code:      http.StatusUnauthorized,
 		}
 	}
@@ -121,7 +122,7 @@ func (s *AuthService) ValidateAPIKey(ctx context.Context, ginCtx *gin.Context, a
 		if dberrors.IsNotFoundError(err) {
 			return nil, &APIError{
 				Err:       fmt.Errorf("no team for the api key: %w", err),
-				ClientMsg: keys.UnknownAPIKey,
+				ClientMsg: apierror.UnknownAPIKey,
 				Code:      http.StatusUnauthorized,
 			}
 		}
