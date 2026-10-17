@@ -161,7 +161,6 @@ func registerBuild(
 	telemetry.SetAttributes(ctx,
 		attribute.String("env.team.id", data.Team.ID.String()),
 		attribute.String("env.team.name", data.Team.Name),
-		attribute.String("env.team.tier", data.Team.Tier),
 		telemetry.WithBuildID(buildID.String()),
 		attribute.String("env.dockerfile", data.Dockerfile),
 		attribute.String("env.version", data.Version),
