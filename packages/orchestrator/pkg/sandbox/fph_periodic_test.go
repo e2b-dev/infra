@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -797,35 +798,37 @@ func TestRunPeriodicHintingLoop_LatchDoesNotOutliveLoop(t *testing.T) {
 // further retry period later.
 func TestRunPeriodicHintingLoop_LatchedRetryNotSpentBySkips(t *testing.T) {
 	t.Parallel()
-	s, o := newFPHTestSandboxAt(time.Now().Add(-time.Minute))
-	cfg := fphTestConfig()
-	cfg.UnresponsiveRetry = 500 * time.Millisecond
-	cfg.QuietAfterStart = 30 * time.Millisecond
-	var engaged atomic.Bool
-	r := &fakeRunner{drain: func(context.Context) error {
-		if engaged.Load() {
-			return nil
-		}
+	synctest.Test(t, func(t *testing.T) {
+		s, o := newFPHTestSandboxAt(time.Now().Add(-time.Minute))
+		cfg := fphTestConfig()
+		cfg.UnresponsiveRetry = 500 * time.Millisecond
+		cfg.QuietAfterStart = 30 * time.Millisecond
+		var engaged atomic.Bool
+		r := &fakeRunner{drain: func(context.Context) error {
+			if engaged.Load() {
+				return nil
+			}
 
-		return guestSilent()
-	}}
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	go s.runPeriodicHintingLoop(ctx, fixedCfg(cfg), openGates(), r)
-	require.Eventually(t, func() bool { return o.has("latched") }, 5*time.Second, 5*time.Millisecond)
+			return guestSilent()
+		}}
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		go s.runPeriodicHintingLoop(ctx, fixedCfg(cfg), openGates(), r)
+		require.Eventually(t, func() bool { return o.has("latched") }, 5*time.Second, 5*time.Millisecond)
 
-	// The retry cadence passes while a checkpoint is in flight: every tick in
-	// that window is skipped and must not re-arm the retry.
-	require.True(t, s.BeginCheckpoint())
-	time.Sleep(650 * time.Millisecond)
-	assert.True(t, o.has("skipped-checkpoint-in-flight"))
-	drains := r.drains.Load()
-	engaged.Store(true)
-	s.EndCheckpoint()
-	start := time.Now()
-	require.Eventually(t, func() bool { return r.drains.Load() > drains }, 2*time.Second, 5*time.Millisecond)
-	assert.Less(t, time.Since(start), 250*time.Millisecond, "the attempt follows the quiet window, not a fresh retry period")
-	require.Eventually(t, func() bool { return o.has("released") }, 2*time.Second, 5*time.Millisecond)
+		// The retry cadence passes while a checkpoint is in flight: every tick in
+		// that window is skipped and must not re-arm the retry.
+		require.True(t, s.BeginCheckpoint())
+		time.Sleep(650 * time.Millisecond)
+		assert.True(t, o.has("skipped-checkpoint-in-flight"))
+		drains := r.drains.Load()
+		engaged.Store(true)
+		s.EndCheckpoint()
+		start := time.Now()
+		require.Eventually(t, func() bool { return r.drains.Load() > drains }, 2*time.Second, 5*time.Millisecond)
+		assert.Less(t, time.Since(start), 250*time.Millisecond, "the attempt follows the quiet window, not a fresh retry period")
+		require.Eventually(t, func() bool { return o.has("released") }, 2*time.Second, 5*time.Millisecond)
+	})
 }
 
 // A latched loop still re-reads the flag every interval: a disable lands

@@ -5,6 +5,7 @@ package v2
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -18,10 +19,22 @@ import (
 type failingStorage struct {
 	attempts atomic.Int64
 	released atomic.Int64
+	// failures > 0 parks every attempt after that many until its context ends.
+	failures int64
+	mu       sync.Mutex
+	at       []time.Time
 }
 
-func (s *failingStorage) Acquire(context.Context) (*network.Slot, error) {
-	s.attempts.Add(1)
+func (s *failingStorage) Acquire(ctx context.Context) (*network.Slot, error) {
+	n := s.attempts.Add(1)
+	s.mu.Lock()
+	s.at = append(s.at, time.Now())
+	s.mu.Unlock()
+	if s.failures > 0 && n > s.failures {
+		<-ctx.Done()
+
+		return nil, ctx.Err()
+	}
 
 	return nil, errors.New("persistent acquire failure")
 }
@@ -45,8 +58,9 @@ func newRetryTestPool(t *testing.T, storage network.Storage, delay time.Duration
 func TestV2Pool_PopulateBacksOffAfterCreationFailure(t *testing.T) {
 	t.Parallel()
 
-	storage := &failingStorage{}
-	pool, reader := newRetryTestPool(t, storage, 50*time.Millisecond)
+	const delay = 50 * time.Millisecond
+	storage := &failingStorage{failures: 3}
+	pool, reader := newRetryTestPool(t, storage, delay)
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	go func() {
@@ -54,14 +68,17 @@ func TestV2Pool_PopulateBacksOffAfterCreationFailure(t *testing.T) {
 		close(done)
 	}()
 
-	require.Eventually(t, func() bool { return storage.attempts.Load() >= 1 }, time.Second, time.Millisecond)
-	time.Sleep(120 * time.Millisecond)
+	// Populate reaches the parked attempt only after it has handled every failure.
+	require.Eventually(t, func() bool { return storage.attempts.Load() == storage.failures+1 }, 5*time.Second, time.Millisecond)
 	cancel()
 	requireReceive(t, done)
-	require.LessOrEqual(t, storage.attempts.Load(), int64(3))
+
+	for i := 1; i < len(storage.at); i++ {
+		require.GreaterOrEqual(t, storage.at[i].Sub(storage.at[i-1]), delay, "attempt %d did not wait out the retry delay", i+1)
+	}
 
 	values := collectCounterValues(t, reader)
-	require.Equal(t, storage.attempts.Load(), values[counterKey(metricCreationFailures, "stage", string(slotCreationStageAcquire))])
+	require.Equal(t, storage.failures, values[counterKey(metricCreationFailures, "stage", string(slotCreationStageAcquire))])
 }
 
 func TestV2Pool_PopulateCancellationExitsBackoffPromptly(t *testing.T) {
