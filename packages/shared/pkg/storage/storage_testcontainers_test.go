@@ -5,7 +5,6 @@ package storage
 // the AWS server tests can share it.
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -55,17 +54,18 @@ func startS3Backend(t *testing.T) *s3TestBackend {
 				"RUSTFS_SECRET_KEY": s3EmulatorSecretKey,
 			},
 			ExposedPorts: []string{"9000/tcp"},
-			WaitingFor:   wait.ForHTTP("/health").WithPort("9000/tcp"),
+			// /health is liveness only; S3 returns 503 until storage, IAM and locks are up, as /health/ready reports.
+			WaitingFor: wait.ForHTTP("/health/ready").WithPort("9000/tcp"),
 		},
 		Started: true,
 	})
-	require.NoError(t, err, "start s3 emulator container")
-
+	// Registered before the error check: a failed startup wait still returns a running container.
 	t.Cleanup(func() {
-		if err := container.Terminate(context.WithoutCancel(t.Context())); err != nil {
+		if err := testcontainers.TerminateContainer(container); err != nil {
 			t.Logf("cleanup: failed to terminate s3 emulator container: %v", err)
 		}
 	})
+	require.NoError(t, err, "start s3 emulator container")
 
 	host, err := container.Host(t.Context())
 	require.NoError(t, err)
