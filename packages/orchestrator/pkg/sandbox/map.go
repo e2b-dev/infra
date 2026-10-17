@@ -12,9 +12,11 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // MapSubscriber receives lifecycle notifications from the sandbox Map.
@@ -217,15 +219,23 @@ func (r *Reservation) Release() {
 }
 
 func (r *Reservation) MarkRunning(ctx context.Context, sbx *Sandbox) error {
-	return r.m.markRunning(ctx, sbx, r)
+	return r.m.markRunning(ctx, sbx, r, false)
+}
+
+// MarkRunningUnlessEnded is MarkRunning that refuses, with ctx's cause, when
+// ctx has ended, decided under the registry lock with the registration: an
+// operation ended by a Delete that answered on the strength of the
+// cancellation cannot publish a sandbox the Delete will never see.
+func (r *Reservation) MarkRunningUnlessEnded(ctx context.Context, sbx *Sandbox) error {
+	return r.m.markRunning(ctx, sbx, r, true)
 }
 
 // MarkRunning registers an unreserved ID. Reserved IDs require Reservation.MarkRunning.
 func (m *Map) MarkRunning(ctx context.Context, sbx *Sandbox) error {
-	return m.markRunning(ctx, sbx, nil)
+	return m.markRunning(ctx, sbx, nil, false)
 }
 
-func (m *Map) markRunning(ctx context.Context, sbx *Sandbox, reservation *Reservation) error {
+func (m *Map) markRunning(ctx context.Context, sbx *Sandbox, reservation *Reservation, unlessEnded bool) error {
 	m.registryMu.Lock()
 	if reservation != nil && reservation.sandboxID != sbx.Runtime.SandboxID {
 		m.registryMu.Unlock()
@@ -236,6 +246,11 @@ func (m *Map) markRunning(ctx context.Context, sbx *Sandbox, reservation *Reserv
 		m.registryMu.Unlock()
 
 		return fmt.Errorf("%w: registration does not own the reservation", ErrSandboxAlreadyRunning)
+	}
+	if unlessEnded && ctx.Err() != nil {
+		m.registryMu.Unlock()
+
+		return fmt.Errorf("registration refused, the operation ended: %w", context.Cause(ctx))
 	}
 	if live, ok := m.live.Get(sbx.Runtime.SandboxID); ok {
 		m.registryMu.Unlock()
@@ -290,13 +305,14 @@ func (m *Map) MarkStopping(ctx context.Context, sandboxID, lifecycleID string) b
 // return clears asynchronously and well after this chain ends. Do not move this
 // call.
 //
-// sandboxType is carried only so the counter below can report it.
-func (m *Map) reclaimLiveEntryOnCleanup(ctx context.Context, cleanup *Cleanup, sandboxID, lifecycleID string, sandboxType sandboxtypes.SandboxType) {
+// Beyond the sandbox ID, runtime is carried only so the counter below can
+// report the team and the sandbox type.
+func (m *Map) reclaimLiveEntryOnCleanup(ctx context.Context, cleanup *Cleanup, runtime sandboxtypes.RuntimeMetadata, lifecycleID string) {
 	cleanup.Add(ctx, func(ctx context.Context) error {
 		// false is the normal outcome: delete, pause and a checkpoint that resumes
 		// fresh all reclaim the entry before the chain runs, and a lifecycle that
 		// never became live has no entry to reclaim.
-		if !m.MarkStopping(ctx, sandboxID, lifecycleID) {
+		if !m.MarkStopping(ctx, runtime.SandboxID, lifecycleID) {
 			return nil
 		}
 
@@ -315,9 +331,12 @@ func (m *Map) reclaimLiveEntryOnCleanup(ctx context.Context, cleanup *Cleanup, s
 		//
 		// String() maps the zero value to "sandbox", so an unset type joins the
 		// customer series rather than opening a third, unnamed one.
-		sbxType := sandboxType.String()
+		sbxType := runtime.SandboxType.String()
 
-		lifecycleUnstoppedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("sandbox_type", sbxType)))
+		lifecycleUnstoppedCounter.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("sandbox_type", sbxType),
+			telemetry.WithTeamID(runtime.TeamID),
+		))
 
 		return nil
 	})
@@ -330,9 +349,10 @@ func (m *Map) MarkStoppingReserved(ctx context.Context, sandboxID, lifecycleID s
 
 func (m *Map) markStopping(ctx context.Context, sandboxID, lifecycleID string, reserve bool) (*Reservation, error) {
 	var (
-		stopped     *Sandbox
-		reservation *Reservation
-		stopErr     error
+		stopped          *Sandbox
+		reservation      *Reservation
+		stopErr          error
+		activeUpdateDone <-chan struct{}
 	)
 
 	m.registryMu.Lock()
@@ -355,6 +375,10 @@ func (m *Map) markStopping(ctx context.Context, sandboxID, lifecycleID string, r
 			logger.WithSandboxIP(sbx.Slot.HostIPString()),
 		)
 
+		// Close admission before publishing the successful live-map removal.
+		// An Update that already fetched this pointer must not start during
+		// the subsequent stop or snapshot work.
+		activeUpdateDone = sbx.updateAdmission.closeAndSnapshotActive()
 		stopped = sbx
 
 		return true
@@ -371,6 +395,38 @@ func (m *Map) markStopping(ctx context.Context, sandboxID, lifecycleID string, r
 		}
 
 		return nil, fmt.Errorf("sandbox '%s' lifecycle '%s' is no longer live", sandboxID, lifecycleID)
+	}
+
+	// On a subscriber panic the hold is dropped, since the caller never
+	// receives it, and a live sandbox goes back unless the ID was taken or
+	// the VM closed; the undo is map-only, subscribers keep their view and
+	// the update admission closed above stays closed.
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		m.registryMu.Lock()
+		if reservation != nil && m.reservations[sandboxID] == reservation {
+			delete(m.reservations, sandboxID)
+		}
+		_, taken := m.live.Get(sandboxID)
+		closed := stopped.cleanup != nil && stopped.cleanup.hasRun.Load()
+		if taken || closed {
+			stopped.log().Error(ctx, fmt.Sprintf("subscriber panicked while marking sandbox as stopping; the ID was taken or the sandbox closed meanwhile, the sandbox stays stopping: %v", r))
+		} else {
+			m.live.Insert(sandboxID, stopped)
+			stopped.log().Error(ctx, fmt.Sprintf("subscriber panicked while marking sandbox as stopping; the sandbox is live again but its routing record is gone: %v", r))
+		}
+		m.registryMu.Unlock()
+		panic(r)
+	}()
+
+	// Wait outside registry/live-map locks: an admitted callback may still
+	// read the map. Subscribers and callers can begin teardown only after it
+	// returns, but no new callback can pass admission in the meantime.
+	if activeUpdateDone != nil {
+		<-activeUpdateDone
 	}
 
 	m.trigger(ctx, func(ctx context.Context, s MapSubscriber) {
@@ -397,7 +453,109 @@ func (m *Map) notifyLifecycleChangeLocked() {
 	m.lifecycleChanged = make(chan struct{})
 }
 
-// NetworkReleased unregisters a sandbox's IP and notifies OnNetworkRelease
+// NetworkRelease captures one lifecycle's notification before slot acquisition.
+// The callback joins concurrent attempts, retains failed subscribers after route
+// removal, and does not repeat successful subscriber releases. Callers must keep
+// this same callback with their per-acquisition return owner.
+func (m *Map) NetworkRelease(sandboxID, lifecycleID string) network.ReleaseNotify {
+	type attempt struct {
+		done chan struct{}
+		err  error
+	}
+	var mu sync.Mutex
+	var active *attempt
+	var sbx *Sandbox
+	var pending []MapSubscriber
+	started := false
+
+	return func(ctx context.Context, ip string) error {
+		routeRemoved := false
+		mu.Lock()
+		if active != nil {
+			joined := active
+			mu.Unlock()
+			select {
+			case <-joined.done:
+				return joined.err
+			case <-ctx.Done():
+				return context.Cause(ctx)
+			}
+		}
+		if started && len(pending) == 0 {
+			mu.Unlock()
+
+			return nil
+		}
+		if sandboxID == "" || lifecycleID == "" {
+			mu.Unlock()
+
+			return errors.New("network release requires sandbox and lifecycle identity")
+		}
+		if err := context.Cause(ctx); err != nil {
+			mu.Unlock()
+
+			return err
+		}
+		if !started {
+			// An old lifecycle can still own users after a successor replaces its
+			// route. Resolve only the captured identity, never the current IP owner.
+			sbx, _ = m.lifecycles.Get(sandboxLifecycleKey(sandboxID, lifecycleID))
+			routeRemoved = m.network.RemoveCb(ip, func(_ string, candidate *Sandbox, exists bool) bool {
+				if !exists || candidate.Runtime.SandboxID != sandboxID || candidate.LifecycleID != lifecycleID {
+					return false
+				}
+				sbx = candidate
+
+				return true
+			})
+			started = true
+			if sbx == nil {
+				mu.Unlock()
+				// Nothing was published for this lifecycle. This is a registry and
+				// subscriber fact, not proof that the physical slot has returned.
+				return nil
+			}
+			m.subsLock.RLock()
+			pending = append(pending, m.subs...)
+			m.subsLock.RUnlock()
+		}
+		current := &attempt{done: make(chan struct{})}
+		active = current
+		mu.Unlock()
+		if routeRemoved {
+			sbx.log().Info(ctx, "sandbox network map entry removed",
+				logger.WithLifecycleID(sbx.LifecycleID),
+				logger.WithSandboxIP(ip),
+			)
+		}
+
+		var errs []error
+		remaining := pending[:0]
+		for _, subscriber := range pending {
+			if err := subscriber.OnNetworkRelease(ctx, sbx); err != nil {
+				errs = append(errs, err)
+				remaining = append(remaining, subscriber)
+			}
+		}
+		clear(pending[len(remaining):])
+		mu.Lock()
+		pending = remaining
+		if len(pending) == 0 {
+			pending = nil
+			sbx = nil
+		}
+		current.err = errors.Join(errs...)
+		active = nil
+		close(current.done)
+		mu.Unlock()
+
+		return current.err
+	}
+}
+
+// NetworkReleased is a legacy IP-index operation, not a captured resource-return
+// promise. Return owners must use NetworkRelease with lifecycle identity.
+// It unregisters a sandbox's IP and notifies OnNetworkRelease
 // subscribers after a successful removal. Every subscriber is notified, and
 // their errors are joined.
 func (m *Map) NetworkReleased(ctx context.Context, ip string) error {

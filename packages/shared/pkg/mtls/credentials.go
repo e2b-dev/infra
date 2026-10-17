@@ -99,6 +99,7 @@ func NewServerCredentials(cfg ServerConfig, opts ...CredentialsOption) *ServerCr
 		o(c)
 	}
 	c.cfg.policy(context.Background())
+	c.cfg.watched.register(c)
 
 	return c
 }
@@ -113,8 +114,9 @@ func (c *ServerCredentials) ServerHandshake(raw net.Conn) (net.Conn, credentials
 	}
 
 	key := remoteKey(raw)
-	if c.cfg.policy(ctx).mode == ModeOff {
-		return c.plaintext(ctx, key, raw), plaintextAuthInfo(), nil
+	mode := c.cfg.policy(ctx).mode
+	if mode == ModeOff {
+		return c.plaintext(ctx, key, raw, mode), plaintextAuthInfo(), nil
 	}
 
 	// gRPC set its own, longer connection deadline before calling. This one
@@ -133,7 +135,7 @@ func (c *ServerCredentials) ServerHandshake(raw net.Conn) (net.Conn, credentials
 	if !isTLS {
 		// The deadline stays for gRPC's read of the HTTP/2 preface; gRPC
 		// clears it once the transport is up.
-		return c.plaintext(ctx, key, conn), plaintextAuthInfo(), nil
+		return c.plaintext(ctx, key, conn, mode), plaintextAuthInfo(), nil
 	}
 
 	hooked := &hookedConn{Conn: conn, onClose: func() { c.conns.remove(key) }}
@@ -158,7 +160,7 @@ func (c *ServerCredentials) ServerHandshake(raw net.Conn) (net.Conn, credentials
 	// handshake and goes silent is closed; gRPC clears the deadline once the
 	// transport is up.
 	_ = tlsConn.SetDeadline(time.Now().Add(timeout))
-	if !c.conns.add(key, hooked, ConnState{TLS: true, ChainVerified: hooked.chainVerified, State: state}) {
+	if !c.conns.add(key, hooked, ConnState{TLS: true, ChainVerified: hooked.chainVerified, State: state}, false) {
 		warnSharedRemote(ctx, c.cfg, key)
 	}
 	metrics.handshake(ctx, c.cfg.Name, OutcomeTLS)
@@ -168,8 +170,8 @@ func (c *ServerCredentials) ServerHandshake(raw net.Conn) (net.Conn, credentials
 
 // plaintext marks conn as admitted without TLS, records it and counts it:
 // one handshake with the plaintext outcome, and one open plaintext
-// connection until it closes.
-func (c *ServerCredentials) plaintext(ctx context.Context, key string, conn net.Conn) *PlaintextConn {
+// connection until it closes. mode is the one its handshake read.
+func (c *ServerCredentials) plaintext(ctx context.Context, key string, conn net.Conn, mode Mode) *PlaintextConn {
 	metrics := c.cfg.metrics()
 	metrics.handshake(ctx, c.cfg.Name, OutcomePlaintext)
 	metrics.plaintextConn(ctx, c.cfg.Name, 1)
@@ -177,19 +179,20 @@ func (c *ServerCredentials) plaintext(ctx context.Context, key string, conn net.
 		c.conns.remove(key)
 		metrics.plaintextConn(ctx, c.cfg.Name, -1)
 	}}}
-	if !c.conns.add(key, plain, ConnState{}) {
+	if !c.conns.add(key, plain, ConnState{}, mode == ModeRequired) {
 		warnSharedRemote(ctx, c.cfg, key)
 	}
-	c.cfg.log().Debug(ctx, "mtls: plaintext connection admitted", zap.String("listener", c.cfg.Name), zap.String("remote", key))
 
 	return plain
 }
 
-// CloseUnverified closes every open connection a required handshake would
-// refuse now, the plaintext ones, the TLS ones whose chain did not verify and
-// the TLS ones whose name is not on the allow-list, and returns how many:
-// what a service calls when its mode flips to required. A connection a
-// Listener classified in front of a multiplexer is the listener's to close.
+// CloseUnverified closes every open connection required would not admit
+// now, the plaintext ones a weaker mode admitted, the TLS ones whose chain
+// did not verify and the TLS ones whose name is not on the allow-list, and
+// returns how many: what a service calls when its mode flips to required.
+// A plaintext connection required itself admitted, for a health check,
+// stays open. A connection a Listener classified in front of a multiplexer
+// is the listener's to close.
 func (c *ServerCredentials) CloseUnverified() (int, error) {
 	return c.conns.closeUnverified(c.cfg.Allow.Allows)
 }
@@ -263,8 +266,13 @@ type ClientCredentials struct {
 	tlsConfig *tls.Config
 }
 
-// NewClientCredentials builds the credentials for one hop.
+// NewClientCredentials builds the credentials for one hop and reports the
+// hop's mode at once, so a hop that has not dialled yet is on the gauge.
 func NewClientCredentials(cfg ClientConfig) *ClientCredentials {
+	ctx := context.Background()
+	mode, source := cfg.clientMode(ctx)
+	cfg.metrics().recordClientMode(ctx, cfg.Name, mode, source)
+
 	return &ClientCredentials{cfg: cfg, tlsConfig: cfg.clientTLSConfig([]string{protoH2})}
 }
 

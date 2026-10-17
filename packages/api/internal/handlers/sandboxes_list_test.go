@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -345,4 +346,141 @@ func TestGetPausedSandboxes_ReadsFromTheReadClient(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, page, 1)
 	require.Equal(t, "sbx-replica", page[0].SandboxID)
+}
+
+func TestThrottledGetSnapshots_Retries(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		order     utils.SortDirection
+		filtered  bool
+		code      string
+		message   string
+		failures  int
+		attempts  int
+		wantError bool
+	}{
+		{"desc", utils.SortDesc, false, "40P01", "canceling statement due to conflict with recovery", 2, 3, false},
+		{"asc", utils.SortAsc, false, "40P01", "canceling statement due to conflict with recovery", 2, 3, false},
+		{"desc by template", utils.SortDesc, true, "40P01", "canceling statement due to conflict with recovery", 2, 3, false},
+		{"asc by template", utils.SortAsc, true, "40P01", "canceling statement due to conflict with recovery", 2, 3, false},
+		{"success", utils.SortDesc, false, "40P01", "conflict with recovery", 0, 1, false},
+		{"serialization recovery", utils.SortDesc, false, "40001", "conflict with recovery", 1, 2, false},
+		{"connection failure during row consumption", utils.SortDesc, false, "08006", "connection failure", 1, 1, true},
+		{"success on final attempt", utils.SortDesc, false, "40P01", "conflict with recovery", 3, 4, false},
+		{"persistent recovery conflict", utils.SortDesc, false, "40P01", "conflict with recovery", 10, 4, true},
+		{"ordinary deadlock", utils.SortDesc, false, "40P01", "deadlock detected", 1, 1, true},
+		{"ordinary serialization", utils.SortDesc, false, "40001", "could not serialize access", 1, 1, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			ctx := t.Context()
+			store, teamID, templateID := snapshotRetryStore(t, tt.failures, tt.code, tt.message)
+
+			var templateFilter *string
+			if tt.filtered {
+				templateFilter = &templateID
+			}
+			cursorTime := time.Now().Add(time.Hour)
+			cursorID := utils.MaxSandboxID
+			if tt.order == utils.SortAsc {
+				cursorTime = time.Time{}
+				cursorID = ""
+			}
+			page, err := store.getPausedSandboxes(ctx, teamID, nil, nil, 10,
+				cursorTime, cursorID, tt.order, time.Time{}, templateFilter)
+			if tt.wantError {
+				var pgErr *pgconn.PgError
+				require.ErrorAs(t, err, &pgErr)
+				assert.Equal(t, tt.code, pgErr.Code)
+				assert.Empty(t, page)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, page, 1)
+				assert.Equal(t, "sbx-retry", page[0].SandboxID)
+			}
+			var attempts int
+			require.NoError(t, store.sqlcReadDB.Pool().QueryRow(ctx, "SELECT last_value FROM snapshot_read_attempt").Scan(&attempts))
+			assert.Equal(t, tt.attempts, attempts)
+			assert.True(t, store.sandboxListSem.TryAcquire(1), "the semaphore slot is released after retries")
+		})
+	}
+}
+
+func TestThrottledGetSnapshots_Cancellation(t *testing.T) {
+	t.Parallel()
+	store, teamID, _ := snapshotRetryStore(t, 10, "40P01", "conflict with recovery")
+	_, err := store.sqlcReadDB.Pool().Exec(t.Context(), `
+CREATE OR REPLACE FUNCTION fail_snapshot_read() RETURNS boolean LANGUAGE plpgsql AS $$
+BEGIN
+    PERFORM nextval('snapshot_read_attempt');
+    PERFORM pg_sleep(30);
+    RAISE EXCEPTION USING ERRCODE = '40P01', MESSAGE = 'conflict with recovery';
+END;
+$$`)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	result := make(chan error, 1)
+	go func() {
+		_, err := store.getPausedSandboxes(ctx, teamID, nil, nil, 10,
+			time.Now().Add(time.Hour), utils.MaxSandboxID, utils.SortDesc, time.Time{}, nil)
+		result <- err
+	}()
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		var started bool
+		if assert.NoError(c, store.sqlcReadDB.Pool().QueryRow(t.Context(), "SELECT is_called FROM snapshot_read_attempt").Scan(&started)) {
+			assert.True(c, started)
+		}
+	}, 5*time.Second, 10*time.Millisecond)
+	assert.False(t, store.sandboxListSem.TryAcquire(1), "the read holds the semaphore slot")
+	cancel()
+	select {
+	case err := <-result:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(5 * time.Second):
+		t.Fatal("sandbox list did not stop after cancellation")
+	}
+	var attempts int
+	require.NoError(t, store.sqlcReadDB.Pool().QueryRow(t.Context(), "SELECT last_value FROM snapshot_read_attempt").Scan(&attempts))
+	assert.Equal(t, 1, attempts)
+	assert.True(t, store.sandboxListSem.TryAcquire(1), "cancellation releases the semaphore slot")
+}
+
+func snapshotRetryStore(t *testing.T, failures int, code, message string) (*APIStore, uuid.UUID, string) {
+	t.Helper()
+	ctx := t.Context()
+	db := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, db)
+	templateID := testutils.CreateTestTemplate(t, db, teamID)
+	testutils.UpsertTestSnapshot(t, ctx, db, "snap-retry", "sbx-retry", teamID, templateID)
+	_, err := db.SqlcClient.Pool().Exec(ctx, `
+ALTER TABLE public.snapshots RENAME TO snapshots_for_retry;
+CREATE SEQUENCE snapshot_read_attempt;
+CREATE TABLE snapshot_read_failure (failures integer, code text, message text);
+CREATE FUNCTION fail_snapshot_read() RETURNS boolean LANGUAGE plpgsql AS $$
+DECLARE failure snapshot_read_failure;
+BEGIN
+    SELECT failures, code, message INTO failure FROM snapshot_read_failure;
+    IF nextval('snapshot_read_attempt') <= failure.failures THEN
+        RAISE EXCEPTION USING ERRCODE = failure.code, MESSAGE = failure.message;
+    END IF;
+    RETURN true;
+END;
+$$;
+CREATE VIEW public.snapshots AS
+SELECT created_at, env_id, sandbox_id, id, metadata, base_env_id, sandbox_started_at,
+       env_secure, origin_node_id, allow_internet_access, auto_pause, team_id, config
+FROM public.snapshots_for_retry WHERE fail_snapshot_read();`)
+	require.NoError(t, err)
+	_, err = db.SqlcClient.Pool().Exec(ctx, "INSERT INTO snapshot_read_failure (failures, code, message) VALUES ($1, $2, $3)", failures, code, message)
+	require.NoError(t, err)
+	sem, err := sharedutils.NewAdjustableSemaphore(1)
+	require.NoError(t, err)
+	store := &APIStore{sqlcReadDB: db.SqlcClient, sandboxListSem: sem}
+
+	return store, teamID, templateID
 }

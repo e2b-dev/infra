@@ -28,6 +28,8 @@ func TestToNodeSandbox_CopiesEveryField(t *testing.T) {
 		StartTime:   time.Now(),
 		VCpu:        2,
 		RamMB:       512,
+
+		FirecrackerVersion: "v1.12.1_210cbac",
 	}
 
 	got := sbx.ToNodeSandbox()
@@ -40,10 +42,19 @@ func TestToNodeSandbox_CopiesEveryField(t *testing.T) {
 	assert.Equal(t, sbx.StartTime, got.StartTime)
 	assert.Equal(t, sbx.VCpu, got.VCpu)
 	assert.Equal(t, sbx.RamMB, got.RamMB)
+	assert.True(t, got.HugePages)
 
 	value := reflect.ValueOf(got)
 	for i := range value.NumField() {
 		assert.Falsef(t, value.Field(i).IsZero(),
 			"NodeSandbox.%s was not copied from the stored sandbox", value.Type().Field(i).Name)
 	}
+}
+
+func TestToNodeSandbox_HugePagesFollowsTheFirecrackerVersion(t *testing.T) {
+	t.Parallel()
+
+	assert.True(t, Sandbox{FirecrackerVersion: "v1.7.0_abcdef0"}.ToNodeSandbox().HugePages)
+	assert.False(t, Sandbox{FirecrackerVersion: "v1.5.0_abcdef0"}.ToNodeSandbox().HugePages)
+	assert.False(t, Sandbox{FirecrackerVersion: "not-a-version"}.ToNodeSandbox().HugePages)
 }

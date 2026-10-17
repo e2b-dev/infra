@@ -8,11 +8,12 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/clusters"
+	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -24,13 +25,14 @@ var OrchestratorToApiNodeStateMapper = map[orchestratorinfo.ServiceInfoStatus]ap
 	orchestratorinfo.ServiceInfoStatus_ShuttingDown: api.NodeStatusShuttingDown,
 }
 
-func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string) (*clusters.GRPCClient, error) {
+func NewClient(tracerProvider trace.TracerProvider, meterProvider metric.MeterProvider, host string, creds credentials.TransportCredentials) (*clusters.GRPCClient, error) {
 	conn, err := grpc.NewClient(host,
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithTransportCredentials(creds),
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
 				otelgrpc.WithTracerProvider(tracerProvider),
 				otelgrpc.WithMeterProvider(meterProvider),
+				grpcshared.WithSandboxClientMetricAttributes(),
 			),
 		),
 		grpc.WithKeepaliveParams(

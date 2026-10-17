@@ -4,23 +4,34 @@ package metrics
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"
+	"go.uber.org/zap"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 const (
 	// hostPollInterval is how often HostMetrics resamples all host metrics.
 	// cpu.Percent(0, ...) is non-blocking but stateful — it diffs CPU counters
 	// against the previous call — so the interval must be wide enough for the
-	// delta to be meaningful. Memory and disk share the same interval so all
-	// metrics come from a consistent snapshot.
+	// delta to be meaningful. Disk shares the same interval.
 	hostPollInterval = 10 * time.Second
+
+	nrHugePagesPath           = "/proc/sys/vm/nr_hugepages"
+	nrOvercommitHugePagesPath = "/proc/sys/vm/nr_overcommit_hugepages"
 )
 
 type CPUMetrics struct {
@@ -32,10 +43,11 @@ type MemoryMetrics struct {
 	UsedBytes  uint64
 	TotalBytes uint64
 	// Hugepage pool metrics from /proc/meminfo, in page counts.
-	HugePagesTotal    uint64 // HugePages_Total: preallocated pool size
+	HugePagesTotal    uint64 // HugePages_Total: live pool size, surplus pages included
 	HugePagesUsed     uint64 // HugePages_Total - HugePages_Free
 	HugePagesReserved uint64 // HugePages_Rsvd: committed but not yet faulted
 	HugePageSizeBytes uint64 // Hugepagesize
+	HugePagesCapacity uint64 // nr_hugepages + nr_overcommit_hugepages; 0 when unknown
 }
 
 type DiskInfo struct {
@@ -47,16 +59,14 @@ type DiskInfo struct {
 	UsedPercent    float64
 }
 
-// HostMetrics samples host-level metrics in the background so that
-// callers on the request path never block on expensive OS calls.
-// All metrics are sampled together on the same tick, producing a
-// consistent snapshot.
+// HostMetrics samples CPU and disk in the background so that callers on the
+// request path never block on expensive OS calls; memory is read on request
+// (see GetMemoryMetrics).
 type HostMetrics struct {
 	mu         sync.RWMutex
 	cpu        *CPUMetrics
 	cpuErr     error
 	memory     *MemoryMetrics
-	memoryErr  error
 	disks      []DiskInfo
 	disksErr   error
 	closed     chan struct{}
@@ -105,17 +115,30 @@ func (h *HostMetrics) GetCPUMetrics() (*CPUMetrics, error) {
 	return h.cpu, nil
 }
 
-// GetMemoryMetrics returns the most recent memory sample. Non-blocking.
-// Returns zero-value MemoryMetrics if no sample has been taken yet.
-func (h *HostMetrics) GetMemoryMetrics() (*MemoryMetrics, error) {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
+// GetMemoryMetrics reads memory now rather than from the last poll:
+// placement gates on the hugepage counters, and a sample up to
+// hostPollInterval old would hide reservations made since. A failed meminfo
+// read serves the last good sample. An unreadable pool size reports capacity
+// 0, which placement treats as unknown and does not limit.
+func (h *HostMetrics) GetMemoryMetrics(ctx context.Context) (*MemoryMetrics, error) {
+	return h.keepLastGood(readMemory(ctx))
+}
 
-	if h.memory == nil {
-		return &MemoryMetrics{}, h.memoryErr
+func (h *HostMetrics) keepLastGood(memory *MemoryMetrics, err error) (*MemoryMetrics, error) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if err == nil {
+		h.memory = memory
+
+		return memory, nil
 	}
 
-	return h.memory, nil
+	if h.memory != nil {
+		return h.memory, nil
+	}
+
+	return nil, err
 }
 
 // GetDiskMetrics returns the most recent disk sample. Non-blocking.
@@ -131,11 +154,9 @@ func (h *HostMetrics) GetDiskMetrics() ([]DiskInfo, error) {
 	return h.disks, nil
 }
 
-// sample resamples all host metrics and writes them atomically so that
-// readers always see a consistent snapshot (all metrics from the same tick).
+// sample resamples CPU and disk together and writes them atomically.
 func (h *HostMetrics) sample() {
 	cpu, cpuErr := readCPU()
-	memory, memErr := readMemory()
 	disks, disksErr := readDisk()
 
 	h.mu.Lock()
@@ -145,11 +166,6 @@ func (h *HostMetrics) sample() {
 		h.cpu = cpu
 	}
 	h.cpuErr = cpuErr
-
-	if memErr == nil {
-		h.memory = memory
-	}
-	h.memoryErr = memErr
 
 	if disksErr == nil {
 		h.disks = disks
@@ -177,7 +193,7 @@ func readCPU() (*CPUMetrics, error) {
 	}, nil
 }
 
-func readMemory() (*MemoryMetrics, error) {
+func readMemory(ctx context.Context) (*MemoryMetrics, error) {
 	memInfo, err := mem.VirtualMemory()
 	if err != nil {
 		return nil, err
@@ -195,7 +211,46 @@ func readMemory() (*MemoryMetrics, error) {
 		HugePagesUsed:     hugePagesUsed,
 		HugePagesReserved: memInfo.HugePagesRsvd,
 		HugePageSizeBytes: memInfo.HugePageSize,
+		HugePagesCapacity: hugePagesCapacity(ctx),
 	}, nil
+}
+
+var lastPoolWarning atomic.Int64
+
+// hugePagesCapacity reports an unreadable pool size as 0, which placement
+// treats as unknown, and warns at most once a minute so the node is not
+// silently left unlimited. A kernel without hugetlb has no such files.
+func hugePagesCapacity(ctx context.Context) uint64 {
+	capacity, err := readHugePagesCapacity(os.ReadFile)
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
+		return capacity
+	}
+
+	now := time.Now().Unix()
+	if last := lastPoolWarning.Load(); now-last >= 60 && lastPoolWarning.CompareAndSwap(last, now) {
+		logger.L().Warn(ctx, "Cannot read the hugepage pool size, reporting it as unknown", zap.Error(err))
+	}
+
+	return 0
+}
+
+func readHugePagesCapacity(readFile func(string) ([]byte, error)) (uint64, error) {
+	var capacity uint64
+	for _, path := range []string{nrHugePagesPath, nrOvercommitHugePagesPath} {
+		raw, err := readFile(path)
+		if err != nil {
+			return 0, err
+		}
+
+		pages, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("parse %s: %w", path, err)
+		}
+
+		capacity += pages
+	}
+
+	return capacity, nil
 }
 
 func readDisk() ([]DiskInfo, error) {

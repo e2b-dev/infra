@@ -52,6 +52,7 @@ type Addon struct {
 	ExtraMaxFreeDiskSizeMb        pgtype.Int8
 	ExtraApiTeamRpsList           int64
 	ExtraApiTeamRpsDelete         int64
+	ExtraMaxSecrets               int32
 }
 
 type AuthUser struct {
@@ -137,6 +138,7 @@ type EnvBuild struct {
 	CpuFlags           []string
 	StatusGroup        string
 	TeamID             *uuid.UUID
+	FilesystemOnly     bool
 }
 
 type EnvBuildAssignment struct {
@@ -167,6 +169,8 @@ type ProjectLimit struct {
 	UpdatedAt                time.Time
 	MaxFreeDiskSizeMb        pgtype.Int8
 	ApiTeamRpsList           int64
+	MaxSecrets               pgtype.Int8
+	ApiTeamRpsDelete         pgtype.Int8
 }
 
 type ProjectionProjectBlock struct {
@@ -231,6 +235,7 @@ type Team struct {
 	SandboxSchedulingLabels []string
 	SsoOrganizationID       *uuid.UUID
 	SsoAutoJoin             bool
+	DeletedAt               *time.Time
 	Slug                    string
 }
 
@@ -264,6 +269,7 @@ type TeamLimit struct {
 	MaxFreeDiskSizeMb        int64
 	ApiTeamRpsList           int64
 	ApiTeamRpsDelete         int64
+	MaxSecrets               int64
 }
 
 type Tier struct {
@@ -283,6 +289,7 @@ type Tier struct {
 	MaxFreeDiskSizeMb        pgtype.Int8
 	ApiTeamRpsList           int64
 	ApiTeamRpsDelete         int64
+	MaxSecrets               int32
 }
 
 type User struct {

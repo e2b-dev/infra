@@ -262,7 +262,7 @@ func (s *Server) admitPauseDisk(ctx context.Context, sbx *sandbox.Sandbox, files
 	var short *buildDiskShortError
 	switch {
 	case errors.As(err, &short):
-		s.recordPauseAdmission(ctx, "pause", sandbox.SnapshotAdmissionRefusedDisk, 0)
+		s.recordPauseAdmission(ctx, sbx.Runtime.TeamID, "pause", sandbox.SnapshotAdmissionRefusedDisk, 0)
 		// The sandbox's own log says only that the pause was refused: the
 		// numbers describe the host and the other captures on it, and belong
 		// to the internal stream.

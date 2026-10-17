@@ -1161,9 +1161,9 @@ components:
     ManagementProjectUpsertRequest:
       type: object
       description: >-
-        The properties of a project this side stores. Every one is synchronized
-        by the caller and sent on every push, so a reconcile is a complete
-        statement of the project rather than a patch.
+        The properties of a project this side stores. Name, slug and email are
+        synchronized on every push. The optional cluster assignment is preserved
+        when omitted.
 
 
         A project's tier is not among them. It is assigned once, at creation,
@@ -1172,6 +1172,10 @@ components:
         precedence over the tier anyway.
       required: [name, slug, email]
       properties:
+        cluster_id:
+          type: string
+          format: uuid
+          description: Cluster assignment to synchronize. Omission preserves the existing assignment.
         name:
           type: string
           minLength: 1
@@ -1402,6 +1406,23 @@ components:
           description: >-
             Requests per second a project may make to each list endpoint. Zero
             disables the limit.
+        api_team_rps_delete:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Requests per second a project may make to each delete endpoint. Zero
+            disables the limit. Absent from a sender that has not resolved it;
+            this side then stores no value and the project's tier and add-ons
+            decide.
+        max_secrets:
+          type: integer
+          format: int32
+          minimum: 1
+          description: >-
+            Live secrets the project may hold. Absent from a sender that
+            predates the field; this side then stores no value and the
+            project's tier decides.
         decided_at:
           $ref: "#/components/schemas/ManagementDecidedAt"
 
@@ -2155,6 +2176,8 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "409":
           $ref: "#/components/responses/409"
         "500":
@@ -2163,27 +2186,33 @@ paths:
           $ref: "#/components/responses/501"
     delete:
       operationId: managementDeleteProject
-      summary: Delete a project and its control-plane state (v1).
+      summary: Soft-delete a project (v1).
       description: >-
-        Declared, and answered with 501 by every control plane. Deleting a
-        project means reclaiming templates, snapshots, volumes, running
-        sandboxes and their stored artifacts, and no single service can reach
-        all of them today. Callers should not depend on this operation until
-        that changes.
+        Marks the project deleted and blocked, releases its cluster assignment,
+        scrubs its name and email to DELETED and its slug to
+        deleted-<project ID>, which releases the old slug for reuse, deletes
+        its memberships and API keys, soft-deletes its templates and
+        snapshots, and enqueues the teardown of its running sandboxes, all in
+        one transaction. The project row remains. Afterwards the project
+        answers 404 to other management writes. Repeating the call answers
+        204 and repeats every step except the deletion time: it re-blocks and
+        re-scrubs the project, clears a cluster assignment written since,
+        deletes any memberships, keys, templates or snapshots created since,
+        and enqueues the teardown again.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []
       responses:
         "204":
-          description: Project state is absent.
+          description: Project is deleted and its teardown is enqueued.
         "400":
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
-        "501":
-          $ref: "#/components/responses/501"
 
   /v1/management/projects/{projectID}/members/{userID}:
     parameters:

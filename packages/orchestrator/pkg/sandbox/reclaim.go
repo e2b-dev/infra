@@ -211,6 +211,7 @@ func (s *Sandbox) guestPrepareFsForPause(ctx context.Context, cleanup *Cleanup, 
 				attribute.Bool("fsfreeze", didFreeze),
 				attribute.String("method", method),
 				attribute.Int64("timeout_ms", timeout.Milliseconds()),
+				s.teamAttr(),
 			),
 		)
 	}()
@@ -435,7 +436,7 @@ func (s *Sandbox) thawRootfs(ctx context.Context) error {
 			err = s.fsthawViaExec(ctx)
 		}
 		envdFsthawDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
-			metric.WithAttributes(attribute.Bool("success", err == nil), attribute.Int("attempt", attempt)))
+			metric.WithAttributes(attribute.Bool("success", err == nil), attribute.Int("attempt", attempt), s.teamAttr()))
 		if err == nil {
 			return nil
 		}
@@ -533,7 +534,7 @@ func (s *Sandbox) bestEffortCollapse(ctx context.Context) {
 
 	// Record the round-trip duration whether or not it succeeded: a timed-out or
 	// failed collapse still spends time on the pause path and must be visible.
-	envdCollapseDurationHistogram.Record(ctx, elapsedMs, metric.WithAttributes(attribute.Bool("success", success)))
+	envdCollapseDurationHistogram.Record(ctx, elapsedMs, metric.WithAttributes(attribute.Bool("success", success), s.teamAttr()))
 	span.SetAttributes(
 		attribute.Bool("collapse.success", success),
 		attribute.Int64("collapse.duration_ms", elapsedMs),
@@ -614,6 +615,7 @@ func (s *Sandbox) bestEffortFreeze(ctx context.Context) {
 		attribute.Bool("reported", reported),
 		attribute.Bool("timed_out", timedOut),
 		attribute.Int64("timeout_ms", timeout.Milliseconds()),
+		s.teamAttr(),
 	))
 	span.SetAttributes(
 		attribute.Bool("freeze.success", success),
@@ -741,7 +743,7 @@ func (s *Sandbox) bestEffortUnfreeze(ctx context.Context) {
 	start := time.Now()
 	err := s.callEnvdUnfreeze(context.WithoutCancel(ctx), freezeTimeout)
 	envdUnfreezeDurationHistogram.Record(ctx, time.Since(start).Milliseconds(),
-		metric.WithAttributes(attribute.Bool("success", err == nil)))
+		metric.WithAttributes(attribute.Bool("success", err == nil), s.teamAttr()))
 
 	if err != nil {
 		s.log().Warn(ctx, "envd unfreeze failed", zap.Error(err))

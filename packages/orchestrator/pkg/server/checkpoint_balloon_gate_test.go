@@ -298,6 +298,7 @@ func liveRouteSandbox(t *testing.T, s *Server, id string, slotIdx int, read func
 	sbx.LifecycleID = "lifecycle-1"
 	sbx.Resources.Slot = slot
 	sbx.Config.Envd.Version = "9.9.9"
+	sbx.Runtime.TeamID = "team-1"
 	s.sandboxFactory.Sandboxes.MarkRunning(t.Context(), sbx)
 
 	return sbx
@@ -313,7 +314,7 @@ func TestCheckpoint_RecordsRouteAndBalloonMode(t *testing.T) {
 	t.Parallel()
 	s, reader := routeTestServer(t, true, false)
 	sbx := liveRouteSandbox(t, s, "ckpt-labels", 41, fixedCaps(fc.BalloonCaps{Hinting: true}, nil))
-	require.True(t, sbx.BeginInPlaceCheckpoint(), "hold the in-place guard so the RPC completes on the guard's refusal")
+	require.True(t, sbx.BeginCheckpoint(), "hold the in-place guard so the RPC completes on the guard's refusal")
 
 	_, ckptErr := s.Checkpoint(t.Context(), &orchestrator.SandboxCheckpointRequest{SandboxId: "ckpt-labels"})
 	require.Error(t, ckptErr)
@@ -321,7 +322,7 @@ func TestCheckpoint_RecordsRouteAndBalloonMode(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, codes.FailedPrecondition, st.Code())
 
-	want := map[string]string{"in_place": "true", "fs_only": "false", "route": routeInPlace, "balloon_mode": "hinting", "deferred": "false", "success": "false"}
+	want := map[string]string{"in_place": "true", "fs_only": "false", "route": routeInPlace, "balloon_mode": "hinting", "deferred": "false", "success": "false", "team.id": "team-1"}
 	points := checkpointCounterAttrs(t, reader)
 	require.Len(t, points, 1)
 	assert.Equal(t, want, points[0])
@@ -372,7 +373,7 @@ func TestCheckpoint_FilesystemOnlyGoesInPlaceOnItsOwnFlag(t *testing.T) {
 
 		return fc.BalloonCaps{}, nil
 	})
-	require.True(t, sbx.BeginInPlaceCheckpoint())
+	require.True(t, sbx.BeginCheckpoint())
 
 	_, ckptErr := s.Checkpoint(t.Context(), &orchestrator.SandboxCheckpointRequest{SandboxId: "ckpt-fs-only", FilesystemOnly: true})
 	require.Error(t, ckptErr)

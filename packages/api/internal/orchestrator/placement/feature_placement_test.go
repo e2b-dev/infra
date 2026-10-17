@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,11 +38,11 @@ func TestPlaceSandbox_FleetTooOldReported(t *testing.T) {
 		nodes,
 		nil,
 		testSbxRequest("sbx-1"),
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	var unsupportedErr UnsupportedFeatureError
@@ -61,11 +62,11 @@ func TestPlaceSandbox_EmptyClusterIsNotFleetTooOld(t *testing.T) {
 		nil,
 		nil,
 		testSbxRequest("sbx-1"),
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	var noNodesErr NoNodesAvailableError
@@ -87,11 +88,11 @@ func TestPlaceSandbox_OneCapableNodeIsNotFleetTooOld(t *testing.T) {
 		[]*nodemanager.Node{nodeAtVersion("node-old", "0.10.0"), capable},
 		nil,
 		testSbxRequest("sbx-1"),
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	require.NoError(t, err)
@@ -121,11 +122,11 @@ func TestPlaceSandbox_PreferredNodeTooOldIsNotUsed(t *testing.T) {
 		[]*nodemanager.Node{stale, capable},
 		stale,
 		testSbxRequest("sbx-1"),
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	require.NoError(t, err)
@@ -149,11 +150,11 @@ func TestPlaceSandbox_PreferredNodeCapableIsUsed(t *testing.T) {
 		[]*nodemanager.Node{nodeAtVersion("node-old", "0.10.0")},
 		capable,
 		testSbxRequest("sbx-1"),
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	require.NoError(t, err)
@@ -175,11 +176,11 @@ func TestPlaceSandbox_CancelledRequestStaysATimeout(t *testing.T) {
 		[]*nodemanager.Node{nodeAtVersion("node-old", "0.10.0")},
 		nil,
 		testSbxRequest("sbx-1"),
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 		defaultRefusalBackoff,
+		time.Time{},
 	)
 
 	var timeoutErr PlacementTimeoutError
@@ -203,8 +204,7 @@ func TestChooseNode_SkipsNodesBelowTheFloor(t *testing.T) {
 		[]*nodemanager.Node{stale, capable},
 		make(map[string]struct{}),
 		nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512},
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 	)
@@ -226,8 +226,7 @@ func TestChooseNode_AllNodesBelowTheFloorReportsTheRequirement(t *testing.T) {
 		[]*nodemanager.Node{nodeAtVersion("node-old", "0.10.0")},
 		make(map[string]struct{}),
 		nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512},
-		CPURequirement{},
-		requireHighFeature(t),
+		Requirements{Features: requireHighFeature(t)},
 		false,
 		nil,
 	)

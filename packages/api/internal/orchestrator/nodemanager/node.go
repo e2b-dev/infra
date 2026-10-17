@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
@@ -66,8 +67,9 @@ type Node struct {
 	// count as unreachable.
 	unreachableSince time.Time
 
-	metrics   Metrics
-	metricsMu sync.RWMutex
+	metrics         Metrics
+	metricsMu       sync.RWMutex
+	lastHugePageAdd time.Time
 
 	machineInfo machineinfo.MachineInfo
 	labels      map[string]struct{}
@@ -83,8 +85,9 @@ func New(
 	tracerProvider trace.TracerProvider,
 	meterProvider metric.MeterProvider,
 	discoveredNode NodePlaneInstance,
+	creds credentials.TransportCredentials,
 ) (*Node, error) {
-	client, err := NewClient(tracerProvider, meterProvider, discoveredNode.OrchestratorAddress)
+	client, err := NewClient(tracerProvider, meterProvider, discoveredNode.OrchestratorAddress, creds)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +230,10 @@ func (n *Node) OptimisticAdd(res SandboxResources) {
 	// Directly accumulate to the current metrics view
 	n.metrics.CpuAllocated += uint32(res.CPUs)
 	n.metrics.MemoryAllocatedBytes += uint64(res.MiBMemory) * 1024 * 1024 // Note: CpuPercent is difficult to estimate, usually just updating Allocated is sufficient for the scheduling algorithm
-	n.metrics.HugePagesReserved += hugePagesFor(res.MiBMemory, n.metrics.HugePageSizeBytes)
+	if res.HugePages {
+		n.metrics.HugePagesReserved += HugePagesFor(res.MiBMemory, n.metrics.HugePageSizeBytes)
+		n.lastHugePageAdd = time.Now()
+	}
 }
 
 func (n *Node) OptimisticRemove(ctx context.Context, res SandboxResources) {
@@ -236,11 +242,10 @@ func (n *Node) OptimisticRemove(ctx context.Context, res SandboxResources) {
 
 	cpu := uint32(res.CPUs)
 	memory := uint64(res.MiBMemory) * 1024 * 1024
-	pages := hugePagesFor(res.MiBMemory, n.metrics.HugePageSizeBytes)
 
-	// Each counter subtracts on its own. After a metrics sync the sandbox
-	// sits in HugePagesUsed and Reserved is the kernel's HugePagesRsvd, so
-	// a reserved-page underflow must not leave CPU or allocated RAM stuck.
+	// Hugepage counts wait for the next sync: a sandbox whose balloon returned
+	// free pages holds fewer than its RAM, so its full size would undercount.
+	// Each counter subtracts on its own, so one underflow cannot stick the other.
 	cpuSkipped := cpu > n.metrics.CpuAllocated
 	if !cpuSkipped {
 		n.metrics.CpuAllocated -= cpu
@@ -251,23 +256,15 @@ func (n *Node) OptimisticRemove(ctx context.Context, res SandboxResources) {
 		n.metrics.MemoryAllocatedBytes -= memory
 	}
 
-	fromReserved := min(pages, n.metrics.HugePagesReserved)
-	n.metrics.HugePagesReserved -= fromReserved
-	left := pages - fromReserved
-	usedSkipped := left > n.metrics.HugePagesUsed
-	if left > 0 && !usedSkipped {
-		n.metrics.HugePagesUsed -= left
-	}
-
-	if cpuSkipped || memorySkipped || usedSkipped {
-		logger.L().Warn(ctx, "OptimisticRemove skipped counters that would underflow", logger.WithNodeID(n.ID), zap.Bool("cpuSkipped", cpuSkipped), zap.Bool("memorySkipped", memorySkipped), zap.Bool("hugePagesUsedSkipped", usedSkipped), zap.Uint32("cpuAllocated", n.metrics.CpuAllocated), zap.Uint64("memoryAllocatedBytes", n.metrics.MemoryAllocatedBytes), zap.Uint64("hugePagesReserved", n.metrics.HugePagesReserved), zap.Uint64("hugePagesUsed", n.metrics.HugePagesUsed), zap.Uint32("cpuToRemove", cpu), zap.Uint64("memoryToRemove", memory), zap.Uint64("hugePagesToRemove", pages))
+	if cpuSkipped || memorySkipped {
+		logger.L().Warn(ctx, "OptimisticRemove skipped counters that would underflow", logger.WithNodeID(n.ID), zap.Bool("cpuSkipped", cpuSkipped), zap.Bool("memorySkipped", memorySkipped), zap.Uint32("cpuAllocated", n.metrics.CpuAllocated), zap.Uint64("memoryAllocatedBytes", n.metrics.MemoryAllocatedBytes), zap.Uint32("cpuToRemove", cpu), zap.Uint64("memoryToRemove", memory))
 	}
 }
 
-// hugePagesFor is the page count a sandbox of miB commits against the pool.
+// HugePagesFor is the page count a sandbox of miB commits against the pool.
 // Zero page size means the node reported no pool.
-func hugePagesFor(miB int64, pageSize uint64) uint64 {
-	if pageSize == 0 {
+func HugePagesFor(miB int64, pageSize uint64) uint64 {
+	if pageSize == 0 || miB <= 0 {
 		return 0
 	}
 

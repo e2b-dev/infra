@@ -5,6 +5,8 @@ go 1.26.8
 go:golang.org/x/tools/gopls 0.21.1
 go:github.com/vektra/mockery/v3 v3.7.0
 golangci-lint 2.14.0
+gotestsum 1.13.0
+mise 2026.9.2
 protoc 34.1
 protoc-gen-connect-go 1.19.2
 protoc-gen-go 1.36.11

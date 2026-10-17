@@ -7,11 +7,13 @@ replace (
 	github.com/e2b-dev/infra/packages/shared v0.0.0 => ../shared
 )
 
-replace github.com/willscott/go-nfs v0.0.3 => github.com/e2b-dev/go-nfs v0.0.0-20260911175922-399c077f71ed
+replace github.com/willscott/go-nfs v0.0.3 => github.com/e2b-dev/go-nfs v0.0.0-20261010192153-cc5dba21129a
 
 tool github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
 
 tool github.com/vektra/mockery/v3
+
+replace github.com/willscott/go-nfs-client => github.com/snajpa/go-nfs-client v0.0.0-20261010180736-6436a64df37a
 
 require (
 	cloud.google.com/go/storage v1.64.0
@@ -33,7 +35,7 @@ require (
 	github.com/edsrzf/mmap-go v1.2.1-0.20241212181136-fad1cd13edbd
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.0
 	github.com/gaissmai/extnetip v0.3.3
-	github.com/getkin/kin-openapi v0.146.0
+	github.com/getkin/kin-openapi v0.149.0
 	github.com/gin-contrib/size v1.0.2
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-git/go-billy/v5 v5.9.0
@@ -212,7 +214,7 @@ require (
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
 	github.com/huandu/xstrings v1.5.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jackc/pgx/v5 v5.10.0 // indirect
+	github.com/jackc/pgx/v5 v5.11.0 // indirect
 	github.com/jedib0t/go-pretty/v6 v6.7.8 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
@@ -280,7 +282,7 @@ require (
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
 	github.com/rs/zerolog v1.34.0 // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/shopspring/decimal v1.4.0 // indirect
@@ -320,7 +322,7 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/oauth2 v0.37.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/text v0.42.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.49.0 // indirect
 	google.golang.org/genproto v0.0.0-20260715232425-e75dac1f907d // indirect

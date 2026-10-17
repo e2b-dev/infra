@@ -90,11 +90,17 @@ var uploadBytesView = sdkmetric.NewView(
 )
 
 func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, res *resource.Resource, extraOption ...sdkmetric.Option) (*sdkmetric.MeterProvider, error) {
+	return newMeterProvider(metricsExporter, metricExportPeriod, res, nil, extraOption)
+}
+
+// newMeterProvider is NewMeterProvider with options for the periodic reader
+// it creates.
+func newMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod time.Duration, res *resource.Resource, readerOptions []sdkmetric.PeriodicReaderOption, extraOption []sdkmetric.Option) (*sdkmetric.MeterProvider, error) {
 	opts := []sdkmetric.Option{
 		sdkmetric.WithReader(
 			sdkmetric.NewPeriodicReader(
 				metricsExporter,
-				sdkmetric.WithInterval(metricExportPeriod),
+				append([]sdkmetric.PeriodicReaderOption{sdkmetric.WithInterval(metricExportPeriod)}, readerOptions...)...,
 			),
 		),
 		// Disable exemplars: they count 1:1 against the Mimir tenant items/s
@@ -119,6 +125,15 @@ func NewMeterProvider(metricsExporter sdkmetric.Exporter, metricExportPeriod tim
 			}},
 		)))
 	}
+	// Same reason, with its own buckets: a hit's age is bounded by the lag
+	// flag, a read's duration by the 70 s request timeout, and the flag is
+	// tuned in the second or two the 250 ms steps resolve.
+	opts = append(opts, sdkmetric.WithView(sdkmetric.NewView(
+		sdkmetric.Instrument{Name: string(ApiSandboxListAge), Kind: sdkmetric.InstrumentKindHistogram},
+		sdkmetric.Stream{Aggregation: sdkmetric.AggregationExplicitBucketHistogram{
+			Boundaries: []float64{1, 10, 50, 100, 250, 500, 750, 1000, 1250, 1500, 1750, 2000, 2250, 2500, 2750, 3000, 4000, 5000, 10000, 30000, 70000},
+		}},
+	)))
 
 	return sdkmetric.NewMeterProvider(opts...), nil
 }

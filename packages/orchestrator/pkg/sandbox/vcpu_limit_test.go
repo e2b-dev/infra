@@ -165,7 +165,7 @@ func TestEnvdInitSendsCpuCount(t *testing.T) { //nolint:paralleltest
 
 		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 		defer cancel()
-		resp, _, err := s.doRequestWithInfiniteRetries(ctx, server.URL+"/init")
+		resp, _, err := s.doRequestWithInfiniteRetries(ctx, s.newEnvdInitRequest(server.URL+"/init"))
 		require.NoError(t, err)
 		resp.Body.Close()
 

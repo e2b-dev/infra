@@ -33,9 +33,20 @@ func (noopSnapshotCache) Invalidate(context.Context, string) {}
 func seedFilesystemOnlyBuild(t *testing.T, o *Orchestrator, node *nodemanager.Node, sbx sandbox.Sandbox) {
 	t.Helper()
 
-	row, err := o.throttledUpsertSnapshot(t.Context(), buildUpsertSnapshotParams(sbx, node, true))
+	row, err := o.throttledUpsertSnapshot(t.Context(), buildUpsertSnapshotParams(sbx, node, true, true))
 	require.NoError(t, err)
 	require.NoError(t, o.finishSnapshotBuild(t.Context(), row.BuildID, types.BuildStatusSuccess))
+}
+
+// lastSnapshotBuildKind is the kind recorded on the build a resume of the
+// sandbox starts from.
+func lastSnapshotBuildKind(t *testing.T, o *Orchestrator, sandboxID string) bool {
+	t.Helper()
+
+	row, err := o.sqlcDB.GetLastSnapshot(t.Context(), sandboxID)
+	require.NoError(t, err)
+
+	return row.EnvBuild.FilesystemOnly
 }
 
 // A pause the node refuses leaves the sandbox running on its previous build,
@@ -68,6 +79,7 @@ func TestPauseSandbox_SuccessRecordsRequestedKind(t *testing.T) {
 	kind, err := o.sqlcDB.GetSnapshotFilesystemOnly(t.Context(), sbx.SandboxID)
 	require.NoError(t, err)
 	assert.False(t, kind, "a memory pause records a memory build")
+	assert.False(t, lastSnapshotBuildKind(t, o, sbx.SandboxID), "the memory pause's build is labelled memory")
 	buildStatus, _ := snapshotBuildStatus(t, db, sbx.SandboxID)
 	assert.Equal(t, string(types.BuildStatusSuccess), buildStatus)
 
@@ -75,4 +87,5 @@ func TestPauseSandbox_SuccessRecordsRequestedKind(t *testing.T) {
 	kind, err = o.sqlcDB.GetSnapshotFilesystemOnly(t.Context(), sbx.SandboxID)
 	require.NoError(t, err)
 	assert.True(t, kind, "a filesystem-only pause records a filesystem-only build")
+	assert.True(t, lastSnapshotBuildKind(t, o, sbx.SandboxID), "the filesystem-only pause's build is labelled filesystem-only")
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 // refusalRetryAfter is how long every API replica's eviction sweep leaves a
@@ -99,6 +100,10 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 				return PauseQueueExhaustedError{}
 			}
 
+			if errors.Is(err, sandbox.ErrExecutionMismatch) {
+				return ErrExecutionChanged
+			}
+
 			logger.L().Error(ctx, "Error pausing sandbox", zap.Error(err), logger.WithSandboxID(sandboxID))
 
 			return ErrSandboxOperationFailed
@@ -149,7 +154,7 @@ func (o *Orchestrator) RemoveSandbox(ctx context.Context, teamID uuid.UUID, sand
 		if errors.Is(err, PauseQueueExhaustedError{}) {
 			if restoreOnRefusal {
 				outcome := o.restoreRefusedPause(context.WithoutCancel(ctx), transition)
-				o.recordRefusalRestore(ctx, outcome, opts.Eviction)
+				o.recordRefusalRestore(ctx, sbx.TeamID.String(), outcome, opts.Eviction)
 				switch outcome {
 				case restoreOutcomeRestored:
 					preserveRecord = true
@@ -204,7 +209,7 @@ const (
 	restoreOutcomeSuperseded    restoreOutcome = "superseded"
 )
 
-func (o *Orchestrator) recordRefusalRestore(ctx context.Context, outcome restoreOutcome, eviction bool) {
+func (o *Orchestrator) recordRefusalRestore(ctx context.Context, teamID string, outcome restoreOutcome, eviction bool) {
 	caller := "request"
 	if eviction {
 		caller = "eviction"
@@ -213,6 +218,7 @@ func (o *Orchestrator) recordRefusalRestore(ctx context.Context, outcome restore
 	o.pauseRefusalRestoreCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("outcome", string(outcome)),
 		attribute.String("caller", caller),
+		telemetry.WithTeamID(teamID),
 	))
 }
 
@@ -356,7 +362,7 @@ func (o *Orchestrator) killSandboxOnNode(
 		KillReason: &killReason,
 	}
 
-	client, ctx := node.GetClient(ctx)
+	client, ctx := node.GetSandboxClient(ctx, sbx.TeamID.String())
 	_, err := client.Sandbox.Delete(ctx, req)
 	st, ok := status.FromError(err)
 	if ok && st.Code() == codes.NotFound {
@@ -369,10 +375,15 @@ func (o *Orchestrator) killSandboxOnNode(
 		return fmt.Errorf("failed to delete sandbox: %w", err)
 	}
 
-	node.OptimisticRemove(ctx, nodemanager.SandboxResources{
-		CPUs:      sbx.VCpu,
-		MiBMemory: sbx.RamMB,
-	})
+	node.OptimisticRemove(ctx, nodeSandboxResources(sbx))
 
 	return nil
+}
+
+func nodeSandboxResources(sbx sandbox.NodeSandbox) nodemanager.SandboxResources {
+	return nodemanager.SandboxResources{
+		CPUs:      sbx.VCpu,
+		MiBMemory: sbx.RamMB,
+		HugePages: sbx.HugePages,
+	}
 }

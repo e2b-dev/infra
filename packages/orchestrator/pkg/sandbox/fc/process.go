@@ -168,6 +168,8 @@ type Process struct {
 	rootfsPath     string
 	kernelPath     string
 	files          *storage.SandboxFiles
+	// teamID labels the per-sandbox Firecracker metrics.
+	teamID string
 	// vmVcpus is the VM's vCPU count as Resume resolved it; 0 for a booted VM or before Resume.
 	vmVcpus int64
 
@@ -221,6 +223,7 @@ func NewProcess(
 	config cfg.BuilderConfig,
 	slot *network.Slot,
 	files *storage.SandboxFiles,
+	teamID string,
 	versions Config,
 	rootfsProvider rootfs.Provider,
 	rootfsPaths RootfsPaths,
@@ -269,6 +272,7 @@ func NewProcess(
 		client:                newApiClient(files.SandboxFirecrackerSocketPath()),
 		rootfsProvider:        rootfsProvider,
 		files:                 files,
+		teamID:                teamID,
 		slot:                  slot,
 
 		kernelPath: startScript.KernelPath,
@@ -819,6 +823,7 @@ func (p *Process) Resume(
 		useMemfd,
 		useSyncWP,
 		cpuTemplate,
+		p.teamID,
 	)
 	if err != nil {
 		fcStopErr := p.Stop(ctx)

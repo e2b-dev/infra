@@ -118,6 +118,10 @@ func NewClientWithDatasource(source *ldtestdata.TestDataSource) (*Client, error)
 // The same names, with serviceVersion, identify the process as a LaunchDarkly
 // application; see applicationInfo.
 func NewClient(deploymentEnvironment, serviceName, serviceVersion string, opts ...Option) (*Client, error) {
+	if firecrackerVersionsEnvErr != nil {
+		return nil, firecrackerVersionsEnvErr
+	}
+
 	if launchDarklyApiKey == "" {
 		c, err := NewClientWithDatasource(launchDarklyOfflineStore)
 		if err != nil {
@@ -169,6 +173,10 @@ func connect(sdkKey string, cfg ldclient.Config, wait time.Duration, deploymentE
 // NewClientWithLogLevel creates a client with a specific log level.
 // Use ldlog.Error to suppress INFO/WARN logs in CLI tools.
 func NewClientWithLogLevel(deploymentEnvironment, serviceName, serviceVersion string, logLevel ldlog.LogLevel, opts ...Option) (*Client, error) {
+	if firecrackerVersionsEnvErr != nil {
+		return nil, firecrackerVersionsEnvErr
+	}
+
 	cfg := ldclient.Config{
 		ApplicationInfo:  applicationInfo(deploymentEnvironment, serviceName, serviceVersion),
 		Logging:          ldcomponents.Logging().MinLevel(logLevel),

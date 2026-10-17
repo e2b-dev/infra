@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template/peerclient"
@@ -773,6 +774,25 @@ func (c *Cache) LookupDiff(buildID string, diffType build.DiffType) (build.Diff,
 	return c.buildStore.Lookup(key)
 }
 
+// DiscardDiffRanges returns the given runs of a cached diff to not-present and
+// punches them, so a later read refetches. The runs are storage offsets of the
+// entry's own diff (BuildMap.Offset and Length in its packed storage space),
+// not device offsets; the resume-build tool translates device ranges through
+// the diff's header with supersededStorageRuns before calling. Forwards to
+// build.DiffStore.DiscardRanges; the store is otherwise private to the cache.
+func (c *Cache) DiscardDiffRanges(buildID string, diffType build.DiffType, runs []header.BuildMap) (block.DiscardStats, error) {
+	key := build.GetDiffStoreKey(buildID, diffType)
+
+	return c.buildStore.DiscardRanges(key, runs)
+}
+
+// DiscardDiffRangesOf is DiscardDiffRanges on a diff the caller holds from
+// LookupDiff and reads through, so the discard lands on that handle even if
+// the store evicted it meanwhile. Forwards to build.DiffStore.DiscardRangesOf.
+func (c *Cache) DiscardDiffRangesOf(diff build.Diff, runs []header.BuildMap) (block.DiscardStats, error) {
+	return c.buildStore.DiscardRangesOf(diff, runs)
+}
+
 // Invalidate removes a template from the cache, forcing a refetch on next access.
 func (c *Cache) Invalidate(buildID string) {
 	// Under extendMu so the delete and the retire are atomic against a lookup.
@@ -1273,8 +1293,8 @@ func (c *Cache) getTemplateWithFetch(ctx context.Context, tmpl *storageTemplate,
 	// instance is dropped without ever being fetched and without ever reaching
 	// Close. Its cache directory exists all the same — storage.Paths.Cache
 	// creates it eagerly, at construction, before the cache is consulted — and
-	// nothing else would reclaim it: the startup sweep covers DefaultCacheDir,
-	// while these live under TemplateCacheDir. Left alone it would orphan one
+	// nothing else would reclaim it while this process runs; the startup sweep
+	// only clears what a previous process left. Left alone it would orphan one
 	// empty directory per cache hit, a leak that scales with lookups rather than
 	// with templates, on the hottest path there is. Removing it here is safe
 	// precisely because the instance was never fetched: the directory is its own,

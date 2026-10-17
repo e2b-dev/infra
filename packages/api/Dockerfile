@@ -2,6 +2,9 @@ ARG GOLANG_VERSION=1.26.8
 ARG ALPINE_VERSION=3.24
 
 FROM --platform=$BUILDPLATFORM golang:${GOLANG_VERSION}-alpine${ALPINE_VERSION} AS builder
+# Fall through to a retry on any module proxy error; see
+# .github/actions/go-setup-cache/action.yml for the mechanism.
+ENV GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct
 ARG TARGETARCH
 
 RUN apk add --no-cache make
@@ -24,16 +27,7 @@ RUN --mount=type=cache,target=/go/pkg/mod cd /build/shared && go mod download &&
 # Copy source code
 WORKDIR /build
 
-COPY ./auth/pkg ./auth/pkg
-COPY ./clickhouse/pkg ./clickhouse/pkg
-COPY ./shared/pkg ./shared/pkg
-COPY ./db/client ./db/client
-COPY ./db/queries ./db/queries
-COPY ./db/pkg ./db/pkg
-
-COPY ./api/internal ./api/internal
-COPY ./api/main.go ./api/main.go
-COPY ./api/Makefile ./api/Makefile
+COPY . .
 
 WORKDIR /build/api
 

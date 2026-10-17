@@ -2,8 +2,10 @@ package placement
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -60,7 +62,7 @@ func TestPlaceSandbox_RefusedNodeIsRetried(t *testing.T) {
 
 	var picks []string
 	result, err := placeSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-retry"),
-		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{})
+		Requirements{}, false, nil, refusalBackoff{}, time.Time{})
 
 	require.NoError(t, err)
 	assert.Equal(t, only.ID, result.Node.ID)
@@ -74,46 +76,58 @@ func TestPlaceSandbox_RefusedNodeIsRetried(t *testing.T) {
 func TestPlaceSandbox_RefusalsArePaced(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
 	var creates atomic.Int64
+	refuse := refusingClient(&creates, -1)
+	var openWindow sync.Once
+	// The window opens at the first create, so a slow start cannot spend it before any create.
+	paced := &nodemanager.MockSandboxClientCustom{CreateFunc: func() error {
+		openWindow.Do(func() { time.AfterFunc(300*time.Millisecond, cancel) })
+
+		return refuse.CreateFunc()
+	}}
 	busyA := nodemanager.NewTestNode("busy-a", api.NodeStatusReady, 0, 8)
-	busyA.SetSandboxClient(refusingClient(&creates, -1))
+	busyA.SetSandboxClient(paced)
 	busyB := nodemanager.NewTestNode("busy-b", api.NodeStatusReady, 0, 8)
-	busyB.SetSandboxClient(refusingClient(&creates, -1))
+	busyB.SetSandboxClient(paced)
 	nodes := []*nodemanager.Node{busyA, busyB}
 
 	var picks []string
-	result, err := PlaceSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-paced"), CPURequirement{}, false, nil)
+	result, err := PlaceSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-paced"), Requirements{}, false, nil)
 
 	var noNodesErr NoNodesAvailableError
-	require.ErrorAs(t, err, &noNodesErr, "refusals until the deadline are still classified as capacity")
+	require.ErrorAs(t, err, &noNodesErr, "refusals until the caller leaves are still classified as capacity")
 	assert.True(t, result.TimedOut)
 	assert.Less(t, creates.Load(), int64(30))
 }
 
 // The deadline ends a backoff wait instead of the wait outliving the request.
+// The clock is synctest's, so the deadline cannot pass before the first create.
 func TestPlaceSandbox_DeadlineEndsRefusalBackoff(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
-
-	var creates atomic.Int64
+	// Built outside the bubble: the test node's gRPC connection runs goroutines of its own.
 	busy := nodemanager.NewTestNode("busy", api.NodeStatusReady, 0, 8)
-	busy.SetSandboxClient(refusingClient(&creates, -1))
-	nodes := []*nodemanager.Node{busy}
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+		defer cancel()
 
-	var picks []string
-	start := time.Now()
-	result, err := placeSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-deadline"),
-		CPURequirement{}, FeatureRequirement{}, false, nil, refusalBackoff{base: time.Hour, max: time.Hour})
+		var creates atomic.Int64
+		busy.SetSandboxClient(refusingClient(&creates, -1))
+		nodes := []*nodemanager.Node{busy}
 
-	assert.Less(t, time.Since(start), 5*time.Second)
+		var picks []string
+		start := time.Now()
+		result, err := placeSandbox(ctx, firstNotExcluded(nodes, &picks), nodes, nil, testSbxRequest("sbx-deadline"),
+			Requirements{}, false, nil, refusalBackoff{base: time.Hour, max: time.Hour}, time.Time{})
 
-	var noNodesErr NoNodesAvailableError
-	require.ErrorAs(t, err, &noNodesErr)
-	assert.True(t, result.TimedOut)
-	assert.LessOrEqual(t, creates.Load(), int64(2), "an hour-wide backoff leaves no time for more creates")
+		assert.Equal(t, 50*time.Millisecond, time.Since(start), "the wait ends at the deadline")
+
+		var noNodesErr NoNodesAvailableError
+		require.ErrorAs(t, err, &noNodesErr)
+		assert.True(t, result.TimedOut)
+		assert.LessOrEqual(t, creates.Load(), int64(2), "an hour-wide backoff leaves no time for more creates")
+	})
 }

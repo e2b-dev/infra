@@ -17,12 +17,15 @@ const (
 // NetworkPlacement is the routed-network placement of a running sandbox: where
 // its traffic goes.
 //
-// It carries no configuration. The orchestrator hands the router its policy
-// and workload identity over gRPC before the create call returns, and resends
-// them when the router's process changes, so the record only has to let a
-// reader route to the sandbox.
+// It carries location only. The orchestrator owns the router configuration,
+// which never travels through this record, so a reader only needs the record
+// to route to the sandbox.
 type NetworkPlacement struct {
 	NetworkMode NetworkMode `json:"network_mode"`
 	RouterID    string      `json:"router_id"`
 	PortableIP  string      `json:"portable_ip"`
+	// IngressAddress and IngressPort are the endpoint a caller sends sandbox
+	// traffic to: the router for full-router, the worker for egress-router.
+	IngressAddress string `json:"ingress_address,omitempty"`
+	IngressPort    uint32 `json:"ingress_port,omitempty"`
 }

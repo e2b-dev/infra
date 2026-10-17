@@ -316,6 +316,224 @@ func TestCheckpointHandoffReservesBeforeSubscribers(t *testing.T) {
 	require.NoError(t, r.MarkRunning(t.Context(), testMapSandbox(t, "successor")))
 }
 
+// A subscriber panicking inside the stopping notification leaves the map
+// as it was: the sandbox live, no hold, the panic raised again.
+// A registration under a reservation can be refused once the operation's
+// context has ended, decided with the registration itself; the reservation
+// stays held and nothing goes live.
+func TestReservationMarkRunningUnlessEnded(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	old := testMapSandbox(t, "old")
+	require.NoError(t, sandboxes.MarkRunning(t.Context(), old))
+	r, err := sandboxes.MarkStoppingReserved(t.Context(), old.Runtime.SandboxID, old.LifecycleID)
+	require.NoError(t, err)
+	defer r.Release()
+
+	ended, cancel := context.WithCancelCause(t.Context())
+	cancel(errors.New("deleted meanwhile"))
+	resumed := testMapSandbox(t, "resumed")
+	err = r.MarkRunningUnlessEnded(ended, resumed)
+	require.ErrorContains(t, err, "deleted meanwhile")
+	_, live := sandboxes.Get(old.Runtime.SandboxID)
+	assert.False(t, live, "nothing went live")
+
+	require.NoError(t, r.MarkRunningUnlessEnded(t.Context(), resumed), "a live context registers as MarkRunning does")
+	got, live := sandboxes.Get(old.Runtime.SandboxID)
+	require.True(t, live)
+	assert.Same(t, resumed, got)
+}
+
+func TestMarkStoppingReservedUndoesItselfOnSubscriberPanic(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	old := testMapSandbox(t, "old")
+	require.NoError(t, sandboxes.MarkRunning(t.Context(), old))
+	calls := 0
+	sandboxes.Subscribe(&handoffSubscriber{onStopping: func() {
+		calls++
+		if calls == 1 {
+			panic("subscriber panicked")
+		}
+	}})
+
+	require.PanicsWithValue(t, "subscriber panicked", func() {
+		_, _ = sandboxes.MarkStoppingReserved(t.Context(), old.Runtime.SandboxID, old.LifecycleID)
+	})
+
+	live, ok := sandboxes.Get(old.Runtime.SandboxID)
+	require.True(t, ok, "the sandbox is live again")
+	require.Same(t, old, live)
+	r, err := sandboxes.MarkStoppingReserved(t.Context(), old.Runtime.SandboxID, old.LifecycleID)
+	require.NoError(t, err, "no hold was stranded")
+	r.Release()
+	require.Equal(t, 2, calls)
+}
+
+// The undo is skipped when the gap let another lifecycle register live under
+// the ID: the successor is not overwritten by the sandbox that was being
+// stopped.
+func TestMarkStoppingSkipsTheUndoWhenTheIDWasTaken(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	old := testMapSandbox(t, "old")
+	successor := testMapSandbox(t, "successor")
+	require.NoError(t, sandboxes.MarkRunning(t.Context(), old))
+	sandboxes.Subscribe(&handoffSubscriber{onStopping: func() {
+		require.NoError(t, sandboxes.MarkRunning(t.Context(), successor))
+		panic("subscriber panicked")
+	}})
+
+	require.PanicsWithValue(t, "subscriber panicked", func() {
+		sandboxes.MarkStopping(t.Context(), old.Runtime.SandboxID, old.LifecycleID)
+	})
+
+	live, ok := sandboxes.Get(old.Runtime.SandboxID)
+	require.True(t, ok)
+	require.Same(t, successor, live, "the successor is not overwritten")
+}
+
+// A reservation another operation took in the gap (a Create for the ID once
+// the live entry was gone) does not keep a live VM out of the map, where the
+// caller, which dies with the panic, would never stop it: the sandbox is put
+// back, the other operation's registration is refused as it would have been
+// had the VM stayed live, and the ID is free once both have let go.
+func TestMarkStoppingUndoesOverAReservationTakenInTheGap(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	old := testMapSandbox(t, "old")
+	require.NoError(t, sandboxes.MarkRunning(t.Context(), old))
+	var r *Reservation
+	calls := 0
+	sandboxes.Subscribe(&handoffSubscriber{onStopping: func() {
+		calls++
+		if calls != 1 {
+			return
+		}
+		var err error
+		r, err = sandboxes.Reserve(old.Runtime.SandboxID)
+		require.NoError(t, err)
+		panic("subscriber panicked")
+	}})
+
+	require.PanicsWithValue(t, "subscriber panicked", func() {
+		sandboxes.MarkStopping(t.Context(), old.Runtime.SandboxID, old.LifecycleID)
+	})
+
+	live, ok := sandboxes.Get(old.Runtime.SandboxID)
+	require.True(t, ok, "a live VM is not left out of the map")
+	require.Same(t, old, live)
+	sandboxes.registryMu.Lock()
+	held := sandboxes.reservations[old.Runtime.SandboxID]
+	sandboxes.registryMu.Unlock()
+	require.Same(t, r, held, "the other operation's reservation stands")
+	require.ErrorIs(t, r.MarkRunning(t.Context(), testMapSandbox(t, "created")), ErrSandboxAlreadyRunning, "the other operation's registration is refused, the ID is live")
+	_, err := sandboxes.Reserve(old.Runtime.SandboxID)
+	require.ErrorIs(t, err, ErrSandboxAlreadyRunning)
+
+	r.Release()
+	require.True(t, sandboxes.MarkStopping(t.Context(), old.Runtime.SandboxID, old.LifecycleID))
+	next, err := sandboxes.Reserve(old.Runtime.SandboxID)
+	require.NoError(t, err, "the ID is free once the sandbox is stopped and the reservation released")
+	next.Release()
+	require.Equal(t, 2, calls)
+}
+
+// The hold a lifecycle's own creator still has (a checkpoint's or Create's
+// reservation between publication and return) is not another operation:
+// a subscriber panic while that lifecycle is being stopped still puts it
+// back live.
+func TestMarkStoppingUndoesUnderTheCreatorsOwnHold(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	resumed := testMapSandbox(t, "resumed")
+	r, err := sandboxes.Reserve(resumed.Runtime.SandboxID)
+	require.NoError(t, err)
+	require.NoError(t, r.MarkRunning(t.Context(), resumed))
+	calls := 0
+	sandboxes.Subscribe(&handoffSubscriber{onStopping: func() {
+		calls++
+		if calls == 1 {
+			panic("subscriber panicked")
+		}
+	}})
+
+	require.PanicsWithValue(t, "subscriber panicked", func() {
+		sandboxes.MarkStopping(t.Context(), resumed.Runtime.SandboxID, resumed.LifecycleID)
+	})
+
+	live, ok := sandboxes.Get(resumed.Runtime.SandboxID)
+	require.True(t, ok, "the sandbox is live again under its creator's hold")
+	require.Same(t, resumed, live)
+	_, err = sandboxes.Reserve(resumed.Runtime.SandboxID)
+	require.ErrorIs(t, err, ErrSandboxAlreadyRunning, "the creator's hold stands")
+	r.Release()
+	require.True(t, sandboxes.MarkStopping(t.Context(), resumed.Runtime.SandboxID, resumed.LifecycleID))
+}
+
+// A sandbox whose cleanup ran while the subscriber was panicking is closed;
+// the undo must not bring a closed VM back as live, where nothing removes
+// it again.
+func TestMarkStoppingSkipsTheUndoWhenTheSandboxClosedMeanwhile(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	old := testMapSandbox(t, "old")
+	old.cleanup = NewCleanup()
+	require.NoError(t, sandboxes.MarkRunning(t.Context(), old))
+	sandboxes.Subscribe(&handoffSubscriber{onStopping: func() {
+		require.NoError(t, old.cleanup.Run(t.Context()))
+		panic("subscriber panicked")
+	}})
+
+	require.PanicsWithValue(t, "subscriber panicked", func() {
+		sandboxes.MarkStopping(t.Context(), old.Runtime.SandboxID, old.LifecycleID)
+	})
+
+	_, live := sandboxes.Get(old.Runtime.SandboxID)
+	require.False(t, live, "a closed sandbox is not put back")
+	r, err := sandboxes.Reserve(old.Runtime.SandboxID)
+	require.NoError(t, err, "nothing holds the ID")
+	r.Release()
+}
+
+// The hold a checkpoint's reservation takes is dropped when the subscriber
+// panics, since the caller never receives it, also when the sandbox closed
+// meanwhile and is not put back: otherwise the ID stays reserved for good,
+// and every later Reserve and MarkStoppingReserved for it fails until the
+// node restarts.
+func TestMarkStoppingReservedDropsTheHoldWhenTheSandboxClosedMeanwhile(t *testing.T) {
+	t.Parallel()
+
+	sandboxes := NewSandboxesMap()
+	old := testMapSandbox(t, "old")
+	old.cleanup = NewCleanup()
+	require.NoError(t, sandboxes.MarkRunning(t.Context(), old))
+	sandboxes.Subscribe(&handoffSubscriber{onStopping: func() {
+		require.NoError(t, old.cleanup.Run(t.Context()))
+		panic("subscriber panicked")
+	}})
+
+	require.PanicsWithValue(t, "subscriber panicked", func() {
+		_, _ = sandboxes.MarkStoppingReserved(t.Context(), old.Runtime.SandboxID, old.LifecycleID)
+	})
+
+	_, live := sandboxes.Get(old.Runtime.SandboxID)
+	require.False(t, live, "a closed sandbox is not put back")
+	sandboxes.registryMu.Lock()
+	_, held := sandboxes.reservations[old.Runtime.SandboxID]
+	sandboxes.registryMu.Unlock()
+	require.False(t, held, "the hold nobody received is dropped")
+	r, err := sandboxes.Reserve(old.Runtime.SandboxID)
+	require.NoError(t, err, "the ID is free for the next operation")
+	r.Release()
+}
+
 func TestUnpublishedLifecycleRemainsTrackedDuringClose(t *testing.T) {
 	t.Parallel()
 
@@ -688,7 +906,7 @@ func attachOwnedCleanup(t *testing.T, sandboxes *Map, sbx *Sandbox) {
 
 	sbx.cleanup = NewCleanup()
 	sbx.sandboxes = sandboxes
-	sandboxes.reclaimLiveEntryOnCleanup(t.Context(), sbx.cleanup, sbx.Runtime.SandboxID, sbx.LifecycleID, sbx.Runtime.SandboxType)
+	sandboxes.reclaimLiveEntryOnCleanup(t.Context(), sbx.cleanup, sbx.Runtime, sbx.LifecycleID)
 }
 
 // The cleanup chain owns the reclamation, and owns it at one point. The chain runs
@@ -724,7 +942,7 @@ func TestSandboxCloseReclaimsLiveEntryInTheCleanupChain(t *testing.T) {
 	sbx.cleanup = NewCleanup()
 	sbx.sandboxes = sandboxes
 	sbx.cleanup.Add(t.Context(), mark("late"))
-	sandboxes.reclaimLiveEntryOnCleanup(t.Context(), sbx.cleanup, sbx.Runtime.SandboxID, sbx.LifecycleID, sbx.Runtime.SandboxType)
+	sandboxes.reclaimLiveEntryOnCleanup(t.Context(), sbx.cleanup, sbx.Runtime, sbx.LifecycleID)
 	sbx.cleanup.Add(t.Context(), mark("early"))
 
 	require.NoError(t, sandboxes.MarkRunning(t.Context(), sbx))

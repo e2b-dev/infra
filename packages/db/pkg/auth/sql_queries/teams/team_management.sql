@@ -14,17 +14,18 @@ FOR UPDATE;
 -- this ran: no row means that happened. A slug collision is a different
 -- constraint and still raises.
 -- name: InsertManagedTeam :one
-INSERT INTO public.teams (id, name, slug, tier, email, is_blocked)
+INSERT INTO public.teams (id, name, slug, tier, email, is_blocked, cluster_id)
 VALUES (
     sqlc.arg(id)::uuid,
     sqlc.arg(name)::text,
     sqlc.arg(slug)::text,
     sqlc.arg(tier)::text,
     sqlc.arg(email)::text,
-    false
+    false,
+    sqlc.narg(cluster_id)::uuid
 )
 ON CONFLICT (id) DO NOTHING
-RETURNING id, name, slug, email;
+RETURNING id, name, slug, email, cluster_id;
 
 -- Touches only the properties the caller synchronizes. Tier stays because it is
 -- this side's to assign; is_blocked stays because an operator's decision must
@@ -34,6 +35,7 @@ UPDATE public.teams
 SET
     name = sqlc.arg(name)::text,
     slug = sqlc.arg(slug)::text,
-    email = sqlc.arg(email)::text
+    email = sqlc.arg(email)::text,
+    cluster_id = COALESCE(sqlc.narg(cluster_id)::uuid, cluster_id)
 WHERE id = sqlc.arg(id)::uuid
-RETURNING id, name, slug, email;
+RETURNING id, name, slug, email, cluster_id;

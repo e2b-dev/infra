@@ -72,6 +72,7 @@ type EnvBuild struct {
 	CpuFlags           []string
 	StatusGroup        types.BuildStatusGroup
 	TeamID             *uuid.UUID
+	FilesystemOnly     bool
 }
 
 type Snapshot struct {
@@ -88,16 +89,6 @@ type Snapshot struct {
 	AutoPause           bool
 	TeamID              uuid.UUID
 	Config              *types.PausedSandboxConfig
-}
-
-type UsersTeam struct {
-	ID        int64
-	UserID    uuid.UUID
-	TeamID    uuid.UUID
-	IsDefault bool
-	AddedBy   *uuid.UUID
-	CreatedAt pgtype.Timestamp
-	UuidID    uuid.UUID
 }
 
 type Volume struct {

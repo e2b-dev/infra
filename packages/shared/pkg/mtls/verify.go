@@ -43,6 +43,10 @@ type ServerConfig struct {
 	Logger logger.Logger
 	// Metrics defaults to DefaultMetrics().
 	Metrics *Metrics
+	// watched is set by Process.Listener when the mode comes from a flag;
+	// the listeners and credentials built on this configuration register
+	// with it, so while required the watcher closes what required refuses.
+	watched *watchedListener
 }
 
 func (c ServerConfig) log() logger.Logger {
@@ -343,6 +347,9 @@ type ClientConfig struct {
 	Logger logger.Logger
 	// Metrics defaults to DefaultMetrics().
 	Metrics *Metrics
+	// watched is set by Process.Hop when the mode comes from a flag; the
+	// HTTP transports built on this configuration register with it.
+	watched *watchedHop
 }
 
 func (c ClientConfig) log() logger.Logger {

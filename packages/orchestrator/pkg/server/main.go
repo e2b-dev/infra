@@ -108,8 +108,15 @@ type Server struct {
 	uploadsWG       sync.WaitGroup
 	uploadsInFlight atomic.Int64
 
-	done      chan struct{}
-	closeOnce sync.Once
+	// detachedCheckpoints are the resume-fresh checkpoints past their
+	// reservation, by sandbox ID; Delete and Checkpoint consult them while
+	// the sandbox is out of the live map.
+	detachedCheckpointsMu sync.Mutex
+	detachedCheckpoints   map[string]*detachedCheckpoint
+
+	// shutdownCtx ends when the server begins to shut down.
+	shutdownCtx context.Context //nolint:containedctx // the detached checkpoints watch it with context.AfterFunc
+	shutdown    context.CancelFunc
 }
 
 type ServiceConfig struct {
@@ -159,9 +166,11 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		uploadedBuilds:    uploadedBuilds,
 		uploads:           cfg.Uploads,
 
+		detachedCheckpoints: map[string]*detachedCheckpoint{},
+
 		buildDisk: newBuildDisk(cfg.Config.DefaultCacheDir, cfg.TemplateStorage),
-		done:      make(chan struct{}),
 	}
+	server.shutdownCtx, server.shutdown = context.WithCancel(context.Background())
 	server.updateMaxSandboxesLimit(ctx)
 
 	meter := cfg.Tel.MeterProvider.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
@@ -344,9 +353,7 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 }
 
 func (s *Server) Close(ctx context.Context) error {
-	s.closeOnce.Do(func() {
-		close(s.done)
-	})
+	s.BeginShutdown()
 
 	// Wait for in-flight snapshot uploads to finish so a graceful shutdown
 	// doesn't drop a snapshot that is still uploading. ctx is cancelled on a
@@ -402,9 +409,17 @@ func (s *Server) drainUploads(ctx context.Context, uploadsDone <-chan struct{}) 
 // during a graceful shutdown, then waits for their lifecycle cleanup to finish.
 // It does not reject new sandbox starts; that admission gating is layered in
 // separately. It returns ctx.Err() if ctx is cancelled before the node empties.
+//
+// The live count alone is not enough: a resume-fresh checkpoint takes its
+// sandbox out of the live map before the resumed one goes in, and a create is
+// not live until its VM is up, so the count reads 0 while either is under way.
+// Every sandbox operation and lifecycle holds outstanding work for its whole
+// run (ServiceInfo.TrackWork), so the node is empty only when both are 0.
 func (s *Server) DrainSandboxes(ctx context.Context) error {
-	live := s.sandboxFactory.Sandboxes.Count()
-	logger.L().Info(ctx, "starting graceful sandbox drain", zap.Int("live_sandboxes", live))
+	logger.L().Info(ctx, "starting graceful sandbox drain",
+		zap.Int("live_sandboxes", s.sandboxFactory.Sandboxes.Count()),
+		zap.Int64("outstanding_work", s.info.OutstandingWork()),
+	)
 
 	ticker := time.NewTicker(sandboxDrainPollInterval)
 	defer ticker.Stop()
@@ -412,8 +427,8 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 	lastLoggedAt := startedAt
 
 	for {
-		remaining := s.sandboxFactory.Sandboxes.Count()
-		if remaining == 0 {
+		remaining, work := s.sandboxFactory.Sandboxes.Count(), s.info.OutstandingWork()
+		if remaining == 0 && work == 0 {
 			logger.L().Info(ctx, "graceful sandbox drain complete", zap.Int("live_sandboxes", remaining))
 
 			return s.waitSandboxLifecycles(ctx)
@@ -423,17 +438,18 @@ func (s *Server) DrainSandboxes(ctx context.Context) error {
 		case <-ctx.Done():
 			logger.L().Warn(ctx, "graceful sandbox drain timed out",
 				zap.Int("remaining_sandboxes", remaining),
+				zap.Int64("outstanding_work", work),
 				zap.Error(ctx.Err()),
 			)
 
 			return ctx.Err()
 		case <-ticker.C:
 			now := time.Now()
-			remaining = s.sandboxFactory.Sandboxes.Count()
 			elapsed := now.Sub(startedAt)
-			if remaining > 0 && now.Sub(lastLoggedAt) >= sandboxDrainLogInterval(elapsed) {
+			if now.Sub(lastLoggedAt) >= sandboxDrainLogInterval(elapsed) {
 				logger.L().Info(ctx, "waiting for sandbox drain",
-					zap.Int("remaining_sandboxes", remaining),
+					zap.Int("remaining_sandboxes", s.sandboxFactory.Sandboxes.Count()),
+					zap.Int64("outstanding_work", s.info.OutstandingWork()),
 					zap.Duration("elapsed", elapsed),
 				)
 				lastLoggedAt = now
@@ -452,7 +468,7 @@ func (s *Server) refreshStartingSandboxesLimit(ctx context.Context) {
 
 	for {
 		select {
-		case <-s.done:
+		case <-s.shutdownCtx.Done():
 			return
 		case <-ticker.C:
 			limit := s.featureFlags.IntFlag(ctx, featureflags.MaxStartingInstancesPerNode)
@@ -480,7 +496,7 @@ func (s *Server) refreshMaxSandboxesLimit(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-s.done:
+		case <-s.shutdownCtx.Done():
 			return
 		case <-ticker.C:
 			s.updateMaxSandboxesLimit(ctx)

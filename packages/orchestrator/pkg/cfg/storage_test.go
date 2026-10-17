@@ -243,3 +243,29 @@ func TestTemplateStorage_InvalidURL(t *testing.T) {
 	_, err := TemplateStorage()
 	require.ErrorContains(t, err, "unsupported query parameter")
 }
+
+func TestBuildCacheStorageIsLocal(t *testing.T) {
+	for _, tt := range []struct {
+		name     string
+		env      map[string]string
+		expected bool
+	}{
+		{"unconfigured bucket provider", map[string]string{"STORAGE_PROVIDER": "GCPBucket"}, false},
+		{"legacy local provider", map[string]string{"STORAGE_PROVIDER": "Local"}, true},
+		{"file URL", map[string]string{"BUILD_CACHE_STORAGE_URL": "file:///var/lib/build-cache"}, true},
+		{"malformed file URL", map[string]string{"BUILD_CACHE_STORAGE_URL": "FILE://host/x"}, true},
+		{"bucket URL over a local provider", map[string]string{"STORAGE_PROVIDER": "Local", "BUILD_CACHE_STORAGE_URL": "gs://cache"}, false},
+		{"unparseable environment", map[string]string{"S3_USE_PATH_STYLE": "maybe"}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, key := range []string{"STORAGE_PROVIDER", "BUILD_CACHE_STORAGE_URL", "S3_USE_PATH_STYLE"} {
+				t.Setenv(key, "")
+			}
+			for key, value := range tt.env {
+				t.Setenv(key, value)
+			}
+
+			assert.Equal(t, tt.expected, BuildCacheStorageIsLocal())
+		})
+	}
+}

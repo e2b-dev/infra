@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.10.0 (2026-10-12)
+
+
+### Features
+
+* **envd:** bring guest CPUs online to the count requested on /init (5fc4907)
+* **envd:** make the /init thaw freeze-aware and skippable, and correct its clock stamp (69da628)
+* **envd:** report whether a filesystem entry is a symlink (2d11e88)
+* **orchestrator:** warn in the sandbox's logs when it runs out of memory (c2608a7)
+
+
+### Bug Fixes
+
+* **envd:** bound NFS mount commands and log their progress (5da26bc)
+* **envd:** keep process starts out of the cgroup freeze window (0ee8c2d)
+* **envd:** validate keepalive intervals (17855b4)
+
+
+### Code Refactoring
+
+* **envd:** give the OOM watcher its logger when it's created (73a9182)
+* **envd:** remove the deprecated MiB memory fields from /metrics (8076631)
+* **envd:** start the OOM watcher in main and pass it to the API (6cc8efb)
+
 ## 0.9.0 (2026-09-10)
 
 

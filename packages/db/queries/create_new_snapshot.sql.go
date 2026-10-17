@@ -82,7 +82,8 @@ new_build as (
         cpu_family,
         cpu_model,
         cpu_model_name,
-        cpu_flags
+        cpu_flags,
+        filesystem_only
     )
     VALUES (
         (SELECT template_id FROM snapshot),
@@ -101,7 +102,8 @@ new_build as (
         (SELECT eb.cpu_family FROM "public"."env_builds" eb WHERE eb.id = $21),
         (SELECT eb.cpu_model FROM "public"."env_builds" eb WHERE eb.id = $21),
         (SELECT eb.cpu_model_name FROM "public"."env_builds" eb WHERE eb.id = $21),
-        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $21)
+        (SELECT eb.cpu_flags FROM "public"."env_builds" eb WHERE eb.id = $21),
+        $22
     )
     RETURNING id as build_id
 ),
@@ -141,6 +143,7 @@ type UpsertSnapshotParams struct {
 	Status              types.BuildStatus
 	TotalDiskSizeMb     *int64
 	SourceBuildID       uuid.UUID
+	BuildFilesystemOnly bool
 }
 
 type UpsertSnapshotRow struct {
@@ -153,6 +156,10 @@ type UpsertSnapshotRow struct {
 // a pause keeps the snapshot's CPU compatibility pinned to the original build
 // instead of the node the pause happened to run on. Scalar subqueries are used so
 // the row is always inserted (CPU info is NULL if the source build is missing).
+//
+// build_filesystem_only is the kind this build is taken as. It is separate from
+// config, whose kind describes the row's previous ready build until this one
+// finishes.
 // Create the build assignment edge (explicit, not relying on trigger)
 func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) (UpsertSnapshotRow, error) {
 	row := q.db.QueryRow(ctx, upsertSnapshot,
@@ -177,6 +184,7 @@ func (q *Queries) UpsertSnapshot(ctx context.Context, arg UpsertSnapshotParams) 
 		arg.Status,
 		arg.TotalDiskSizeMb,
 		arg.SourceBuildID,
+		arg.BuildFilesystemOnly,
 	)
 	var i UpsertSnapshotRow
 	err := row.Scan(&i.BuildID, &i.TemplateID)

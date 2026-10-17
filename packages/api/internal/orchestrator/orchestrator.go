@@ -13,6 +13,7 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"golang.org/x/sync/singleflight"
+	"google.golang.org/grpc/credentials"
 
 	analyticscollector "github.com/e2b-dev/infra/packages/api/internal/analytics_collector"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -37,7 +38,8 @@ const statusLogInterval = time.Second * 20
 
 // trackedWorkBound is the longest a tracked pause can hold its count: the
 // pause budget, then the terminal build-status write, which opens a fresh
-// budget once the pause context has expired.
+// budget once the pause context has expired. A tracked resume create fits
+// inside it (CreateSandbox).
 const trackedWorkBound = pauseTimeout + buildStatusWriteTimeout
 
 // workDrainGrace pads trackedWorkBound so the drain outlasts the work.
@@ -65,6 +67,7 @@ type Orchestrator struct {
 	posthogClient                 *analyticscollector.PosthogClient
 	sqlcDB                        *sqlcdb.Client
 	tel                           *telemetry.Client
+	nodeCreds                     credentials.TransportCredentials
 	clusters                      *clusters.Pool
 	metricsRegistration           metric.Registration
 	sandboxCountGaugeRegistration metric.Registration
@@ -74,6 +77,9 @@ type Orchestrator struct {
 	teamMetricsObserver           *metrics.TeamObserver
 	accessTokenGenerator          *sandbox.AccessTokenGenerator
 	createdCounter                metric.Int64Counter
+	listReadsCounter              metric.Int64Counter
+	listAgeHistogram              metric.Int64Histogram
+	teamLists                     teamListSnapshots
 	snapshotCache                 SnapshotCacheInvalidator
 
 	snapshotUpsertSem *utils.AdjustableSemaphore
@@ -134,11 +140,13 @@ func New(
 	accessTokenGenerator *sandbox.AccessTokenGenerator,
 	snapshotCache SnapshotCacheInvalidator,
 	snapshotUpsertSem *utils.AdjustableSemaphore,
+	analyticsCreds, nodeCreds credentials.TransportCredentials,
 ) (*Orchestrator, error) {
 	analyticsInstance, err := analyticscollector.NewAnalytics(
 		config.AnalyticsCollectorHost,
 		config.AnalyticsCollectorAPIToken,
 		config.AnalyticsCollectorTLS,
+		analyticsCreds,
 	)
 	if err != nil {
 		logger.L().Error(ctx, "Error initializing Analytics client", zap.Error(err))
@@ -191,6 +199,7 @@ func New(
 		sqlcDB:               sqlcDB,
 		snapshotCache:        snapshotCache,
 		tel:                  tel,
+		nodeCreds:            nodeCreds,
 		clusters:             clusters,
 		redisStorage:         redisStorage,
 
@@ -212,7 +221,8 @@ func New(
 		},
 	)
 
-	o.startup = newStartupGate(ctx, clusters.StartupReady(), o.syncClusterDiscoveredNodes)
+	o.startup = newStartupGate(clusters.StartupReady(), clusters.LocalInstanceJoined(), o.syncClusterDiscoveredNodes)
+	o.startup.start(ctx)
 
 	// Evict old sandboxes
 	sandboxEvictor, err := evictor.New(ctx, o.sandboxStore, o.RemoveSandbox, o.featureFlagsClient, meter)

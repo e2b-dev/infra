@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/hex"
 	"errors"
@@ -15,29 +14,14 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
-	infradb "github.com/e2b-dev/infra/packages/db"
 	authdb "github.com/e2b-dev/infra/packages/db/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/keys"
 )
 
 func TestRun(t *testing.T) {
-	postgresContainer, err := postgres.Run(t.Context(),
-		"postgres:18-alpine",
-		postgres.WithDatabase("test"),
-		postgres.WithUsername("postgres"),
-		postgres.WithPassword("password"),
-		postgres.BasicWaitStrategies(),
-	)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		err := postgresContainer.Terminate(context.WithoutCancel(t.Context()))
-		assert.NoError(t, err)
-	})
-
-	connectionString, err := postgresContainer.ConnectionString(t.Context(), "sslmode=disable")
-	require.NoError(t, err)
+	connectionString := testutils.SetupDatabase(t).ConnStr()
 	t.Setenv("POSTGRES_CONNECTION_STRING", connectionString)
 
 	db, err := sql.Open("pgx", connectionString)
@@ -46,12 +30,6 @@ func TestRun(t *testing.T) {
 		err := db.Close()
 		assert.NoError(t, err)
 	})
-
-	// The files come embedded from the db module: go test does not track a
-	// file outside this module as a test input, so a migration edit read from
-	// the sibling checkout would leave a cached pass standing.
-	err = infradb.Migrate(t.Context(), db)
-	require.NoError(t, err)
 
 	canonicalUserID := uuid.New()
 	t.Setenv("SEED_USER_ID", canonicalUserID.String())

@@ -122,6 +122,10 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   Delete rates default to zero until configured.
   A group's rate is one of the team's limits and resolves with the rest of them through the
   `team_limits` view, which authentication caches; it has no source of its own.
+  Propagated project limits carry the list rate and, once the caller has resolved
+  it, the delete rate; each accepted revision replaces what it carries. A team
+  without a pushed rate uses the tier and active add-ons; zero disables group
+  limiting.
   A positive rate sets both requests per second and burst capacity. Redis enforces a separate
   budget for each team, HTTP method, and route template across API replicas: groups select
   rates, but routes do not share a budget. Exhausted budgets return HTTP 429 with rate-limit
@@ -137,6 +141,18 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   preserving V1 headers, and `enabled` also enforces V2. Ungrouped operations, unconfigured V2
   rates, and V2 Redis errors retain V1 enforcement. A rejection reports the rejecting limiter's
   headers; when both checks allow a request in enabled mode, V2 supplies the rate-limit headers.
+- **Sandbox list snapshots**: a list request reads the team's whole sandbox index from Redis
+  (its running and pausing records) and pages in memory, so with the LaunchDarkly
+  `sandbox-list-max-lag-ms` flag set for a team, each API replica shares one read between
+  that team's concurrent list requests and keeps it for the flag's value, counted from the
+  start of the read; a request that joins a read already in flight gets that read's result
+  however long it takes. A lowered flag applies to a live snapshot; a raised one from the
+  next read. Within that lag a sandbox created, killed, paused or resumed can be missing from
+  the list or shown in its previous state on the replica holding the snapshot, and one
+  resumed inside it can appear on two pages of a walk served by different replicas. The
+  default, zero, gives every request its own read with the same store commands as before.
+  Only the two list endpoints use the snapshot; the evictor, reconcile, template delete and
+  team teardown keep reading the store directly.
 - **Workload identity**: sandbox create accepts an optional `iam.tokens` map of caller-named
   workload-token definitions (each an exact `audience` and `tokenType`). A non-empty, validated
   map enables workload identity, whose identity the orchestrator derives from the sandbox's
@@ -155,7 +171,12 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   fast as they are refused. A node that reports no pool scores 0.5. Hugepage scoring
   is on by default (`BEST_OF_K_HUGEPAGE_MEMORY`); set it false to rank on
   CPU alone. K, overcommit ratio, and alpha are tunable live via feature
-  flags.
+  flags. With `placement-hugepage-limit-percent` above 0, a hugepage sandbox
+  is also refused by any node whose committed hugepages would pass that share
+  of the node's pool ceiling (base pool plus overcommit allowance, reported by
+  the orchestrator); within an API replica the check and the in-flight record
+  are one step per node, and when the compatible nodes are all full placement
+  answers with a capacity error, not "no compatible node".
 - **State**: writes sandbox records to Redis (source of truth for *running* sandboxes). It does
   not write routing: client-proxy reads the orchestrator-written `sandbox:routing:{id}` (see
   "Sandbox routing records"). Persistent entities (templates, builds, snapshots, teams) live in
@@ -170,7 +191,9 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   value. What a caller stores is a runtime marker, not a resolved secret; orchestrator-ee resolves
   a marker to a value at sandbox egress, never here. Without a configured address, or with the flag
   off, the routes stay registered and answer 403. Responses are `Cache-Control: no-store`, request bodies are capped at 512 KiB, and values
-  at 64 KiB.
+  at 64 KiB. A create carries the cap on live secrets the backend enforces: `max_secrets` is one
+  of the team's limits and resolves with the rest of them through the `team_limits` view (a pushed
+  `project_limits` value, else the tier's `max_secrets` plus active add-ons' `extra_max_secrets`).
 - **Sandbox events and webhooks**: `/events/sandboxes` reads a team's sandbox lifecycle events,
   and `/events/webhooks` manages the webhook subscriptions those events are delivered to, along
   with each subscription's delivery attempts and delivery statistics. The API stores none of
@@ -200,7 +223,8 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
 - **Outbox** (`internal/outbox`): a River client on the shared database's `river` schema
   works jobs that other services enqueue there for work needing the orchestrator
   connections. Its job arguments live in `packages/db/pkg/outbox`. The one kind today,
-  `teardown_team_resources`, stops a deleted team's workloads. A guard runs first on every
+  `teardown_team_resources`, stops a deleted team's workloads; dashboard-api enqueues it when
+  it deletes a project. A guard runs first on every
   attempt: a team that exists and is not blocked fails the attempt, and the job retries rather
   than kill a live team's sandboxes; a missing team row does not stop it. Then
   `kill_sandboxes` kills the team's running sandboxes and succeeds only once the sandbox store
@@ -233,6 +257,12 @@ under `pkg/`, almost all Linux-only.
 gRPC services on :5008 (`pkg/server/`, `pkg/service/`, `pkg/template/server/`, `pkg/volumes/`):
 
 - **SandboxService** — `Create`, `Update`, `List`, `Delete`, `Pause`, `Checkpoint`.
+  `Update` callbacks are serialized per sandbox. A successful transition out of the live
+  map closes update admission and joins any admitted callback before stop/checkpoint
+  work or stopping notifications begin; `Close` repeats that check for crash cleanup.
+  An update using an inactive sandbox returns gRPC `NotFound`, which the API maps to
+  HTTP 404 for timeout and network updates. Teardown waits for admitted callbacks;
+  it cannot preempt one that does not return.
 - **TemplateService** — `TemplateCreate`, `TemplateBuildStatus`, `TemplateBuildDelete` (template-manager role only).
 - **InfoService** — node identity, roles, capacity, health status (used by API node discovery).
 - **ChunkService / VolumeService** — peer-to-peer template chunk serving; persistent volumes.
@@ -242,6 +272,9 @@ the node to `ShuttingDown` before draining builds and sandboxes. Like `Draining`
 placement while existing work stays reachable, and `/health` returns HTTP 200 with status
 `draining`. Unlike reversible `Draining`, `ShuttingDown` is terminal for the process;
 status overrides cannot enter or leave it. `FORCE_STOP` skips waiting for sandboxes to exit.
+The sandbox drain ends only when no sandbox is live and the node's outstanding work (below) is
+zero, so a create or a resume-fresh checkpoint in flight, whose sandbox is briefly not live, holds
+it until its sandbox goes live and then ends.
 
 After sandbox drain and snapshot uploads complete, sandbox proxy cleanup attempts graceful HTTP
 server shutdown with a separate deadline, then forces server closure if needed. Successful forced
@@ -298,6 +331,9 @@ Key mechanisms (all under `pkg/sandbox/`):
   pin holds it, its devices have resolved and its upload has landed, instead of staying until
   its TTL expires. A descendant's upload then heals that ancestor's build data from storage,
   and writes the same header bytes it would have written with the ancestor still cached.
+  The sandbox and template caches start empty after a restart: the template cache empties the
+  build-data directory, and startup reclaim empties the sandbox, template and template-build
+  scratch directories.
 - **Networking** (`network/`): each sandbox gets a slot — a network namespace with a veth pair
   and a tap device, unique host-side IP (from a /16), NAT, and per-slot nftables egress firewall
   (with SNI/Host-inspecting TCP firewall for domain allow/deny lists). Slots are pooled and
@@ -359,8 +395,10 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
 - Scans guest ports and forwards them so any port a user process opens becomes reachable through
   sandbox URLs. **`pkg/version.go` carries the released version**, maintained by release-please from
   the Conventional Commits merged since the last envd release; do not edit it by hand. The API and
-  the orchestrator gate features on the envd version recorded in each template build, so a
-  behavioral change ships under a `feat`/`fix` commit type that cuts a version it can be gated on.
+  the orchestrator gate features on the envd version recorded in each template build — the
+  orchestrator's held `/init` is the one gate that reads the version of the envd expected to
+  answer instead (see sandbox creation) — so a behavioral change ships under a `feat`/`fix`
+  commit type that cuts a version it can be gated on.
 
 ### Client proxy (`packages/client-proxy`)
 
@@ -369,9 +407,51 @@ The stateless edge for all sandbox traffic (port 3002; health on 3003). Terminat
 looks the sandbox up in the Redis routing record to find the owning node, and reverse-proxies to
 that node's orchestrator proxy on :5007 by default. `ORCHESTRATOR_PROXY_PORT` selects a
 different downstream port when the node proxy listens elsewhere. If the sandbox is not in the record (paused), it calls
-the API's `ResumeSandbox` gRPC and retries — paused sandboxes wake transparently on traffic.
+the API's `ResumeSandbox` gRPC — paused sandboxes wake transparently on traffic.
 The record is the orchestrator-owned `sandbox:routing:{id}` (see "Sandbox routing records"
 below).
+
+Concurrent requests that miss the record for the same sandbox, port and credentials share one
+**resume flight** per client-proxy process: the first request's call runs detached from its
+connection under a 90 s ceiling and later requests join it, so one resume RPC serves them all
+and a client that disconnects mid-resume does not fail the others. A call whose requests have
+all left runs to its end, so a client that comes back finds the sandbox awake, but no further
+attempt starts for nobody, and a process keeps at most 64 such callerless calls; beyond that a
+departure cancels the proxy's call. That bound and that cancellation apply to the proxy's flights
+only: the API's resume entry point lets a create already under way run on past the proxy's
+cancellation, so the node finishes the create and the API registers the sandbox inside the
+reservation's 90 s window (the create may run until ten seconds before the pending reservation can
+be reaped and the registration until five seconds before, so the run-on never lets a fresh
+reservation start a second resume of the same snapshot), and the API's shutdown drain waits for
+that work, bounded at 95 s. The run-on is granted when the resume is admitted, and an API already
+draining admits none: a resume that arrives then keeps its caller's cut, so a create the proxy
+cancels mid-drain is cut with it and the reservation lapses. The sandbox otherwise lives its
+ordinary timeout or auto-pause, billed, with nobody waiting for it. With
+`client-proxy-resume-parking` on (default off), a request whose flight got a still-transitioning
+or `Unavailable` answer parks instead of failing: the flight retries
+while a parked request waits, under a budget (`client-proxy-resume-parking-budget-ms`, 15 s from
+the first retryable failure) that gates only whether another retry starts: every attempt, a late
+retry included, runs under its full 90 s ceiling while a caller waits on it, so a parked request
+can wait up to the budget plus one attempt. The proxy cuts a retry at the budget's end only once
+every caller has left, and that cut ends the proxy's wait, not the create on the node.
+A process keeps at most
+`client-proxy-resume-parking-lot-size` (512) parked requests, shedding the rest. A resume the
+control plane cannot carry out right now (no capacity, no node, the API unreachable, the budget
+spent) answers **503** with `Retry-After: 2` and no error code; a request shed because the lot was
+full answers the same **503** without the header and with `proxy_parking_lot_full` as its
+`error_code`, so a client, or one behind an ingress that strips the header, still tells the two
+apart. The SDKs do not act on the header either way: their status-based retry
+wraps only the control-plane API client, and sandbox traffic through the proxy is retried only on
+a connection failure, never on a 503. The omission is for hand-rolled retry loops and browsers
+that honour the header, which would otherwise come back in one wave while the lot is still full,
+and for a client that does the SDKs' jittered backoff on its own; a placement no retry helps, which
+the API names in an `ErrorInfo` detail on the RPC status, is not retried and answers without the
+header, with the status the API carried: **503** for a feature no orchestrator in the cluster
+supports, **500** (`sandbox_create_refused`) for a sandbox the node refuses to create, such as a
+stored build whose vCPU count is outside the node's bounds; a sandbox still pausing
+answers **409** with the header on a user port and the same page as **503** on the envd port (the
+SDK reads an envd 409 as "already exists"); a request whose client left before it was routed
+answers 408.
 
 ### Dashboard API (`packages/dashboard-api`)
 
@@ -395,7 +475,8 @@ audience matching while issuer, signature, and temporal-claim verification remai
 
 The `/v1/management` operations are the cluster's half of a contract the workspace residency owns:
 project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
-assigned once at creation from a local default and no push moves it; a changed slug renames the project, and nothing else follows it), per-member projection,
+assigned once at creation from a local default and no push moves it; an optional cluster ID is
+stored on the project, with omission preserving its current assignment; a changed slug renames the project, and nothing else follows it), per-member projection,
 and limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`). All are
 idempotent, because the caller is level-triggered and retries. `PUT
 /v1/management/projects/{projectID}/members/{userID}` applies the desired presence for one user,
@@ -445,12 +526,31 @@ The shared error response supports an optional `error_code`, defined by the dash
 may omit it. Callers use that stable code rather than the human-readable message, and treat
 uncoded or unknown reasons as generic errors.
 
-`DELETE /v1/management/projects/{teamID}` is declared and answers 501. `envs`, `snapshots` and
-`volumes` reference `teams` with `ON DELETE NO ACTION` and templates are only soft-deleted, so a
-project that ever built one pins its team row — and releasing it needs the API service's
-orchestrator connections, which this service does not have. The API's `teardown_team_resources`
-outbox job (see the API section) is the worker for that release; nothing enqueues it yet, and
-projects are not deleted from control planes today.
+`DELETE /v1/management/projects/{projectID}` soft-deletes any project, including a member's
+default project; whether a project may be deleted is the caller's decision. `envs`,
+`snapshots` and `volumes` reference `teams` with `ON DELETE NO ACTION`, so the team row
+stays. One transaction locks the row (404 if it is missing), sets `teams.deleted_at`,
+blocks the team (a CHECK keeps every deleted team blocked), clears its
+cluster assignment, scrubs its name and email to `DELETED` and its slug to
+`deleted-<project ID>` (releasing the old slug for reuse), deletes its memberships and API
+keys, soft-deletes its templates, snapshot templates and paused-sandbox snapshots the way a
+template deletion does (releasing their aliases and build tracking), and enqueues the API's
+`teardown_team_resources` outbox job with River's `InsertTx`, so the teardown runs exactly
+when the deletion commits. dashboard-api holds an insert-only River client for this; it works
+no jobs. After commit it evicts the deleted keys' auth cache entries best-effort; the team's
+other cached entries refresh or expire on their own. Repeating the call answers 204 and runs
+every step again, keeping only the first deletion's time: it re-blocks and re-scrubs the team
+and clears its cluster, undoing a block reason, rename or cluster assignment (from the cluster
+route or an upsert carrying a cluster ID) written by a delivery that passed its
+deleted-project check just before the first call committed; it deletes memberships, keys and
+envs created since (a sandbox that paused before the teardown killed it leaves a snapshot);
+and it enqueues the teardown again, which is a no-op while one is still open. Afterwards a
+dashboard-api middleware, running after authentication, answers 404 to every write under
+`/v1/management/` or `/admin/` that names the project by `projectID` or `teamID` (project
+upsert, member, limits and block deliveries, cluster assignment and detachment, admin block
+and ban); the project DELETE is exempt so a retry still reaches it. Shared auth refuses a
+membership or API key still left for the project with 403, and the API leaves it out of a
+user's team list. Volumes, builds and stored artifacts are not reclaimed.
 
 ## Data stores
 
@@ -501,7 +601,7 @@ sequenceDiagram
     O->>O: fetch template (local cache / NFS / object storage)
     O->>O: acquire network slot + NBD rootfs overlay + uffd memory
     O->>FC: load snapshot, resume VM
-    O->>E: POST /init (env vars, access token) — retried until ready
+    O->>E: POST /init (env vars, access token) — held until envd reads it; older envds: retried until ready
     E-->>O: 204
     O-->>API: Create OK
     API->>R: store running sandbox
@@ -512,6 +612,22 @@ The API blocks on the gRPC `Create`, which itself blocks on envd's `/init` — w
 gets a response, the sandbox is fully usable. Fresh creates are internally a *resume* of the
 template's base snapshot (cold boots happen for filesystem-only templates and builds, or when
 an explicit resume requests one — see pause and resume below; template creates never do).
+
+How that `/init` reaches envd depends on the envd expected to answer it. Behind the
+`envd-init-held-request` flag, and for an envd at or above 0.10.0, the orchestrator sends one
+**held request**: it dials the guest first, writes a single `/init` with `Expect: 100-continue`
+over that connection, and withholds the body — timestamp included — until envd's handler asks
+for it, so the body is minted after the request has cleared the guest's accept queue and
+dispatch rather than before. The request waits for envd up to the caller's envd-wait budget and
+is re-sent only after a transport failure (a refused connect, or a connection that dropped under
+it), never on a timer. Older envds, and every sandbox with the flag off, keep the **legacy loop**:
+a complete `/init` posted and retried until envd answers. The gate reads the envd version it
+expects to answer, in this order: the version a confirmed live upgrade delivered in this life,
+else the version an offline upgrade swapped onto the rootfs before this boot, else the version
+the running envd last reported on `/init` when it parses as a version, else the running version
+the snapshot recorded at pause, else the version baked into the template build. The first two
+are binaries the orchestrator staged itself; the rest are the guest's word, which only ever
+chooses between the two loops for that guest.
 
 #### Opt-in request idempotency
 
@@ -628,8 +744,8 @@ sequenceDiagram
     alt running
         R-->>CP: node IP
     else paused / unknown
-        CP->>API: gRPC ResumeSandbox(i7fa3)
-        API-->>CP: node IP (after resume)
+        CP->>API: gRPC ResumeSandbox(i7fa3) — one flight shared by concurrent requests
+        API-->>CP: node IP (after resume), or 409 / 503 + Retry-After to the client
     end
     CP->>OP: forward to http://nodeIP:5007
     OP->>OP: lookup sandbox, check traffic access token
@@ -655,18 +771,20 @@ sandboxes are skipped. The delete is guarded by `execution_id` in a Lua script, 
 lifecycle never removes the record of a newer execution. On a miss client-proxy goes to the
 auto-resume path (`ResumeSandbox` gRPC to the API).
 
-Deploy order: every orchestrator on a cluster must run a build that publishes the record for one
-maximum sandbox length before client-proxy is upgraded past the flag-gated builds. Otherwise
-requests for sandboxes started before the orchestrator upgrade miss the record and go to the
-resume path.
-
 The TTL of the record is `sandbox_max_length_in_hours` from the write time. The record is
 deleted earlier in every normal stop path.
 
 A routed sandbox adds `lifecycle_id` (its Firecracker process) and `network_placement` with the
-mode, Router and Portable IP. The record carries no configuration: the
-orchestrator hands the Router its policy and workload identity over gRPC before the create call
-returns. An absent placement means the legacy per-worker network. Nothing writes a placement yet.
+mode, Router, Portable IP and ingress endpoint (`ingress_address`, `ingress_port`). The endpoint is
+the Router for full-router and the worker for egress-router. The record carries location only. The
+orchestrator owns the Router configuration, which never travels through this record. An absent
+placement means the legacy per-worker network. The orchestrator publisher does not write a
+placement yet.
+
+The API keeps the placement returned by the winning orchestrator create on its own sandbox record
+in Redis (`networkPlacement`), and callers that join the same start get the same placement. A new
+execution carries only its own create's placement. Nothing routes on it yet: client-proxy and the
+API still send traffic to the worker.
 
 ### Volume content
 
@@ -736,9 +854,77 @@ sequenceDiagram
     async upload — and any origin-node resume/prefetch that reads the rootfs diff — waits on the
     seal. A seal failure is permanent (it never re-runs), so the upload fails fast rather than
     retrying.
+  - **Per-sandbox pause rate limit** (gated by the `sandbox-pause-rate-limit` flag,
+    `{"limit": N, "period_s": S}` with S at most 600): before the pause transition, the pause
+    endpoint reads the sandbox record and counts the pause against a budget of N pauses per period
+    (GCRA, burst N) in Redis under `ratelimit:sandbox-pause:{sandboxID}`. An exhausted budget
+    answers HTTP 429 with `Retry-After` and leaves the sandbox running. The count is per
+    execution ID, so concurrent requests for one execution use one slot; a record that is
+    missing or already pausing is not counted, and Redis errors let the pause through. The
+    pause is pinned (`ExpectExecutionID`) to the record the limiter read, so a resume landing
+    between the check and the pause sends the new execution back through the limiter instead
+    of pausing it uncounted. The key expires once the budget is full again, at most one period
+    after the last counted pause. Timeout auto-pauses are not limited.
 - **Resume**: same path as creation, but placement prefers the **origin node** — if the snapshot
-  is still in its local cache, resume avoids any object-storage reads. `Checkpoint` is a
+  is still in its local cache, resume avoids any object-storage reads. The origin node gets
+  the same hugepage-limit check as any other node, so a full origin is skipped. `Checkpoint` is a
   pause+resume in place used to persist state while keeping the sandbox running.
+- **Post-checkpoint re-init and the pre-pause cut**: after an in-place checkpoint the sandbox
+  keeps running, so the orchestrator re-sends `/init` in the background to re-sync the guest
+  clock. The re-init is best-effort, bounded by the envd-wait budget and by the VM's liveness,
+  and published on the sandbox before it starts, because a held re-init whose `/init` landed
+  after the pre-pause freeze would have envd serve it behind that freeze and thaw the workload
+  the snapshot is about to capture. A Pause therefore cuts the published re-init before it
+  freezes — a held one is cancelled wherever it is, one that has not yet chosen its loop is
+  refused when it does, one already on the legacy loop is left to run as before — and holds
+  publication, so no fresh re-init starts between the cut and the freeze. The hold is released
+  once the freeze lands, or once the Pause gives up before it; in the latter case the Pause's
+  cleanup restarts the re-init it cut, since the VM never paused and the clock re-sync is still
+  owed. The **prefetch harvest** that follows a pause or an in-place checkpoint resumes a
+  network-isolated throwaway of the new snapshot to record which memory pages its resume
+  touches; the throwaway's held `/init` asks envd to skip the thaw, so the workload never runs
+  and the trace holds only the resume's own faults. A throwaway the gate routes to the legacy
+  loop sends no such request, and envd thaws inline as before.
+
+- **Resume-fresh checkpoint ownership**: when the in-place route is not available, a checkpoint
+  snapshots the sandbox and resumes a fresh VM from the new build under the same execution. From
+  the reservation on, the old VM is lost on any failure and the resume is the only way the sandbox
+  survives, so that work belongs to the node, not to the caller. The node claims the sandbox for
+  the checkpoint at the reservation, while its live entry still exists, and holds the claim until
+  the resumed sandbox is live or, on failure, until the rollback has run and the reservation is
+  released, so no interleaving finds the sandbox neither live nor in flight. Everything past the
+  reservation runs detached from the caller's cancellation. The snapshot phase and the resume
+  phase (template, resume, envd upgrade, registration) each have their own ten-minute budget,
+  observed by the steps that take the context (the Firecracker pause on this route does) and
+  between steps: a step that does not take it outlives the budget. Only a Delete for the sandbox
+  or the orchestrator's shutdown ends the checkpoint early. A Delete that arrives during the window
+  cancels the checkpoint and waits for
+  it, so the rollback is that delete and no VM the API stopped tracking goes live later. It
+  answers success when its cancellation is what ends the sandbox's lifecycle, and not found when
+  the checkpoint ended for its own cause or never held the sandbox, even when the Delete's own
+  deadline expires first; a reservation still being taken at that deadline counts as held, and the
+  acknowledgement below covers it. A Delete answering for a checkpoint that ended for its own
+  cause or never held the sandbox is first handed any sandbox of the checkpoint's that is live
+  again, the original the registry put back after a failure in the reservation, and answers
+  success for it. A publication the cancellation did not reach can still go live, and the
+  checkpoint then kills it with the Delete's reason: the Delete records its acknowledgement with
+  its final read of the live map under the operation's mutex, and the publication reads that
+  acknowledgement after its insert under the same mutex, so one of the two always sees the other.
+  While a checkpoint is in flight, Pause answers the same retryable refusal a busy node gives,
+  and a second Checkpoint answers operation-in-progress. The checkpoint marker is the sandbox's
+  own and is shared by both routes, so an in-place checkpoint and a resume-fresh one on the same
+  sandbox refuse each other. Shutdown cancels a detached checkpoint after the sandbox drain, as
+  the gRPC server closes, so it cannot hold a handler open for minutes. The kill accounting
+  follows the cause: a checkpoint a Delete ended records the kill and publishes the killed event
+  and counter with the Delete's reason, as the in-place path does for its own teardown, whereas
+  a resumed VM torn down by a budget or by shutdown is not labelled killed.
+
+  Two limits remain. The in-place checkpoint path is still bound to the caller's context, so
+  this ownership covers only the resume-fresh route. And the API still marks the build failed
+  when its own request ends before the node answers, even when the node's work later succeeds,
+  because the outcome is unknown to it; it restores the sandbox to Running rather than kill it.
+  A caller timeout therefore no longer means the snapshot or the VM creation stopped, only that
+  the build row records a failure the node may have gone on to complete.
 - **Fork**: checkpoints the original in place, then starts each fork from that snapshot as a
   new sandbox rather than a resume — like a sandbox created from a snapshot template — so
   placement spreads the forks across nodes instead of preferring the original's node.
@@ -755,7 +941,10 @@ sequenceDiagram
   full snapshot or a pause and resume). The request is never downgraded to a memory snapshot.
   The snapshot row records the kind only once the build is ready, and the pause and fork paths
   keep the same rule, so a refused or failed request leaves the previous build resumed as what
-  it is.
+  it is. Each snapshot build also records its own kind (`env_builds.filesystem_only`) when it is
+  created. A sandbox created from a snapshot template reads that, because the source's row
+  follows its later snapshots, and placement holds such a cold boot to the
+  `fs-only-resume-cpu-model` CPU model as it does a filesystem-only resume.
 - **Explicit filesystem-only resume**: `memory: false` on resume/connect demands a cold boot
   (`RebootSandbox`) even when the snapshot includes memory, as a self-serve rescue when the
   restored memory state is unusable. Gated per team by the `fs-only-resume-api` flag; when off
@@ -849,6 +1038,11 @@ sequenceDiagram
     API->>API: mark build ready in Postgres
 ```
 
+The project provisioning system enqueues a base build when a cluster-backed project becomes active.
+The job registers and starts an ordinary base build, then completes when the API accepts it.
+A failed delivery may rebuild on retry; regional build tracking owns completion and timeouts.
+Ordinary projects do not enqueue this job.
+
 Builds are **layered** (`pkg/template/build/phases/`): base → user → one layer per recipe step →
 resize disk → finalize → optimize. Each layer is hashed and cached, so rebuilds only re-run changed
 steps. Resize disk grows the quiescent rootfs on the host; the other non-cached phases run in a real
@@ -899,7 +1093,10 @@ flowchart TB
 - PostgreSQL is external (connection string via secrets); Redis is a managed service or a
   single in-cluster instance; ClickHouse runs on its own nodes.
 - Observability: everything exports OTel; the collector fans out to ClickHouse (product metrics)
-  and Grafana Cloud/stack. Logs default to the legacy Vector → Loki path; dynamic log routing can
+  and Grafana Cloud/stack. The API and orchestrator export synchronous counters and histograms
+  as deltas, so per-team series do not accumulate in process memory; the collector converts
+  them back to cumulative (`deltatocumulative`) before any Prometheus backend, which only works
+  when each of those processes sends to a collector on its own node. Logs default to the legacy Vector → Loki path; dynamic log routing can
   select a primary collector and shadow collectors, and local-cluster log reads can be switched to
   ClickHouse with `logs-read-config` after `sandbox_logs` is populated (`LOGS_READ_CONFIG` is the
   flag's fallback where LaunchDarkly has no value). Once reads are on ClickHouse, Loki can be left

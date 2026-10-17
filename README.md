@@ -71,7 +71,7 @@ curl -fsSL --remote-name-all "https://raw.githubusercontent.com/e2b-dev/runtime/
 docker compose up -d --wait
 ```
 
-The same package ships as Terraform for GCP and as a Kubernetes manifest. It is an evaluation package, not a production deployment pattern.
+The same package ships as Terraform for GCP, AWS, and Azure and as a Kubernetes manifest. Embed is one machine by design; when one node is not enough, see below.
 
 **In your own cloud, for production.** E2B runs the runtime as a dedicated deployment inside your account, with your data staying there. See [e2b.dev/enterprise](https://e2b.dev/enterprise?utm_source=github&utm_medium=referral&utm_campaign=readme&utm_content=runtime).
 

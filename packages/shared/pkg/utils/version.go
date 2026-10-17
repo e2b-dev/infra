@@ -35,6 +35,12 @@ const MinEnvdVersionForFsFreeze = "0.6.6"
 // skipped.
 const MinEnvdVersionForUpgrade = "0.6.12"
 
+// MinEnvdVersionForHeldInit is the first envd that corrects the /init timestamp by its own
+// time from reading the body to the clock step, honours /init's thaw: "skip", and withholds
+// the inline thaw of an /init a freeze overtook. The held envd init request runs only at or
+// above it.
+const MinEnvdVersionForHeldInit = "0.10.0"
+
 func sanitizeVersion(version string) string {
 	if len(version) > 0 && version[0] != 'v' {
 		version = "v" + version
@@ -54,6 +60,11 @@ func CheckEnvdVersionForSnapshot(envdVersion string) error {
 	}
 
 	return nil
+}
+
+// IsValidVersion reports whether version parses as semver, with or without its leading v.
+func IsValidVersion(version string) bool {
+	return semver.IsValid(sanitizeVersion(version))
 }
 
 func IsGTEVersion(curVersion, minVersion string) (bool, error) {

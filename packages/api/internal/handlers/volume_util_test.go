@@ -1,11 +1,17 @@
 package handlers
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"net"
 	"testing"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/cfg"
@@ -148,6 +154,105 @@ func TestFindNodesByVolumeLabel(t *testing.T) {
 
 			assert.Equal(t, tc.expectedMatched, matchedIDs(matched))
 			assert.Equal(t, tc.expectedUnmatched, matchedIDs(unmatched))
+		})
+	}
+}
+
+func TestIsRetryableError(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "closed connection", err: net.ErrClosed, want: true},
+		{name: "context deadline", err: context.DeadlineExceeded, want: true},
+		{name: "node unavailable", err: status.Error(codes.Unavailable, "connection refused"), want: true},
+		{name: "wrapped node unavailable", err: fmt.Errorf("create volume: %w", status.Error(codes.Unavailable, "connection refused")), want: true},
+		{name: "remote deadline may have applied the change", err: status.Error(codes.DeadlineExceeded, "deadline exceeded"), want: false},
+		{name: "invalid argument", err: status.Error(codes.InvalidArgument, "bad volume"), want: false},
+		{name: "plain error", err: errors.New("boom"), want: false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			assert.Equal(t, tc.want, isRetryableError(tc.err))
+		})
+	}
+}
+
+func TestExecuteOnNodes(t *testing.T) {
+	t.Parallel()
+
+	unavailable := status.Error(codes.Unavailable, "connection refused")
+	remoteDeadline := status.Error(codes.DeadlineExceeded, "deadline exceeded")
+
+	tests := []struct {
+		name      string
+		statuses  map[string]api.NodeStatus // nodes default to ready
+		results   map[string]error          // nodes default to success
+		wantErr   error
+		wantCalls []string
+	}{
+		{
+			name:      "unavailable node moves on to the next",
+			results:   map[string]error{"a": unavailable},
+			wantCalls: []string{"a", "b"},
+		},
+		{
+			name:      "remote deadline stops the loop",
+			results:   map[string]error{"a": remoteDeadline},
+			wantErr:   remoteDeadline,
+			wantCalls: []string{"a"},
+		},
+		{
+			name:      "every node unavailable",
+			results:   map[string]error{"a": unavailable, "b": unavailable},
+			wantErr:   ErrNoHealthyOrchestratorFound,
+			wantCalls: []string{"a", "b"},
+		},
+		{
+			name:      "node that cannot accept requests is skipped",
+			statuses:  map[string]api.NodeStatus{"a": api.NodeStatusUnhealthy},
+			wantCalls: []string{"b"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var nodes []*nodemanager.Node
+			nodeByClient := map[*clusters.GRPCClient]string{}
+			for _, id := range []string{"a", "b"} {
+				nodeStatus, ok := tc.statuses[id]
+				if !ok {
+					nodeStatus = api.NodeStatusReady
+				}
+
+				node := nodemanager.NewTestNode(id, nodeStatus, 0, 1)
+				client, _ := node.GetClient(t.Context())
+				nodeByClient[client] = id
+				nodes = append(nodes, node)
+			}
+
+			var calls []string
+			err := executeOnNodes(t.Context(), nodes, func(_ context.Context, client *clusters.GRPCClient) error {
+				id := nodeByClient[client]
+				calls = append(calls, id)
+
+				return tc.results[id]
+			})
+
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+			} else {
+				require.ErrorIs(t, err, tc.wantErr)
+			}
+			assert.Equal(t, tc.wantCalls, calls)
 		})
 	}
 }

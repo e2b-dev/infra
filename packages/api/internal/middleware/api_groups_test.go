@@ -135,6 +135,44 @@ func TestWithAPIGroupPreservesAuthenticationFailure(t *testing.T) {
 	assert.Zero(t, handlerCalls)
 }
 
+func TestWithAPIGroupRejectsUnauthenticatedEncodedTemplatePath(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range []string{"/templates/team%2Ftemplate-a/tags", "/templates/team%2ftemplate-a/tags"} {
+		t.Run(path, func(t *testing.T) {
+			t.Parallel()
+
+			spec, err := api.GetSpec()
+			require.NoError(t, err)
+			spec.Servers = nil
+			authCalls, handlerCalls := 0, 0
+			r := gin.New()
+			r.UseRawPath = true
+			r.Use(ginmiddleware.OapiRequestValidatorWithOptions(spec, &ginmiddleware.Options{
+				Options: openapi3filter.Options{
+					AuthenticationFunc: WithAPIGroup(func(context.Context, *openapi3filter.AuthenticationInput) error {
+						authCalls++
+
+						return errors.New("authentication failed")
+					}),
+				},
+				ErrorHandler: func(c *gin.Context, _ string, _ int) {
+					c.AbortWithStatus(http.StatusUnauthorized)
+				},
+			}))
+			r.GET("/templates/:templateID/tags", func(c *gin.Context) {
+				handlerCalls++
+				c.Status(http.StatusNoContent)
+			})
+			response := httptest.NewRecorder()
+			r.ServeHTTP(response, httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil))
+			assert.Equal(t, http.StatusUnauthorized, response.Code)
+			assert.Positive(t, authCalls)
+			assert.Zero(t, handlerCalls)
+		})
+	}
+}
+
 func TestWithAPIGroupPreservesValidatedRequestBody(t *testing.T) {
 	t.Parallel()
 

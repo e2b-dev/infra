@@ -209,9 +209,11 @@ func TestIntegration_BurstThenDeny(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, routeConfig(1, 3))
+	ff := newTestFF(t, map[string]map[string]int{
+		testRoute: {"rate": 1, "burst": 3, "period_s": 600}, // slow refill so burst is the effective limit
+	})
 
-	r := newRouterWithTeam(t, limiter, Config{FailOpen: true}, ff, uuid.New())
+	r := newRouterWithTeam(t, limiter, Config{FailOpen: false}, ff, uuid.New())
 
 	// First 3 requests should succeed (burst).
 	for i := range 3 {
@@ -276,9 +278,11 @@ func TestIntegration_IndependentTeams(t *testing.T) {
 
 	redisClient := redis_utils.SetupInstance(t)
 	limiter := redis_rate.NewLimiter(redisClient)
-	ff := newTestFF(t, routeConfig(1, 1))
+	ff := newTestFF(t, map[string]map[string]int{
+		testRoute: {"rate": 1, "burst": 1, "period_s": 600}, // slow refill so burst is the effective limit
+	})
 
-	cfg := Config{FailOpen: true}
+	cfg := Config{FailOpen: false}
 
 	teamA := uuid.New()
 	teamB := uuid.New()
@@ -775,7 +779,7 @@ func TestIntegration_APIGroupUsesIndependentRouteBudgets(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping Redis integration test")
 	}
-	limiter := redis_rate.NewLimiter(redis_utils.SetupInstance(t))
+	limiter := slowRefillRedisLimiter(t)
 	team := groupTeam(1)
 	f := groupRouter(t, limiter, "enabled", team)
 	otherTeam := groupRouter(t, limiter, "enabled", groupTeam(1))
@@ -793,7 +797,7 @@ func TestIntegration_APIGroupUsesRouteTemplate(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping Redis integration test")
 	}
-	limiter := redis_rate.NewLimiter(redis_utils.SetupInstance(t))
+	limiter := slowRefillRedisLimiter(t)
 	f := groupRouter(t, limiter, "enabled", groupTeam(1))
 	assert.Equal(t, http.StatusNoContent, groupRequest(t, f.router, http.MethodGet, "/templates/template-a/tags?value=1").Code)
 	assert.Equal(t, http.StatusTooManyRequests, groupRequest(t, f.router, http.MethodGet, "/templates/template-b/tags?value=2").Code)
@@ -805,7 +809,7 @@ func TestIntegration_APIGroupRolloutModes(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping Redis integration test")
 	}
-	limiter := redis_rate.NewLimiter(redis_utils.SetupInstance(t))
+	limiter := slowRefillRedisLimiter(t)
 	team := groupTeam(1)
 	f := groupRouter(t, limiter, "disabled", team)
 	for range 3 {

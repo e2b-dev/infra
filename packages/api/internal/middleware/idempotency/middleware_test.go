@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/getkin/kin-openapi/openapi3filter"
@@ -19,6 +20,8 @@ import (
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
 	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	ginmiddleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/redis/go-redis/v9"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -110,6 +113,17 @@ func testRouter(t *testing.T, flags *featureflags.Client, store store, teamID uu
 	api.RegisterHandlers(r, createHandler{create: create})
 
 	return r
+}
+
+// untilTestDeadline is a request budget for tests that do not assert on deadlines, so a slow runner cannot expire it.
+func untilTestDeadline(t *testing.T) time.Duration {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		return 24 * time.Hour
+	}
+
+	return time.Until(deadline)
 }
 
 func request(ctx context.Context, r http.Handler, path, body string, keys []string, headers ...string) *httptest.ResponseRecorder {
@@ -275,13 +289,13 @@ func TestRedisMiddleware(t *testing.T) {
 		handler := func(c *gin.Context) {
 			if calls.Add(1) == 1 {
 				close(started)
+				<-release
 			}
-			<-release
 			c.Data(201, "application/json", []byte("{\"sandboxID\":\"original\"}\n"))
 		}
 		routers := []*gin.Engine{
-			testRouter(t, flags, &redisStore{client: client}, team, 10*time.Second, handler),
-			testRouter(t, flags, &redisStore{client: client}, team, 10*time.Second, handler),
+			testRouter(t, flags, &redisStore{client: client}, team, untilTestDeadline(t), handler),
+			testRouter(t, flags, &redisStore{client: client}, team, untilTestDeadline(t), handler),
 		}
 		owner := make(chan *httptest.ResponseRecorder, 1)
 		ownerDone := make(chan struct{})
@@ -306,20 +320,8 @@ func TestRedisMiddleware(t *testing.T) {
 					"X-API-Key", "b", "X-Request-ID", fmt.Sprint(i), "RateLimit-Remaining", "10", "traceparent", fmt.Sprint(i))
 			})
 		}
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
-		defer func() {
-			releaseOwner()
-			<-done
-		}()
-		select {
-		case <-done:
-		case <-time.After(2 * time.Second):
-			t.Fatal("pending requests waited for the owner instead of returning immediately")
-		}
+		// The owner stays blocked until releaseOwner, so these return only if they do not wait for it.
+		wg.Wait()
 		require.EqualValues(t, 1, calls.Load())
 		for i, result := range responses {
 			require.Equal(t, http.StatusConflict, result.Code, result.Body.String())
@@ -355,7 +357,7 @@ func TestRedisMiddleware(t *testing.T) {
 		var calls atomic.Int64
 		limiter, err := ratelimit.Middleware(ratelimit.NewLimiter(client), ratelimit.Config{FailOpen: true}, flags, noop.NewMeterProvider(), logger.NewNopLogger())
 		require.NoError(t, err)
-		r := testRouter(t, flags, s, team, time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, team, untilTestDeadline(t), func(c *gin.Context) {
 			calls.Add(1)
 			c.Data(500, "application/json", []byte(`{"code":500,"message":"original error"}`))
 		}, limiter, func(c *gin.Context) { auth.MustGetTeamInfo(c).IsBlocked = blocked.Load() })
@@ -380,7 +382,7 @@ func TestRedisMiddleware(t *testing.T) {
 		require.Equal(t, original.Body.String(), w.Body.String())
 		require.Equal(t, original.Code, w.Code)
 		require.EqualValues(t, 1, calls.Load())
-		td.Update(td.Flag(featureflags.RateLimitConfigFlag.Key()).ValueForAll(ldvalue.CopyArbitraryValue(map[string]map[string]int{"/v2/sandboxes": {"rate": 1, "burst": 1}})))
+		td.Update(td.Flag(featureflags.RateLimitConfigFlag.Key()).ValueForAll(ldvalue.CopyArbitraryValue(map[string]map[string]int{"/v2/sandboxes": {"rate": 1, "burst": 1, "period_s": 600}})))
 		request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		require.Equal(t, 429, w.Code, w.Body.String())
@@ -391,7 +393,7 @@ func TestRedisMiddleware(t *testing.T) {
 		t.Parallel()
 		flags, _ := testFlags(t, false, 86400)
 		calls := 0
-		r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, uuid.New(), untilTestDeadline(t), func(c *gin.Context) {
 			calls++
 			c.Status(201)
 		})
@@ -415,7 +417,7 @@ func TestRedisMiddleware(t *testing.T) {
 		t.Parallel()
 		flags, _ := testFlags(t, false, 86400)
 		calls := 0
-		r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, uuid.New(), untilTestDeadline(t), func(c *gin.Context) {
 			calls++
 			c.Status(201)
 		})
@@ -437,7 +439,7 @@ func TestRedisMiddleware(t *testing.T) {
 		t.Parallel()
 		flags, _ := testFlags(t, false, 86400)
 		calls := 0
-		r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, s, uuid.New(), untilTestDeadline(t), func(c *gin.Context) {
 			calls++
 			c.Data(201, "application/json", []byte(`{"sandboxID":"original"}`))
 		})
@@ -457,7 +459,7 @@ func TestRedisMiddleware(t *testing.T) {
 		release := make(chan struct{})
 		releaseOwner := sync.OnceFunc(func() { close(release) })
 		var calls atomic.Int64
-		r := testRouter(t, flags, s, team, time.Minute, func(c *gin.Context) {
+		r := testRouter(t, flags, s, team, untilTestDeadline(t), func(c *gin.Context) {
 			if calls.Add(1) == 1 {
 				close(started)
 				<-release
@@ -480,8 +482,6 @@ func TestRedisMiddleware(t *testing.T) {
 		case <-started:
 		case <-ownerDone:
 			t.Fatalf("owner returned before executing: %s", (<-owner).Body.String())
-		case <-time.After(5 * time.Second):
-			t.Fatal("owner did not start")
 		}
 		cancelOwner()
 		key := recordKey(team.String(), "key")
@@ -522,13 +522,13 @@ func TestRedisMiddleware(t *testing.T) {
 				case "abandoned":
 					digest, err := fingerprint(jsonRequest(t), validatedRequest(t, flags, validBody))
 					require.NoError(t, err)
-					_, err = s.reserve(t.Context(), key, digest, "previous", featureflags.APIIdempotencyTTLSeconds.Fallback(), time.Now().Add(time.Minute))
+					_, err = s.reserve(t.Context(), key, digest, "previous", featureflags.APIIdempotencyTTLSeconds.Fallback(), time.Now().Add(untilTestDeadline(t)))
 					require.NoError(t, err)
 				case "complete":
 					fault.completeErr = failure
 				}
 				calls := 0
-				r := testRouter(t, flags, fault, team, time.Second, func(c *gin.Context) {
+				r := testRouter(t, flags, fault, team, untilTestDeadline(t), func(c *gin.Context) {
 					calls++
 					c.Data(201, "application/json", []byte(`{"sandboxID":"original"}`))
 					c.Writer.Flush()
@@ -561,7 +561,7 @@ func TestRedisMiddleware(t *testing.T) {
 				before, err := client.HGetAll(t.Context(), key).Result()
 				require.NoError(t, err)
 				previousCalls := calls
-				r = testRouter(t, flags, s, team, time.Second, func(_ *gin.Context) { calls++ })
+				r = testRouter(t, flags, s, team, untilTestDeadline(t), func(_ *gin.Context) { calls++ })
 				for range 3 {
 					w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 					require.Equal(t, http.StatusConflict, w.Code)
@@ -598,7 +598,7 @@ func TestRedisMiddleware(t *testing.T) {
 			require.NoError(t, err)
 			require.Positive(t, reservedExpiry)
 		}}
-		r := testRouter(t, flags, fault, team, time.Second, func(c *gin.Context) {
+		r := testRouter(t, flags, fault, team, untilTestDeadline(t), func(c *gin.Context) {
 			c.Data(400, "application/json", []byte("{\"code\":400}\n"))
 			c.Writer.Flush()
 			cancel()
@@ -621,83 +621,106 @@ func TestRedisMiddleware(t *testing.T) {
 	})
 }
 
+type scriptedRedisClient struct {
+	redis.UniversalClient
+
+	evalSha func(context.Context, string, []string, ...any) *redis.Cmd
+}
+
+func (c scriptedRedisClient) EvalSha(ctx context.Context, sha string, keys []string, args ...any) *redis.Cmd {
+	return c.evalSha(ctx, sha, keys, args...)
+}
+
 func TestResponseDeadlineFromOriginalRequest(t *testing.T) {
 	t.Parallel()
-	client := redisutils.SetupInstance(t)
 	flags, _ := testFlags(t, false, 60)
-	team := uuid.New()
-	started := make(chan struct{})
-	release := make(chan struct{})
-	releaseOwner := sync.OnceFunc(func() { close(release) })
-	var calls atomic.Int64
-	handler := func(c *gin.Context) {
-		if calls.Add(1) == 1 {
-			close(started)
-			<-release
-		}
-		c.JSON(http.StatusCreated, gin.H{"sandboxID": "original"})
-	}
-	ownerRouter := testRouter(t, flags, &redisStore{client: client}, team, time.Minute, handler)
-	retryRouter := testRouter(t, flags, &redisStore{client: client}, team, time.Minute, handler)
-	reservationStart, err := client.Time(t.Context()).Result()
-	require.NoError(t, err)
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-	defer cancel()
-	owner := make(chan *httptest.ResponseRecorder, 1)
-	ownerDone := make(chan struct{})
-	go func() {
-		defer close(ownerDone)
-		owner <- request(ctx, ownerRouter, "/v2/sandboxes", validBody, []string{"key"})
-	}()
-	defer func() {
-		releaseOwner()
-		<-ownerDone
-	}()
-	select {
-	case <-started:
-	case <-ownerDone:
-		t.Fatalf("owner returned before executing: %s", (<-owner).Body.String())
-	case <-time.After(5 * time.Second):
-		t.Fatal("owner did not start")
-	}
-	key := recordKey(team.String(), "key")
-	responseDeadline, err := client.HGet(t.Context(), key, "expected_response_at").Int64()
-	require.NoError(t, err)
-	require.GreaterOrEqual(t, responseDeadline, reservationStart.Add(completionTimeout).UnixMilli())
-	now, err := client.Time(t.Context()).Result()
-	require.NoError(t, err)
-	remaining := responseDeadline - now.UnixMilli()
-	require.Positive(t, remaining)
-	require.LessOrEqual(t, remaining, (time.Second + completionTimeout).Milliseconds())
-	before, err := client.HGetAll(t.Context(), key).Result()
-	require.NoError(t, err)
-	expiresAt, err := client.PExpireTime(t.Context(), key).Result()
-	require.NoError(t, err)
-	w := request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
-	require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
-	require.Contains(t, w.Body.String(), `"error_code":"idempotency_in_progress"`)
-	require.Eventually(t, func() bool {
-		now, err := client.Time(t.Context()).Result()
+	synctest.Test(t, func(t *testing.T) {
+		team := uuid.New()
+		key := recordKey(team.String(), "key")
+		responseDeadline := time.Now().Add(time.Second + completionTimeout)
+		var fingerprint, reservationOwner, response string
+		var reserveCalls, completeCalls int
+		client := scriptedRedisClient{evalSha: func(ctx context.Context, sha string, keys []string, args ...any) *redis.Cmd {
+			if err := ctx.Err(); err != nil {
+				t.Errorf("Redis called with canceled context: %v", err)
 
-		return err == nil && now.UnixMilli() >= responseDeadline
-	}, completionTimeout+2*time.Second, 20*time.Millisecond)
-	w = request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
-	require.Equal(t, http.StatusUnprocessableEntity, w.Code, w.Body.String())
-	require.Contains(t, w.Body.String(), `"error_code":"idempotency_outcome_unknown"`)
-	require.EqualValues(t, 1, calls.Load())
-	after, err := client.HGetAll(t.Context(), key).Result()
-	require.NoError(t, err)
-	require.Equal(t, before, after)
-	afterExpiry, err := client.PExpireTime(t.Context(), key).Result()
-	require.NoError(t, err)
-	require.Equal(t, expiresAt, afterExpiry)
-	releaseOwner()
-	original := <-owner
-	require.Equal(t, http.StatusCreated, original.Code, original.Body.String())
-	w = request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
-	require.Equal(t, original.Code, w.Code)
-	require.Equal(t, original.Body.String(), w.Body.String())
-	require.EqualValues(t, 1, calls.Load())
+				return redis.NewCmdResult(nil, err)
+			}
+			assert.Equal(t, []string{key}, keys)
+			switch sha {
+			case reserveScript.Hash():
+				reserveCalls++
+				assert.Equal(t, 60, args[2])
+				if reserveCalls == 1 {
+					// Verify the real store sends the original caller's budget to Redis.
+					assert.Equal(t, (time.Second + completionTimeout).Milliseconds(), args[3])
+					fingerprint = args[0].(string)
+					reservationOwner = args[1].(string)
+
+					return redis.NewCmdResult([]any{"true", "", "", "", ""}, nil)
+				}
+				assert.Equal(t, fingerprint, args[0])
+				assert.Equal(t, (time.Minute + completionTimeout).Milliseconds(), args[3])
+				// Redis keeps the original deadline even when a retry has a longer budget.
+				return redis.NewCmdResult([]any{"false", fingerprint, response, fmt.Sprint(responseDeadline.UnixMilli()), fmt.Sprint(time.Now().UnixMilli())}, nil)
+			case completeScript.Hash():
+				completeCalls++
+				assert.Equal(t, reservationOwner, args[0])
+				response = string(args[1].([]byte))
+
+				return redis.NewCmdResult(int64(1), nil)
+			default:
+				return redis.NewCmdResult(nil, fmt.Errorf("unexpected Redis script: %s", sha))
+			}
+		}}
+		release := make(chan struct{})
+		releaseOwner := sync.OnceFunc(func() { close(release) })
+		defer releaseOwner()
+		calls := 0
+		handler := func(c *gin.Context) {
+			calls++
+			<-release
+			c.JSON(http.StatusCreated, gin.H{"sandboxID": "original"})
+		}
+		ownerRouter := testRouter(t, flags, &redisStore{client: client}, team, time.Minute, handler)
+		retryRouter := testRouter(t, flags, &redisStore{client: client}, team, time.Minute, func(_ *gin.Context) {
+			t.Error("retry executed the operation")
+		})
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		defer cancel()
+		owner := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			owner <- request(ctx, ownerRouter, "/v2/sandboxes", validBody, []string{"key"})
+		}()
+		synctest.Wait()
+		require.Equal(t, 1, calls, "owner must be blocked in the handler")
+		w := request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
+		require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), `"error_code":"idempotency_in_progress"`)
+
+		time.Sleep(time.Until(responseDeadline) - time.Millisecond)
+		synctest.Wait()
+		require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+		w = request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
+		require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), `"error_code":"idempotency_in_progress"`)
+
+		time.Sleep(time.Millisecond)
+		w = request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
+		require.Equal(t, http.StatusUnprocessableEntity, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), `"error_code":"idempotency_outcome_unknown"`)
+		require.Equal(t, 1, calls)
+		require.Zero(t, completeCalls)
+		releaseOwner()
+		original := <-owner
+		require.Equal(t, http.StatusCreated, original.Code, original.Body.String())
+		w = request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
+		require.Equal(t, original.Code, w.Code)
+		require.Equal(t, original.Body.String(), w.Body.String())
+		require.Equal(t, 1, calls)
+		require.Equal(t, 5, reserveCalls)
+		require.Equal(t, 1, completeCalls)
+	})
 }
 
 func TestMissingResponseAfterDeadline(t *testing.T) {
@@ -832,7 +855,7 @@ func TestKeyedCreatePreservesSchemaDefaults(t *testing.T) {
 	s := &redisStore{client: client}
 	flags, _ := testFlags(t, false, 86400)
 	var bodies []api.NewSandboxV2
-	r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+	r := testRouter(t, flags, s, uuid.New(), time.Minute, func(c *gin.Context) {
 		body := c.MustGet("parsedCreateBody").(api.NewSandboxV2)
 		bodies = append(bodies, body)
 		c.JSON(201, body)
@@ -879,67 +902,83 @@ func (s delayedReserveStore) reserve(ctx context.Context, key, digest, owner str
 
 func TestReservationHonorsRequestTimeout(t *testing.T) {
 	t.Parallel()
-	client := redisutils.SetupInstance(t)
-	s := &redisStore{client: client}
 	flags, _ := testFlags(t, false, 86400)
-	team := uuid.New()
-	r := testRouter(t, flags, delayedReserveStore{store: s, delay: time.Second}, team, 50*time.Millisecond, func(_ *gin.Context) {
-		t.Error("expired request executed")
+	synctest.Test(t, func(t *testing.T) {
+		s := &ownerStore{}
+		r := testRouter(t, flags, delayedReserveStore{store: s, delay: time.Second}, uuid.New(), 50*time.Millisecond, func(_ *gin.Context) {
+			t.Error("expired request executed")
+		})
+		start := time.Now()
+		w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
+		require.Equal(t, http.StatusServiceUnavailable, w.Code, w.Body.String())
+		require.Equal(t, 50*time.Millisecond, time.Since(start))
+		require.Zero(t, s.reserveCalls, "timed-out reservation must not reach the store")
 	})
-	start := time.Now()
-	w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
-	require.Equal(t, 503, w.Code)
-	elapsed := time.Since(start)
-	require.GreaterOrEqual(t, elapsed, 50*time.Millisecond)
-	require.Less(t, elapsed, 500*time.Millisecond)
-	require.Zero(t, client.Exists(t.Context(), recordKey(team.String(), "key")).Val())
+}
+
+type ownerStore struct {
+	store
+
+	reserveCalls int
+}
+
+func (s *ownerStore) reserve(ctx context.Context, _, _, _ string, _ int, _ time.Time) (record, error) {
+	s.reserveCalls++
+
+	return record{state: stateOwner}, ctx.Err()
+}
+
+func (*ownerStore) complete(ctx context.Context, _, _ string, _ cachedResponse) error {
+	return ctx.Err()
 }
 
 func TestOwnerUsesSameDeadlineAsReservation(t *testing.T) {
 	t.Parallel()
-	client := redisutils.SetupInstance(t)
 	flags, _ := testFlags(t, false, 86400)
-	var reservationDeadline time.Time
-	s := delayedReserveStore{
-		store: &redisStore{client: client},
-		delay: 40 * time.Millisecond,
-		beforeReserve: func(ctx context.Context, responseDeadline time.Time) {
-			var ok bool
-			reservationDeadline, ok = ctx.Deadline()
-			require.True(t, ok)
-			require.Equal(t, reservationDeadline.Add(completionTimeout), responseDeadline)
-		},
-	}
-	r := testRouter(t, flags, s, uuid.New(), 500*time.Millisecond, func(c *gin.Context) {
-		deadline, ok := c.Request.Context().Deadline()
-		require.True(t, ok)
-		require.Equal(t, reservationDeadline, deadline)
-		select {
-		case <-c.Request.Context().Done():
-			c.Status(http.StatusServiceUnavailable)
-		case <-time.After(150 * time.Millisecond):
-			c.Status(http.StatusCreated)
+	synctest.Test(t, func(t *testing.T) {
+		var reservationDeadline time.Time
+		s := delayedReserveStore{
+			store: &ownerStore{},
+			// Advance fake time so restarting the timeout after reservation is observable.
+			delay: 40 * time.Millisecond,
+			beforeReserve: func(ctx context.Context, responseDeadline time.Time) {
+				var ok bool
+				reservationDeadline, ok = ctx.Deadline()
+				require.True(t, ok)
+				require.Equal(t, reservationDeadline.Add(completionTimeout), responseDeadline)
+			},
 		}
+		r := testRouter(t, flags, s, uuid.New(), 500*time.Millisecond, func(c *gin.Context) {
+			deadline, ok := c.Request.Context().Deadline()
+			require.True(t, ok)
+			require.Equal(t, reservationDeadline, deadline)
+			select {
+			case <-c.Request.Context().Done():
+				c.Status(http.StatusServiceUnavailable)
+			case <-time.After(150 * time.Millisecond):
+				c.Status(http.StatusCreated)
+			}
+		})
+		w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
+		require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 	})
-	w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
-	require.Equal(t, 201, w.Code, w.Body.String())
 }
 
 func TestReservationHonorsEarlierCallerDeadline(t *testing.T) {
 	t.Parallel()
-	client := redisutils.SetupInstance(t)
-	s := &redisStore{client: client}
 	flags, _ := testFlags(t, false, 86400)
-	team := uuid.New()
-	r := testRouter(t, flags, delayedReserveStore{store: s, delay: time.Second}, team, time.Second, func(_ *gin.Context) {
-		t.Error("expired request executed")
+	synctest.Test(t, func(t *testing.T) {
+		s := &ownerStore{}
+		r := testRouter(t, flags, delayedReserveStore{store: s, delay: time.Second}, uuid.New(), time.Second, func(_ *gin.Context) {
+			t.Error("expired request executed")
+		})
+		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+		defer cancel()
+		started := time.Now()
+		w := request(ctx, r, "/v2/sandboxes", validBody, []string{"key"})
+		require.Equal(t, http.StatusServiceUnavailable, w.Code, w.Body.String())
+		require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
+		require.Equal(t, 100*time.Millisecond, time.Since(started))
+		require.Zero(t, s.reserveCalls, "timed-out reservation must not reach the store")
 	})
-	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
-	defer cancel()
-	started := time.Now()
-	w := request(ctx, r, "/v2/sandboxes", validBody, []string{"key"})
-	require.Equal(t, http.StatusServiceUnavailable, w.Code, w.Body.String())
-	require.ErrorIs(t, ctx.Err(), context.DeadlineExceeded)
-	require.Less(t, time.Since(started), 500*time.Millisecond)
-	require.Zero(t, client.Exists(t.Context(), recordKey(team.String(), "key")).Val())
 }

@@ -58,6 +58,8 @@ func (s *APIStore) ManagementUpsertProjectLimits(c *gin.Context, projectID api.P
 		DefaultFreeDiskSizeMB:    body.DefaultFreeDiskSizeMb,
 		MaxFreeDiskSizeMB:        maxFreeDiskSizeMB,
 		APITeamRPSList:           body.ApiTeamRpsList,
+		APITeamRPSDelete:         body.ApiTeamRpsDelete,
+		MaxSecrets:               maxSecrets(body),
 	}); err != nil {
 		s.sendProjectLimitsError(c, err, attrs...)
 
@@ -86,4 +88,14 @@ func maxFreeDiskSize(limits api.ManagementProjectLimits) (int64, error) {
 	default:
 		return 0, errors.New("one of max_free_disk_size_mb or max_disk_size_mb is required")
 	}
+}
+
+func maxSecrets(limits api.ManagementProjectLimits) *int64 {
+	if limits.MaxSecrets == nil {
+		return nil
+	}
+
+	value := int64(*limits.MaxSecrets)
+
+	return &value
 }

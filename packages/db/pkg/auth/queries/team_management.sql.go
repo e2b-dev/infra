@@ -12,32 +12,35 @@ import (
 )
 
 const insertManagedTeam = `-- name: InsertManagedTeam :one
-INSERT INTO public.teams (id, name, slug, tier, email, is_blocked)
+INSERT INTO public.teams (id, name, slug, tier, email, is_blocked, cluster_id)
 VALUES (
     $1::uuid,
     $2::text,
     $3::text,
     $4::text,
     $5::text,
-    false
+    false,
+    $6::uuid
 )
 ON CONFLICT (id) DO NOTHING
-RETURNING id, name, slug, email
+RETURNING id, name, slug, email, cluster_id
 `
 
 type InsertManagedTeamParams struct {
-	ID    uuid.UUID
-	Name  string
-	Slug  string
-	Tier  string
-	Email string
+	ID        uuid.UUID
+	Name      string
+	Slug      string
+	Tier      string
+	Email     string
+	ClusterID *uuid.UUID
 }
 
 type InsertManagedTeamRow struct {
-	ID    uuid.UUID
-	Name  string
-	Slug  string
-	Email string
+	ID        uuid.UUID
+	Name      string
+	Slug      string
+	Email     string
+	ClusterID *uuid.UUID
 }
 
 // Tier is assigned here and only here. DO NOTHING covers the case where the
@@ -51,6 +54,7 @@ func (q *Queries) InsertManagedTeam(ctx context.Context, arg InsertManagedTeamPa
 		arg.Slug,
 		arg.Tier,
 		arg.Email,
+		arg.ClusterID,
 	)
 	var i InsertManagedTeamRow
 	err := row.Scan(
@@ -58,6 +62,7 @@ func (q *Queries) InsertManagedTeam(ctx context.Context, arg InsertManagedTeamPa
 		&i.Name,
 		&i.Slug,
 		&i.Email,
+		&i.ClusterID,
 	)
 	return i, err
 }
@@ -86,23 +91,26 @@ UPDATE public.teams
 SET
     name = $1::text,
     slug = $2::text,
-    email = $3::text
-WHERE id = $4::uuid
-RETURNING id, name, slug, email
+    email = $3::text,
+    cluster_id = COALESCE($4::uuid, cluster_id)
+WHERE id = $5::uuid
+RETURNING id, name, slug, email, cluster_id
 `
 
 type UpdateManagedTeamParams struct {
-	Name  string
-	Slug  string
-	Email string
-	ID    uuid.UUID
+	Name      string
+	Slug      string
+	Email     string
+	ClusterID *uuid.UUID
+	ID        uuid.UUID
 }
 
 type UpdateManagedTeamRow struct {
-	ID    uuid.UUID
-	Name  string
-	Slug  string
-	Email string
+	ID        uuid.UUID
+	Name      string
+	Slug      string
+	Email     string
+	ClusterID *uuid.UUID
 }
 
 // Touches only the properties the caller synchronizes. Tier stays because it is
@@ -113,6 +121,7 @@ func (q *Queries) UpdateManagedTeam(ctx context.Context, arg UpdateManagedTeamPa
 		arg.Name,
 		arg.Slug,
 		arg.Email,
+		arg.ClusterID,
 		arg.ID,
 	)
 	var i UpdateManagedTeamRow
@@ -121,6 +130,7 @@ func (q *Queries) UpdateManagedTeam(ctx context.Context, arg UpdateManagedTeamPa
 		&i.Name,
 		&i.Slug,
 		&i.Email,
+		&i.ClusterID,
 	)
 	return i, err
 }

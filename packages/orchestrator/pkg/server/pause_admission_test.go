@@ -124,8 +124,11 @@ func admissionTestServer(t *testing.T, graceMs *int) *Server {
 		pauseAdmissionCounter:      utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxPauseAdmissionCounterName)),
 		pauseAdmissionWaitDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxPauseAdmissionWaitDurationName)),
 		featureFlags:               admissionFlagClient(t, graceMs),
+		detachedCheckpoints:        map[string]*detachedCheckpoint{},
 	}
 }
+
+const admissionTestTeamID = "team-1"
 
 func admissionTestSandbox(t *testing.T, sandboxID string, slotIdx int, durable *utils.SetOnce[*header.Header]) *sandbox.Sandbox {
 	t.Helper()
@@ -140,7 +143,7 @@ func admissionTestSandbox(t *testing.T, sandboxID string, slotIdx int, durable *
 				Envd:              sandbox.EnvdMetadata{Version: "9.9.9"},
 				FirecrackerConfig: fc.Config{FirecrackerVersion: "v1.14.1", KernelVersion: "vmlinux-6.1"},
 			}),
-			Runtime: sandboxtypes.RuntimeMetadata{SandboxID: sandboxID},
+			Runtime: sandboxtypes.RuntimeMetadata{SandboxID: sandboxID, TeamID: admissionTestTeamID},
 		},
 		Resources: &sandbox.Resources{Slot: slot},
 		Template:  admissionTestTemplate{memfile: &admissionRODevice{durable: durable, waiting: make(chan struct{})}},
@@ -207,6 +210,48 @@ func TestPause_AdmissionAdmitsWhenSwapResolvesMidGrace(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return sbx.GetStopReason() == sandbox.StopReasonPaused
 	}, 2*time.Second, time.Millisecond)
+}
+
+// A Pause that read the sandbox live and then lost the marking to a
+// checkpoint's reservation taken during its admission wait is refused
+// retryably, as a Pause whose read missed is: the API removes the record on
+// any other answer and the sandbox the checkpoint resumes is killed as an
+// orphan.
+func TestPause_LostTheMarkingToACheckpointIsRetryable(t *testing.T) {
+	t.Parallel()
+
+	durable := utils.NewSetOnce[*header.Header]()
+	s := admissionTestServer(t, new(5000))
+	sbx := admissionTestSandbox(t, "sbx-admission-lost-marking", 16, durable)
+	require.NoError(t, s.sandboxFactory.Sandboxes.MarkRunning(t.Context(), sbx))
+
+	go func() {
+		<-admissionWaitBegun(sbx)
+		_, op, ok := s.registerDetachedCheckpoint(context.WithoutCancel(t.Context()), sbx)
+		if !ok {
+			return
+		}
+		reservation, err := s.sandboxFactory.Sandboxes.MarkStoppingReserved(context.WithoutCancel(t.Context()), sbx.Runtime.SandboxID, sbx.LifecycleID)
+		if err != nil {
+			op.release()
+
+			return
+		}
+		t.Cleanup(func() {
+			op.release()
+			reservation.Release()
+		})
+		hdr, err := header.NewHeader(&header.Metadata{Version: 3, BlockSize: 4096, Size: 4096}, nil)
+		if err == nil {
+			_ = durable.SetValue(hdr)
+		}
+	}()
+
+	_, err := s.Pause(t.Context(), &orchestrator.SandboxPauseRequest{SandboxId: "sbx-admission-lost-marking"})
+	assert.Equal(t, codes.ResourceExhausted, status.Code(err))
+	require.ErrorContains(t, err, "please retry")
+	_, live := s.sandboxFactory.Sandboxes.Get("sbx-admission-lost-marking")
+	assert.False(t, live, "the checkpoint's reservation holds the sandbox out of the live map")
 }
 
 // Flag absent (and explicitly negative) means no pre-flight — with the
@@ -465,6 +510,7 @@ func admissionMetricsServer(t *testing.T, graceMs int) (*Server, *sdkmetric.Manu
 		pauseAdmissionCounter:      utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxPauseAdmissionCounterName)),
 		pauseAdmissionWaitDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxPauseAdmissionWaitDurationName)),
 		featureFlags:               admissionFlagClient(t, &graceMs),
+		detachedCheckpoints:        map[string]*detachedCheckpoint{},
 	}, reader
 }
 
@@ -538,14 +584,14 @@ func TestPauseAdmissionMetrics_RefusedPause(t *testing.T) {
 		points := admissionCounterPoints(t, reader)
 		require.Len(t, points, 1)
 		assert.EqualValues(t, 1, points[0].Value)
-		assert.Equal(t, map[string]string{"outcome": "refused", "rpc": "pause"}, attrsAsMap(t, points[0].Attributes),
-			"counter attributes must be exactly outcome+rpc")
+		assert.Equal(t, map[string]string{"outcome": "refused", "rpc": "pause", "team.id": admissionTestTeamID}, attrsAsMap(t, points[0].Attributes),
+			"counter attributes must be exactly outcome+rpc+team.id")
 
 		waits := admissionWaitPoints(t, reader)
 		require.Len(t, waits, 1)
 		require.EqualValues(t, 1, waits[0].Count)
-		assert.Equal(t, map[string]string{"outcome": "refused"}, attrsAsMap(t, waits[0].Attributes),
-			"wait histogram attribute must be exactly outcome")
+		assert.Equal(t, map[string]string{"outcome": "refused", "team.id": admissionTestTeamID}, attrsAsMap(t, waits[0].Attributes),
+			"wait histogram attributes must be exactly outcome+team.id")
 		assert.Equal(t, int64(30), waits[0].Sum)
 	})
 }
@@ -562,12 +608,12 @@ func TestPauseAdmissionMetrics_RefusedCheckpoint(t *testing.T) {
 
 	points := admissionCounterPoints(t, reader)
 	require.Len(t, points, 1)
-	assert.Equal(t, map[string]string{"outcome": "refused", "rpc": "checkpoint"}, attrsAsMap(t, points[0].Attributes))
+	assert.Equal(t, map[string]string{"outcome": "refused", "rpc": "checkpoint", "team.id": admissionTestTeamID}, attrsAsMap(t, points[0].Attributes))
 
 	// An instant probe (grace 0) still entered the waiting outcome: recorded.
 	waits := admissionWaitPoints(t, reader)
 	require.Len(t, waits, 1)
-	assert.Equal(t, map[string]string{"outcome": "refused"}, attrsAsMap(t, waits[0].Attributes))
+	assert.Equal(t, map[string]string{"outcome": "refused", "team.id": admissionTestTeamID}, attrsAsMap(t, waits[0].Attributes))
 }
 
 // A latched checkpoint refusal records latched_error under the checkpoint
@@ -587,7 +633,7 @@ func TestPauseAdmissionMetrics_LatchedCheckpoint(t *testing.T) {
 
 	points := admissionCounterPoints(t, reader)
 	require.Len(t, points, 1)
-	assert.Equal(t, map[string]string{"outcome": "latched_error", "rpc": "checkpoint"}, attrsAsMap(t, points[0].Attributes))
+	assert.Equal(t, map[string]string{"outcome": "latched_error", "rpc": "checkpoint", "team.id": admissionTestTeamID}, attrsAsMap(t, points[0].Attributes))
 }
 
 // A swap resolving mid-grace records ready_after_wait on
@@ -624,11 +670,11 @@ func TestPauseAdmissionMetrics_ReadyOutcomes(t *testing.T) {
 
 		points := admissionCounterPoints(t, reader)
 		require.Len(t, points, 1)
-		assert.Equal(t, map[string]string{"outcome": "ready_after_wait", "rpc": "pause"}, attrsAsMap(t, points[0].Attributes))
+		assert.Equal(t, map[string]string{"outcome": "ready_after_wait", "rpc": "pause", "team.id": admissionTestTeamID}, attrsAsMap(t, points[0].Attributes))
 
 		waits := admissionWaitPoints(t, reader)
 		require.Len(t, waits, 1)
-		assert.Equal(t, map[string]string{"outcome": "ready_after_wait"}, attrsAsMap(t, waits[0].Attributes))
+		assert.Equal(t, map[string]string{"outcome": "ready_after_wait", "team.id": admissionTestTeamID}, attrsAsMap(t, waits[0].Attributes))
 		assert.Positive(t, waits[0].Sum)
 	})
 
@@ -654,7 +700,7 @@ func TestPauseAdmissionMetrics_ReadyOutcomes(t *testing.T) {
 
 		points := admissionCounterPoints(t, reader)
 		require.Len(t, points, 1)
-		assert.Equal(t, map[string]string{"outcome": "ready", "rpc": "pause"}, attrsAsMap(t, points[0].Attributes))
+		assert.Equal(t, map[string]string{"outcome": "ready", "rpc": "pause", "team.id": admissionTestTeamID}, attrsAsMap(t, points[0].Attributes))
 		assert.Empty(t, admissionWaitPoints(t, reader), "a no-wait admission must not sample the wait histogram")
 	})
 }

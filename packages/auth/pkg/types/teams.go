@@ -30,6 +30,8 @@ func newTeamLimits(
 
 		DefaultFreeDiskSizeMb: teamLimits.DefaultFreeDiskSizeMb,
 		MaxFreeDiskSizeMb:     teamLimits.MaxFreeDiskSizeMb,
+
+		MaxSecrets: teamLimits.MaxSecrets,
 	}
 }
 

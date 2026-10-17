@@ -9,6 +9,9 @@ ARG DEBIAN_RUNTIME_TAG=bookworm-20260824-slim
 ARG DEBIAN_VERSION=bookworm
 
 FROM golang:${GOLANG_VERSION}-${DEBIAN_VERSION} AS builder
+# Fall through to a retry on any module proxy error; see
+# .github/actions/go-setup-cache/action.yml for the mechanism.
+ENV GOPROXY=https://proxy.golang.org|https://proxy.golang.org:443|https://proxy.golang.org/|direct
 ARG TARGETARCH
 
 # Cached golang dependencies

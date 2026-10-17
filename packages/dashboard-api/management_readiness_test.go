@@ -18,6 +18,7 @@ import (
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
+	dashboardmiddleware "github.com/e2b-dev/infra/packages/dashboard-api/internal/middleware"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -65,7 +66,9 @@ func TestManagementClusterReadinessRequiresServiceJWT(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			store := &managementReadinessStore{}
-			server := newHTTPServer(0, logger.NewNopLogger(), telemetry.NewNoopClient(), swagger, authenticate, store)
+			server := newHTTPServer(0, logger.NewNopLogger(), telemetry.NewNoopClient(), swagger, authenticate, store,
+				// GET routes never reach the deleted-project lookup.
+				dashboardmiddleware.RefuseDeletedProject(nil))
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/v1/management/clusters/"+clusterID.String()+"/destroy-readiness", nil)
 			req.Header.Set("Authorization", tc.authorization)
 			req.Header.Set(sharedauth.HeaderAdminToken, tc.adminKey)

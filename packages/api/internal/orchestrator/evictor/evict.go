@@ -191,7 +191,7 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 		// dropped fleet-wide.
 		opts.FilesystemOnly = sbx.AutoPauseFilesystemOnly
 		if opts.FilesystemOnly {
-			e.fsOnlyAutoPauseCounter.Add(ctx, 1)
+			e.fsOnlyAutoPauseCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sbx.TeamID.String())))
 		}
 	}
 
@@ -204,13 +204,16 @@ func (e *Evictor) evictSandbox(ctx context.Context, sbx sandbox.Sandbox) {
 		// that follows is this sweep's one result.
 		pause.LogRefused(ctx, sbx.SandboxID, sbx.TeamID.String(), pause.ReasonTimeout, opts.FilesystemOnly)
 		opts.FilesystemOnly = true
-		e.fsOnlyAutoPauseCounter.Add(ctx, 1)
+		e.fsOnlyAutoPauseCounter.Add(ctx, 1, metric.WithAttributes(telemetry.WithTeamID(sbx.TeamID.String())))
 		err = e.removeSandbox(context.WithoutCancel(ctx), sbx.TeamID, sbx.SandboxID, opts)
 	}
 	if err == nil && degradeCause != "" {
 		// Counted once, when the degraded pause lands — a pause that keeps
 		// failing past the budget must not re-count every tick.
-		e.degradedCounter.Add(ctx, 1, metric.WithAttributes(attribute.String("cause", degradeCause)))
+		e.degradedCounter.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("cause", degradeCause),
+			telemetry.WithTeamID(sbx.TeamID.String()),
+		))
 		logger.L().Warn(ctx, "Auto-pause degraded to filesystem-only",
 			logger.WithSandboxID(sbx.SandboxID),
 			logger.WithTeamID(sbx.TeamID.String()),

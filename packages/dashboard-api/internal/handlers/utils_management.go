@@ -7,19 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/management"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
-
-// sendNotImplemented answers the management operations that are declared in
-// the contract but not served.
-func sendNotImplemented(c *gin.Context) {
-	c.JSON(http.StatusNotImplemented, api.Error{
-		Code:    http.StatusNotImplemented,
-		Message: "operation is not implemented",
-	})
-}
 
 func (s *APIStore) sendProjectMemberError(c *gin.Context, err error, attrs ...attribute.KeyValue) {
 	ctx := c.Request.Context()

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/metric/noop"
 
@@ -29,6 +30,8 @@ const validLimitsBody = `{
 	"events_ttl_days": 14,
 	"default_free_disk_size_mb": 10240,
 	"api_team_rps_list": 60,
+	"api_team_rps_delete": 100,
+	"max_secrets": 25,
 	"max_disk_size_mb": 51200
 }`
 
@@ -161,6 +164,107 @@ func TestUpsertProjectLimitsRejectsANegativeListRate(t *testing.T) {
 	recorder := callUpsertProjectLimits(t, store, teamID, body)
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 	require.Empty(t, auth.invalidated)
+}
+
+func TestUpsertProjectLimitsCarriesTheSecretLimitToTheView(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, db)
+	store, _ := newLimitsStore(db)
+
+	body := strings.Replace(validLimitsBody, `"max_secrets": 25`, `"max_secrets": 37`, 1)
+	recorder := callUpsertProjectLimits(t, store, teamID, body)
+	require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
+
+	var limit int64
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
+		func(rows pgx.Rows) error {
+			rows.Next()
+
+			return rows.Scan(&limit)
+		}, teamID))
+	require.EqualValues(t, 37, limit)
+
+	body = strings.Replace(validLimitsBody, `"max_secrets": 25,`, ``, 1)
+	body = strings.Replace(body, `"revision": 2`, `"revision": 3`, 1)
+	recorder = callUpsertProjectLimits(t, store, teamID, body)
+	require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
+		func(rows pgx.Rows) error {
+			rows.Next()
+
+			return rows.Scan(&limit)
+		}, teamID))
+	require.EqualValues(t, 10, limit, "a body without the limit leaves it to the tier")
+}
+
+func TestUpsertProjectLimitsRejectsAZeroSecretLimit(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, db)
+	store, auth := newLimitsStore(db)
+
+	body := strings.Replace(validLimitsBody, `"max_secrets": 25`, `"max_secrets": 0`, 1)
+	recorder := callUpsertProjectLimits(t, store, teamID, body)
+	require.Equal(t, http.StatusBadRequest, recorder.Code)
+	require.Empty(t, auth.invalidated)
+}
+
+func TestUpsertProjectLimitsCarriesDeleteRatesToTheView(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, db)
+	store, auth := newLimitsStore(db)
+	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(), `
+		UPDATE public.tiers SET api_team_rps_delete = 13
+		WHERE id = (SELECT tier FROM public.teams WHERE id = $1)
+	`, teamID))
+
+	const largeRate = int64(1<<32 + 7)
+	for _, step := range []struct {
+		revision int64
+		rate     *int64
+		want     int64
+		status   int
+	}{
+		{1, nil, 13, http.StatusNoContent},
+		{2, new(int64(33)), 33, http.StatusNoContent},
+		{3, new(largeRate), largeRate, http.StatusNoContent},
+		{2, new(int64(3)), largeRate, http.StatusNoContent},
+		{4, new(int64(-1)), largeRate, http.StatusBadRequest},
+		{4, new(int64(0)), 0, http.StatusNoContent},
+		{5, nil, 13, http.StatusNoContent},
+	} {
+		var body map[string]any
+		require.NoError(t, json.Unmarshal([]byte(validLimitsBody), &body))
+		body["revision"] = step.revision
+		delete(body, "api_team_rps_delete")
+		if step.rate != nil {
+			body["api_team_rps_delete"] = *step.rate
+		}
+		encoded, err := json.Marshal(body)
+		require.NoError(t, err)
+		invalidations := len(auth.invalidated)
+		recorder := callUpsertProjectLimits(t, store, teamID, string(encoded))
+		require.Equal(t, step.status, recorder.Code, recorder.Body.String())
+		if step.status == http.StatusBadRequest {
+			assert.Len(t, auth.invalidated, invalidations)
+		}
+		var rate int64
+		require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+			"SELECT api_team_rps_delete FROM public.team_limits WHERE id = $1",
+			func(rows pgx.Rows) error {
+				require.True(t, rows.Next())
+
+				return rows.Scan(&rate)
+			}, teamID))
+		assert.Equal(t, step.want, rate, "revision %d", step.revision)
+	}
 }
 
 func TestUpsertProjectLimitsRejectsAMalformedBody(t *testing.T) {

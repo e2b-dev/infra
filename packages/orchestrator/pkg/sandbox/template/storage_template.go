@@ -375,9 +375,8 @@ func (t *storageTemplate) close(ctx context.Context) error {
 		}
 	}
 
-	// The directory itself still needs removing; nothing else reclaims it, since
-	// the startup sweep covers DefaultCacheDir and these live under
-	// TemplateCacheDir. Every fetch child is terminal before this point. The
+	// The directory itself still needs removing; nothing else reclaims it while
+	// this process runs. Every fetch child is terminal before this point. The
 	// directory is private to this instance — CachePaths mints a fresh identifier
 	// per template — so removing it cannot touch another instance's files.
 	if pathsErr := t.paths.Close(); pathsErr != nil {

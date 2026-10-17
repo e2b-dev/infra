@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"maps"
 	"math"
 	"slices"
@@ -104,9 +105,11 @@ func dedupCompare(
 	plan := &dedupPlan{pageDirty: roaring.New(), pageEmpty: roaring.New()}
 
 	parentByKey := make(map[dedupFetchKey]*roaring.Bitmap)
+	trackParentPages := budget.MaxPagesPerPromotedFrame > 0
 
 	baseHeader := base.Header()
 	peeker, _ := base.(CachePeeker)
+	basePage := make([]byte, header.PageSize)
 
 	for r := range BitsetRanges(dirty, blockSize) {
 		plan.exportedSize += r.Size
@@ -151,9 +154,12 @@ func dedupCompare(
 					continue
 				}
 
-				basePage, sErr := base.Slice(ctx, pageOff, header.PageSize)
+				n, sErr := base.ReadAt(ctx, basePage, pageOff)
 				if sErr != nil {
-					return nil, fmt.Errorf("slice base at %d: %w", pageOff, sErr)
+					return nil, fmt.Errorf("read base at %d: %w", pageOff, sErr)
+				}
+				if n != len(basePage) {
+					return nil, fmt.Errorf("read base at %d: %w", pageOff, io.ErrUnexpectedEOF)
 				}
 				if !bytes.Equal(srcPage, basePage) {
 					plan.pageDirty.Add(pageIdx)
@@ -162,12 +168,16 @@ func dedupCompare(
 				}
 
 				key := parentFetchKey(baseHeader, mapped, hasMapping, pageOff, windowBytes)
-				bm := parentByKey[key]
-				if bm == nil {
-					bm = roaring.New()
+				bm, exists := parentByKey[key]
+				if !exists {
+					if trackParentPages {
+						bm = roaring.New()
+					}
 					parentByKey[key] = bm
 				}
-				bm.Add(pageIdx)
+				if bm != nil {
+					bm.Add(pageIdx)
+				}
 			}
 		}
 	}

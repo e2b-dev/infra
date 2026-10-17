@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
 
@@ -74,4 +75,20 @@ func TestALineCarriesEachKeyOnce(t *testing.T) {
 		"tenant.id":  {"last"},
 		"request.id": {"call"},
 	}, values)
+}
+
+func TestStacktracesOnErrorsButNotWarnings(t *testing.T) {
+	t.Parallel()
+
+	core, logs := observer.New(zap.DebugLevel)
+	l, err := NewLogger(LoggerConfig{ServiceName: "test", Cores: []zapcore.Core{core}})
+	require.NoError(t, err)
+
+	l.Warn(t.Context(), "a warning")
+	l.Error(t.Context(), "an error")
+
+	entries := logs.All()
+	require.Len(t, entries, 2)
+	assert.Empty(t, entries[0].Stack)
+	assert.NotEmpty(t, entries[1].Stack)
 }

@@ -204,21 +204,6 @@ func TestUpsertProjectEchoesTheStoredProject(t *testing.T) {
 	require.Equal(t, "ops@acme.test", decoded.Email)
 }
 
-// Deleting a project needs teardown this process cannot reach. If you are
-// removing this test, read the handler comment first.
-func TestDeleteProjectIsDeliberatelyNotImplemented(t *testing.T) {
-	t.Parallel()
-
-	recorder := httptest.NewRecorder()
-	ginCtx, _ := gin.CreateTestContext(recorder)
-	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodDelete,
-		"/v1/management/projects/"+uuid.NewString(), nil)
-
-	(&APIStore{}).ManagementDeleteProject(ginCtx, uuid.New())
-
-	require.Equal(t, http.StatusNotImplemented, recorder.Code)
-}
-
 // projectFixture is a valid project with a slug unique to its test, so cases
 // that care about one field can change that one and send the rest.
 type projectFixture struct {
@@ -297,4 +282,37 @@ func teamColumn(t *testing.T, db *testutils.Database, teamID uuid.UUID, column s
 	require.NoError(t, err)
 
 	return value
+}
+
+func TestUpsertProjectSynchronizesOptionalCluster(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	store, _ := newUpsertStore(db)
+	clusterID := uuid.New()
+	registrationStore := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
+	require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, registrationStore, clusterID, managementClusterRegistration()).Code)
+	for range 2 {
+		project := newProjectFixture()
+		request := project.request()
+		request.ClusterId = &clusterID
+		require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, request).Code)
+		require.Equal(t, http.StatusOK, callUpsertProject(t, store, project.id, request).Code)
+		require.Equal(t, http.StatusOK, callUpsertProject(t, store, project.id, project.request()).Code)
+		var stored *uuid.UUID
+		require.NoError(t, db.AuthDB.TestsRawSQLQuery(t.Context(), "SELECT cluster_id FROM public.teams WHERE id=$1", func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+
+			return rows.Scan(&stored)
+		}, project.id))
+		require.Equal(t, &clusterID, stored)
+	}
+	project := newProjectFixture()
+	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, project.request()).Code)
+	var stored *uuid.UUID
+	require.NoError(t, db.AuthDB.TestsRawSQLQuery(t.Context(), "SELECT cluster_id FROM public.teams WHERE id=$1", func(rows pgx.Rows) error {
+		require.True(t, rows.Next())
+
+		return rows.Scan(&stored)
+	}, project.id))
+	require.Nil(t, stored)
 }

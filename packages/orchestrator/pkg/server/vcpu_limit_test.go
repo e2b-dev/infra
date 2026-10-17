@@ -1,15 +1,19 @@
 package server
 
 import (
+	"net/http"
 	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
 func TestCreate_RefusesInvalidVcpuLimits(t *testing.T) {
@@ -35,9 +39,51 @@ func TestCreate_RefusesInvalidVcpuLimits(t *testing.T) {
 			st, ok := status.FromError(err)
 			require.True(t, ok)
 			assert.Equal(t, codes.InvalidArgument, st.Code())
+			// The refusal is for good on every node, which the detail says;
+			// a bad request is the client's fault.
+			refusal := createRefusalDetail(t, st)
+			assert.Equal(t, st.Message(), refusal.GetMessage())
+			assert.EqualValues(t, http.StatusBadRequest, refusal.GetHttpStatus())
 			assert.Equal(t, 0, s.sandboxFactory.Sandboxes.Count(), "nothing is reserved for a refused request")
 		})
 	}
+}
+
+// createRefusalDetail returns the SANDBOX_CREATE_REFUSED detail the status
+// carries, failing the test when it carries none.
+func createRefusalDetail(t *testing.T, st *status.Status) *orchestrator.UserError {
+	t.Helper()
+
+	for _, detail := range st.Details() {
+		if userErr, ok := detail.(*orchestrator.UserError); ok && userErr.GetCode() == orchestrator.UserErrorCode_SANDBOX_CREATE_REFUSED {
+			return userErr
+		}
+	}
+	require.FailNow(t, "the refusal carries no SANDBOX_CREATE_REFUSED detail", "%v", st.Err())
+
+	return nil
+}
+
+// A detail that cannot be attached (a status with code OK takes none) is
+// logged with the refusal rather than dropped silently; the status still
+// answers.
+//
+//nolint:paralleltest // replaces the global logger to capture what is logged
+func TestCreateRefused_LogsADetailItCannotAttach(t *testing.T) {
+	core, logs := observer.New(zap.ErrorLevel)
+	t.Cleanup(logger.ReplaceGlobals(t.Context(), logger.NewTracedLoggerFromCore(core)))
+
+	err := createRefused(t.Context(), codes.OK, "vcpu %d must be at least 1", 0)
+	require.NoError(t, err, "a status with code OK is no error")
+	logged := logs.FilterMessage("failed to attach the create refusal detail").All()
+	require.Len(t, logged, 1)
+	assert.Equal(t, "vcpu 0 must be at least 1", logged[0].ContextMap()["refusal"])
+
+	refused := createRefused(t.Context(), codes.InvalidArgument, "vcpu %d must be at least 1", 0)
+	st, ok := status.FromError(refused)
+	require.True(t, ok)
+	assert.EqualValues(t, http.StatusBadRequest, createRefusalDetail(t, st).GetHttpStatus())
+	require.Len(t, logs.All(), 1, "a detail that attached was logged as a failure")
 }
 
 func TestValidateColdBootVcpus(t *testing.T) {

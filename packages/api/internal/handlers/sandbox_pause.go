@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -15,6 +18,7 @@ import (
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator"
 	"github.com/e2b-dev/infra/packages/api/internal/pause"
+	"github.com/e2b-dev/infra/packages/api/internal/pauselimit"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -85,12 +89,25 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 
 	pause.LogInitiated(ctx, sandboxID, teamID.String(), pause.ReasonRequest, filesystemOnly)
 
-	err = backend.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause, FilesystemOnly: filesystemOnly})
+	err = a.pauseWithinRateLimit(ctx, backend, teamID, sandboxID, filesystemOnly)
 	var transErr *sandbox.InvalidStateTransitionError
+	var limitErr pauseRateLimitedError
 
 	switch {
 	case err == nil:
 		pause.LogSuccess(ctx, sandboxID, teamID.String(), pause.ReasonRequest, filesystemOnly)
+	case errors.As(err, &limitErr):
+		pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonRateLimited, filesystemOnly)
+		retryAfterSecs := max(int(math.Ceil(limitErr.retryAfter.Seconds())), 1)
+		c.Header("Retry-After", strconv.Itoa(retryAfterSecs))
+		a.sendAPIStoreError(c, http.StatusTooManyRequests, fmt.Sprintf("Sandbox '%s' reached its pause rate limit, please retry in %d seconds", sandboxID, retryAfterSecs))
+
+		return
+	case errors.Is(err, orchestrator.ErrExecutionChanged):
+		pause.LogSkipped(ctx, sandboxID, teamID.String(), pause.ReasonRequest, pause.SkipReasonStateChanged, filesystemOnly)
+		a.sendAPIStoreError(c, http.StatusConflict, fmt.Sprintf("Sandbox '%s' was resumed while it was being paused, please retry", sandboxID))
+
+		return
 	case errors.Is(err, orchestrator.ErrSandboxNotFound):
 		apiErr := pauseHandleNotRunningSandbox(ctx, a.snapshotCache, sandboxID, teamID)
 		switch apiErr.Code {
@@ -131,6 +148,97 @@ func (a *APIStore) PostSandboxesSandboxIDPause(c *gin.Context, sandboxID api.San
 	}
 
 	c.Status(http.StatusNoContent)
+}
+
+// pauseAttempts bounds the re-checks after a resume replaces the execution a
+// pause was pinned to. Each one needs a whole resume to land between the
+// lookup and the pause.
+const pauseAttempts = 2
+
+// noExecutionID pins a pause to a record that was missing at lookup. No record
+// carries it: a record still missing answers as an unpinned pause would, and
+// one a resume added since fails the pin.
+var noExecutionID = uuid.Nil.String()
+
+type pauseRateLimitedError struct {
+	retryAfter time.Duration
+}
+
+func (e pauseRateLimitedError) Error() string {
+	return fmt.Sprintf("pause rate limit reached, retry in %s", e.retryAfter)
+}
+
+// pauseWithinRateLimit checks the rate limit before RemoveSandbox commits the
+// pause, so a refusal leaves the sandbox running. The pause is pinned to the
+// record the limiter looked at: a request cannot count against, or join, one
+// execution and then pause the next one a resume created. A changed execution
+// goes through the limiter again.
+func (a *APIStore) pauseWithinRateLimit(ctx context.Context, backend pauseOrchestrator, teamID uuid.UUID, sandboxID string, filesystemOnly bool) error {
+	var err error
+	for range pauseAttempts {
+		check := a.checkPauseRateLimit(ctx, backend, teamID, sandboxID)
+		if check.limited {
+			return pauseRateLimitedError{retryAfter: check.retryAfter}
+		}
+
+		err = backend.RemoveSandbox(ctx, teamID, sandboxID, sandbox.RemoveOpts{
+			Action:            sandbox.StateActionPause,
+			FilesystemOnly:    filesystemOnly,
+			ExpectExecutionID: check.executionID,
+		})
+		if !errors.Is(err, orchestrator.ErrExecutionChanged) {
+			return err
+		}
+	}
+
+	return err
+}
+
+type pauseLimitCheck struct {
+	// executionID pins the pause; empty when the limiter did not read the record.
+	executionID string
+	limited     bool
+	retryAfter  time.Duration
+}
+
+// checkPauseRateLimit counts only a record a new pause can start from: a
+// missing record, or one already pausing, is left to RemoveSandbox's own
+// answer. Lookup and Redis errors let the pause through.
+func (a *APIStore) checkPauseRateLimit(ctx context.Context, backend pauseOrchestrator, teamID uuid.UUID, sandboxID string) pauseLimitCheck {
+	if a.pauseLimiter == nil {
+		return pauseLimitCheck{}
+	}
+
+	limit, ok := a.pauseLimiter.Limit(ctx)
+	if !ok {
+		return pauseLimitCheck{}
+	}
+
+	sbx, err := backend.GetSandbox(ctx, teamID, sandboxID)
+	if errors.Is(err, sandbox.ErrNotFound) {
+		return pauseLimitCheck{executionID: noExecutionID}
+	}
+	if err != nil {
+		logger.L().Warn(ctx, "Skipping pause rate limit, sandbox lookup failed", zap.Error(err), logger.WithSandboxID(sandboxID))
+
+		return pauseLimitCheck{}
+	}
+
+	check := pauseLimitCheck{executionID: sbx.ExecutionID}
+	if sbx.State != sandbox.StateRunning && sbx.State != sandbox.StateSnapshotting {
+		return check
+	}
+
+	result, err := a.pauseLimiter.Allow(ctx, limit, teamID.String(), sandboxID, sbx.ExecutionID)
+	if err != nil {
+		logger.L().Warn(ctx, "Skipping pause rate limit, limiter unavailable", zap.Error(err), logger.WithSandboxID(sandboxID))
+
+		return check
+	}
+	check.limited = result.Decision == pauselimit.DecisionLimited
+	check.retryAfter = result.RetryAfter
+
+	return check
 }
 
 func pauseHandleNotRunningSandbox(ctx context.Context, cache *snapshotcache.SnapshotCache, sandboxID string, teamID uuid.UUID) api.APIError {

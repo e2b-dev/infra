@@ -82,3 +82,14 @@ func TestMetricsOutstandingWorkConcurrentAccess(t *testing.T) {
 		}
 	}
 }
+
+func TestMetricsHugePagesCapacityComesFromServiceInfo(t *testing.T) {
+	t.Parallel()
+
+	n := &Node{}
+	n.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{MetricHugepagesTotal: 1600, MetricHugepagesCapacity: 2000})
+	require.Equal(t, uint64(2000), n.Metrics().HugePagesCapacity)
+
+	n.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{MetricHugepagesTotal: 1600})
+	require.Zero(t, n.Metrics().HugePagesCapacity, "an orchestrator that does not report it leaves it unknown")
+}

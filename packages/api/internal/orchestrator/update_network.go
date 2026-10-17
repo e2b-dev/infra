@@ -140,7 +140,7 @@ func (o *Orchestrator) updateSandboxNetworkOnNode(
 		}
 	}
 
-	client, ctx := node.GetClient(ctx)
+	client, ctx := node.GetSandboxClient(ctx, sbx.TeamID.String())
 	_, err := client.Sandbox.Update(ctx, &orchestratorgrpc.SandboxUpdateRequest{
 		SandboxId: sbx.SandboxID,
 		Egress:    egress,

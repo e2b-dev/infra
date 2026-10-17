@@ -83,6 +83,8 @@ message ServiceInfoResponse {
   uint64 metric_hugepages_used = 115;
   uint64 metric_hugepages_reserved = 116;
   uint64 metric_hugepage_size_bytes = 117;
+  // Pool ceiling: nr_hugepages + nr_overcommit_hugepages. 0 when unknown.
+  uint64 metric_hugepages_capacity = 118;
 }
 
 message ServiceStatusChangeRequest {

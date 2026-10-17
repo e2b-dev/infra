@@ -12,7 +12,25 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
+
+// createRefusedStatus is a node's refusal with the typed detail the
+// orchestrator attaches to a create no retry changes.
+func createRefusedStatus(t *testing.T, code codes.Code, message string) error {
+	t.Helper()
+
+	return createRefusedStatusWith(t, code, message, http.StatusBadRequest)
+}
+
+func createRefusedStatusWith(t *testing.T, code codes.Code, message string, httpStatus uint32) error {
+	t.Helper()
+
+	st, err := status.New(code, message).WithDetails(&orchestrator.UserError{Code: orchestrator.UserErrorCode_SANDBOX_CREATE_REFUSED, Message: message, HttpStatus: httpStatus})
+	require.NoError(t, err)
+
+	return st.Err()
+}
 
 func TestPlacementAPIError(t *testing.T) {
 	t.Parallel()
@@ -62,14 +80,93 @@ func TestPlacementAPIError(t *testing.T) {
 			wantMsg:       "Failed to place sandbox: no available orchestrator at version 0.11.0 or above for a feature the request asked for",
 		},
 		{
-			name:          "create failed forwards safe status message",
+			// A pause's files are still uploading when the resume is placed:
+			// the node's answer is transient and keeps the retryable code.
+			name:          "create failed forwards sandbox files not found",
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.FailedPrecondition, "sandbox files for 'abc' not found")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
 			wantMsg:       "Failed to place sandbox: sandbox files for 'abc' not found",
 		},
 		{
-			name:          "create failed forwards invalid-argument message",
+			// A node that predates the typed detail: the message says the
+			// refusal is for good.
+			name:          "create refused by the vcpu bounds message",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.InvalidArgument, "vcpu 0 must be at least 1")},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_refused",
+			wantMsg:       "Failed to place sandbox: vcpu 0 must be at least 1",
+		},
+		{
+			// The typed detail decides on its own, whatever the message. Its
+			// 400 is not the client's: no REST field reaches the refused
+			// checks, so the answer is a server error.
+			name:          "create refused by the typed detail",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatus(t, codes.InvalidArgument, "invalid volume mount path")},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_refused",
+			wantMsg:       "Failed to place sandbox: invalid volume mount path",
+		},
+		{
+			// The orchestrator's createRefused helper answers every code
+			// but InvalidArgument with a 500 detail; placement stops on
+			// the detail whatever the code, so the API must report the
+			// refusal rather than a failure the proxy retries for the
+			// whole budget.
+			name:          "create refused by the typed detail as Internal is final",
+			err:           placement.SandboxCreateError{Attempts: 1, LastErr: createRefusedStatusWith(t, codes.Internal, "vcpu 0 must be at least 1", http.StatusInternalServerError)},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_refused",
+			wantMsg:       "Failed to place sandbox: vcpu 0 must be at least 1",
+		},
+		{
+			// The text-match shim stays behind the safe codes: without
+			// the detail an Internal status is not read.
+			name:          "create failed hides the vcpu bounds text on an unsafe code",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.Internal, "vcpu 0 must be at least 1")},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_failed",
+			wantMsg:       "Failed to place sandbox: sandbox creation failed on 3 node(s), please retry; if the problem persists, contact us",
+		},
+		{
+			name:          "create refused with a server status keeps it",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatusWith(t, codes.FailedPrecondition, "node refuses this build for good", http.StatusNotImplemented)},
+			wantCode:      http.StatusNotImplemented,
+			wantErrorCode: "sandbox_create_refused",
+			wantMsg:       "Failed to place sandbox: node refuses this build for good",
+		},
+		{
+			name:          "create refused with a success status is a server error",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatusWith(t, codes.FailedPrecondition, "node refuses this build for good", http.StatusOK)},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_refused",
+			wantMsg:       "Failed to place sandbox: node refuses this build for good",
+		},
+		{
+			name:          "create refused with a status beyond HTTP is a server error",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatusWith(t, codes.FailedPrecondition, "node refuses this build for good", 1000)},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_refused",
+			wantMsg:       "Failed to place sandbox: node refuses this build for good",
+		},
+		{
+			// A node draining refuses with FailedPrecondition too; another
+			// node takes the sandbox, so the code says to retry.
+			name:          "create failed forwards a transient node refusal",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.FailedPrecondition, "node is draining")},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_failed",
+			wantMsg:       "Failed to place sandbox: node is draining",
+		},
+		{
+			name:          "create failed forwards a per-host vcpu refusal",
+			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.InvalidArgument, "cannot cold-boot a VM with 8 vcpus on this host")},
+			wantCode:      http.StatusInternalServerError,
+			wantErrorCode: "sandbox_create_failed",
+			wantMsg:       "Failed to place sandbox: cannot cold-boot a VM with 8 vcpus on this host",
+		},
+		{
+			name:          "create failed forwards an unknown invalid-argument message",
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.InvalidArgument, "invalid volume mount path")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",

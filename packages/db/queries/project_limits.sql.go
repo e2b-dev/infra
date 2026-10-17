@@ -85,6 +85,8 @@ INSERT INTO public.project_limits (
     max_disk_size_mb,
     max_free_disk_size_mb,
     api_team_rps_list,
+    api_team_rps_delete,
+    max_secrets,
     updated_at
 ) VALUES (
     $1::uuid,
@@ -99,6 +101,8 @@ INSERT INTO public.project_limits (
     $10::bigint,
     $10::bigint,
     $11::bigint,
+    $12::bigint,
+    $13::bigint,
     now()
 )
 ON CONFLICT (team_id) DO UPDATE SET
@@ -113,6 +117,8 @@ ON CONFLICT (team_id) DO UPDATE SET
     max_disk_size_mb           = EXCLUDED.max_disk_size_mb,
     max_free_disk_size_mb      = EXCLUDED.max_free_disk_size_mb,
     api_team_rps_list          = EXCLUDED.api_team_rps_list,
+    api_team_rps_delete        = EXCLUDED.api_team_rps_delete,
+    max_secrets                = EXCLUDED.max_secrets,
     updated_at                 = now()
 `
 
@@ -128,6 +134,8 @@ type UpsertProjectLimitsParams struct {
 	DefaultFreeDiskSizeMb    int64
 	MaxFreeDiskSizeMb        int64
 	ApiTeamRpsList           int64
+	ApiTeamRpsDelete         *int64
+	MaxSecrets               *int64
 }
 
 // UpsertProjectLimits records a project's effective limits, which the
@@ -155,6 +163,8 @@ func (q *Queries) UpsertProjectLimits(ctx context.Context, arg UpsertProjectLimi
 		arg.DefaultFreeDiskSizeMb,
 		arg.MaxFreeDiskSizeMb,
 		arg.ApiTeamRpsList,
+		arg.ApiTeamRpsDelete,
+		arg.MaxSecrets,
 	)
 	return err
 }

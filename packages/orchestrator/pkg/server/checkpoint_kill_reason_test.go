@@ -47,9 +47,9 @@ func TestRecordSandboxKill_ThawFailedIsItsOwnLabel(t *testing.T) {
 	counter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
 	require.NoError(t, err)
 
-	recordSandboxKill(t.Context(), counter, lostSandboxKillReason(lostToThaw()))
-	recordSandboxKill(t.Context(), counter, lostSandboxKillReason(lostToResume()))
-	recordSandboxKill(t.Context(), counter, lostSandboxKillReason(lostToResume()))
+	recordSandboxKill(t.Context(), counter, "", lostSandboxKillReason(lostToThaw()))
+	recordSandboxKill(t.Context(), counter, "", lostSandboxKillReason(lostToResume()))
+	recordSandboxKill(t.Context(), counter, "", lostSandboxKillReason(lostToResume()))
 
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(t.Context(), &rm))

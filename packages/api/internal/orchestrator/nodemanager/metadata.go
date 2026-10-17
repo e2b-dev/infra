@@ -35,9 +35,18 @@ func (n *Node) Metadata() NodeMetadata {
 }
 
 func (n *Node) GetSandboxCreateCtx(ctx context.Context, req *orchestrator.SandboxCreateRequest) (*clusters.GRPCClient, context.Context) {
-	// Pass snapshot (is_resume) via metadata so the server-side stats handler
-	// can include it in otelgrpc metric attributes during TagRPC.
-	ctx = metadata.AppendToOutgoingContext(ctx, grpcshared.IsResumeMetadataKey, strconv.FormatBool(req.GetSandbox().GetSnapshot()))
+	// Pass snapshot (is_resume) and the team via metadata so the server-side
+	// stats handler can include them in otelgrpc metric attributes during TagRPC.
+	ctx = metadata.AppendToOutgoingContext(ctx,
+		grpcshared.IsResumeMetadataKey, strconv.FormatBool(req.GetSandbox().GetSnapshot()),
+		grpcshared.TeamIDMetadataKey, req.GetSandbox().GetTeamId(),
+	)
 
 	return n.client, ctx
+}
+
+// GetSandboxClient returns the node client with the sandbox's team on the
+// outgoing metadata, so the orchestrator's RPC metrics carry it.
+func (n *Node) GetSandboxClient(ctx context.Context, teamID string) (*clusters.GRPCClient, context.Context) {
+	return n.client, metadata.AppendToOutgoingContext(ctx, grpcshared.TeamIDMetadataKey, teamID)
 }

@@ -10,12 +10,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
 )
 
-type networkAssignHookFunc func(context.Context, *Sandbox, NetworkAssignReason) error
+type networkAssignHookFunc func(context.Context, *Sandbox, NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error)
 
-func (f networkAssignHookFunc) OnNetworkAssign(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) error {
+func (f networkAssignHookFunc) OnNetworkAssign(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
 	return f(ctx, sbx, reason)
 }
 
@@ -34,43 +35,59 @@ func TestFactoryRunNetworkAssignHookSuccess(t *testing.T) {
 	var gotSandbox *Sandbox
 	var gotReason NetworkAssignReason
 	var ctxUnchanged bool
-	factory := &Factory{networkAssignHook: networkAssignHookFunc(func(ctx context.Context, got *Sandbox, reason NetworkAssignReason) error {
+	want := &orchestrator.SandboxNetworkPlacement{ExecutionId: "execution"}
+	factory := &Factory{networkAssignHook: networkAssignHookFunc(func(ctx context.Context, got *Sandbox, reason NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
 		gotSandbox = got
 		gotReason = reason
 		ctxUnchanged = ctx == callerCtx
 
-		return nil
+		return want, nil
 	})}
 
-	factory.runNetworkAssignHook(callerCtx, sbx, NetworkAssignReasonResume)
-
+	placement, err := factory.runNetworkAssignHook(callerCtx, sbx, NetworkAssignReasonResume)
+	require.NoError(t, err)
+	require.Same(t, want, placement)
 	require.Same(t, sbx, gotSandbox)
 	require.Equal(t, NetworkAssignReasonResume, gotReason)
 	require.True(t, ctxUnchanged, "the caller's ctx is passed through unchanged, with no derived timeout")
 }
 
-func TestFactoryRunNetworkAssignHookSwallowsError(t *testing.T) {
+// An error fails the start, one the hook marked optional is logged and the
+// start goes on, and a panic fails the start without escaping.
+func TestFactoryRunNetworkAssignHookFailures(t *testing.T) {
 	t.Parallel()
+	failure := errors.New("hook failed")
+	for name, tc := range map[string]struct {
+		hook  networkAssignHookFunc
+		fatal bool
+	}{
+		"error": {fatal: true, hook: func(context.Context, *Sandbox, NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
+			return nil, failure
+		}},
+		"optional error": {hook: func(context.Context, *Sandbox, NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
+			return nil, OptionalNetworkAssignError(failure)
+		}},
+		"panic": {fatal: true, hook: func(context.Context, *Sandbox, NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
+			panic("hook panicked")
+		}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			factory := &Factory{networkAssignHook: tc.hook}
+			var placement *orchestrator.SandboxNetworkPlacement
+			var err error
+			require.NotPanics(t, func() {
+				placement, err = factory.runNetworkAssignHook(t.Context(), testNetworkAssignHookSandbox(), NetworkAssignReasonResume)
+			})
+			require.Nil(t, placement)
+			if tc.fatal {
+				require.Error(t, err)
 
-	factory := &Factory{networkAssignHook: networkAssignHookFunc(func(context.Context, *Sandbox, NetworkAssignReason) error {
-		return errors.New("hook failed")
-	})}
-
-	require.NotPanics(t, func() {
-		factory.runNetworkAssignHook(t.Context(), testNetworkAssignHookSandbox(), NetworkAssignReasonResume)
-	})
-}
-
-func TestFactoryRunNetworkAssignHookRecoversPanic(t *testing.T) {
-	t.Parallel()
-
-	factory := &Factory{networkAssignHook: networkAssignHookFunc(func(context.Context, *Sandbox, NetworkAssignReason) error {
-		panic("hook panicked")
-	})}
-
-	require.NotPanics(t, func() {
-		factory.runNetworkAssignHook(t.Context(), testNetworkAssignHookSandbox(), NetworkAssignReasonResume)
-	})
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
 }
 
 func TestNewFactoryDefaultsNilNetworkAssignHook(t *testing.T) {
@@ -106,6 +123,6 @@ func BenchmarkFactoryRunNetworkAssignHook(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		factory.runNetworkAssignHook(ctx, sbx, NetworkAssignReasonResume)
+		_, _ = factory.runNetworkAssignHook(ctx, sbx, NetworkAssignReasonResume)
 	}
 }

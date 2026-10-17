@@ -131,9 +131,12 @@ const (
 	// stages after it then go without.
 	//
 	// No stage needs a number of its own. The structural check and the probe work
-	// on the local copy, and the freshness re-check — the one that stats the mount,
-	// and so the one that could otherwise stall for the life of the process — is
-	// already released on this shared deadline by statSourceBounded.
+	// on the local copy, and the freshness re-check — the one that stats the mount
+	// by path, and so the one that could otherwise stall for the life of the
+	// process — is already released on this shared deadline by statSourceBounded.
+	// The copy's reads and its fstat of the opened source are not: a call already
+	// blocked in the kernel cannot be interrupted (see copyContext), which is why
+	// the warm runs off the resume path.
 	warmBudget = 30 * time.Second
 
 	// backoffBase and backoffCeiling schedule retries of a failure that may clear
@@ -969,10 +972,10 @@ func (c *Cache) warm(ctx context.Context, srcPath string) (string, error) {
 // stat-ed the source and hands the result down, so nothing here asks the mount
 // for metadata a resume has just paid for.
 //
-// A stale fi needs no special handling. The copy re-checks the source when it
-// comes up short, and publication re-checks it again, so a generation the source
-// has already moved past is abandoned as superseded rather than published or
-// judged.
+// A stale fi needs no special handling. The copy checks that the file it read is
+// still fi's generation, and publication re-checks the source, so a generation
+// the source has already moved past is abandoned as superseded rather than
+// published or judged.
 func (c *Cache) warmWith(ctx context.Context, srcPath string, fi os.FileInfo) (result string, err error) {
 	// A panic is contained here rather than being allowed to reach the goroutine
 	// this runs on, where it would take the orchestrator down with every sandbox on
@@ -1267,6 +1270,14 @@ func (c *Cache) copyInUnchecked(ctx context.Context, srcPath string, fi os.FileI
 			// promotion as a corrupt target, with the loud warn and warms{bad_target}
 			// that carries, and pin an identity the source has already left behind.
 			// Publication would never get to call it superseded.
+			err = errSuperseded
+		}
+	}
+	if err == nil {
+		// A same-size promotion before or during the copy would put another generation under fi's name.
+		if cur, serr := src.Stat(); serr != nil {
+			err = fmt.Errorf("stat opened source: %w", serr)
+		} else if cur.Size() != fi.Size() || !cur.ModTime().Equal(fi.ModTime()) {
 			err = errSuperseded
 		}
 	}

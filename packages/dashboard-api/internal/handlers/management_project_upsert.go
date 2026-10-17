@@ -31,10 +31,11 @@ func (s *APIStore) ManagementUpsertProject(c *gin.Context, projectID api.Project
 	}
 
 	stored, created, err := s.managementService.UpsertProject(ctx, management.Project{
-		ID:    projectID,
-		Name:  body.Name,
-		Slug:  body.Slug,
-		Email: body.Email,
+		ClusterID: body.ClusterId,
+		ID:        projectID,
+		Name:      body.Name,
+		Slug:      body.Slug,
+		Email:     body.Email,
 	})
 	if err != nil {
 		s.sendProjectUpsertError(c, err, attrs...)
@@ -43,10 +44,11 @@ func (s *APIStore) ManagementUpsertProject(c *gin.Context, projectID api.Project
 	}
 
 	c.JSON(upsertStatus(created), api.ManagementProject{
-		Id:    stored.ID,
-		Name:  stored.Name,
-		Slug:  stored.Slug,
-		Email: stored.Email,
+		ClusterId: stored.ClusterID,
+		Id:        stored.ID,
+		Name:      stored.Name,
+		Slug:      stored.Slug,
+		Email:     stored.Email,
 	})
 }
 

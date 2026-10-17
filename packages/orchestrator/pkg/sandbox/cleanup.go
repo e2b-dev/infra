@@ -48,6 +48,20 @@ func runLateCleanup(ctx context.Context, f func(context.Context) error, priority
 	logger.L().Info(runCtx, lateCleanupLogMessage, fields...)
 }
 
+// preserveConstructionCause retains the reason a failed constructor was canceled,
+// including when a dependency returned only the generic context error.
+func preserveConstructionCause(ctx context.Context, err error) error {
+	if err == nil || !errors.Is(err, ctx.Err()) {
+		return err
+	}
+	//nolint:errorlint // A wrapped cancellation can itself carry the diagnosis; only ctx.Err() is generic.
+	if cause := context.Cause(ctx); cause != nil && cause != ctx.Err() && !errors.Is(err, cause) {
+		return errors.Join(err, cause)
+	}
+
+	return err
+}
+
 func NewCleanup() *Cleanup {
 	return &Cleanup{}
 }

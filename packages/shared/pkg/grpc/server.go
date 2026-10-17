@@ -35,18 +35,17 @@ const (
 type ServerOption func(*serverOptions)
 
 type serverOptions struct {
-	maxMessageSize           *int
-	withSandboxResumeMetrics bool
-	withoutPayloadLogging    bool
-	recoveryHandler          recovery.RecoveryHandlerFunc
-	unaryDeadline            grpc.UnaryServerInterceptor
-	unaryInterceptors        []grpc.UnaryServerInterceptor
-	streamInterceptors       []grpc.StreamServerInterceptor
-	creds                    credentials.TransportCredentials
-	maxConnectionAge         time.Duration
-	maxConnectionAgeGrace    time.Duration
-	maxConnectionAgeSet      bool
-	waitForHandlers          bool
+	maxMessageSize              *int
+	withSandboxMetricAttributes bool
+	recoveryHandler             recovery.RecoveryHandlerFunc
+	unaryDeadline               grpc.UnaryServerInterceptor
+	unaryInterceptors           []grpc.UnaryServerInterceptor
+	streamInterceptors          []grpc.StreamServerInterceptor
+	creds                       credentials.TransportCredentials
+	maxConnectionAge            time.Duration
+	maxConnectionAgeGrace       time.Duration
+	maxConnectionAgeSet         bool
+	waitForHandlers             bool
 }
 
 // connectionAge returns the age and grace to apply: the explicit values when
@@ -64,10 +63,10 @@ func WithMaxMessageSize(size int) ServerOption {
 	return func(o *serverOptions) { o.maxMessageSize = &size }
 }
 
-// WithSandboxResumeMetrics adds sandbox.resume attribute to otelgrpc metrics,
-// read from incoming gRPC metadata.
-func WithSandboxResumeMetrics() ServerOption {
-	return func(o *serverOptions) { o.withSandboxResumeMetrics = true }
+// WithSandboxMetricAttributes adds the sandbox.resume and team.id attributes
+// to otelgrpc metrics, read from incoming gRPC metadata.
+func WithSandboxMetricAttributes() ServerOption {
+	return func(o *serverOptions) { o.withSandboxMetricAttributes = true }
 }
 
 // WithRecoveryHandler configures the unary panic recovery handler.
@@ -75,12 +74,7 @@ func WithRecoveryHandler(handler recovery.RecoveryHandlerFunc) ServerOption {
 	return func(o *serverOptions) { o.recoveryHandler = handler }
 }
 
-// WithoutPayloadLogging omits request and response payloads from server logs.
-func WithoutPayloadLogging() ServerOption {
-	return func(o *serverOptions) { o.withoutPayloadLogging = true }
-}
-
-// WithUnaryInterceptors appends interceptors after recovery, logging, and the
+// WithUnaryInterceptors appends interceptors after logging, recovery, and the
 // unary deadline, so they run with a bounded context and inside the recovery.
 func WithUnaryInterceptors(interceptors ...grpc.UnaryServerInterceptor) ServerOption {
 	return func(o *serverOptions) { o.unaryInterceptors = append(o.unaryInterceptors, interceptors...) }
@@ -140,12 +134,17 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 		o(&cfg)
 	}
 
-	logEvents := []logging.LoggableEvent{logging.StartCall, logging.FinishCall}
-	if !cfg.withoutPayloadLogging {
-		logEvents = append(logEvents, logging.PayloadReceived, logging.PayloadSent)
-	}
+	callEvents := []logging.LoggableEvent{logging.StartCall, logging.FinishCall}
 	logOpts := []logging.Option{
-		logging.WithLogOnEvents(logEvents...),
+		// One line per call: FinishCall carries the method, status code and duration.
+		logging.WithLogOnEvents(logging.FinishCall),
+		logging.WithLevels(logging.DefaultServerCodeToLevel),
+	}
+	// A stream logs a payload event per message, so one call carrying
+	// thousands of messages writes thousands of lines, enough to flood the
+	// node's log pipeline. Streams log their start and finish only.
+	streamLogOpts := []logging.Option{
+		logging.WithLogOnEvents(callEvents...),
 		logging.WithLevels(logging.DefaultServerCodeToLevel),
 	}
 
@@ -160,8 +159,8 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 		otelgrpc.WithTracerProvider(tel.TracerProvider),
 		otelgrpc.WithMeterProvider(tel.MeterProvider),
 	}
-	if cfg.withSandboxResumeMetrics {
-		otelOpts = append(otelOpts, otelgrpc.WithMetricAttributesFn(extractSandboxResumeAttrs))
+	if cfg.withSandboxMetricAttributes {
+		otelOpts = append(otelOpts, otelgrpc.WithMetricAttributesFn(extractSandboxMetricAttrs))
 	}
 
 	var recoveryOpts []recovery.Option
@@ -169,12 +168,13 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 		recoveryOpts = append(recoveryOpts, recovery.WithRecoveryHandler(cfg.recoveryHandler))
 	}
 
+	// Recovery runs inside logging, so a recovered panic still logs its finished call.
 	unaryInterceptors := []grpc.UnaryServerInterceptor{
-		recovery.UnaryServerInterceptor(recoveryOpts...),
 		selector.UnaryServerInterceptor(
 			logging.UnaryServerInterceptor(logger.GRPCLogger(logger.L()), logOpts...),
 			ignoredLoggingRoutes,
 		),
+		recovery.UnaryServerInterceptor(recoveryOpts...),
 	}
 	if cfg.unaryDeadline != nil {
 		unaryInterceptors = append(unaryInterceptors, cfg.unaryDeadline)
@@ -183,7 +183,7 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 
 	streamInterceptors := []grpc.StreamServerInterceptor{
 		selector.StreamServerInterceptor(
-			logging.StreamServerInterceptor(logger.GRPCLogger(logger.L()), logOpts...),
+			logging.StreamServerInterceptor(logger.GRPCLogger(logger.L()), streamLogOpts...),
 			ignoredLoggingRoutes,
 		),
 	}
@@ -221,21 +221,28 @@ func NewGRPCServer(tel *telemetry.Client, opts ...ServerOption) *grpc.Server {
 	return grpc.NewServer(serverOpts...)
 }
 
-// extractSandboxResumeAttrs reads sandbox.resume from gRPC metadata set by the
-// API client. Called by otelgrpc during TagRPC — before the request payload is
-// deserialized — so we use metadata instead of the payload.
-func extractSandboxResumeAttrs(ctx context.Context) []attribute.KeyValue {
+// extractSandboxMetricAttrs reads sandbox.resume and team.id from gRPC
+// metadata set by the API client. Called by otelgrpc during TagRPC — before the
+// request payload is deserialized — so we use metadata instead of the payload.
+func extractSandboxMetricAttrs(ctx context.Context) []attribute.KeyValue {
 	md, ok := metadata.FromIncomingContext(ctx)
 	if !ok {
 		return nil
 	}
 
-	values := md.Get(IsResumeMetadataKey)
-	if len(values) == 0 {
-		return nil
+	return sandboxMetricAttrs(md)
+}
+
+// sandboxMetricAttrs maps the sandbox metadata keys to metric attributes. An
+// absent key adds nothing, so a call without them stays an unlabelled series.
+func sandboxMetricAttrs(md metadata.MD) []attribute.KeyValue {
+	var attrs []attribute.KeyValue
+	if values := md.Get(IsResumeMetadataKey); len(values) > 0 {
+		attrs = append(attrs, attribute.Bool("sandbox.resume", values[0] == "true"))
+	}
+	if values := md.Get(TeamIDMetadataKey); len(values) > 0 && values[0] != "" {
+		attrs = append(attrs, telemetry.WithTeamID(values[0]))
 	}
 
-	return []attribute.KeyValue{
-		attribute.Bool("sandbox.resume", values[0] == "true"),
-	}
+	return attrs
 }

@@ -9,10 +9,10 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	grpcshared "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -30,12 +30,13 @@ func (a instanceAuthorization) RequireTransportSecurity() bool {
 	return a.tls
 }
 
-func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool) (*GRPCClient, error) {
+func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint string, endpointTLS bool, plaintext credentials.TransportCredentials) (*GRPCClient, error) {
 	grpcOptions := []grpc.DialOption{
 		grpc.WithStatsHandler(
 			otelgrpc.NewClientHandler(
 				otelgrpc.WithTracerProvider(tel.TracerProvider),
 				otelgrpc.WithMeterProvider(tel.MeterProvider),
+				grpcshared.WithSandboxClientMetricAttributes(),
 			),
 		),
 		grpc.WithKeepaliveParams(
@@ -56,7 +57,7 @@ func createClient(tel *telemetry.Client, auth *instanceAuthorization, endpoint s
 		cred := credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 		grpcOptions = append(grpcOptions, grpc.WithAuthority(endpoint), grpc.WithTransportCredentials(cred))
 	} else {
-		grpcOptions = append(grpcOptions, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		grpcOptions = append(grpcOptions, grpc.WithTransportCredentials(plaintext))
 	}
 
 	conn, err := grpc.NewClient(endpoint, grpcOptions...)

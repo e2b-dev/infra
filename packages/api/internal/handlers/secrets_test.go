@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -33,11 +34,12 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	managementv1 "github.com/e2b-dev/infra/packages/api/internal/secretsstore/management/v1"
+	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	managementv1 "github.com/e2b-dev/infra/packages/shared/pkg/grpc/contracts/secretsstore/management"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
@@ -258,7 +260,10 @@ func newSecretsRequest(t *testing.T, method, target, body string) (*gin.Context,
 
 	teamID := uuid.New()
 	ginCtx.Request.Header.Set(sharedauth.HeaderTeamID, teamID.String())
-	sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{Team: &authqueries.Team{ID: teamID}})
+	sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{
+		Team:   &authqueries.Team{ID: teamID},
+		Limits: &types.TeamLimits{MaxSecrets: 10},
+	})
 
 	return ginCtx, recorder, teamID
 }
@@ -550,6 +555,48 @@ func TestSecretsValueForwardedUntouched(t *testing.T) {
 		require.Equal(t, http.StatusCreated, recorder.Code)
 		require.Len(t, backend.createRequests, 1)
 		require.Len(t, backend.createRequests[0].GetValue(), size)
+	}
+}
+
+// The limit is the team's resolved one, carried to the backend as the wire's
+// int32; a limit the wire cannot hold is clamped rather than wrapped.
+func TestPostSecretsProjectSecretsLimit(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		tier  string
+		limit int64
+		sent  int32
+	}{
+		{name: "tier limit", limit: 10, sent: 10},
+		{name: "pushed limit", limit: 250, sent: 250},
+		{name: "limit above the wire's range is clamped", limit: math.MaxInt32 + 1, sent: math.MaxInt32},
+		{name: "cached before the limit, base tier", tier: constants.BaseTierID, limit: 0, sent: 10},
+		{name: "cached before the limit, paid tier", tier: "pro_v1", limit: 0, sent: 100},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body, err := json.Marshal(api.NewSecret{Name: "my-secret", Value: sentinelSecretValue})
+			require.NoError(t, err)
+
+			ginCtx, recorder, teamID := newSecretsRequest(t, http.MethodPost, "/secrets", string(body))
+			sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{
+				Team:   &authqueries.Team{ID: teamID, Tier: tt.tier},
+				Limits: &types.TeamLimits{MaxSecrets: tt.limit},
+			})
+
+			backend := &fakeSecretsBackend{secret: backendSecret()}
+			store := newSecretsStore(t, startSecretsBackend(t, backend), true)
+			store.PostSecrets(ginCtx)
+
+			require.Equal(t, http.StatusCreated, recorder.Code)
+			require.Len(t, backend.createRequests, 1)
+			require.Equal(t, tt.sent, backend.createRequests[0].GetProjectSecretsLimit())
+		})
 	}
 }
 
@@ -905,7 +952,7 @@ func TestSecretsManagementClientIsLazyAndFailsFast(t *testing.T) {
 
 	// Nothing listens on this address: construction must still succeed and
 	// stay idle, and a call must fail without waiting for a connection.
-	conn, err := newSecretsManagementClient("127.0.0.1:1")
+	conn, err := newSecretsManagementClient("127.0.0.1:1", insecure.NewCredentials())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 
@@ -994,11 +1041,12 @@ func TestSecretsManagementClientFindsAddedReplicaAfterRotation(t *testing.T) {
 func TestSecretsManagementClientTargetsDeadlinesAndCancellation(t *testing.T) {
 	t.Parallel()
 
-	deadlines, ended := make(chan time.Time, 2), make(chan error, 2)
+	arrivals, deadlines, ended := make(chan time.Time, 2), make(chan time.Time, 2), make(chan error, 2)
 	replica := startSecretsReplica(t, grpc.NewServer(grpc.UnaryInterceptor(func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
 		if _, list := req.(*managementv1.ListSecretsRequest); list {
 			return handler(ctx, req)
 		}
+		arrivals <- time.Now()
 		deadline, _ := ctx.Deadline()
 		deadlines <- deadline
 		<-ctx.Done()
@@ -1016,15 +1064,19 @@ func TestSecretsManagementClientTargetsDeadlinesAndCancellation(t *testing.T) {
 	}
 	require.Equal(t, codes.Unavailable, status.Code(getSecrets(t, dialSecretsManagement(t, "dns:///127.0.0.1:1"), 1)))
 	store := newSecretsStore(t, client, true)
-	// A caller deadline shorter than the API's own timeout reaches the backend.
-	deadlineCtx, cancelDeadline := context.WithTimeout(t.Context(), 300*time.Millisecond)
+	// A caller deadline shorter than the API's own timeout reaches the backend. It outlasts a stall
+	// before the request is sent, which would otherwise expire it before the backend sees the call.
+	deadlineCtx, cancelDeadline := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancelDeadline()
 	callerDeadline, _ := deadlineCtx.Deadline()
 	ginCtx, recorder, _ := newSecretsRequest(t, http.MethodGet, "/secrets/my-secret", "")
 	ginCtx.Request = ginCtx.Request.WithContext(deadlineCtx)
+	sent := time.Now()
 	store.GetSecretsSecretID(ginCtx, "my-secret")
 	require.Equal(t, http.StatusGatewayTimeout, recorder.Code)
-	require.WithinDuration(t, callerDeadline, receiveWithin(t, deadlines, "the backend handler"), 100*time.Millisecond)
+	// The backend applies the caller's remaining time on arrival, so its deadline runs late by the transit.
+	transit := receiveWithin(t, arrivals, "the backend handler").Sub(sent)
+	require.WithinRange(t, receiveWithin(t, deadlines, "the backend handler"), callerDeadline, callerDeadline.Add(transit))
 	receiveWithin(t, ended, "the backend call to end")
 	// Without one the API's timeout applies. A caller that goes away cancels the call.
 	cancelCtx, cancel := context.WithCancel(t.Context())
@@ -1101,7 +1153,7 @@ func secretsAddresses(replicas ...*secretsReplica) resolver.State {
 func dialSecretsManagement(t *testing.T, target string) managementv1.SecretManagementServiceClient {
 	t.Helper()
 
-	conn, err := newSecretsManagementClient(target)
+	conn, err := newSecretsManagementClient(target, insecure.NewCredentials())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
 	require.Equal(t, connectivity.Idle, conn.GetState())

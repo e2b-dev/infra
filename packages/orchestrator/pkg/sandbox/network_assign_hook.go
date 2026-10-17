@@ -2,7 +2,11 @@
 
 package sandbox
 
-import "context"
+import (
+	"context"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+)
 
 // NetworkAssignReason tells NetworkAssignHook.OnNetworkAssign what kind of
 // start this is (a brand-new sandbox, a memory-snapshot resume, etc.), so
@@ -53,10 +57,15 @@ func (r NetworkAssignReason) String() string {
 // NetworkAssignHook is an optional extension point for sandbox startup. It
 // is called once per start attempt, right after AssignNetwork puts the
 // sandbox in the network map and strictly before that sandbox's guest can
-// run (or resume running) for this attempt. It's a no-op by default (see
-// NoopNetworkAssignHook).
+// run (or resume running) for this attempt, so an edition can complete the
+// sandbox's network. It's a no-op by default (see NoopNetworkAssignHook).
+//
+// An error fails the start, unless the hook wrapped it with
+// OptionalNetworkAssignError: then it is logged and the start goes on. The
+// placement returned, if any, says where the sandbox's traffic goes and is
+// reported by Create.
 type NetworkAssignHook interface {
-	OnNetworkAssign(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) error
+	OnNetworkAssign(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error)
 }
 
 // NoopNetworkAssignHook is a no-op NetworkAssignHook, used when no
@@ -65,6 +74,17 @@ type NoopNetworkAssignHook struct{}
 
 var _ NetworkAssignHook = NoopNetworkAssignHook{}
 
-func (NoopNetworkAssignHook) OnNetworkAssign(_ context.Context, _ *Sandbox, _ NetworkAssignReason) error {
-	return nil
+func (NoopNetworkAssignHook) OnNetworkAssign(context.Context, *Sandbox, NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
+	return nil, nil
 }
+
+// OptionalNetworkAssignError marks a NetworkAssignHook error the start can
+// go on without: the factory logs it instead of failing the start.
+func OptionalNetworkAssignError(err error) error {
+	return optionalNetworkAssignError{err: err}
+}
+
+type optionalNetworkAssignError struct{ err error }
+
+func (e optionalNetworkAssignError) Error() string { return e.err.Error() }
+func (e optionalNetworkAssignError) Unwrap() error { return e.err }

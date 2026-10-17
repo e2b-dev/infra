@@ -37,6 +37,7 @@ type clusterRegistration struct {
 	SandboxProxyDomain *string
 	AuthOrgID          *string
 	DeletionProtection bool
+	RefreshToken       bool
 }
 
 func (s *APIStore) PostAdminClusters(c *gin.Context) {
@@ -89,7 +90,7 @@ func (s *APIStore) createCluster(ctx context.Context, registration clusterRegist
 		return uuid.Nil, errInvalidClusterRegistration
 	}
 
-	return s.db.Dashboard.CreateCluster(ctx, dashboardqueries.CreateClusterParams{
+	params := dashboardqueries.CreateClusterParams{
 		ClusterID:          registration.ClusterID,
 		Name:               registration.Name,
 		Endpoint:           registration.Endpoint,
@@ -98,7 +99,12 @@ func (s *APIStore) createCluster(ctx context.Context, registration clusterRegist
 		SandboxProxyDomain: registration.SandboxProxyDomain,
 		AuthOrgID:          registration.AuthOrgID,
 		DeletionProtection: registration.DeletionProtection,
-	})
+	}
+	if registration.RefreshToken {
+		return s.db.Dashboard.RegisterManagedCluster(ctx, dashboardqueries.RegisterManagedClusterParams(params))
+	}
+
+	return s.db.Dashboard.CreateCluster(ctx, params)
 }
 
 func (s *APIStore) DeleteAdminClustersClusterID(c *gin.Context, clusterID api.ClusterID) {

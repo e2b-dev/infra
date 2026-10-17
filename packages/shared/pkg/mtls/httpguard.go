@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"net/http"
 	"slices"
+	"strings"
 
 	"go.uber.org/zap"
 )
@@ -39,9 +40,15 @@ func WithGuardConnStateLookup(lookup ConnStateLookup) GuardOption {
 }
 
 // NewHTTPGuard wraps next. healthPaths are exact paths, such as "/health"
-// and "/ready"; the query string is not part of the path.
+// and "/ready"; the query string is not part of the path. Each is trimmed
+// and blanks are skipped, as a list read from the environment needs.
 func NewHTTPGuard(cfg ServerConfig, healthPaths []string, next http.Handler, opts ...GuardOption) *HTTPGuard {
-	g := &HTTPGuard{cfg: cfg, healthPaths: slices.Clone(healthPaths), next: next}
+	g := &HTTPGuard{cfg: cfg, next: next}
+	for _, path := range healthPaths {
+		if path = strings.TrimSpace(path); path != "" {
+			g.healthPaths = append(g.healthPaths, path)
+		}
+	}
 	for _, o := range opts {
 		o(g)
 	}

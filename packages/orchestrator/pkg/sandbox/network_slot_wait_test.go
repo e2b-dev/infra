@@ -99,7 +99,7 @@ func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { /
 		_, err = sandboxes.GetByHostPort(net.JoinHostPort(donor.HostIPString(), "80"))
 		require.NoError(t, err, "donor must be mapped before normal release")
 
-		released := sandboxes.NetworkReleased
+		released := sandboxes.NetworkRelease(donorSandbox.Runtime.SandboxID, donorSandbox.LifecycleID)
 		donorCleanup := NewCleanup()
 		donorCleanup.Add(t.Context(), func(ctx context.Context) error {
 			return pool.ReturnAsync(ctx, donor, released, network.ReturnDelay)
@@ -111,7 +111,7 @@ func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { /
 			pool,
 			getCleanup,
 			&orchestrator.SandboxNetworkConfig{},
-			released,
+			sandboxes.NetworkRelease("pool-wait-replacement", "replacement-lifecycle"),
 			sandboxtypes.EgressClassSandbox,
 		)
 		synctest.Wait()
@@ -153,6 +153,24 @@ func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { /
 		}
 		if getErr != nil || got == nil || got.Idx != donorIndex {
 			t.Errorf("%s%s; caller slot=%v donor=%d err=%v", poolWaitAssertionFailureMarker, poolWaitAssertion, slotIndex(got), donorIndex, getErr)
+		}
+		if got != nil {
+			require.Same(t, donor, got, "real pool reuse must return the exact same slot pointer")
+			replacement := &Sandbox{
+				Resources:   &Resources{Slot: got},
+				Metadata:    &Metadata{Runtime: sandboxtypes.RuntimeMetadata{SandboxID: "pool-wait-replacement", ExecutionID: "replacement-execution"}},
+				LifecycleID: "replacement-lifecycle",
+			}
+			sandboxes.AssignNetwork(t.Context(), replacement)
+			require.NoError(t, released(t.Context(), donor.HostIPString()))
+			mapped, err := sandboxes.GetByHostPort(net.JoinHostPort(donor.HostIPString(), "80"))
+			require.NoError(t, err, "delayed old callback must preserve the real pool successor route")
+			require.Same(t, replacement, mapped)
+			select {
+			case <-releaseEvents.released:
+				t.Error("completed old callback must not notify the real pool successor")
+			default:
+			}
 		}
 
 		// The donor is a metadata-only fixture. No netns was created, so the

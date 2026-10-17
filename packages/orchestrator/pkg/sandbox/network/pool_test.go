@@ -51,6 +51,17 @@ func newTestSlot(idx int) *Slot {
 // network-release notification.
 func noopRelease(context.Context, string) error { return nil }
 
+func poolTestConfig() Config {
+	var config Config
+	config.NetworkVersion = 1
+
+	return config
+}
+
+func emptySandboxNetworkConfig() *orchestrator.SandboxNetworkConfig {
+	return new(orchestrator.SandboxNetworkConfig)
+}
+
 // TestReturn_NoPanicDuringClose races Return against Close to guard
 // against regressions of the send-on-closed-channel panic.
 func TestReturn_NoPanicDuringClose(t *testing.T) {
@@ -317,5 +328,125 @@ func TestPool_CloseUnblocksGetWaitingForSlot(t *testing.T) {
 		close(pool.newSlots)
 		synctest.Wait()
 		require.NoError(t, <-closeDone)
+	})
+}
+
+func TestPool_CloseCanceledBeforePublicationLeavesPoolOpen(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		pool := NewPool(NewSlotsPoolSize, ReusedSlotsPoolSize, &fakeStorage{}, Config{NetworkVersion: 1})
+		defer close(pool.newSlots)
+
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+
+		closeDone := make(chan error, 1)
+		go func() { closeDone <- pool.Close(ctx) }()
+		synctest.Wait()
+
+		select {
+		case err := <-closeDone:
+			require.ErrorIs(t, err, context.Canceled)
+		default:
+			t.Fatal("Close did not return the cancellation before publishing closed")
+		}
+
+		select {
+		case <-pool.done:
+			t.Fatal("canceled Close published closed")
+		default:
+		}
+
+		pool.closeMu.RLock()
+		closed := pool.closed
+		pool.closeMu.RUnlock()
+		assert.False(t, closed)
+	})
+}
+
+// Once closed is published, Get rejects admission before selecting any slot.
+// This checks the admission gate; final-claim races are exercised below.
+func TestPool_GetRejectsAdmissionWhenClosed(t *testing.T) {
+	t.Parallel()
+
+	storage := new(fakeStorage)
+	pool := NewPool(NewSlotsPoolSize, ReusedSlotsPoolSize, storage, poolTestConfig())
+	close(pool.newSlots)
+
+	returned := newTestSlot(71)
+	pool.reusedSlots <- returned
+	reusableSlotsAvailableCounter.Add(t.Context(), 1)
+
+	pool.closeMu.Lock()
+	pool.closed = true
+	pool.closeMu.Unlock()
+
+	got, err := pool.Get(t.Context(), emptySandboxNetworkConfig(), sandboxtypes.EgressClassSandbox)
+	assert.Nil(t, got, "a closed pool must not hand out its reusable slot")
+	assert.Len(t, pool.reusedSlots, 1, "the slot remains pool-owned until Close drains it")
+
+	_ = pool.Close(t.Context())
+	assert.Equal(t, int64(1), storage.released.Load(), "Close releases the retained slot exactly once")
+	require.ErrorIs(t, err, ErrClosed)
+}
+
+// A Get tracked before Close can receive a reusable slot immediately before
+// Close owns admission. Its final claim must reject and clean the slot, and
+// Close must join that admission-owned cleanup before returning.
+func TestPool_CloseWinsFinalClaimAndJoinsCleanup(t *testing.T) {
+	t.Parallel()
+
+	synctest.Test(t, func(t *testing.T) {
+		cleanupStarted := make(chan struct{})
+		cleanupAllowed := make(chan struct{})
+		storage := new(fakeStorage)
+		storage.releaseFn = func(*Slot) error {
+			close(cleanupStarted)
+			<-cleanupAllowed
+
+			return nil
+		}
+		pool := NewPool(NewSlotsPoolSize, 0, storage, poolTestConfig())
+
+		getDone := make(chan poolGetResult, 1)
+		go func() {
+			slot, err := pool.Get(t.Context(), emptySandboxNetworkConfig(), sandboxtypes.EgressClassSandbox)
+			getDone <- poolGetResult{slot: slot, err: err}
+		}()
+		synctest.Wait()
+
+		// Hold the close writer lock while the waiting Get receives the slot.
+		// Publishing the exact Close state after that receive forces the final
+		// claim to observe closed when the lock is released.
+		pool.closeMu.Lock()
+		returned := newTestSlot(72)
+		reusableSlotsAvailableCounter.Add(t.Context(), 1)
+		pool.reusedSlots <- returned
+		pool.closed = true
+		pool.doneOnce.Do(func() { close(pool.done) })
+		close(pool.newSlots)
+		pool.closeMu.Unlock()
+
+		closeDone := make(chan error, 1)
+		go func() { closeDone <- pool.Close(t.Context()) }()
+		synctest.Wait()
+
+		select {
+		case <-cleanupStarted:
+		default:
+			t.Error("post-close claim did not start slot cleanup")
+		}
+		assert.Empty(t, getDone, "Get returned before rejected-slot cleanup finished")
+		assert.Empty(t, closeDone, "Close returned before admission-owned cleanup finished")
+
+		close(cleanupAllowed)
+		synctest.Wait()
+
+		got := <-getDone
+		require.Nil(t, got.slot)
+		require.ErrorIs(t, got.err, ErrClosed)
+		require.NoError(t, <-closeDone)
+		assert.Equal(t, int64(1), storage.released.Load(), "the rejected slot is released exactly once")
 	})
 }

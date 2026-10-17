@@ -25,6 +25,7 @@ func projectLimits(projectID uuid.UUID, revision int64) ProjectLimitsProjection 
 		DefaultFreeDiskSizeMB:    10240,
 		MaxFreeDiskSizeMB:        51200,
 		APITeamRPSList:           60,
+		MaxSecrets:               new(int64(25)),
 	}
 }
 
@@ -108,6 +109,7 @@ func TestValidateProjectLimitsProjection(t *testing.T) {
 		"negative default free disk":  func(p *ProjectLimitsProjection) { p.DefaultFreeDiskSizeMB = -1 },
 		"zero free disk ceiling":      func(p *ProjectLimitsProjection) { p.MaxFreeDiskSizeMB, p.DefaultFreeDiskSizeMB = 0, 0 },
 		"negative list rate":          func(p *ProjectLimitsProjection) { p.APITeamRPSList = -1 },
+		"zero secrets":                func(p *ProjectLimitsProjection) { p.MaxSecrets = new(int64(0)) },
 		"free disk above its ceiling": func(p *ProjectLimitsProjection) { p.DefaultFreeDiskSizeMB = p.MaxFreeDiskSizeMB + 1 },
 	}
 	for name, change := range refused {
@@ -283,4 +285,38 @@ func TestAnUnpushedProjectKeepsItsTierListRate(t *testing.T) {
 	setTierListRate(t, db, teamID, 25)
 
 	require.EqualValues(t, 25, listRate(t, db, teamID))
+}
+
+func secretLimit(t *testing.T, db *testutils.Database, teamID uuid.UUID) int64 {
+	t.Helper()
+
+	var limit int64
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
+		func(rows pgx.Rows) error {
+			rows.Next()
+
+			return rows.Scan(&limit)
+		}, teamID))
+
+	return limit
+}
+
+func TestApplyProjectLimitsPushesTheSecretLimit(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	service, _ := newService(db)
+	teamID := testutils.CreateTestTeam(t, db)
+	require.EqualValues(t, 10, secretLimit(t, db, teamID), "an unpushed project is on its tier")
+
+	pushed := projectLimits(teamID, 1)
+	pushed.MaxSecrets = new(int64(70))
+	require.NoError(t, service.ApplyProjectLimits(t.Context(), pushed))
+	require.EqualValues(t, 70, secretLimit(t, db, teamID))
+
+	unsent := projectLimits(teamID, 2)
+	unsent.MaxSecrets = nil
+	require.NoError(t, service.ApplyProjectLimits(t.Context(), unsent))
+	require.EqualValues(t, 10, secretLimit(t, db, teamID), "a push without the limit leaves it to the tier")
 }

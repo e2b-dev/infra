@@ -189,7 +189,11 @@ func (b *File) readAt(ctx context.Context, p []byte, off int64) (int, error) {
 	maxParallel := b.store.flags.IntFlag(ctx, featureflags.MaxParallelBuildReadSegments)
 
 	for {
-		segments, n, distinctBuilds, err := b.planRead(ctx, p, off)
+		// Keep one attempt on one header identity. A provisional header can be
+		// replaced by the durable header after planning but before its source is
+		// read; that released provisional source reports BytesNotAvailableError.
+		h := b.Header()
+		segments, n, distinctBuilds, err := b.planRead(ctx, h, p, off)
 		if err == nil {
 			err = b.readSegments(ctx, p, segments, maxParallel)
 		}
@@ -211,6 +215,14 @@ func (b *File) readAt(ctx context.Context, p []byte, off int64) (int, error) {
 		// the whole read; reads are idempotent, so re-filling already-written
 		// regions is safe and getBuild re-resolves the closed Diff.
 		if _, ok := errors.AsType[*block.CacheClosedError](err); ok {
+			continue
+		}
+		// BytesNotAvailableError is normally a real unavailable source and must
+		// remain visible. It is retryable only when the header changed after this
+		// attempt was planned: the replacement header selects the durable source
+		// that superseded the released provisional one.
+		var unavailable block.BytesNotAvailableError
+		if errors.As(err, &unavailable) && b.Header() != h {
 			continue
 		}
 
@@ -287,7 +299,7 @@ func (b *File) readSegment(ctx context.Context, p []byte, s readSegment) error {
 // distinctBuilds counts the distinct builds the segments reference; it
 // saturates at buildCacheSize when a single read crosses more builds than the
 // per-read cache holds (already deep in the "very fragmented" regime).
-func (b *File) planRead(ctx context.Context, p []byte, off int64) (segments []readSegment, n int, distinctBuilds int, err error) {
+func (b *File) planRead(ctx context.Context, h *header.Header, p []byte, off int64) (segments []readSegment, n int, distinctBuilds int, err error) {
 	// Per-read Diff cache: avoids the DiffStore TTL cache mutex on every mapping.
 	const buildCacheSize = 16
 	var (
@@ -298,7 +310,6 @@ func (b *File) planRead(ctx context.Context, p []byte, off int64) (segments []re
 	)
 
 	for n < len(p) {
-		h := b.Header()
 		mappedToBuild, err := h.GetShiftedMapping(ctx, off+int64(n))
 		if err != nil {
 			return nil, 0, 0, fmt.Errorf("failed to get mapping: %w", err)
@@ -353,8 +364,8 @@ func (b *File) cachedBuild(ctx context.Context, buildID uuid.UUID, ids *[]uuid.U
 	return diff, nil
 }
 
-// Slice returns [off, off+length). Zero-copy when the range fits in a
-// single mapping; otherwise composes via ReadAt.
+// Slice returns [off, off+length). Nonempty diff mappings return owned bytes;
+// unmapped regions may share the immutable empty page. Other ranges use ReadAt.
 func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 	if length > 0 {
 		h := b.Header()
@@ -369,10 +380,17 @@ func (b *File) Slice(ctx context.Context, off, length int64) ([]byte, error) {
 				if derr != nil {
 					logger.L().Warn(ctx, "failed to get build for slice fast path", zap.Error(derr))
 				} else {
-					slice, sErr := diff.Slice(ctx, int64(m.Offset), length, ft)
+					var slice []byte
+					sErr := block.RunFaultSafe(ctx, func() error {
+						var err error
+						slice, err = diff.Slice(ctx, int64(m.Offset), length, ft)
+
+						return err
+					})
 					if sErr == nil {
 						return slice, nil
 					}
+					slice = nil
 					logger.L().Warn(ctx, "failed to slice build fast path", zap.Error(sErr))
 				}
 				// Errors fall through to ReadAt.

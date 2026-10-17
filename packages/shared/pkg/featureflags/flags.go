@@ -2,9 +2,10 @@ package featureflags
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
-	"net"
-	"net/url"
+	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -15,7 +16,6 @@ import (
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
@@ -106,6 +106,14 @@ var RateLimitV2Mode = NewStringFlag("rate-limit-v2-mode", APIGroupRateLimitDisab
 
 var RateLimitDeleteMode = NewStringFlag("rate-limit-delete-mode", APIGroupRateLimitDisabled)
 
+// SandboxPauseRateLimitFlag caps explicit pause requests per sandbox:
+//
+//	{"limit": 5, "period_s": 60}
+//
+// period_s must be 1 to 600, which keeps every limiter key in Redis for at
+// most ten minutes. Null or an invalid value leaves pauses unlimited.
+var SandboxPauseRateLimitFlag = NewJSONFlag("sandbox-pause-rate-limit", ldvalue.Null())
+
 type BoolFlag struct {
 	name     string
 	fallback bool
@@ -187,6 +195,11 @@ var (
 	OrchAcceptsCombinedHostFlag         = NewBoolFlag("orch-accepts-combined-host", false)
 	WorkspacesEnabledFlag               = NewBoolFlag("workspacesEnabled", false)
 
+	// ClientProxyResumeParkingFlag lets client-proxy retry a wake-on-traffic
+	// resume that failed retryably, read by each request at its own park
+	// transition: off means the first retryable failure is that request's answer.
+	ClientProxyResumeParkingFlag = NewBoolFlag("client-proxy-resume-parking", false)
+
 	// FsFreezeViaExecFlag freezes the guest rootfs with `fsfreeze -f /` run through
 	// the envd exec API before a filesystem-only pause, for guests whose envd
 	// predates the native /fsfreeze endpoint. Off = those guests fall back to a
@@ -244,6 +257,13 @@ var (
 	// request before anything is touched; there is no memory fallback, since
 	// the caller asked for a template that cold-boots.
 	FilesystemOnlyCheckpointFlag = NewBoolFlag("filesystem-only-checkpoint", false)
+
+	// EnvdInitHeldRequestFlag makes a start whose envd is at or above
+	// utils.MinEnvdVersionForHeldInit wait on one /init for its whole envd-wait budget
+	// instead of abandoning an attempt every envd-init-request-timeout-milliseconds, and
+	// send that /init's body, timestamp included, only once envd asks for it
+	// (Expect: 100-continue). Off (the default) runs today's retry loop on every start.
+	EnvdInitHeldRequestFlag = NewBoolFlag("envd-init-held-request", false)
 
 	// InPlaceCheckpointReportingFlag re-admits to the in-place checkpoint the
 	// sandboxes whose balloon runs free-page reporting, and those whose
@@ -422,6 +442,15 @@ var (
 	// for sandbox placement.
 	SandboxVolumeLabelBasedSchedulingFlag = NewBoolFlag("sandbox-volume-label-based-scheduling", false)
 
+	// SandboxListMaxLagMsFlag is how far, in milliseconds, a team's sandbox list
+	// may lag the store. With it set, each API replica shares one store read
+	// between the team's concurrent list requests and keeps it that long, so at
+	// 2000 a team is read at most every 2 s per replica however often it lists,
+	// while reads succeed; a failed read is not kept. Target it at a team to
+	// bound that team alone. The fallback, zero, keeps every request on its own
+	// read, with the same store commands as before.
+	SandboxListMaxLagMsFlag = NewIntFlag("sandbox-list-max-lag-ms", 0)
+
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 	MaxNetworkRuleDomains     = NewIntFlag("max-network-rule-domains", 10)
 
@@ -440,6 +469,12 @@ var (
 	// per project during rollout. It falls back to off, so a deployment that
 	// cannot reach LaunchDarkly keeps the routes dark.
 	CustomerSecretsFlag = NewBoolFlag("customer-secrets", false)
+
+	// MaxLiveSecretsPerProjectFlag is the secrets store's fallback cap on the
+	// live secrets a project may hold, read only when a create carries no
+	// limit. The API sends the team's resolved max_secrets instead. A variation
+	// of zero or less keeps the store's default.
+	MaxLiveSecretsPerProjectFlag = NewIntFlag("secrets-store-max-live-secrets-per-project", 0)
 
 	DisableLegacyTeamMutationsFlag = NewBoolFlag("disable-legacy-team-mutations", false)
 
@@ -552,8 +587,13 @@ var (
 	BestOfKSampleSize             = NewIntFlag("best-of-k-sample-size", 3)                           // Default K=3
 	BestOfKMaxOvercommit          = NewIntFlag("best-of-k-max-overcommit", 400)                      // Default R=4 (stored as percentage, max over-commit ratio)
 	BestOfKAlpha                  = NewIntFlag("best-of-k-alpha", 50)                                // Default Alpha=0.5 (stored as percentage for int flag, current usage weight)
+	PlacementHugepageLimitPercent = NewIntFlag("placement-hugepage-limit-percent", 0)                // Share of a node's hugepage pool ceiling placement may commit; 0 disables the check
 	EnvdInitTimeoutMilliseconds   = NewIntFlag("envd-init-request-timeout-milliseconds", 50)         // Timeout for envd init request in milliseconds
 	EnvdTimeoutMilliseconds       = NewIntFlag("envd-timeout-milliseconds", envdTimeoutFallbackMs()) // Timeout for waiting for envd on resume; falls back to ENVD_TIMEOUT env var (default 10s)
+	// EnvdInitConnectTimeoutMilliseconds bounds each connect of the held envd init
+	// request. Read with EnvdInitHeldRequestFlag; a value below 1000 is raised to it, and
+	// a value at or below zero reads as the fallback.
+	EnvdInitConnectTimeoutMilliseconds = NewIntFlag("envd-init-connect-timeout-milliseconds", 5000)
 	// GuestSyncTimeoutMs overrides the mandatory pre-pause guest-sync deadline
 	// for filesystem-only snapshots, in milliseconds. 0 (default) derives the
 	// timeout from guest RAM; a positive value pins it.
@@ -701,6 +741,18 @@ var (
 
 	// BuildBaseRootfsSizeLimitMB is the maximum size of the base rootfs filesystem created from the OCI image, in MB.
 	BuildBaseRootfsSizeLimitMB = NewIntFlag("build-base-rootfs-size-limit-mb", 25000)
+
+	// ClientProxyResumeParkingBudgetMs gates the retries of one resume
+	// flight, counted from its first retryable failure and read when the
+	// flight is created: no retry starts past it, an attempt under way keeps
+	// its ceiling while a caller waits, and is cut at the budget's end once
+	// every caller has left.
+	ClientProxyResumeParkingBudgetMs = NewIntFlag("client-proxy-resume-parking-budget-ms", 15000)
+
+	// ClientProxyResumeParkingLotSize caps the requests one client-proxy
+	// process keeps waiting on retried resumes, read by each request at its
+	// park transition; the rest are shed with a 503.
+	ClientProxyResumeParkingLotSize = NewIntFlag("client-proxy-resume-parking-lot-size", 512)
 
 	// MinAutoResumeTimeoutSeconds is the minimum auto-resume timeout in seconds.
 	// This prevents thrashing from very short timeouts.
@@ -1007,6 +1059,56 @@ var FirecrackerVersionMap = map[string]string{
 	"v1.14-0": DefaultFirecrackerV1_14_0Version,
 }
 
+// FirecrackerVersionsEnv overrides the firecracker-versions fallback where there is no LaunchDarkly: a JSON object of release line to served version, e.g. {"v1.14-0":"v1.14-0.3.1"}.
+// Set it identically on every binary that resolves versions (api and orchestrator). Like the flag, an override may move a line onto another release, so one security fix can cover every line: {"v1.10":"v1.14-0.3.1","v1.12":"v1.14-0.3.1","v1.14":"v1.14-0.3.1","v1.14-0":"v1.14-0.3.1"}; the operator owns snapshot compatibility across that move.
+const FirecrackerVersionsEnv = "DEFAULT_FIRECRACKER_VERSIONS"
+
+// FirecrackerVersionsFallback merges the FirecrackerVersionsEnv overrides in raw over base; base entries must derive to their key, overrides must parse; on error it returns a copy of base with the error.
+func FirecrackerVersionsFallback(base map[string]string, raw string) (map[string]string, error) {
+	merged := maps.Clone(base)
+	if merged == nil {
+		merged = map[string]string{}
+	}
+
+	for key, value := range base {
+		info, err := fcversion.New(value)
+		if err != nil {
+			return maps.Clone(base), fmt.Errorf("%s[%q]: %w", FirecrackerVersionsEnv, key, err)
+		}
+
+		derived, ok := info.LDKey()
+		if !ok || derived != key {
+			return maps.Clone(base), fmt.Errorf("%s[%q]: baked default %q does not belong to release line %q", FirecrackerVersionsEnv, key, value, key)
+		}
+	}
+
+	if strings.TrimSpace(raw) == "" {
+		return merged, nil
+	}
+
+	var overrides map[string]string
+	if err := json.Unmarshal([]byte(raw), &overrides); err != nil {
+		return merged, fmt.Errorf("%s: expected a JSON object of release line to version: %w", FirecrackerVersionsEnv, err)
+	}
+
+	if overrides == nil {
+		return merged, fmt.Errorf("%s: expected a JSON object of release line to version, got null", FirecrackerVersionsEnv)
+	}
+
+	for key, value := range overrides {
+		if _, err := fcversion.New(value); err != nil {
+			return maps.Clone(base), fmt.Errorf("%s[%q]: %w", FirecrackerVersionsEnv, key, err)
+		}
+	}
+
+	maps.Copy(merged, overrides)
+
+	return merged, nil
+}
+
+// A malformed override keeps the baked map here and fails NewClient, so the service stops with the message instead of a package-init panic.
+var firecrackerVersionsFallback, firecrackerVersionsEnvErr = FirecrackerVersionsFallback(FirecrackerVersionMap, env.GetEnv(FirecrackerVersionsEnv, ""))
+
 // BuildIoEngine Sync is used by default as there seems to be a bad interaction between Async and a lot of io operations.
 var (
 	BuildFirecrackerVersion = NewStringFlag("build-firecracker-version", env.GetEnv("DEFAULT_FIRECRACKER_VERSION", DefaultFirecrackerVersion))
@@ -1116,21 +1218,31 @@ var (
 	// sandbox on the node, so the node, its group and its cluster are the cohorts
 	// that mean anything.
 	EnvdBinaryCacheFlag = NewBoolFlag("envd-binary-cache", envBoolOr("ENVD_BINARY_CACHE", env.IsDevelopment()))
-	// FsOnlyResumeCPUModelFlag restricts where a filesystem-only snapshot may be
-	// resumed: placement keeps only nodes reporting this CPU model, on top of the
-	// build-compatibility rule every sandbox is already subject to. The value is
-	// a bare CPU model as /proc/cpuinfo reports it — machineinfo.IceLakeModel is
-	// "106" (n2), machineinfo.EmeraldRapidsModel is "207" (n4).
+	// FsOnlyResumeCPUModelFlag restricts where a cold boot (a resume of a
+	// filesystem-only snapshot, a memory:false resume, or a sandbox created from a
+	// memory:false snapshot template) may run: placement keeps only nodes
+	// reporting this CPU model, on top of the build-compatibility rule every
+	// sandbox is already subject to. The value is a bare CPU model as
+	// /proc/cpuinfo reports it; see the machineinfo model constants.
 	//
-	// Empty (the default) turns the restriction off, leaving filesystem-only
-	// snapshots on the cross-generation rule a memory restore uses. A deployment
+	// Empty (the default) turns the restriction off, leaving cold boots on the
+	// cross-generation rule a memory restore uses. A deployment
 	// with no LaunchDarkly therefore keeps placing them exactly as before, rather
-	// than needing an LD rule to unpin itself. Memory snapshots never read it.
+	// than needing an LD rule to unpin itself. Memory restores never read it.
 	FsOnlyResumeCPUModelFlag = NewStringFlag("fs-only-resume-cpu-model", "")
+
+	// ExtraCompatibleNodeModelsFlag adds CPU model pairs to the hardcoded
+	// compatibility rule, as a JSON object from build model to node models:
+	// {"106": ["173"]} lets n2 builds run on C4 Granite Rapids nodes. Pairs are
+	// one-way, and architecture and family must still match.
+	//
+	// Null (the default) or a malformed value adds nothing. It applies to every
+	// placement, and FsOnlyResumeCPUModelFlag still narrows on top of it.
+	ExtraCompatibleNodeModelsFlag = NewJSONFlag("extra-compatible-node-models", ldvalue.Null())
 
 	DefaultPersistentVolumeType = NewStringFlag("default-persistent-volume-type", "")
 	BuildNodeInfo               = NewJSONFlag("preferred-build-node", ldvalue.Null())
-	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(FirecrackerVersionMap))
+	FirecrackerVersions         = NewJSONFlag("firecracker-versions", ldvalue.FromJSONMarshal(firecrackerVersionsFallback))
 
 	// ClickhouseReadEndpointFlag selects which ClickHouse DSN to use for reads.
 	// "" (empty) → singular CLICKHOUSE_CONNECTION_STRING (self-managed default).
@@ -1154,297 +1266,6 @@ var (
 	ClickhouseAsyncInsertFlag        = BoolFlag{name: "clickhouse-async-insert", fallback: true}
 	ClickhouseWaitForAsyncInsertFlag = NewBoolFlag("clickhouse-wait-for-async-insert", true)
 )
-
-// LogsWriteConfigFlag controls where sandbox/external logs are written, so
-// operators can retarget log destinations from LaunchDarkly without a redeploy.
-//
-// Shape:
-//
-//	{
-//	  "mode": "primary_only" | "primary_and_shadow",
-//	  "primary_url": "http://localhost:30006",
-//	  "shadow_urls": ["http://localhost:4321/logs"],
-//	  "timeout_ms": 2000,
-//	  "max_inflight_shadow_writes": 1024
-//	}
-//
-// Semantics:
-//   - null/missing/invalid  -> fall back to the legacy collector address only.
-//   - "primary_only"        -> write to primary_url only.
-//   - "primary_and_shadow"  -> write to primary_url; fire-and-forget shadow_urls
-//     (shadow failures never affect the primary result).
-//   - Empty primary_url in a non-disabled mode is invalid -> legacy fallback.
-//   - shadow_urls must be an array of <= maxLogWriteShadowURLs safe string URLs.
-//   - timeout_ms <= 0 or too large is clamped to a safe range.
-//   - max_inflight_shadow_writes <= 0 defaults to defaultMaxInflightShadowWrites.
-//   - Only http URLs pointing at local/private hosts or allowed internal DNS
-//     suffixes are allowed; anything else is rejected and the whole config falls
-//     back to legacy.
-//
-// The fallback collector address is a runtime env value the flag cannot know,
-// so the default is Null() and the code substitutes the legacy address.
-var LogsWriteConfigFlag = NewJSONFlag("logs-write-config", ldvalue.Null())
-
-// LogsReadConfigFlag selects the backend used to read sandbox/build logs.
-// false reads from Loki (unchanged behavior); true reads from the ClickHouse
-// sandbox_logs table. The fallback comes from LOGS_READ_CONFIG and defaults to
-// false, so a deployment without LaunchDarkly, or one whose LaunchDarkly has
-// no value for the flag, reads where the variable says; a LaunchDarkly value
-// wins when there is one.
-var LogsReadConfigFlag = NewBoolFlag("logs-read-config", logsReadConfigFallback())
-
-// logsReadConfigFallback reads LOGS_READ_CONFIG. Unset or unparseable means
-// false, the way envdTimeoutFallbackMs treats ENVD_TIMEOUT.
-func logsReadConfigFallback() bool {
-	return parseLogsReadConfig(os.Getenv("LOGS_READ_CONFIG"))
-}
-
-func parseLogsReadConfig(raw string) bool {
-	value, err := strconv.ParseBool(strings.TrimSpace(raw))
-
-	return err == nil && value
-}
-
-// Log write routing modes for LogsWriteConfigFlag.
-const (
-	LogsWriteModePrimaryOnly      = "primary_only"
-	LogsWriteModePrimaryAndShadow = "primary_and_shadow"
-)
-
-const (
-	// defaultLogWriteTimeout is used when timeout_ms is missing/invalid.
-	defaultLogWriteTimeout = 2000 * time.Millisecond
-	// maxLogWriteTimeout caps operator-provided timeouts.
-	maxLogWriteTimeout = 10000 * time.Millisecond
-	// maxLogWriteShadowURLs caps fanout configured from LaunchDarkly.
-	maxLogWriteShadowURLs = 4
-	// defaultMaxInflightShadowWrites is used when max_inflight_shadow_writes is missing/invalid.
-	defaultMaxInflightShadowWrites = 1024
-)
-
-var (
-	logRoutingMeter                = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/featureflags")
-	logWriteConfigResolutionMetric = mustLogRoutingCounter(
-		"log_write_config_resolution_count",
-		"Number of logs-write-config resolutions by outcome and fallback reason",
-	)
-)
-
-func mustLogRoutingCounter(name, description string) metric.Int64Counter {
-	counter, err := logRoutingMeter.Int64Counter(name, metric.WithDescription(description))
-	if err != nil {
-		return nil
-	}
-
-	return counter
-}
-
-// LogWriteConfig is the resolved, validated log write routing configuration.
-// The zero value (PrimaryURL set by the resolver) preserves legacy behavior.
-type LogWriteConfig struct {
-	// PrimaryURL is the synchronous, success-controlling destination.
-	PrimaryURL string
-	// ShadowURLs are best-effort, fire-and-forget destinations.
-	ShadowURLs []string
-	// Timeout bounds each individual log write request.
-	Timeout time.Duration
-	// MaxInflightShadowWrites bounds concurrent best-effort shadow writes.
-	MaxInflightShadowWrites int64
-}
-
-// ResolveLogWriteConfig reads LogsWriteConfigFlag and returns a validated
-// LogWriteConfig. On any missing/malformed/unsafe input it falls back to
-// writing only to fallbackURL (today's behavior).
-func ResolveLogWriteConfig(ctx context.Context, ff *Client, fallbackURL string, contexts ...ldcontext.Context) LogWriteConfig {
-	// The legacy fallback (flag null/invalid) preserves pre-flag behavior: it
-	// leaves Timeout at 0 so callers skip the per-request WithTimeout and rely
-	// solely on the HTTP client's own timeout, exactly as before this flag
-	// existed. defaultLogWriteTimeout only applies to explicitly-configured
-	// flags with a missing/invalid timeout_ms.
-	legacy := LogWriteConfig{
-		PrimaryURL:              strings.TrimSpace(fallbackURL),
-		Timeout:                 0,
-		MaxInflightShadowWrites: defaultMaxInflightShadowWrites,
-	}
-
-	if ff == nil {
-		recordLogWriteConfigResolution(ctx, "legacy", "nil_client", "")
-
-		return legacy
-	}
-
-	value := ff.JSONFlag(ctx, LogsWriteConfigFlag, contexts...)
-	if value.IsNull() {
-		recordLogWriteConfigResolution(ctx, "legacy", "null", "")
-
-		return legacy
-	}
-	if value.Type() != ldvalue.ObjectType {
-		recordLogWriteConfigResolution(ctx, "legacy", "non_object", "")
-
-		return legacy
-	}
-
-	modeValue := value.GetByKey("mode")
-	if modeValue.Type() != ldvalue.StringType {
-		recordLogWriteConfigResolution(ctx, "legacy", "mode_not_string", "")
-
-		return legacy
-	}
-	mode := strings.TrimSpace(modeValue.StringValue())
-	switch mode {
-	case LogsWriteModePrimaryOnly, LogsWriteModePrimaryAndShadow:
-		// handled below
-	default:
-		// unknown/missing mode -> legacy fallback
-		recordLogWriteConfigResolution(ctx, "legacy", "unknown_mode", mode)
-
-		return legacy
-	}
-
-	primaryValue := value.GetByKey("primary_url")
-	if primaryValue.Type() != ldvalue.StringType {
-		recordLogWriteConfigResolution(ctx, "legacy", "primary_not_string", mode)
-
-		return legacy
-	}
-	primary := strings.TrimSpace(primaryValue.StringValue())
-	if !isSafeLogURL(primary) {
-		recordLogWriteConfigResolution(ctx, "legacy", "unsafe_primary", mode)
-
-		return legacy
-	}
-
-	var shadows []string
-	if mode == LogsWriteModePrimaryAndShadow {
-		raw := value.GetByKey("shadow_urls")
-		if !raw.IsNull() {
-			if raw.Type() != ldvalue.ArrayType {
-				recordLogWriteConfigResolution(ctx, "legacy", "shadow_not_array", mode)
-
-				return legacy
-			}
-			if raw.Count() > maxLogWriteShadowURLs {
-				recordLogWriteConfigResolution(ctx, "legacy", "too_many_shadows", mode)
-
-				return legacy
-			}
-
-			seen := map[string]struct{}{primary: {}}
-			for i := range raw.Count() {
-				item := raw.GetByIndex(i)
-				if item.Type() != ldvalue.StringType {
-					recordLogWriteConfigResolution(ctx, "legacy", "shadow_not_string", mode)
-
-					return legacy
-				}
-				u := strings.TrimSpace(item.StringValue())
-				// An unsafe shadow URL invalidates the whole config: fail safe to
-				// legacy rather than silently exfiltrating to an external host.
-				if !isSafeLogURL(u) {
-					recordLogWriteConfigResolution(ctx, "legacy", "unsafe_shadow", mode)
-
-					return legacy
-				}
-				if _, ok := seen[u]; ok {
-					continue
-				}
-				seen[u] = struct{}{}
-				shadows = append(shadows, u)
-			}
-		}
-	}
-
-	recordLogWriteConfigResolution(ctx, "configured", "", mode)
-
-	return LogWriteConfig{
-		PrimaryURL:              primary,
-		ShadowURLs:              shadows,
-		Timeout:                 clampLogWriteTimeout(value),
-		MaxInflightShadowWrites: clampMaxInflightShadowWrites(value),
-	}
-}
-
-func recordLogWriteConfigResolution(ctx context.Context, outcome, reason, mode string) {
-	if logWriteConfigResolutionMetric == nil {
-		return
-	}
-
-	logWriteConfigResolutionMetric.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("outcome", outcome),
-		attribute.String("reason", reason),
-		attribute.String("mode", mode),
-	))
-}
-
-// clampLogWriteTimeout reads timeout_ms and clamps it to a safe range.
-func clampLogWriteTimeout(value ldvalue.Value) time.Duration {
-	ms := value.GetByKey("timeout_ms").IntValue()
-	if ms <= 0 {
-		return defaultLogWriteTimeout
-	}
-
-	d := time.Duration(ms) * time.Millisecond
-	if d > maxLogWriteTimeout {
-		return maxLogWriteTimeout
-	}
-
-	return d
-}
-
-func clampMaxInflightShadowWrites(value ldvalue.Value) int64 {
-	maxInflight := value.GetByKey("max_inflight_shadow_writes").IntValue()
-	if maxInflight <= 0 {
-		return defaultMaxInflightShadowWrites
-	}
-
-	return int64(maxInflight)
-}
-
-var allowedLogHostSuffixes = []string{
-	".service.consul",
-	".consul",
-	".svc.cluster.local",
-	".svc",
-	".local",
-	".internal",
-}
-
-// isSafeLogURL allows only http URLs pointing at loopback, link-local, private
-// IPs, or internal service-discovery DNS suffixes. This keeps log routing on
-// local/private infrastructure and prevents exfiltration to arbitrary external
-// endpoints via the flag.
-func isSafeLogURL(raw string) bool {
-	if raw == "" {
-		return false
-	}
-
-	u, err := url.Parse(raw)
-	if err != nil || u.Scheme != "http" || u.Host == "" {
-		return false
-	}
-
-	host := u.Hostname()
-	switch host {
-	case "localhost", "127.0.0.1", "::1":
-		return true
-	}
-
-	hostLower := strings.ToLower(host)
-	for _, suffix := range allowedLogHostSuffixes {
-		if strings.HasSuffix(hostLower, suffix) {
-			return true
-		}
-	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		// Non-IP host without an explicitly allowed internal suffix -> reject.
-		return false
-	}
-
-	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()
-}
 
 // Named under orchestrator.* (the resolver's sole caller) so it passes the
 // otel collector's include-only metric allow-list.
@@ -1896,4 +1717,42 @@ func GetIsolatedSchedulingHosts(ctx context.Context, ff *Client, contexts ...ldc
 	}
 
 	return hosts
+}
+
+// malformedExtraModels records the malformed values already logged.
+var malformedExtraModels sync.Map
+
+// GetExtraCompatibleNodeModels reads ExtraCompatibleNodeModelsFlag. A null or
+// malformed value returns nil; a malformed one is logged once per distinct value.
+func GetExtraCompatibleNodeModels(ctx context.Context, ff *Client, contexts ...ldcontext.Context) map[string][]string {
+	value := ff.JSONFlag(ctx, ExtraCompatibleNodeModelsFlag, contexts...)
+	if value.IsNull() {
+		return nil
+	}
+
+	var extra map[string][]string
+	if err := json.Unmarshal([]byte(value.JSONString()), &extra); err != nil {
+		// Dedupe on the value with sorted keys: JSONString orders keys randomly.
+		var generic any
+		_ = json.Unmarshal([]byte(value.JSONString()), &generic)
+		canonical, marshalErr := json.Marshal(generic)
+		if marshalErr != nil {
+			canonical = []byte(value.JSONString())
+		}
+
+		if _, dup := malformedExtraModels.LoadOrStore(string(canonical), struct{}{}); !dup {
+			targets := make([]string, 0, len(contexts))
+			for _, c := range contexts {
+				targets = append(targets, string(c.Kind())+":"+c.Key())
+			}
+
+			logger.L().Warn(ctx, "malformed feature flag value, ignoring",
+				zap.String("flag", ExtraCompatibleNodeModelsFlag.Key()), zap.String("value", value.JSONString()),
+				zap.Strings("contexts", targets), zap.Error(err))
+		}
+
+		return nil
+	}
+
+	return extra
 }

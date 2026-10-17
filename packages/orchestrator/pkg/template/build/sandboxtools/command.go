@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap/zapcore"
@@ -127,7 +126,8 @@ func runCommandWithAllOptions(
 	confirmCh chan<- struct{},
 	processOutput func(stdout, stderr string),
 ) (e error) {
-	ctx, span := tracer.Start(ctx, "run command", trace.WithAttributes(attribute.String("command", command), telemetry.WithSandboxID(sandboxID)))
+	// The command text stays out of the span: build steps run users' commands.
+	ctx, span := tracer.Start(ctx, "run command", trace.WithAttributes(telemetry.WithSandboxID(sandboxID)))
 	defer span.End()
 	defer func() {
 		if e != nil {
@@ -173,7 +173,7 @@ func runCommandWithAllOptions(
 	// Confirm the command has executed before proceeding
 	close(confirmCh)
 	if err != nil {
-		return fmt.Errorf("error starting process: %w", err)
+		return fmt.Errorf("error starting process: %w", withoutCommand(err, command))
 	}
 	defer func() {
 		processCancel()
@@ -187,14 +187,14 @@ func runCommandWithAllOptions(
 		case <-ctx.Done():
 			return fmt.Errorf("context: %w", ctx.Err())
 		case err := <-msgErrCh:
-			return fmt.Errorf("command failed: %w", err)
+			return fmt.Errorf("command failed: %w", withoutCommand(err, command))
 		case msg, ok := <-msgCh:
 			if !ok {
 				// The terminal status, if any, is in msgErrCh before msgCh
 				// closes - drain it so a failure is not reported as success.
 				select {
 				case err := <-msgErrCh:
-					return fmt.Errorf("command failed: %w", err)
+					return fmt.Errorf("command failed: %w", withoutCommand(err, command))
 				default:
 					return nil
 				}

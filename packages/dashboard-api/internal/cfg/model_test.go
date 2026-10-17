@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -191,4 +192,17 @@ func TestParseWithOryReportsIdentityProviderConfigured(t *testing.T) {
 	config, err := Parse()
 	require.NoError(t, err)
 	require.True(t, config.IdentityProviderConfigured())
+}
+
+func TestParseTLS(t *testing.T) {
+	setBaseEnv(t)
+	t.Setenv("E2B_TLS_HTTP_MODE", "permissive")
+	t.Setenv("E2B_TLS_HTTP_ALLOW", "spiffe://td.example.internal/ns/edge/sa/proxy")
+	t.Setenv("E2B_TLS_HTTP_HEALTH_PATHS", "/health")
+
+	config, err := Parse()
+	require.NoError(t, err)
+	assert.Equal(t, "permissive", config.TLS.HTTP.Mode)
+	assert.Equal(t, []string{"spiffe://td.example.internal/ns/edge/sa/proxy"}, config.TLS.HTTP.Allow)
+	assert.Equal(t, []string{"/health"}, config.TLS.HTTP.HealthPaths)
 }

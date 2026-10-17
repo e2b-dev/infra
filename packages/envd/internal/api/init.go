@@ -9,7 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/netip"
-	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,7 +19,6 @@ import (
 	"github.com/awnumar/memguard"
 	"github.com/rs/zerolog"
 	"github.com/txn2/txeh"
-	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/envd/internal/host"
 	"github.com/e2b-dev/infra/packages/envd/internal/logs"
@@ -725,7 +724,14 @@ func (a *API) unfreezeUserCgroups(ctx context.Context, logger zerolog.Logger, en
 	}
 }
 
+// failedVolumeHeader names the volume path a failed /init could not mount.
+const failedVolumeHeader = "X-Envd-Failed-Volume"
+
 func writeInitError(w http.ResponseWriter, logger zerolog.Logger, err error) {
+	if volumeErr, ok := errors.AsType[*nfsVolumeError](err); ok {
+		w.Header().Set(failedVolumeHeader, volumeErr.path)
+	}
+
 	switch {
 	case errors.Is(err, ErrAccessTokenMismatch), errors.Is(err, ErrAccessTokenResetNotAuthorized):
 		w.WriteHeader(http.StatusUnauthorized)
@@ -757,114 +763,230 @@ var nfsOptions = strings.Join([]string{
 	// disable caching so that pause/resume works correctly
 	"noac",
 	"lookupcache=none",
+
+	// make a single attempt; a foreground mount otherwise retries for 2 minutes,
+	// far past nfsMountTimeout. mountNFS retries instead.
+	"retry=0",
 }, ",")
 
+// nfsMountTimeout bounds one mount command. It starts when that mount starts, since
+// volumes are mounted one at a time.
 const nfsMountTimeout = 10 * time.Second
 
-func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID *string, mounts []VolumeMount) (e error) {
-	// Prevent concurrent mounting attempts
-	if !a.isMountingNFS.CompareAndSwap(false, true) {
-		logger.Debug().Msg("NFS volumes already mounting")
+// nfsMountAttempts is how many times a mount that times out is tried.
+const nfsMountAttempts = 2
 
-		return e
-	}
-	defer a.isMountingNFS.Store(false)
+// nfsVolumeBudget bounds creating one volume's mount point and all its mount attempts.
+const nfsVolumeBudget = nfsMountAttempts * nfsMountTimeout
 
-	logger.Debug().Msg("Setting up NFS volumes")
+// nfsMountRetryDelay is the default pause after a mount that failed without timing out.
+const nfsMountRetryDelay = 500 * time.Millisecond
 
-	ctx = context.WithoutCancel(ctx)                         // don't allow request context cancellation to propagate
-	ctx, cancel := context.WithTimeout(ctx, nfsMountTimeout) // don't let the nfs mount run forever
-	defer cancel()
+// nfsFailure remembers why mounting failed for a lifecycle.
+type nfsFailure struct {
+	lifecycleID string
+	err         error
+}
 
-	wg, wgCtx := errgroup.WithContext(ctx)
-
+// setupNFS mounts the volumes one at a time, parents before children, and stops at the
+// first volume that is not mounted afterwards. It runs under initLock.
+//
+// A failure is remembered for the lifecycle: the caller's request has usually timed out
+// by then, and its retry gets the same error at once instead of a remount.
+func (a *API) setupNFS(ctx context.Context, logger zerolog.Logger, lifecycleID *string, mounts []VolumeMount) error {
 	requestLifecycleID := derefString(lifecycleID)
+	if a.nfsFailure.err != nil && a.nfsFailure.lifecycleID == requestLifecycleID {
+		return a.nfsFailure.err
+	}
 
-	for _, volume := range mounts {
-		// Check if this path is already mounted for the current lifecycle
+	logger.Debug().Int("count", len(mounts)).Msg("Setting up NFS volumes")
+	start := time.Now()
+
+	ctx = context.WithoutCancel(ctx) // don't allow request context cancellation to propagate
+
+	// A mount on a parent hides a mount made earlier on a child path.
+	ordered := slices.SortedStableFunc(slices.Values(mounts), func(x, y VolumeMount) int {
+		return pathDepth(x.Path) - pathDepth(y.Path)
+	})
+
+	var pending []VolumeMount
+	for _, volume := range ordered {
 		mountedLifecycle, isMounted := a.mountedPaths.Load(volume.Path)
-		mountedLifecycleID := asString(mountedLifecycle)
-		if !shouldRemountNFS(isMounted, mountedLifecycleID, requestLifecycleID) {
-			logger.Debug().Msgf("Skipping %q, already mounted for lifecycle %q", volume.Path, requestLifecycleID)
+		if shouldRemountNFS(isMounted, asString(mountedLifecycle), requestLifecycleID) {
+			pending = append(pending, volume)
+		}
+	}
+
+	// Detach every stale mount before mounting any: the guest keeps one NFS client per
+	// server, and while an old mount still holds it, a new mount reuses its connection,
+	// which is dead after a resume.
+	for _, volume := range pending {
+		a.mountedPaths.Delete(volume.Path)
+		if err := a.nfs.Unmount(volume.Path); err != nil {
+			return a.failNFS(requestLifecycleID, volume, fmt.Errorf("unmount: %w", err))
+		}
+	}
+
+	// Order by where each path really leads: a parent reached through a symlink must
+	// still be mounted before the paths beneath it.
+	depths := make(map[string]int, len(pending))
+	for _, volume := range pending {
+		depths[volume.Path] = pathDepth(resolveExisting(volume.Path))
+	}
+	pending = slices.SortedStableFunc(slices.Values(pending), func(x, y VolumeMount) int {
+		return depths[x.Path] - depths[y.Path]
+	})
+
+	mountIDs := make(map[string]uint64, len(pending))
+	for _, volume := range pending {
+		id, err := a.mountNFS(ctx, logger, volume, requestLifecycleID)
+		if err != nil {
+			return a.failNFS(requestLifecycleID, volume, err)
+		}
+		mountIDs[volume.Path] = id
+	}
+
+	// A later mount can still cover an earlier one, so check each path once more.
+	for _, volume := range pending {
+		if id, err := a.nfs.MountID(volume.Path); err != nil || id != mountIDs[volume.Path] {
+			a.mountedPaths.Delete(volume.Path)
+
+			return a.failNFS(requestLifecycleID, volume, errors.New("hidden by another volume mounted over it"))
+		}
+	}
+
+	logger.Info().
+		Int("volumes", len(pending)).
+		Dur("duration", time.Since(start)).
+		Msg("NFS volumes set up")
+
+	return nil
+}
+
+// nfsVolumeError names the volume path that could not be mounted.
+type nfsVolumeError struct {
+	path string
+	err  error
+}
+
+func (e *nfsVolumeError) Error() string { return fmt.Sprintf("NFS volume at %q: %v", e.path, e.err) }
+
+func (e *nfsVolumeError) Unwrap() error { return e.err }
+
+// failNFS remembers a mount failure for the lifecycle and returns it.
+func (a *API) failNFS(lifecycleID string, volume VolumeMount, err error) error {
+	err = &nfsVolumeError{path: volume.Path, err: err}
+	if lifecycleID != "" {
+		a.nfsFailure = nfsFailure{lifecycleID: lifecycleID, err: err}
+	}
+
+	return err
+}
+
+// resolveExisting resolves symlinks in the longest existing prefix of path.
+func resolveExisting(path string) string {
+	path = filepath.Clean(path)
+	for dir, rest := path, ""; ; {
+		if resolved, err := filepath.EvalSymlinks(dir); err == nil {
+			return filepath.Join(resolved, rest)
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return path
+		}
+		rest = filepath.Join(filepath.Base(dir), rest)
+		dir = parent
+	}
+}
+
+func (a *API) mountNFS(ctx context.Context, logger zerolog.Logger, volume VolumeMount, lifecycleID string) (uint64, error) {
+	// Creating the mount point and every mount attempt share one budget per volume;
+	// the orchestrator's envdWaitForStalledMount allows for it.
+	volumeCtx, cancelVolume := context.WithTimeout(ctx, nfsVolumeBudget)
+	defer cancelVolume()
+
+	// A killable process creates the mount point: inside another volume, the lookup
+	// waits on that volume's NFS server.
+	dirCtx, cancel := context.WithTimeout(volumeCtx, nfsMountTimeout)
+	err := a.nfs.MakeDir(dirCtx, volume.Path)
+	cancel()
+	if err != nil {
+		return 0, fmt.Errorf("create the mount point: %w", err)
+	}
+
+	before, err := a.nfs.MountID(volume.Path)
+	if err != nil {
+		return 0, err
+	}
+
+	start := time.Now()
+	attempts, timeouts := 0, 0
+	for {
+		attempts++
+		mountCtx, cancel := context.WithTimeout(volumeCtx, nfsMountTimeout)
+		err = a.nfs.Mount(mountCtx, volume.NfsTarget, volume.Path)
+		timedOut := mountCtx.Err() != nil || errors.Is(err, context.DeadlineExceeded)
+		cancel()
+		if err == nil {
+			break
+		}
+
+		logger.Warn().
+			Err(err).
+			Str("target", volume.NfsTarget).
+			Str("path", volume.Path).
+			Int("attempt", attempts).
+			Bool("timed_out", timedOut).
+			Msg("NFS mount attempt failed")
+
+		if timedOut {
+			// Under load a single mount can stall, so one that times out is tried once more.
+			timeouts++
+			if timeouts == nfsMountAttempts || volumeCtx.Err() != nil {
+				break
+			}
+			if err := a.nfs.Unmount(volume.Path); err != nil {
+				return 0, fmt.Errorf("unmount after a timed-out mount: %w", err)
+			}
 
 			continue
 		}
 
-		if isMounted {
-			logger.Debug().Msgf("Lifecycle changed for %q: %q -> %q", volume.Path, mountedLifecycleID, requestLifecycleID)
+		// A mount that fails at once, as while the NFS proxy is starting and refuses
+		// connections, is tried again until nfsMountRetryFor has passed.
+		if time.Since(start)+a.nfsMountRetryDelay > a.nfsMountRetryFor {
+			break
 		}
-
-		logger.Debug().Msgf("Setting up %s at %q", volume.NfsTarget, volume.Path)
-
-		wg.Go(func() error {
-			// Unmount if currently mounted (handles stale mounts from previous lifecycle)
-			if err := a.unmountNFS(wgCtx, logger, volume.Path); err != nil {
-				return fmt.Errorf("failed to unmount stale NFS mount at %q: %w", volume.Path, err)
-			}
-
-			if err := a.mountNFS(wgCtx, volume.NfsTarget, volume.Path); err != nil {
-				return fmt.Errorf("failed to mount NFS at %q: %w", volume.Path, err)
-			}
-
-			a.mountedPaths.Store(volume.Path, requestLifecycleID)
-
-			return nil
-		})
+		time.Sleep(a.nfsMountRetryDelay)
 	}
-
-	return wg.Wait()
-}
-
-func (a *API) unmountNFS(ctx context.Context, logger zerolog.Logger, path string) error {
-	// Check if actually mounted before trying to unmount.
-	// findmnt returns exit code 1 when path is not a mount point - that's not an error.
-	data, err := exec.CommandContext(ctx, "findmnt", "--noheadings", "--output", "SOURCE", path).CombinedOutput()
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
-			// Not mounted - nothing to unmount
-			return nil
-		}
-
-		return fmt.Errorf("failed to check if %q is mounted: %w", path, err)
+		return 0, fmt.Errorf("after %d attempts: %w", attempts, err)
 	}
 
-	source := strings.TrimSpace(string(data))
-	if source == "" {
-		return nil // already unmounted
+	// The mount ID identifies the mount the path resolves to, so this also holds for
+	// a path behind a symlink or inside another volume.
+	after, err := a.nfs.MountID(volume.Path)
+	if err != nil {
+		return 0, err
+	}
+	if after == before {
+		return 0, errors.New("mount reported success, but the path is not on a new mount")
 	}
 
-	logger.Debug().Msgf("Unmounting stale NFS mount at %q (was: %s)", path, source)
+	a.mountedPaths.Store(volume.Path, lifecycleID)
 
-	if data, err = exec.CommandContext(ctx, "umount", "--force", path).CombinedOutput(); err != nil {
-		logger.Warn().Err(err).Str("path", path).Str("output", string(data)).Msg("Forced NFS umount failed, falling back to lazy")
-		// Fresh ctx so the forced umount running out of budget doesn't kill the fallback.
-		lazyCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
-		defer cancel()
-		if data, err = exec.CommandContext(lazyCtx, "umount", "--lazy", path).CombinedOutput(); err != nil {
-			return fmt.Errorf("failed to unmount stale NFS mount at %q: %w\n%s", path, err, string(data))
-		}
-	}
+	logger.Info().
+		Str("target", volume.NfsTarget).
+		Str("path", volume.Path).
+		Int("attempts", attempts).
+		Dur("duration", time.Since(start)).
+		Msg("Mounted NFS volume")
 
-	a.mountedPaths.Delete(path)
-
-	return nil
+	return after, nil
 }
 
-func (a *API) mountNFS(ctx context.Context, nfsTarget, path string) error {
-	commands := [][]string{
-		{"mkdir", "-p", path},
-		{"mount", "-v", "-t", "nfs", "-o", "fg,hard," + nfsOptions, nfsTarget, path},
-	}
-
-	for _, command := range commands {
-		data, err := exec.CommandContext(ctx, command[0], command[1:]...).CombinedOutput()
-		if err != nil {
-			return fmt.Errorf("`%s` failed: %w\n%s", strings.Join(command, " "), err, string(data))
-		}
-	}
-
-	return nil
+func pathDepth(path string) int {
+	return strings.Count(filepath.Clean(path), "/")
 }
 
 // shouldRemountNFS determines if an NFS volume should be remounted based on lifecycle IDs.

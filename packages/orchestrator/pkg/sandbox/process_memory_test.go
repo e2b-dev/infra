@@ -154,6 +154,7 @@ func TestPauseProcessMemory_CarriesFreeIndexToRelease(t *testing.T) {
 		true,
 		false,
 		"none",
+		"",
 	)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = diff.Close() })

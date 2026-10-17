@@ -117,7 +117,7 @@ type harvestRun struct {
 type harvestResumer interface {
 	// ResumeForHarvest resumes a throwaway, network-isolated, unregistered copy
 	// of the snapshot; the caller reaps the returned instance.
-	ResumeForHarvest(ctx context.Context, t sbxtemplate.Template, config *sandbox.Config, runtime sandboxtypes.RuntimeMetadata, startedAt, endAt time.Time) (harvestInstance, error)
+	ResumeForHarvest(ctx context.Context, t sbxtemplate.Template, config *sandbox.Config, runtime sandboxtypes.RuntimeMetadata, startedAt, endAt time.Time, envdVersion string) (harvestInstance, error)
 }
 
 // harvestInstance is the subset of a resumed sandbox the harvest uses.
@@ -145,7 +145,10 @@ type factoryResumer struct {
 	factory *sandbox.Factory
 }
 
-func (r factoryResumer) ResumeForHarvest(ctx context.Context, t sbxtemplate.Template, config *sandbox.Config, runtime sandboxtypes.RuntimeMetadata, startedAt, endAt time.Time) (harvestInstance, error) {
+func (r factoryResumer) ResumeForHarvest(ctx context.Context, t sbxtemplate.Template, config *sandbox.Config, runtime sandboxtypes.RuntimeMetadata, startedAt, endAt time.Time, envdVersion string) (harvestInstance, error) {
+	// Network-isolated, unregistered and left frozen; the set is asserted in package
+	// sandbox.
+	opts := append(sandbox.ThrowawayResumeOptions(), sandbox.WithInheritedEnvdVersion(envdVersion))
 	sbx, err := r.factory.ResumeSandbox(
 		ctx,
 		t,
@@ -155,8 +158,7 @@ func (r factoryResumer) ResumeForHarvest(ctx context.Context, t sbxtemplate.Temp
 		endAt,
 		// Throwaway: no API config to store (it is never restarted/addressable).
 		nil,
-		// Network-isolated + unregistered; the set is asserted in package sandbox.
-		sandbox.ThrowawayResumeOptions()...,
+		opts...,
 	)
 	if err != nil {
 		// Return a nil interface, not a typed-nil *Sandbox, on error.
@@ -289,7 +291,14 @@ func (s *Server) harvestResumePrefetchAsync(
 			attribute.String("path", string(source)),
 		)
 		sealWaitDurationHistogram.Record(hCtx, sealWait.Milliseconds(), resultAttr)
-		harvestAttemptsCounter.Add(hCtx, 1, resultAttr)
+		// The attempt count also names the team: a harvest that fails to resume
+		// the fresh snapshot is the first sign that the snapshot cannot be resumed
+		// at all, and that is a per-tenant question before it is a fleet one.
+		harvestAttemptsCounter.Add(hCtx, 1, metric.WithAttributes(
+			attribute.String("result", string(result.outcome)),
+			attribute.String("path", string(source)),
+			telemetry.WithTeamID(sbx.Runtime.TeamID),
+		))
 		// Slot hold and persist wait are recorded apart because only the first is
 		// a node-capacity cost. Summing them into one "harvest duration" is what
 		// made the timeout look like it bounded the persist as well.
@@ -497,7 +506,9 @@ func (h *prefetchHarvester) resumeMapping(
 	// live registry: the user workload stays frozen until envd /init completes and
 	// the instance is reaped right after, but envd /init itself (and any briefly
 	// unfrozen workload) must not reach the network.
-	resumedSbx, err := h.resumer.ResumeForHarvest(ctx, tmpl, harvestConfig, runtime, sbx.GetStartedAt(), sbx.GetEndAt())
+	// The source's envd version, which a live upgrade may have moved past the cloned
+	// config's baked one, decides the throwaway's init loop.
+	resumedSbx, err := h.resumer.ResumeForHarvest(ctx, tmpl, harvestConfig, runtime, sbx.GetStartedAt(), sbx.GetEndAt(), sbx.InheritableEnvdVersion())
 	if err != nil {
 		return nil, harvestResumeFailed, fmt.Errorf("resume throwaway: %w", err)
 	}

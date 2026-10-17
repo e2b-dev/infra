@@ -54,10 +54,64 @@ func TestManagementRegisterClusterRejectsDescriptorChange(t *testing.T) {
 	registration := managementClusterRegistration()
 
 	require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, store, clusterID, registration).Code)
-	registration.Endpoint = "changed.example.test:443"
-	response := callManagementRegisterCluster(t, store, clusterID, registration)
-	require.Equal(t, http.StatusConflict, response.Code)
-	requireClusterErrorCode(t, response, api.ClusterRegistrationConflict)
+	for name, change := range map[string]func(*api.ManagementClusterRegistrationRequest){
+		"name":                      func(r *api.ManagementClusterRegistrationRequest) { r.Name = "different cluster" },
+		"endpoint":                  func(r *api.ManagementClusterRegistrationRequest) { r.Endpoint = "changed.example.test:443" },
+		"TLS":                       func(r *api.ManagementClusterRegistrationRequest) { r.EndpointTls = !r.EndpointTls },
+		"proxy":                     func(r *api.ManagementClusterRegistrationRequest) { r.SandboxProxyDomain = new("changed.example.test") },
+		"auth organization":         func(r *api.ManagementClusterRegistrationRequest) { r.AuthOrgId = new("changed-org") },
+		"missing auth organization": func(r *api.ManagementClusterRegistrationRequest) { r.AuthOrgId = nil },
+		"missing proxy":             func(r *api.ManagementClusterRegistrationRequest) { r.SandboxProxyDomain = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			changed := registration
+			changed.Token = "replacement-test-token"
+			change(&changed)
+			response := callManagementRegisterCluster(t, store, clusterID, changed)
+			require.Equal(t, http.StatusConflict, response.Code)
+			requireClusterErrorCode(t, response, api.ClusterRegistrationConflict)
+		})
+	}
+}
+
+func TestManagementRegisterClusterRefreshesOnlyToken(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	projectID := createClusterAssignmentTestTeam(t, db)
+	clusterID := uuid.New()
+	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
+	registration := managementClusterRegistration()
+	registration.AuthOrgId = nil
+	require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, store, clusterID, registration).Code)
+	require.Equal(t, http.StatusNoContent, callManagementAssignProjectCluster(t, store, projectID, clusterID).Code)
+	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(), `UPDATE public.clusters SET deletion_protection=true WHERE id=$1`, clusterID))
+	registration.Token = "replacement-test-token"
+	for range 2 {
+		require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, store, clusterID, registration).Code)
+	}
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		`SELECT c.token,c.deletion_protection,t.cluster_id FROM public.clusters c JOIN public.teams t ON t.cluster_id=c.id WHERE c.id=$1 AND t.id=$2`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+			var token string
+			var protected bool
+			var assigned uuid.UUID
+			err := rows.Scan(&token, &protected, &assigned)
+			require.Equal(t, registration.Token, token)
+			require.True(t, protected)
+			require.Equal(t, clusterID, assigned)
+
+			return err
+		}, clusterID, projectID))
+	// The generic administrator create path still rejects credential changes.
+	_, err := store.createCluster(t.Context(), clusterRegistration{
+		ClusterID: &clusterID, Name: registration.Name, Endpoint: registration.Endpoint,
+		EndpointTLS: registration.EndpointTls, Token: "another-test-token",
+		SandboxProxyDomain: registration.SandboxProxyDomain, AuthOrgID: registration.AuthOrgId,
+	})
+	require.Error(t, err)
 }
 
 func TestManagementRegisterClusterAcceptsTheClusterDescriptor(t *testing.T) {

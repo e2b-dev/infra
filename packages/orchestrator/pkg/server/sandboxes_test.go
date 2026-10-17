@@ -266,8 +266,8 @@ func TestRecordSandboxKill(t *testing.T) {
 	counter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxKilledCounterName)
 	require.NoError(t, err)
 
-	recordSandboxKill(t.Context(), counter, "timeout")
-	recordSandboxKill(t.Context(), counter, "")
+	recordSandboxKill(t.Context(), counter, "team-1", "timeout")
+	recordSandboxKill(t.Context(), counter, "team-2", "")
 
 	var rm metricdata.ResourceMetrics
 	require.NoError(t, reader.Collect(t.Context(), &rm))
@@ -283,15 +283,16 @@ func TestRecordSandboxKill(t *testing.T) {
 			require.True(t, ok)
 
 			for _, dp := range sum.DataPoints {
-				v, ok := dp.Attributes.Value(attribute.Key("kill_reason"))
+				reason, ok := dp.Attributes.Value(attribute.Key("kill_reason"))
 				require.True(t, ok)
-				got[v.AsString()] += dp.Value
+				team, ok := dp.Attributes.Value(attribute.Key("team.id"))
+				require.True(t, ok)
+				got[team.AsString()+"/"+reason.AsString()] += dp.Value
 			}
 		}
 	}
 
-	assert.Equal(t, int64(1), got["timeout"])
-	assert.Equal(t, int64(1), got[killReasonUnknown])
+	assert.Equal(t, map[string]int64{"team-1/timeout": 1, "team-2/" + killReasonUnknown: 1}, got)
 }
 
 // The crash path runs for sandboxes that ended badly, including ones that

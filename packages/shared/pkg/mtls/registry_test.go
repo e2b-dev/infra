@@ -25,17 +25,17 @@ func TestRegistryTreatsASharedRemoteAddressAsUnverified(t *testing.T) {
 
 	r := newConnRegistry()
 	verified := ConnState{TLS: true, ChainVerified: true}
-	assert.True(t, r.add(key, first, verified))
+	assert.True(t, r.add(key, first, verified, false))
 	state, known := r.lookup(key)
 	require.True(t, known)
 	assert.True(t, state.ChainVerified)
 
-	assert.False(t, r.add(key, second, verified), "a second live connection on the key")
+	assert.False(t, r.add(key, second, verified, false), "a second live connection on the key")
 	state, known = r.lookup(key)
 	require.True(t, known)
 	assert.Equal(t, ConnState{}, state, "a second live connection on the key leaves neither verdict attributable")
 
-	assert.False(t, r.add("", first, verified), "an address-less connection cannot be attributed either")
+	assert.False(t, r.add("", first, verified, false), "an address-less connection cannot be attributed either")
 	state, known = r.lookup("")
 	require.True(t, known)
 	assert.Equal(t, ConnState{}, state)

@@ -40,10 +40,11 @@ var (
 // names and only new ones carry the new slug. Rewriting them would break every
 // reference a user has already scripted, which is worse than the inconsistency.
 type Project struct {
-	ID    uuid.UUID
-	Name  string
-	Slug  string
-	Email string
+	ClusterID *uuid.UUID
+	ID        uuid.UUID
+	Name      string
+	Slug      string
+	Email     string
 }
 
 // UpsertProject creates a project or reconciles an existing one, reporting
@@ -109,11 +110,12 @@ func (s *Service) writeProject(ctx context.Context, project Project) (stored Pro
 
 func createProject(ctx context.Context, txDB *authqueries.Queries, project Project) (Project, error) {
 	inserted, err := txDB.InsertManagedTeam(ctx, authqueries.InsertManagedTeamParams{
-		ID:    project.ID,
-		Name:  project.Name,
-		Slug:  project.Slug,
-		Tier:  defaultProjectTier,
-		Email: project.Email,
+		ClusterID: project.ClusterID,
+		ID:        project.ID,
+		Name:      project.Name,
+		Slug:      project.Slug,
+		Tier:      defaultProjectTier,
+		Email:     project.Email,
 	})
 
 	switch {
@@ -127,15 +129,16 @@ func createProject(ctx context.Context, txDB *authqueries.Queries, project Proje
 		return Project{}, fmt.Errorf("create project: %w", err)
 	}
 
-	return Project{ID: project.ID, Name: inserted.Name, Slug: inserted.Slug, Email: inserted.Email}, nil
+	return Project{ClusterID: inserted.ClusterID, ID: project.ID, Name: inserted.Name, Slug: inserted.Slug, Email: inserted.Email}, nil
 }
 
 func reconcileProject(ctx context.Context, txDB *authqueries.Queries, project Project) (Project, error) {
 	updated, err := txDB.UpdateManagedTeam(ctx, authqueries.UpdateManagedTeamParams{
-		ID:    project.ID,
-		Name:  project.Name,
-		Slug:  project.Slug,
-		Email: project.Email,
+		ClusterID: project.ClusterID,
+		ID:        project.ID,
+		Name:      project.Name,
+		Slug:      project.Slug,
+		Email:     project.Email,
 	})
 
 	switch {
@@ -145,5 +148,5 @@ func reconcileProject(ctx context.Context, txDB *authqueries.Queries, project Pr
 		return Project{}, fmt.Errorf("reconcile project: %w", err)
 	}
 
-	return Project{ID: project.ID, Name: updated.Name, Slug: updated.Slug, Email: updated.Email}, nil
+	return Project{ClusterID: updated.ClusterID, ID: project.ID, Name: updated.Name, Slug: updated.Slug, Email: updated.Email}, nil
 }

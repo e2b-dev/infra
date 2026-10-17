@@ -30,6 +30,12 @@ func TestRedisSandboxCatalog(t *testing.T) {
 		t.Parallel()
 
 		id := "sbx-roundtrip"
+		require.NoError(t, client.Set(ctx, catalog.getCatalogKey(id),
+			`{"orchestrator_id":"orch-A","orchestrator_ip":"10.0.0.1","execution_id":"exec-1"}`, time.Minute).Err())
+		legacy, err := catalog.GetSandbox(ctx, id)
+		require.NoError(t, err)
+		require.Nil(t, legacy.NetworkPlacement)
+
 		want := testSandboxInfo("exec-1", "orch-A")
 		require.NoError(t, catalog.StoreSandbox(ctx, id, want, time.Minute))
 
@@ -47,9 +53,11 @@ func TestRedisSandboxCatalog(t *testing.T) {
 		want := testSandboxInfo("exec-1", "orch-A")
 		want.LifecycleID = "lifecycle-1"
 		want.NetworkPlacement = &NetworkPlacement{
-			NetworkMode: NetworkModeFullRouter,
-			RouterID:    "router-1",
-			PortableIP:  "10.4.0.7",
+			NetworkMode:    NetworkModeFullRouter,
+			RouterID:       "router-1",
+			PortableIP:     "10.4.0.7",
+			IngressAddress: "10.8.0.2",
+			IngressPort:    5010,
 		}
 		require.NoError(t, catalog.StoreSandbox(ctx, id, want, time.Minute))
 

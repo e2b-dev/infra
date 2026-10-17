@@ -139,12 +139,12 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 	defer func() {
 		duration := time.Since(startTime)
 		success := e == nil && r != nil
-		b.metrics.RecordBuildDuration(ctx, duration, success)
+		b.metrics.RecordBuildDuration(ctx, cfg.TeamID, duration, success)
 
 		resultType := ClassifyBuildResult(r, e)
 		b.metrics.RecordBuildResult(ctx, cfg.TeamID, resultType)
 		if success {
-			b.metrics.RecordRootfsSize(ctx, units.MBToBytes(r.RootfsSizeMB))
+			b.metrics.RecordRootfsSize(ctx, cfg.TeamID, units.MBToBytes(r.RootfsSizeMB))
 		}
 
 		// Stamp the classification on the build span and on the caller's span

@@ -6,8 +6,39 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
+
+func TestSandboxPauseModeToAPI(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		config *dbtypes.PausedSandboxConfig
+		want   api.SandboxPauseMode
+	}{
+		{"row without a config is a full snapshot", nil, api.Full},
+		{"full snapshot", &dbtypes.PausedSandboxConfig{}, api.Full},
+		{"filesystem-only snapshot", &dbtypes.PausedSandboxConfig{FilesystemOnly: true}, api.Filesystem},
+		{
+			"an auto-pause policy does not change the latest pause",
+			&dbtypes.PausedSandboxConfig{AutoPauseFilesystemOnly: true},
+			api.Full,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := sandboxPauseModeToAPI(tt.config)
+
+			require.NotNil(t, result)
+			assert.Equal(t, tt.want, *result)
+		})
+	}
+}
 
 // The read-back is the one place stored proxy configuration travels back to
 // the caller, so what it omits matters as much as what it returns.

@@ -7,6 +7,8 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
 
@@ -130,6 +132,10 @@ type Sandbox struct {
 	// Iam records the sandbox workload identity configuration. Persisted so it
 	// survives re-sync and is carried into the paused snapshot.
 	Iam *types.SandboxIam `json:"iam,omitempty"`
+	// NetworkPlacement is the placement the orchestrator returned for this
+	// execution's successful create. Nil means the legacy per-worker network,
+	// including records written before orchestrators returned a placement.
+	NetworkPlacement *orchestrator.SandboxNetworkPlacement `json:"networkPlacement,omitempty"`
 
 	State State `json:"state"`
 }
@@ -172,10 +178,11 @@ type NodeSandbox struct {
 	// StartTime is used to spare freshly started sandboxes from the orphan
 	// check, since the store write may not have landed yet.
 	StartTime time.Time
-	// VCpu and RamMB correct the node's optimistic resource accounting after a
-	// kill.
-	VCpu  int64
-	RamMB int64
+	// VCpu, RamMB and HugePages correct the node's optimistic resource
+	// accounting after a kill.
+	VCpu      int64
+	RamMB     int64
+	HugePages bool
 }
 
 // ToNodeSandbox reduces a stored sandbox to the node-reported view, so the kill
@@ -190,7 +197,14 @@ func (s Sandbox) ToNodeSandbox() NodeSandbox {
 		StartTime:   s.StartTime,
 		VCpu:        s.VCpu,
 		RamMB:       s.RamMB,
+		HugePages:   s.hugePages(),
 	}
+}
+
+func (s Sandbox) hugePages() bool {
+	info, err := fcversion.New(s.FirecrackerVersion)
+
+	return err == nil && info.HasHugePages()
 }
 
 // RefusalEpisodeGap is how long after a retry window ended a further refusal

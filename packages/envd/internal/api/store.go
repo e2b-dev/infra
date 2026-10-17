@@ -68,8 +68,13 @@ type API struct {
 	workloadFreezer *cgroups.WorkloadFreezer
 	logFlusher      LogFlusher
 
-	isMountingNFS atomic.Bool
-	mountedPaths  sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
+	nfs        nfsMounter
+	nfsFailure nfsFailure // guarded by initLock
+	// nfsMountRetryFor is how long a mount that fails without timing out is retried.
+	nfsMountRetryFor time.Duration
+	// nfsMountRetryDelay is the pause between those retries.
+	nfsMountRetryDelay time.Duration
+	mountedPaths       sync.Map // map[path]lifecycleID - tracks which lifecycle each path was mounted for
 
 	// fsFreezer freezes/thaws the guest rootfs for filesystem-only pauses;
 	// fsFreezeLock serializes /fsfreeze and /fsthaw.
@@ -151,24 +156,27 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 	}
 
 	return &API{
-		logger:          l,
-		defaults:        defaults,
-		mmdsChan:        mmdsChan,
-		isNotFC:         isNotFC,
-		mmdsClient:      &DefaultMMDSClient{},
-		lastSetTime:     utils.NewAtomicMax(),
-		setSystemTime:   setSystemTime,
-		now:             time.Now,
-		accessToken:     &SecureToken{},
-		caCertInstaller: host.NewCACertInstaller(l),
-		workloadFreezer: workloadFreezer,
-		memory:          workloadFreezer.MemoryProtection(),
-		oomKills:        oomKills,
-		logFlusher:      logFlusher,
-		initLock:        semaphore.NewWeighted(1),
-		fsFreezer:       fsfreeze.New(),
-		fsFreezeLock:    semaphore.NewWeighted(1),
-		cpuManager:      cpuManager,
+		logger:             l,
+		defaults:           defaults,
+		mmdsChan:           mmdsChan,
+		isNotFC:            isNotFC,
+		mmdsClient:         &DefaultMMDSClient{},
+		lastSetTime:        utils.NewAtomicMax(),
+		setSystemTime:      setSystemTime,
+		now:                time.Now,
+		accessToken:        &SecureToken{},
+		caCertInstaller:    host.NewCACertInstaller(l),
+		workloadFreezer:    workloadFreezer,
+		memory:             workloadFreezer.MemoryProtection(),
+		oomKills:           oomKills,
+		logFlusher:         logFlusher,
+		initLock:           semaphore.NewWeighted(1),
+		fsFreezer:          fsfreeze.New(),
+		fsFreezeLock:       semaphore.NewWeighted(1),
+		cpuManager:         cpuManager,
+		nfs:                execNFSMounter{},
+		nfsMountRetryFor:   nfsMountTimeout,
+		nfsMountRetryDelay: nfsMountRetryDelay,
 	}
 }
 

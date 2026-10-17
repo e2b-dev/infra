@@ -59,6 +59,7 @@ func (c *apiClient) loadSnapshot(
 	useMemfd bool,
 	useSyncWP bool,
 	cpuTemplate string,
+	teamID string,
 ) error {
 	ctx, span := tracer.Start(ctx, "load-snapshot")
 	defer span.End()
@@ -97,6 +98,7 @@ func (c *apiClient) loadSnapshot(
 		fcSnapshotLoadFailures.Add(ctx, 1, metric.WithAttributes(
 			attribute.String("reason", string(reason)),
 			attribute.String("cpu_template", cpuTemplate),
+			telemetry.WithTeamID(teamID),
 		))
 		span.SetAttributes(attribute.String("snapshot_load.failure_reason", string(reason)))
 

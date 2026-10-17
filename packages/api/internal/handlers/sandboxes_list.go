@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/api/internal/utils"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/db/pkg/retry"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
@@ -223,7 +224,7 @@ func (a *APIStore) GetSandboxes(c *gin.Context, params api.GetSandboxesParams) {
 		return
 	}
 
-	sandboxes, err := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning})
+	sandboxes, err := a.orchestrator.ListSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning})
 	if err != nil {
 		logger.L().Error(ctx, "Error getting sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandboxes")
@@ -328,7 +329,7 @@ func (a *APIStore) GetV2Sandboxes(c *gin.Context, params api.GetV2SandboxesParam
 	// Get sandboxes with pagination
 	sandboxes := make([]utils.PaginatedSandbox, 0)
 
-	allSandboxes, err := a.orchestrator.GetSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
+	allSandboxes, err := a.orchestrator.ListSandboxes(ctx, team.ID, []sandbox.State{sandbox.StateRunning, sandbox.StatePausing})
 	if err != nil {
 		logger.L().Error(ctx, "Error getting sandboxes", zap.Error(err))
 		a.sendAPIStoreError(c, http.StatusInternalServerError, "Error when getting sandboxes")
@@ -575,6 +576,12 @@ func (a *APIStore) throttledGetSnapshots(ctx context.Context, order utils.SortDi
 	}
 	defer a.sandboxListSem.Release(1)
 
+	return retry.RetryOnRecoveryConflict(ctx, func(ctx context.Context) ([]queries.GetSnapshotsWithCursorRow, error) {
+		return a.getSnapshots(ctx, order, templateID, params)
+	})
+}
+
+func (a *APIStore) getSnapshots(ctx context.Context, order utils.SortDirection, templateID *string, params queries.GetSnapshotsWithCursorParams) ([]queries.GetSnapshotsWithCursorRow, error) {
 	switch {
 	case templateID == nil && order != utils.SortAsc:
 		return a.sqlcReadDB.GetSnapshotsWithCursor(ctx, params)

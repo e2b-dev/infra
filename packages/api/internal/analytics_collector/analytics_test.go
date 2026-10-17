@@ -3,6 +3,7 @@ package analyticscollector
 import (
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"time"
@@ -357,4 +358,51 @@ func TestIdentifyAnalyticsTeamSendsOnceUnderConcurrentMisses(t *testing.T) {
 	wg.Wait()
 
 	require.Len(t, recorder.messages, 1)
+}
+
+func TestEnqueueAfterCloseIsDropped(t *testing.T) {
+	t.Parallel()
+
+	recorder := &captureRecorder{}
+	p := newPosthogClient(recorder, teamIdentifyTTL)
+	require.NoError(t, p.Close())
+
+	p.CreateAnalyticsTeamEvent(t.Context(), "team-a", "closed_instance", posthog.NewProperties())
+	p.IdentifyAnalyticsTeam(t.Context(), "team-a", "Team A")
+
+	assert.Empty(t, recorder.messages)
+	require.NoError(t, p.Close(), "a second Close is a no-op")
+}
+
+// Run with -race: posthog-go closes its message channel while events are
+// still being enqueued.
+func TestEnqueueDoesNotRaceClose(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := posthog.NewWithConfig("test-key", posthog.Config{Endpoint: srv.URL, Interval: time.Hour})
+	require.NoError(t, err)
+	p := newPosthogClient(client, teamIdentifyTTL)
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			<-start
+			for range 32 {
+				p.CreateAnalyticsTeamEvent(t.Context(), "team-a", "closed_instance", posthog.NewProperties())
+			}
+		})
+	}
+	wg.Go(func() {
+		<-start
+		assert.NoError(t, p.Close())
+	})
+
+	close(start)
+	wg.Wait()
 }

@@ -18,9 +18,10 @@ const (
 	reclaimRegistrar = "reclaimLiveEntryOnCleanup"
 	networkAssign    = "AssignNetwork"
 
-	// ctx, cleanup, sandboxID, lifecycleID, sandboxType.
-	reclaimRegistrarArgs = 5
-	sandboxTypeField     = "SandboxType"
+	// ctx, cleanup, runtime, lifecycleID.
+	reclaimRegistrarArgs = 4
+	runtimeArg           = 2
+	runtimeField         = "Runtime"
 
 	counterSerializer = "serializeUnstoppedCounter"
 )
@@ -85,13 +86,14 @@ func TestEveryFactoryRegistersTheReclaimOwner(t *testing.T) {
 	}
 }
 
-// TestEveryFactoryRegistersTheReclaimOwnerWithItsSandboxType pins the argument the
-// owner labels its counter with. A factory that registers the owner but passes no
-// sandbox type — or passes a literal instead of its own runtime metadata — mislabels
-// every increment on that path, and no behavioural test can see it: the counter is
-// emitted either way and the label is only wrong, never absent. The build tree is
-// what makes that expensive, since it reaches the counted branch on every layer.
-func TestEveryFactoryRegistersTheReclaimOwnerWithItsSandboxType(t *testing.T) {
+// TestEveryFactoryRegistersTheReclaimOwnerWithItsRuntime pins the argument the
+// owner labels its counter with. A factory that registers the owner with anything
+// but its own runtime metadata — a literal, a constant, another sandbox's —
+// mislabels every increment on that path, and no behavioural test can see it: the
+// counter is emitted either way and the labels are only wrong, never absent. The
+// build tree is what makes that expensive, since it reaches the counted branch on
+// every layer.
+func TestEveryFactoryRegistersTheReclaimOwnerWithItsRuntime(t *testing.T) {
 	t.Parallel()
 
 	files := packageFiles(t)
@@ -110,13 +112,13 @@ func TestEveryFactoryRegistersTheReclaimOwnerWithItsSandboxType(t *testing.T) {
 
 			for _, call := range callsTo(fn, reclaimRegistrar) {
 				require.Lenf(t, call.Args, reclaimRegistrarArgs,
-					"%s: %s takes %d arguments; the last is the sandbox type its counter is labelled with",
+					"%s: %s takes %d arguments; the third is the runtime metadata its counter is labelled with",
 					fn.Name.Name, reclaimRegistrar, reclaimRegistrarArgs)
 
-				assert.Equalf(t, sandboxTypeField, selectorField(call.Args[reclaimRegistrarArgs-1]),
-					"%s: %s must be passed the sandbox's own %s, not a literal or a constant; "+
-						"the label is what separates build traffic from customer traffic",
-					fn.Name.Name, reclaimRegistrar, sandboxTypeField)
+				assert.Truef(t, isRuntimeMetadata(call.Args[runtimeArg]),
+					"%s: %s must be passed the sandbox's own runtime metadata, not a literal or a constant; "+
+						"its labels are what separate build traffic from customer traffic and one team from another",
+					fn.Name.Name, reclaimRegistrar)
 				checked++
 			}
 		}
@@ -246,6 +248,16 @@ func packageTestFiles(t *testing.T) []string {
 // selectorField is the field name a selector expression reads (the "SandboxType"
 // of "runtime.SandboxType"), or "" for anything that is not one — a literal, a
 // constant, a call. Those are exactly the arguments this test exists to reject.
+// isRuntimeMetadata reports whether expr names a sandbox's runtime metadata:
+// the factories' runtime parameter, or a sandbox's Runtime field.
+func isRuntimeMetadata(expr ast.Expr) bool {
+	if ident, ok := expr.(*ast.Ident); ok {
+		return ident.Name == "runtime"
+	}
+
+	return selectorField(expr) == runtimeField
+}
+
 func selectorField(expr ast.Expr) string {
 	sel, ok := expr.(*ast.SelectorExpr)
 	if !ok {

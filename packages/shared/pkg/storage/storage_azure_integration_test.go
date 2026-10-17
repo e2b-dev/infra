@@ -2,7 +2,7 @@ package storage
 
 // Integration test for the Azure Blob storage backend, running against a
 // per-test Azurite container (the official Azure Storage emulator) — same
-// pattern as the MinIO-backed S3 tests in storage_testcontainers_test.go
+// pattern as the RustFS-backed S3 tests in storage_testcontainers_test.go
 // (Docker required, torn down via t.Cleanup).
 
 import (

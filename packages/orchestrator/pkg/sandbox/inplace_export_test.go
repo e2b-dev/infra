@@ -346,17 +346,17 @@ func TestWaitForRootfsSeal_SerializesNextSnapshot(t *testing.T) {
 	require.Error(t, s2.waitForRootfsSeal(t.Context()))
 }
 
-// TestBeginEndInPlaceCheckpoint pins the guard that keeps two Checkpoint RPCs
+// TestBeginEndCheckpoint pins the guard that keeps two Checkpoint RPCs
 // from racing Pause/CreateSnapshot/ResumeInPlace on one FC process: Begin is a
 // CAS that admits exactly one in-flight checkpoint until End releases it.
-func TestBeginEndInPlaceCheckpoint(t *testing.T) {
+func TestBeginEndCheckpoint(t *testing.T) {
 	t.Parallel()
 
 	s := &Sandbox{}
-	require.True(t, s.BeginInPlaceCheckpoint(), "first Begin must win")
-	require.False(t, s.BeginInPlaceCheckpoint(), "second Begin must be refused while in flight")
-	s.EndInPlaceCheckpoint()
-	require.True(t, s.BeginInPlaceCheckpoint(), "Begin must win again after End")
+	require.True(t, s.BeginCheckpoint(), "first Begin must win")
+	require.False(t, s.BeginCheckpoint(), "second Begin must be refused while in flight")
+	s.EndCheckpoint()
+	require.True(t, s.BeginCheckpoint(), "Begin must win again after End")
 }
 
 // TestSetupInPlaceRootfsExport_AbortCleanupOrder is the in-place twin of

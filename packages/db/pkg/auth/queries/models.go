@@ -23,6 +23,7 @@ type Team struct {
 	SandboxSchedulingLabels []string
 	SsoOrganizationID       *uuid.UUID
 	SsoAutoJoin             bool
+	DeletedAt               *time.Time
 	Slug                    string
 }
 
@@ -56,4 +57,5 @@ type TeamLimit struct {
 	MaxFreeDiskSizeMb        int64
 	ApiTeamRpsList           int64
 	ApiTeamRpsDelete         int64
+	MaxSecrets               int64
 }

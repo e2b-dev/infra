@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -367,6 +368,8 @@ func TestProxySandboxStillTransitioningErrorTemplate(t *testing.T) {
 		})
 
 		require.Equal(t, http.StatusConflict, resp.StatusCode)
+		require.Equal(t, "2", resp.Header.Get("Retry-After"))
+		require.Equal(t, "Retry-After", resp.Header.Get("Access-Control-Expose-Headers"))
 		require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
 
 		var response struct {
@@ -395,6 +398,8 @@ func TestProxySandboxStillTransitioningErrorTemplate(t *testing.T) {
 		})
 
 		require.Equal(t, http.StatusConflict, resp.StatusCode)
+		require.Equal(t, "2", resp.Header.Get("Retry-After"))
+		require.Equal(t, "Retry-After", resp.Header.Get("Access-Control-Expose-Headers"))
 		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
 
 		body, err := io.ReadAll(resp.Body)
@@ -402,6 +407,268 @@ func TestProxySandboxStillTransitioningErrorTemplate(t *testing.T) {
 		assert.Contains(t, string(body), "Sandbox still transitioning")
 		assert.Contains(t, string(body), "test-sandbox")
 	})
+}
+
+func TestProxySandboxCapacityErrorTemplate(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
+		return nil, NewErrSandboxCapacity("test-sandbox", r.URL.Query().Get("reason"))
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	t.Run("json for non-browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		resp, err := httpGet(t, proxyURL)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		require.Equal(t, "2", resp.Header.Get("Retry-After"))
+		require.Equal(t, "Retry-After", resp.Header.Get("Access-Control-Expose-Headers"))
+		require.Equal(t, "application/json; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		var response struct {
+			SandboxID string `json:"sandboxId"`
+			Message   string `json:"message"`
+			Code      int    `json:"code"`
+			ErrorCode string `json:"error_code"`
+		}
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		require.NoError(t, err)
+		require.Equal(t, "test-sandbox", response.SandboxID)
+		require.Equal(t, "The sandbox cannot be resumed right now. Try again in a moment.", response.Message)
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+		require.Empty(t, response.ErrorCode)
+	})
+
+	t.Run("json never carries the reason", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello?reason=transport%%3A+dial+tcp+10.1.2.3%%3A5008", port)
+		resp, err := httpGet(t, proxyURL)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		require.Equal(t, "2", resp.Header.Get("Retry-After"))
+		require.Equal(t, "Retry-After", resp.Header.Get("Access-Control-Expose-Headers"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "dial tcp")
+		require.Contains(t, string(body), `"message":"The sandbox cannot be resumed right now. Try again in a moment."`)
+	})
+
+	t.Run("html never carries the reason", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello?reason=transport%%3A+dial+tcp+10.1.2.3%%3A5008", port)
+		headers := http.Header{
+			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+		}
+
+		resp, err := httpGetWithHeaders(t, proxyURL, headers)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		require.NotContains(t, string(body), "dial tcp")
+		require.NotContains(t, string(body), "10.1.2.3")
+	})
+
+	t.Run("html for browser", func(t *testing.T) {
+		t.Parallel()
+		proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
+		headers := http.Header{
+			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+		}
+
+		resp, err := httpGetWithHeaders(t, proxyURL, headers)
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		require.Equal(t, "2", resp.Header.Get("Retry-After"))
+		require.Equal(t, "Retry-After", resp.Header.Get("Access-Control-Expose-Headers"))
+		require.Equal(t, "text/html; charset=utf-8", resp.Header.Get("Content-Type"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "Sandbox cannot be resumed")
+		assert.Contains(t, string(body), "cannot be resumed right now")
+		assert.Contains(t, string(body), "test-sandbox")
+	})
+}
+
+// A request shed for lack of room to wait renders the capacity page without
+// Retry-After, so clients that honour the header do not return in one wave,
+// and with an error_code, so a client or an ingress that strips the header
+// still tells it from the capacity answer a retry can help, which keeps the
+// header and carries no code (TestProxySandboxCapacityErrorTemplate).
+func TestProxySandboxShedErrorTemplate(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(_ *http.Request) (*pool.Destination, error) {
+		return nil, NewErrSandboxShed("test-sandbox", "parking lot full")
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	resp, err := httpGet(t, fmt.Sprintf("http://127.0.0.1:%d/hello", port))
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = resp.Body.Close()
+	})
+
+	require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+	require.Empty(t, resp.Header.Get("Retry-After"))
+	require.Empty(t, resp.Header.Get("Access-Control-Expose-Headers"))
+
+	var response struct {
+		SandboxID string `json:"sandboxId"`
+		Message   string `json:"message"`
+		Code      int    `json:"code"`
+		ErrorCode string `json:"error_code"`
+	}
+	require.NoError(t, json.NewDecoder(resp.Body).Decode(&response))
+	require.Equal(t, "test-sandbox", response.SandboxID)
+	require.Equal(t, "The sandbox cannot be resumed right now. Try again in a moment.", response.Message)
+	require.Equal(t, http.StatusServiceUnavailable, response.Code)
+	require.Equal(t, "proxy_parking_lot_full", response.ErrorCode)
+	require.NotContains(t, response.Message, "parking lot")
+}
+
+// A placement refusal no retry helps renders the same 503 page family with
+// its own wording and no Retry-After.
+func TestProxySandboxPlacementRefusedErrorTemplate(t *testing.T) {
+	t.Parallel()
+
+	getDestination := func(_ *http.Request) (*pool.Destination, error) {
+		return nil, NewErrSandboxPlacementRefused("test-sandbox", "Failed to place sandbox: no available orchestrator at version 0.3 or above", "sandbox_feature_unsupported", 0)
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	t.Run("json for non-browser", func(t *testing.T) {
+		t.Parallel()
+		resp, err := httpGet(t, fmt.Sprintf("http://127.0.0.1:%d/hello", port))
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		require.Empty(t, resp.Header.Get("Retry-After"))
+
+		var response struct {
+			SandboxID string `json:"sandboxId"`
+			Message   string `json:"message"`
+			Code      int    `json:"code"`
+			ErrorCode string `json:"error_code"`
+		}
+		require.NoError(t, json.NewDecoder(resp.Body).Decode(&response))
+		require.Equal(t, "test-sandbox", response.SandboxID)
+		require.Equal(t, "The sandbox cannot be resumed: no node in this cluster can run it.", response.Message)
+		require.Equal(t, http.StatusServiceUnavailable, response.Code)
+		require.Equal(t, "sandbox_feature_unsupported", response.ErrorCode)
+	})
+
+	t.Run("html for browser", func(t *testing.T) {
+		t.Parallel()
+		resp, err := httpGetWithHeaders(t, fmt.Sprintf("http://127.0.0.1:%d/hello", port), http.Header{
+			"User-Agent": {"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+		})
+		require.NoError(t, err)
+		t.Cleanup(func() {
+			_ = resp.Body.Close()
+		})
+
+		require.Equal(t, http.StatusServiceUnavailable, resp.StatusCode)
+		require.Empty(t, resp.Header.Get("Retry-After"))
+
+		body, err := io.ReadAll(resp.Body)
+		require.NoError(t, err)
+		assert.Contains(t, string(body), "no node in this cluster can run it")
+		assert.NotContains(t, string(body), "no available orchestrator at version")
+		assert.NotContains(t, string(body), "Try again", "a page for a refusal no retry helps offers a retry")
+	})
+}
+
+// A request whose own context ended before it was routed is answered with
+// 408 and no page: a client that half-closed its connection is still
+// reading, and an unwritten answer would reach it as an empty 200.
+func TestProxyAnswersRequestTimeoutWhenTheRequestEndedBeforeRouting(t *testing.T) {
+	t.Parallel()
+
+	proxy := New(0, SandboxProxyRetries, time.Second, func(r *http.Request) (*pool.Destination, error) {
+		return nil, fmt.Errorf("resolving: %w", r.Context().Err())
+	}, nil, false)
+	t.Cleanup(func() { _ = proxy.Close() })
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "http://sandbox.e2b.app/", nil)
+	rr := httptest.NewRecorder()
+	proxy.Handler.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusRequestTimeout, rr.Code)
+	require.NotContains(t, rr.Body.String(), "sandbox", "an error page was rendered for a request that had ended")
+}
+
+// The same over a real connection: the client sends its request and closes
+// its write side while routing waits, the server's EOF cancels the request
+// context, and the client reads 408 rather than an empty 200.
+func TestProxyHalfClosedClientReadsRequestTimeout(t *testing.T) {
+	t.Parallel()
+
+	proxy, port, err := newTestProxy(t, func(r *http.Request) (*pool.Destination, error) {
+		<-r.Context().Done()
+
+		return nil, fmt.Errorf("resolving: %w", r.Context().Err())
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { proxy.Close() })
+
+	var dialer net.Dialer
+	conn, err := dialer.DialContext(t.Context(), "tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+
+	_, err = fmt.Fprint(conn, "GET /hello HTTP/1.1\r\nHost: sandbox.e2b.app\r\n\r\n")
+	require.NoError(t, err)
+	tcpConn, ok := conn.(*net.TCPConn)
+	require.True(t, ok)
+	require.NoError(t, tcpConn.CloseWrite())
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(10*time.Second)))
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = resp.Body.Close() })
+	require.Equal(t, http.StatusRequestTimeout, resp.StatusCode)
 }
 
 func TestProxyInternalRouteErrorTemplate(t *testing.T) {

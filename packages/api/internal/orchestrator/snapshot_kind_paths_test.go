@@ -21,6 +21,7 @@ import (
 	sandboxredis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -176,29 +177,46 @@ func TestCheckpointSandbox_SuccessRecordsMemoryKind(t *testing.T) {
 	require.NoError(t, f.o.CheckpointSandbox(t.Context(), f.sbx.TeamID, f.sbx.SandboxID))
 
 	assert.False(t, f.kind(t))
+	assert.False(t, lastSnapshotBuildKind(t, f.o, f.sbx.SandboxID), "the fork's build is labelled memory even though the previous one was filesystem-only")
 	assert.False(t, f.client.lastRequest(t).GetFilesystemOnly(), "a fork never asks for a filesystem-only checkpoint")
 	buildStatus, _ := snapshotBuildStatus(t, f.db, f.sbx.SandboxID)
 	assert.Equal(t, string(types.BuildStatusSuccess), buildStatus)
 	assert.Equal(t, sandbox.StateRunning, f.state(t))
 }
 
+// templateBuildKind is the kind recorded on the build a sandbox created from
+// the template starts from.
+func (f kindFixture) templateBuildKind(t *testing.T, templateID string) bool {
+	t.Helper()
+
+	row, err := f.o.sqlcDB.GetTemplateWithBuildByTag(t.Context(), queries.GetTemplateWithBuildByTagParams{TemplateID: templateID})
+	require.NoError(t, err)
+
+	return row.EnvBuild.FilesystemOnly
+}
+
 // A snapshot template records the requested kind, in both directions, and the
-// request sent to the node carries the same kind.
+// request sent to the node carries the same kind. The template's build keeps
+// its kind after the source's row moves on, since a create from the template
+// reads only the build.
 func TestCreateSnapshotTemplate_RecordsRequestedKind(t *testing.T) {
 	t.Parallel()
 
 	f := newKindFixture(t, nil)
 
-	_, err := f.o.CreateSnapshotTemplate(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, SnapshotTemplateOpts{Tag: id.DefaultTag, FilesystemOnly: true})
+	fsOnly, err := f.o.CreateSnapshotTemplate(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, SnapshotTemplateOpts{Tag: id.DefaultTag, FilesystemOnly: true})
 	require.NoError(t, err)
 	assert.True(t, f.kind(t), "memory:false records a filesystem-only build")
+	assert.True(t, f.templateBuildKind(t, fsOnly.TemplateID), "the memory:false template's build is labelled filesystem-only")
 	assert.True(t, f.client.lastRequest(t).GetFilesystemOnly())
 	buildStatus, _ := snapshotBuildStatus(t, f.db, f.sbx.SandboxID)
 	assert.Equal(t, string(types.BuildStatusUploaded), buildStatus)
 
-	_, err = f.o.CreateSnapshotTemplate(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, SnapshotTemplateOpts{Tag: id.DefaultTag})
+	memory, err := f.o.CreateSnapshotTemplate(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, SnapshotTemplateOpts{Tag: id.DefaultTag})
 	require.NoError(t, err)
 	assert.False(t, f.kind(t), "a memory snapshot records a memory build")
+	assert.False(t, f.templateBuildKind(t, memory.TemplateID), "the memory template's build is labelled memory")
+	assert.True(t, f.templateBuildKind(t, fsOnly.TemplateID), "a later memory snapshot does not relabel the earlier template")
 	assert.False(t, f.client.lastRequest(t).GetFilesystemOnly())
 	assert.Equal(t, sandbox.StateRunning, f.state(t))
 }

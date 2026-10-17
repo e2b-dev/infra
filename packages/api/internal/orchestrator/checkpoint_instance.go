@@ -74,7 +74,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 	// filesystem-only build from an earlier memory:false snapshot: that kind
 	// must survive until this build is ready, or a refused checkpoint would
 	// leave the row claiming memory for a build that has none.
-	currentKind, upsertResult, err := o.upsertSnapshotKeepingKind(ctx, sbx, node)
+	currentKind, upsertResult, err := o.upsertSnapshotKeepingKind(ctx, sbx, node, false)
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 	// orchestrator with the same ExecutionID. Once the pause has started, the
 	// orchestrator stops the old sandbox itself on error; RemoveSandbox is
 	// still needed to clean up API-side state (store, routing, analytics).
-	client, childCtx := node.GetClient(ctx)
+	client, childCtx := node.GetSandboxClient(ctx, sbx.TeamID.String())
 	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),

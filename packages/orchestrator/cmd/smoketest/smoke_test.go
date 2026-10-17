@@ -56,7 +56,7 @@ const (
 )
 
 // TestSmokeAllFCVersions builds a template and resumes from it for every
-// Firecracker version in FirecrackerVersionMap. It requires root, Docker,
+// Firecracker version the fallback map serves, env overrides included. It requires root, Docker,
 // the envd binary, KVM, NBD, and hugepages.
 func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests share infra and must run sequentially
 	checkPrerequisites(t)
@@ -68,7 +68,9 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 	setupEnvVars(t, dataDir, envdPath)
 
 	downloadKernel(t, dataDir)
-	for _, fcVersion := range featureflags.FirecrackerVersionMap {
+	fcVersions, err := featureflags.FirecrackerVersionsFallback(featureflags.FirecrackerVersionMap, os.Getenv(featureflags.FirecrackerVersionsEnv))
+	require.NoError(t, err)
+	for _, fcVersion := range fcVersions {
 		downloadFC(t, dataDir, fcVersion)
 	}
 
@@ -78,7 +80,7 @@ func TestSmokeAllFCVersions(t *testing.T) { //nolint:paralleltest // subtests sh
 	infra := newTestInfra(t, ctx)
 	defer infra.close(ctx)
 
-	for fcMajor, fcVersion := range featureflags.FirecrackerVersionMap { //nolint:paralleltest // sequential by design
+	for fcMajor, fcVersion := range fcVersions { //nolint:paralleltest // sequential by design
 		t.Run("fc-"+fcMajor, func(t *testing.T) {
 			buildID := uuid.New().String()
 

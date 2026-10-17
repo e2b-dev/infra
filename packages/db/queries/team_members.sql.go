@@ -12,65 +12,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addTeamMember = `-- name: AddTeamMember :exec
-INSERT INTO public.users_teams (user_id, team_id, is_default, added_by)
-VALUES (
-    $1::uuid,
-    $2::uuid,
-    false,
-    $3::uuid
-)
-`
-
-type AddTeamMemberParams struct {
-	UserID  uuid.UUID
-	TeamID  uuid.UUID
-	AddedBy uuid.UUID
-}
-
-func (q *Queries) AddTeamMember(ctx context.Context, arg AddTeamMemberParams) error {
-	_, err := q.db.Exec(ctx, addTeamMember, arg.UserID, arg.TeamID, arg.AddedBy)
-	return err
-}
-
-const getPublicUserID = `-- name: GetPublicUserID :one
-SELECT id FROM public.users
-WHERE id = $1::uuid
-`
-
-func (q *Queries) GetPublicUserID(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getPublicUserID, id)
-	var id_2 uuid.UUID
-	err := row.Scan(&id_2)
-	return id_2, err
-}
-
-const getTeamMemberRelation = `-- name: GetTeamMemberRelation :one
-SELECT id, user_id, team_id, is_default, added_by, created_at, uuid_id FROM public.users_teams
-WHERE team_id = $1::uuid
-  AND user_id = $2::uuid
-`
-
-type GetTeamMemberRelationParams struct {
-	TeamID uuid.UUID
-	UserID uuid.UUID
-}
-
-func (q *Queries) GetTeamMemberRelation(ctx context.Context, arg GetTeamMemberRelationParams) (UsersTeam, error) {
-	row := q.db.QueryRow(ctx, getTeamMemberRelation, arg.TeamID, arg.UserID)
-	var i UsersTeam
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.TeamID,
-		&i.IsDefault,
-		&i.AddedBy,
-		&i.CreatedAt,
-		&i.UuidID,
-	)
-	return i, err
-}
-
 const getTeamMembers = `-- name: GetTeamMembers :many
 SELECT
     ut.user_id,
@@ -114,46 +55,4 @@ func (q *Queries) GetTeamMembers(ctx context.Context, teamID uuid.UUID) ([]GetTe
 		return nil, err
 	}
 	return items, nil
-}
-
-const lockTeamMembersForUpdate = `-- name: LockTeamMembersForUpdate :many
-SELECT user_id FROM public.users_teams
-WHERE team_id = $1::uuid
-FOR UPDATE
-`
-
-func (q *Queries) LockTeamMembersForUpdate(ctx context.Context, teamID uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lockTeamMembersForUpdate, teamID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []uuid.UUID
-	for rows.Next() {
-		var user_id uuid.UUID
-		if err := rows.Scan(&user_id); err != nil {
-			return nil, err
-		}
-		items = append(items, user_id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const removeTeamMember = `-- name: RemoveTeamMember :exec
-DELETE FROM public.users_teams
-WHERE team_id = $1::uuid
-  AND user_id = $2::uuid
-`
-
-type RemoveTeamMemberParams struct {
-	TeamID uuid.UUID
-	UserID uuid.UUID
-}
-
-func (q *Queries) RemoveTeamMember(ctx context.Context, arg RemoveTeamMemberParams) error {
-	_, err := q.db.Exec(ctx, removeTeamMember, arg.TeamID, arg.UserID)
-	return err
 }

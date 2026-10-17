@@ -5,10 +5,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -19,6 +21,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/coreos/go-iptables/iptables"
 	"github.com/google/uuid"
@@ -33,6 +36,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/build"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
@@ -48,6 +52,7 @@ import (
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -82,6 +87,8 @@ func main() {
 	syncWP := flag.Bool("sync-wp", false, "resume with synchronous userfault write-protect delivery (use_sync_wp; requires an FC build that accepts the field)")
 	trackerDirty := flag.Bool("tracker-dirty", false, "serve the pause dirty set from the page tracker instead of the pagemap RPC (implies -sync-wp)")
 	memfileDiffDedup := flag.Bool("memfile-diff-dedup", false, "enable 4KiB-page deduplication of memfile diff against the base template")
+	discardSuperseded := flag.Bool("discard-superseded", false, "after each pause, discard from the local cache the previous layer's runs the new header no longer maps; a later read of that layer refetches from storage. discarded_bytes is the savings figure: the bytes present in the cache when punched; punched_bytes is the extent punched, which also covers bytes a fetch had published but not yet marked present. A fetch already streaming into a discarded range stops without writing it again")
+	verifyPrevious := flag.Bool("verify-previous", false, "after the pause, prove the discard refetch directly: every run -discard-superseded punches is read and hashed through the previous layer's diff before the discard and again after it, the hashes must match, and the runs the cache held before the discard (refetched_bytes) must read as not-present after the discard and as present after the re-read. The previous generation is then resumed in this same process and -cmd re-run as a secondary check: its output must match the output captured before the pause, but a matching output alone never passes. A failed discard, or one none of whose runs the cache held before, is reported as skipped and the run exits non-zero. Reading a run the cache did not hold fetches it before the discard, so discarded_bytes then counts it too")
 	inPlace := flag.Bool("in-place", false, "checkpoint in place (pause, snapshot, resume the same FC process; implies -sync-wp)")
 	deferMemoryExport := flag.Bool("defer-memory-export", false, "capture the in-place memory export through the async CoW window (implies -in-place; requires an FC build with /balloon/reporting)")
 	verbose := flag.Bool("v", false, "verbose logging")
@@ -184,6 +191,10 @@ func main() {
 		}))
 	}
 
+	if *discardSuperseded && *memfileDiffDedup {
+		fmt.Println("⚠️  -discard-superseded with -memfile-diff-dedup: in best-effort dedup mode the discard evicts base blocks the next pause's compare peeks, changing the diff it measures; run them together only with dedup in its default (non best-effort) mode")
+	}
+
 	if *cpuTemplate != "" {
 		raw := []byte("{}")
 		if *cpuTemplate != "none" {
@@ -230,8 +241,28 @@ func main() {
 		log.Fatal("only one of -pause, -signal-pause, -cmd-pause, or -cmd-signal-pause can be specified")
 	}
 
-	// -cmd is incompatible with pause flags
-	isCmdMode := *cmd != ""
+	verifyFlags := verifyPreviousFlags{
+		enabled:           *verifyPrevious,
+		cmd:               *cmd,
+		discardSuperseded: *discardSuperseded,
+		pause:             *pause,
+		cmdPause:          *cmdPause,
+		cmdSignalPause:    *cmdSignalPause,
+		iterations:        *iterations,
+		fphBench:          *fphBench,
+		shell:             *shell,
+		reboot:            *reboot,
+		forceReboot:       *forceReboot,
+		fsOnly:            *fsOnly,
+		inPlace:           *inPlace,
+		deferMemoryExport: *deferMemoryExport,
+	}
+	if err := verifyFlags.validate(); err != nil {
+		log.Fatal(err)
+	}
+
+	// -cmd is incompatible with pause flags, except as -verify-previous's probe.
+	isCmdMode := *cmd != "" && !*verifyPrevious
 	if isCmdMode && pauseCount > 0 {
 		log.Fatal("-cmd is incompatible with pause flags")
 	}
@@ -301,17 +332,20 @@ func main() {
 
 	isRemoteStorage := strings.HasPrefix(*storagePath, "gs://")
 	pauseOpts := pauseOptions{
-		immediate:       *pause,
-		signalName:      *signalPause,
-		command:         *cmdPause,
-		commandSignal:   *cmdSignalPause,
-		storagePath:     *storagePath,
-		isRemoteStorage: isRemoteStorage,
-		newBuildID:      outputBuildID,
-		iterations:      *iterations,
-		optimize:        *optimize,
-		fsOnly:          *fsOnly,
-		inPlace:         *inPlace || *deferMemoryExport,
+		immediate:         *pause,
+		signalName:        *signalPause,
+		command:           *cmdPause,
+		commandSignal:     *cmdSignalPause,
+		storagePath:       *storagePath,
+		isRemoteStorage:   isRemoteStorage,
+		newBuildID:        outputBuildID,
+		iterations:        *iterations,
+		optimize:          *optimize,
+		fsOnly:            *fsOnly,
+		inPlace:           *inPlace || *deferMemoryExport,
+		discardSuperseded: *discardSuperseded,
+		verifyPrevious:    *verifyPrevious,
+		verifyCmd:         *cmd,
 	}
 
 	runOpts := runOptions{
@@ -362,6 +396,14 @@ type pauseOptions struct {
 	iterations      int // for benchmarking pause (only with immediate)
 	optimize        bool
 	fsOnly          bool
+	// discardSuperseded discards the previous layer's now-unmapped runs after the
+	// pause; they refetch from storage on a later read.
+	discardSuperseded bool
+	// verifyPrevious resumes the previous generation again in this process after
+	// the discard and re-runs verifyCmd, proving the refetch: its output must
+	// match the output captured before the pause.
+	verifyPrevious bool
+	verifyCmd      string
 	// inPlace checkpoints in place (WithMaintainSandbox): the same FC
 	// process pauses, snapshots and resumes, exercising the in-place seal —
 	// and, with -defer-memory-export, the CoW window. The single-run path's
@@ -480,6 +522,14 @@ type runner struct {
 	// config.FirecrackerVersionsDir is redirected to a writable staging dir; the published
 	// firecracker-debug is resolved from this original (read-only) dir.
 	gdbOrigVersionsDir string
+	// discardErr records every failed -discard-superseded of the run so it
+	// exits non-zero without failing the pause itself.
+	discardErr error
+	// verifyErr records every failed -verify-previous (a refetch mismatch or a
+	// resume/command failure during verification).
+	verifyErr error
+	// out receives the machine-readable discard and verify lines.
+	out io.Writer
 }
 
 // templatePin is the cache pin on the runner's current template.
@@ -937,7 +987,667 @@ func (r *runner) pauseOnce(ctx context.Context, opts pauseOptions, verbose bool)
 		}
 	}
 
+	if opts.discardSuperseded && !opts.fsOnly {
+		r.recordPauseOutcome(ctx, opts, func() (supersededRuns, error) {
+			if verbose {
+				fmt.Printf("🧹 discard-superseded: previous layer %s\n", r.buildID)
+			}
+
+			return r.supersededMemfileRuns(ctx, snapshot)
+		}, func(sup supersededRuns) (block.DiscardStats, error) {
+			return r.discardMemfileRuns(sup, opts.verifyPrevious)
+		}, func() (string, error) {
+			return r.resumeAndCapture(ctx, opts.verifyCmd)
+		})
+	}
+
 	return timings, nil
+}
+
+// recordPauseOutcome runs a pause's discard, under -verify-previous the
+// baseline capture before it and the proof after it, records every failure
+// on the runner and prints the machine-readable lines. The runs are resolved
+// after the baseline capture, whose resume can evict and reload the previous
+// diff, so the discard and the proof hold the handle the store serves then.
+// The proof's gate is this call's baseline capture, not the run's recorded
+// failures (-verify-previous rejects -iterations). A benchmark calls it once
+// per iteration; a later success never clears an earlier failure.
+func (r *runner) recordPauseOutcome(ctx context.Context, opts pauseOptions, resolve func() (supersededRuns, error), discard func(supersededRuns) (block.DiscardStats, error), capture func() (string, error)) {
+	var baseline string
+	var baselineErr error
+	if opts.verifyPrevious {
+		baseline, baselineErr = capture()
+		if baselineErr != nil {
+			r.noteVerify(fmt.Errorf("capture baseline from previous generation: %w", baselineErr))
+		}
+	}
+	sup, resolveErr := resolve()
+	discardRuns := func() (block.DiscardStats, error) {
+		if resolveErr != nil {
+			return block.DiscardStats{}, resolveErr
+		}
+
+		return discard(sup)
+	}
+	// One machine-readable line each; discard_error is present only on
+	// failure so a refused or failed discard never reads as "nothing superseded".
+	if opts.verifyPrevious && baselineErr == nil {
+		out := verifyPreviousAfterDiscard(ctx, sup, discardRuns, baseline, capture)
+		r.noteDiscard(out.discardErr)
+		if out.err != nil {
+			r.noteVerify(fmt.Errorf("previous generation %s: %w", r.buildID, out.err))
+		}
+		fmt.Fprintln(r.out, discardLine(out.discarded, out.discardErr))
+		fmt.Fprintln(r.out, out.line)
+
+		return
+	}
+	stats, derr := discardRuns()
+	r.noteDiscard(derr)
+	fmt.Fprintln(r.out, discardLine(stats, derr))
+}
+
+// refetchReadPath is the previous layer's diff as the page faults read it: the
+// public framed read, the tracker's presence query and the wait for the
+// fetches over a range to terminate.
+type refetchReadPath interface {
+	block.FramedReader
+	block.CachePeeker
+	block.FetchWaiter
+}
+
+// supersededRuns is the previous layer's memfile diff with the runs the new
+// header no longer maps to it, in the diff's packed storage space (Offset and
+// Length of each run), which the discard punches and -verify-previous reads.
+type supersededRuns struct {
+	// diff is nil when the layer's diff is not cached or cannot be read directly.
+	diff refetchReadPath
+	// handle is diff as the store holds it, for a discard on the same handle.
+	handle    build.Diff
+	ft        *storage.FrameTable
+	blockSize int64
+	// runs is what the discard punches: block-aligned, the last one rounded
+	// past the end of a packed diff (the discard clips the punch itself).
+	runs []header.BuildMap
+	// reads is runs clipped to the diff's size: what the proof reads, checks
+	// and counts. A read past the end returns short or never completes.
+	reads []header.BuildMap
+	// presentWait bounds a wait for a fetch to mark a run present.
+	presentWait time.Duration
+	// sleep is the wait between two presence polls; nil means time.Sleep.
+	sleep func(time.Duration)
+}
+
+// presentBoundMargin is added to the handle's fetch timeout to bound a wait
+// for a run to be marked present: an uncompressed read returns once its bytes
+// are published, and the chunk is marked present only when its whole fetch
+// completes, which the chunker gives up on at its timeout.
+const presentBoundMargin = 5 * time.Second
+
+// presentPoll is the interval at which the wait after a re-read polls the tracker.
+const presentPoll = 10 * time.Millisecond
+
+// boundRuns binds the superseded runs to the diff the proof reads them
+// through, clipping each run's read extent to the diff's size once and
+// deriving the presence bound from that diff's own fetch timeout.
+func boundRuns(diff refetchReadPath, ft *storage.FrameTable, blockSize int64, runs []header.BuildMap, size int64) supersededRuns {
+	return supersededRuns{diff: diff, ft: ft, blockSize: blockSize, runs: runs, reads: clipRuns(runs, size), presentWait: diff.FetchTimeout() + presentBoundMargin, sleep: time.Sleep}
+}
+
+// clipRuns returns the runs with their extents clipped to size, dropping any
+// that is empty or starts at or past it: an empty run has nothing to read,
+// and a presence query over it is true at once, which must not count.
+func clipRuns(runs []header.BuildMap, size int64) []header.BuildMap {
+	var out []header.BuildMap
+	for _, run := range runs {
+		if run.Length == 0 || int64(run.Offset) >= size {
+			continue
+		}
+		run.Length = uint64(min(int64(run.Length), size-int64(run.Offset)))
+		out = append(out, run)
+	}
+
+	return out
+}
+
+// runDigest is one run's state before the discard: whether the tracker held
+// it present, and the hash of its bytes read through the diff.
+type runDigest struct {
+	present bool
+	sum     [sha256.Size]byte
+}
+
+// verifyOutcome is what -verify-previous reports: the discard's own result,
+// the machine-readable line and the verification error, if any.
+type verifyOutcome struct {
+	discarded  block.DiscardStats
+	discardErr error
+	line       string
+	err        error
+}
+
+func (o verifyOutcome) fail(line string, err error) verifyOutcome {
+	o.line = line
+	o.err = err
+
+	return o
+}
+
+// verifyPreviousAfterDiscard proves the discard refetch through the diff's own
+// read path. Before the discard every superseded run is read a block at a time
+// and hashed, recording whether the tracker held it present once the
+// fetches over the runs terminated, or the bound expired (waitFetched);
+// the discard runs;
+// the runs held present (the only population whose re-read is a refetch) must
+// then read as not-present, every run is read and hashed again and must hash
+// as before. That is the proof: not-present before the re-read, the same
+// bytes after. The present-before runs reading as present again is a sanity
+// check that waits, bounded, for the fetch to complete. The
+// proof needs at least one run present before the discard: after a failed
+// discard, or when none was present, it is skipped and the run exits non-zero
+// (through the discard error, or the error returned here). The guest command
+// is a secondary check after the proof: its mismatch fails the run, but it
+// cannot produce ok on its own.
+func verifyPreviousAfterDiscard(ctx context.Context, sup supersededRuns, discard func() (block.DiscardStats, error), baseline string, capture func() (string, error)) verifyOutcome {
+	before, readErr := digestRuns(ctx, sup)
+	out := verifyOutcome{}
+	out.discarded, out.discardErr = discard()
+	if out.discardErr != nil {
+		if isCacheClosed(out.discardErr) {
+			return out.fail("verify_previous=error cache=closed", fmt.Errorf("discard: %w", out.discardErr))
+		}
+		out.line = fmt.Sprintf("verify_previous=skipped discard_error=%v", out.discardErr)
+
+		return out
+	}
+	if readErr != nil {
+		return out.fail(errorLine("", readErr), fmt.Errorf("read before the discard: %w", readErr))
+	}
+	presentBefore, refetched := 0, int64(0)
+	for i, run := range sup.reads {
+		if before[i].present {
+			presentBefore++
+			refetched += int64(run.Length)
+		}
+	}
+	if presentBefore == 0 {
+		return out.fail("verify_previous=skipped present_bytes=0", errors.New("no superseded run was present before the discard, so there is no refetch to prove"))
+	}
+	// A re-read may fetch past its run into the next one, so every run is
+	// checked not-present before any is re-read.
+	for i, run := range sup.reads {
+		if !before[i].present {
+			continue
+		}
+		if off, held := presentBlock(ctx, sup, run); held {
+			return out.fail("verify_previous=error"+runTag(run), fmt.Errorf("the block at %d is still present after the discard", off))
+		}
+	}
+	buf := make([]byte, sup.blockSize)
+	for i, run := range sup.reads {
+		sum, err := hashRun(ctx, sup, run, buf)
+		if err != nil {
+			return out.fail(errorLine(runTag(run), err), fmt.Errorf("read after the discard: %w", err))
+		}
+		if sum != before[i].sum {
+			return out.fail("verify_previous=mismatch"+runTag(run), errors.New("different bytes after the discard: the refetch did not restore the superseded run"))
+		}
+	}
+	for i, run := range sup.reads {
+		if !before[i].present {
+			continue
+		}
+		if err := waitPresent(ctx, sup, run); err != nil {
+			return out.fail("verify_previous=error"+runTag(run), err)
+		}
+	}
+	got, err := capture()
+	switch {
+	case err != nil:
+		return out.fail("verify_previous=error probe=cmd", fmt.Errorf("resume after discard: %w", err))
+	case got != baseline:
+		return out.fail("verify_previous=mismatch probe=cmd", errors.New("different -cmd output after the discard"))
+	}
+	out.line = fmt.Sprintf("verify_previous=ok runs=%d refetched_bytes=%d present_before=%d punched=%d", len(sup.reads), refetched, presentBefore, out.discarded.Punched)
+
+	return out
+}
+
+// digestRuns records, for each run, whether the tracker holds it present and
+// the hash of its bytes read through the diff. Presence is taken for every
+// run before the first read, once the fetches over the runs terminated or
+// the bound expired (waitFetched): a read fetches a whole chunk, which can
+// hold later runs, and only the runs held before any read are a refetch to
+// prove. Reading a run the cache does not hold fetches it.
+func digestRuns(ctx context.Context, sup supersededRuns) ([]runDigest, error) {
+	if len(sup.runs) == 0 {
+		return nil, nil
+	}
+	if sup.diff == nil {
+		return nil, errors.New("the previous layer's diff is not cached or cannot be read directly")
+	}
+	out := make([]runDigest, len(sup.reads))
+	waitFetched(ctx, sup)
+	for i, present := range samplePresence(ctx, sup) {
+		out[i].present = present
+	}
+	buf := make([]byte, sup.blockSize)
+	for i, run := range sup.reads {
+		sum, err := hashRun(ctx, sup, run, buf)
+		if err != nil {
+			return nil, err
+		}
+		out[i].sum = sum
+	}
+
+	return out, nil
+}
+
+// waitFetched waits, bounded by sup.presentWait, for every fetch over the
+// runs to terminate: the baseline probe's page faults started chunk fetches
+// the sandbox close does not wait for, and a chunk is marked present only
+// when its whole fetch completes, so a sample taken while one is in flight
+// reads that run as absent, and the discard then stales the fetch before
+// the proof can count it. The bound expiring, or the context ending, is not
+// an error: the sample takes what is there, a run still in flight is left
+// out of the population and read fresh after the discard, so the proof can
+// skip, never pass falsely. A fetch that starts after the wait returned (a
+// reader refetching behind a stale session) is not covered by it: its run
+// samples present if the fetch completed before the sample, joining the
+// population with bytes that were fetched, and absent otherwise, read fresh
+// after the discard; either way the proof cannot pass falsely.
+func waitFetched(ctx context.Context, sup supersededRuns) {
+	ctx, cancel := context.WithTimeout(ctx, sup.presentWait)
+	defer cancel()
+	for _, run := range sup.reads {
+		if sup.diff.WaitFetched(ctx, int64(run.Offset), int64(run.Length)) != nil {
+			return
+		}
+	}
+}
+
+// samplePresence reports, for each run, whether the tracker holds it present.
+func samplePresence(ctx context.Context, sup supersededRuns) []bool {
+	out := make([]bool, len(sup.reads))
+	for i, run := range sup.reads {
+		out[i] = sup.diff.IsCached(ctx, int64(run.Offset), int64(run.Length))
+	}
+
+	return out
+}
+
+// errorLine is the verify_previous=error line for a failed read, naming a
+// closed cache (the store evicted the layer's diff during the proof) so it is
+// never taken for a mismatch.
+func errorLine(tag string, err error) string {
+	if isCacheClosed(err) {
+		return "verify_previous=error cache=closed" + tag
+	}
+
+	return "verify_previous=error" + tag
+}
+
+func isCacheClosed(err error) bool {
+	var closed *block.CacheClosedError
+
+	return errors.As(err, &closed)
+}
+
+// presentBlock reports the first block of run the tracker still holds. The
+// run's own IsCached is false as soon as one block is absent, so a discard
+// that left a block present is only seen block by block.
+func presentBlock(ctx context.Context, sup supersededRuns, run header.BuildMap) (int64, bool) {
+	for off, end := int64(run.Offset), int64(run.Offset+run.Length); off < end; off += sup.blockSize {
+		if sup.diff.IsCached(ctx, off, min(sup.blockSize, end-off)) {
+			return off, true
+		}
+	}
+
+	return 0, false
+}
+
+// waitPresent waits, bounded by sup.presentWait, for the tracker to hold run
+// present after its re-read. Each poll's sleep (sup.sleep, or time.Sleep
+// when unset) is clipped to the deadline and the deadline is tested after
+// it, so the wait ends at the bound, not at the poll after it; a context
+// that ended is seen after the sleep.
+func waitPresent(ctx context.Context, sup supersededRuns, run header.BuildMap) error {
+	if run.Length == 0 {
+		return nil
+	}
+	sleep := sup.sleep
+	if sleep == nil {
+		sleep = time.Sleep
+	}
+	deadline := time.Now().Add(sup.presentWait)
+	for {
+		if sup.diff.IsCached(ctx, int64(run.Offset), int64(run.Length)) {
+			return nil
+		}
+		sleep(min(presentPoll, time.Until(deadline)))
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return fmt.Errorf("the run is not present %s after the re-read", sup.presentWait)
+		}
+	}
+}
+
+// hashRun reads one run through the diff a block (len(buf)) at a time and
+// hashes it; a short read is an error.
+func hashRun(ctx context.Context, sup supersededRuns, run header.BuildMap, buf []byte) ([sha256.Size]byte, error) {
+	var sum [sha256.Size]byte
+	if len(buf) == 0 {
+		return sum, errors.New("the cache block size is zero")
+	}
+	h := sha256.New()
+	for off, end := int64(run.Offset), int64(run.Offset+run.Length); off < end; {
+		p := buf[:min(int64(len(buf)), end-off)]
+		n, err := sup.diff.ReadAt(ctx, p, off, sup.ft)
+		if err != nil {
+			return sum, fmt.Errorf("read%s at %d: %w", runTag(run), off, err)
+		}
+		if n != len(p) {
+			return sum, fmt.Errorf("read%s at %d: short read %d of %d", runTag(run), off, n, len(p))
+		}
+		h.Write(p)
+		off += int64(n)
+	}
+	copy(sum[:], h.Sum(nil))
+
+	return sum, nil
+}
+
+// runTag names a run in the machine-readable line by its storage offset and length.
+func runTag(run header.BuildMap) string {
+	return fmt.Sprintf(" run=%d/%d", run.Offset, run.Length)
+}
+
+// noteDiscard and noteVerify keep every failure of the run: a later
+// iteration's success never clears an earlier failure, and a nil leaves
+// the recorded failure as it is.
+func (r *runner) noteDiscard(err error) {
+	if err == nil {
+		return
+	}
+	r.discardErr = errors.Join(r.discardErr, err)
+}
+
+func (r *runner) noteVerify(err error) {
+	if err == nil {
+		return
+	}
+	r.verifyErr = errors.Join(r.verifyErr, err)
+}
+
+// pauseResult is the error a pause run exits with once the pause and upload
+// succeeded: a failed -discard-superseded first, then a failed -verify-previous,
+// both on one line when both failed.
+func (r *runner) pauseResult() error {
+	var discard, verify error
+	if r.discardErr != nil {
+		discard = fmt.Errorf("discard-superseded failed (pause and upload succeeded): %w", r.discardErr)
+	}
+	if r.verifyErr != nil {
+		verify = fmt.Errorf("verify-previous failed (pause and upload succeeded): %w", r.verifyErr)
+	}
+	switch {
+	case discard != nil && verify != nil:
+		return fmt.Errorf("%w; %w", discard, verify)
+	case discard != nil:
+		return discard
+	default:
+		return verify
+	}
+}
+
+// resumeAndCapture resumes the runner's current build in this process and runs
+// cmd, returning its stdout. The template cache is shared across resumes, so a
+// resume after a discard refetches the punched ranges from storage.
+func (r *runner) resumeAndCapture(ctx context.Context, cmd string) (string, error) {
+	runtime := sandboxtypes.RuntimeMetadata{
+		TemplateID:  r.buildID,
+		TeamID:      "local",
+		SandboxID:   fmt.Sprintf("sbx-verify-%d", time.Now().UnixNano()),
+		ExecutionID: fmt.Sprintf("exec-verify-%d", time.Now().UnixNano()),
+	}
+
+	t0 := time.Now()
+	sbx, err := r.startSandbox(ctx, runtime, t0, t0.Add(24*time.Hour))
+	if err != nil {
+		return "", fmt.Errorf("resume: %w", err)
+	}
+	defer sbx.Close(context.WithoutCancel(ctx))
+
+	var buf bytes.Buffer
+	if err := runCommandInSandboxCapture(ctx, sbx, cmd, &buf); err != nil {
+		return "", fmt.Errorf("command: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+// verifyPreviousFlags are the flags -verify-previous must agree with.
+type verifyPreviousFlags struct {
+	enabled           bool
+	cmd               string
+	discardSuperseded bool
+	pause             bool
+	cmdPause          string
+	cmdSignalPause    string
+	iterations        int
+	fphBench          bool
+	shell             bool
+	reboot            bool
+	forceReboot       bool
+	fsOnly            bool
+	inPlace           bool
+	deferMemoryExport bool
+}
+
+// validate rejects a -verify-previous that could pass without proving
+// anything: it needs -cmd, -discard-superseded (without a discard the second
+// resume reads the same cache), a pause trigger, none of the modes that
+// bypass the pause path, and no maintained VM (it keeps faulting during the
+// proof and can repopulate a punched run's chunk before its absence is checked).
+func (f verifyPreviousFlags) validate() error {
+	if !f.enabled {
+		return nil
+	}
+	if f.cmd == "" {
+		return errors.New("-verify-previous requires -cmd (the probe command whose output is compared)")
+	}
+	if !f.discardSuperseded {
+		return errors.New("-verify-previous requires -discard-superseded (without a discard there is no refetch to prove)")
+	}
+	if !f.pause && f.cmdPause == "" && f.cmdSignalPause == "" {
+		return errors.New("-verify-previous requires -pause, -cmd-pause or -cmd-signal-pause (the pause whose previous generation is resumed again)")
+	}
+	switch {
+	case f.iterations > 0:
+		return errors.New("-verify-previous is incompatible with -iterations (benchmarking bypasses the pause path)")
+	case f.fphBench:
+		return errors.New("-verify-previous is incompatible with -fph-bench (the bench bypasses the pause path)")
+	case f.shell:
+		return errors.New("-verify-previous is incompatible with -shell (interactive mode never pauses)")
+	case f.reboot:
+		return errors.New("-verify-previous is incompatible with -reboot (a cold boot has no previous generation to resume)")
+	case f.forceReboot:
+		return errors.New("-verify-previous is incompatible with -force-reboot (a cold boot has no previous generation to resume)")
+	case f.fsOnly:
+		return errors.New("-verify-previous is incompatible with -fs-only (an fs-only pause skips the discard, so there is no refetch to prove)")
+	case f.deferMemoryExport:
+		return errors.New("-verify-previous is incompatible with -defer-memory-export (it implies -in-place: the maintained VM keeps faulting during the proof and can repopulate a punched run before its absence is checked)")
+	case f.inPlace:
+		return errors.New("-verify-previous is incompatible with -in-place (the maintained VM keeps faulting during the proof and can repopulate a punched run before its absence is checked)")
+	}
+
+	return nil
+}
+
+// discardLine formats the machine-readable discard result. On failure it
+// appends discard_error so a refused or failed discard is never mistaken for
+// "nothing superseded" (discarded_bytes=0). discarded_bytes is what was
+// present at the punch, the savings figure; punched_bytes is the extent
+// punched, which also covers bytes a fetch had published but not yet marked.
+// A fetch already streaming into the range stops without writing it again
+// (its batches are published only while it is current).
+func discardLine(stats block.DiscardStats, err error) string {
+	line := fmt.Sprintf("discarded_bytes=%d punched_bytes=%d", stats.Present, stats.Punched)
+	if err != nil {
+		return fmt.Sprintf("%s discard_error=%v", line, err)
+	}
+
+	return line
+}
+
+// supersededMemfileRuns resolves the runs of the previous layer (r.buildID)
+// that the new snapshot's header no longer maps to it, with that layer's diff
+// as -verify-previous reads it. No runs means nothing is superseded.
+func (r *runner) supersededMemfileRuns(ctx context.Context, snapshot *sandbox.Snapshot) (supersededRuns, error) {
+	newHeader, err := snapshot.MemorySnapshot.DiffHeader.WaitWithContext(ctx)
+	if err != nil {
+		return supersededRuns{}, fmt.Errorf("resolve new memfile header: %w", err)
+	}
+	if newHeader == nil {
+		return supersededRuns{}, nil
+	}
+
+	memfile, err := r.tmpl.Memfile(ctx)
+	if err != nil {
+		return supersededRuns{}, fmt.Errorf("previous memfile: %w", err)
+	}
+	prevHeader := memfile.Header()
+
+	prevBuildID, err := uuid.Parse(r.buildID)
+	if err != nil {
+		return supersededRuns{}, fmt.Errorf("parse previous build id: %w", err)
+	}
+
+	// The previous layer's chunker cache is addressed by its diff's packed
+	// storage offsets and punches in blocks of the memfile's device block size
+	// (the hugepage size); the runs are in that space, read with the frame
+	// table the page faults use for this layer.
+	blockSize := int64(prevHeader.Metadata.BlockSize)
+	ft := prevHeader.GetBuildFrameData(prevBuildID)
+	runs := supersededStorageRuns(prevHeader, newHeader, prevBuildID, blockSize)
+	diff, ok := r.cache.LookupDiff(r.buildID, build.Memfile)
+	if !ok {
+		return supersededRuns{ft: ft, blockSize: blockSize, runs: runs}, nil
+	}
+	readPath, ok := diff.(refetchReadPath)
+	if !ok {
+		return supersededRuns{ft: ft, blockSize: blockSize, runs: runs}, nil
+	}
+	size, err := diff.Size(ctx)
+	if err != nil {
+		return supersededRuns{}, fmt.Errorf("previous memfile diff size: %w", err)
+	}
+	sup := boundRuns(readPath, ft, blockSize, runs, size)
+	sup.handle = diff
+
+	return sup, nil
+}
+
+// discardMemfileRuns discards the runs from the previous layer's memfile diff
+// in the local cache, so a later read of that layer refetches from storage.
+// Best-effort: it returns the bytes present and the extent punched, and never
+// fails the pause; no runs is not an error. Under -verify-previous the
+// discard runs on the handle the proof reads through, so a store eviction
+// during the proof cannot punch a fresh entry while the held one keeps its
+// blocks; otherwise the store's own entry is discarded.
+func (r *runner) discardMemfileRuns(sup supersededRuns, verify bool) (block.DiscardStats, error) {
+	if len(sup.runs) == 0 {
+		return block.DiscardStats{}, nil
+	}
+	if verify && sup.handle != nil {
+		return r.cache.DiscardDiffRangesOf(sup.handle, sup.runs)
+	}
+
+	return r.cache.DiscardDiffRanges(r.buildID, build.Memfile, sup.runs)
+}
+
+// supersededStorageRuns returns the chunker blocks of the previous layer's own
+// diff that newHeader no longer maps to it, in that diff's packed storage
+// offsets. Liveness is computed at page granularity: a block is emitted only
+// when every page it holds was mapped to prevBuildID by prevHeader and none is
+// still mapped to prevBuildID by newHeader, so a block the new header keeps even
+// one page of stays resident. Each page is translated to storage through
+// prevHeader's own mapping (storage = BuildStorageOffset + (device - Offset)),
+// which splits a run at every mapping boundary; without that translation the
+// device offsets would punch unrelated packed data.
+func supersededStorageRuns(prevHeader, newHeader *header.Header, prevBuildID uuid.UUID, cacheBlockSize int64) []header.BuildMap {
+	const pageSize = header.PageSize
+	if prevHeader == nil || newHeader == nil || cacheBlockSize <= 0 || cacheBlockSize%pageSize != 0 {
+		return nil
+	}
+
+	// Device pages newHeader still attributes to prevBuildID.
+	liveDev := roaring.New()
+	for _, m := range newHeader.Mapping.All() {
+		if m.BuildId == prevBuildID {
+			liveDev.AddRange(m.Offset/pageSize, (m.Offset+m.Length)/pageSize)
+		}
+	}
+
+	// prevBuildID's own pages, translated into its storage space, split into the
+	// pages that survive (liveSto) and all of them (presentSto).
+	presentSto := roaring.New()
+	liveSto := roaring.New()
+	for _, m := range prevHeader.Mapping.All() {
+		if m.BuildId != prevBuildID {
+			continue
+		}
+		devStart := m.Offset / pageSize
+		stoStart := m.BuildStorageOffset / pageSize
+		nPages := m.Length / pageSize
+		presentSto.AddRange(stoStart, stoStart+nPages)
+
+		shift := int64(stoStart) - int64(devStart)
+		entryLive := roaring.New()
+		entryLive.AddRange(devStart, devStart+nPages)
+		entryLive.And(liveDev)
+		for s, e := range entryLive.Ranges() {
+			liveSto.AddRange(uint64(int64(s)+shift), uint64(int64(e)+shift))
+		}
+	}
+	if presentSto.IsEmpty() {
+		return nil
+	}
+
+	// Emit the wholly-dead cache blocks, merging adjacent ones into one run.
+	pagesPerBlock := uint64(cacheBlockSize) / pageSize
+	numBlocks := uint64(presentSto.Maximum())/pagesPerBlock + 1
+	var runs []header.BuildMap
+	runStart := int64(-1)
+	flush := func(endBlock uint64) {
+		if runStart < 0 {
+			return
+		}
+		off := uint64(runStart) * uint64(cacheBlockSize)
+		runs = append(runs, header.BuildMap{
+			Offset:  off,
+			Length:  endBlock*uint64(cacheBlockSize) - off,
+			BuildId: prevBuildID,
+		})
+		runStart = -1
+	}
+	for b := range numBlocks {
+		lo := b * pagesPerBlock
+		hi := lo + pagesPerBlock
+		dead := presentSto.CardinalityInRange(lo, hi) > 0 && liveSto.CardinalityInRange(lo, hi) == 0
+		if dead {
+			if runStart < 0 {
+				runStart = int64(b)
+			}
+		} else {
+			flush(b)
+		}
+	}
+	flush(numBlocks)
+
+	return runs
 }
 
 func (r *runner) pauseBenchmark(ctx context.Context, opts pauseOptions) error {
@@ -1525,6 +2235,7 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		config:      config.BuilderConfig,
 		storage:     persistence,
 		sbxConfig:   sbxCfg,
+		out:         os.Stdout,
 
 		gdbOrigVersionsDir: gdbOrigVersionsDir,
 	}
@@ -1544,12 +2255,16 @@ func run(ctx context.Context, buildID string, iterations int, coldStart, noPrefe
 		return r.fphBench(ctx, fphBenchOpts)
 	}
 
-	if runOpts.enabled() {
+	if runOpts.enabled() && !pauseOpts.verifyPrevious {
 		return r.cmdMode(ctx, runOpts)
 	}
 
 	if pauseOpts.enabled() {
-		return r.pauseMode(ctx, pauseOpts)
+		if err := r.pauseMode(ctx, pauseOpts); err != nil {
+			return err
+		}
+
+		return r.pauseResult()
 	}
 
 	if iterations > 0 {
@@ -1641,6 +2356,61 @@ func runCommandInSandbox(ctx context.Context, sbx *sandbox.Sandbox, command stri
 	}
 
 	return nil
+}
+
+// runCommandInSandboxCapture runs command and writes its stdout to out (stderr
+// is forwarded to this process). Used by -verify-previous to compare the probe
+// output across resumes.
+func runCommandInSandboxCapture(ctx context.Context, sbx *sandbox.Sandbox, command string, out *bytes.Buffer) error {
+	stream, err := sbx.StartEnvdShell(ctx, "/bin/bash", []string{"-l", "-c", command}, "root", runCommandInSandboxTimeout)
+	if err != nil {
+		return fmt.Errorf("failed to start process: %w", err)
+	}
+	defer stream.Close()
+
+	return captureProcessOutput(stream, out)
+}
+
+// processEventStream is the part of the envd process stream a capture reads.
+type processEventStream interface {
+	Receive() bool
+	Msg() *process.StartResponse
+	Err() error
+}
+
+// captureProcessOutput copies stdout events to out until the End event. A
+// stream that ends without one is an error: a truncated capture must never
+// compare equal to another truncated capture.
+func captureProcessOutput(stream processEventStream, out *bytes.Buffer) error {
+	for stream.Receive() {
+		event := stream.Msg().GetEvent()
+		if event == nil {
+			continue
+		}
+		switch e := event.GetEvent().(type) {
+		case *process.ProcessEvent_Data:
+			if data := e.Data; data != nil {
+				out.Write(data.GetStdout())
+				if se := data.GetStderr(); se != nil {
+					fmt.Print(string(se))
+				}
+			}
+		case *process.ProcessEvent_End:
+			if end := e.End; end != nil {
+				if !end.GetExited() || end.GetExitCode() != 0 {
+					return fmt.Errorf("command exited with code %d", end.GetExitCode())
+				}
+
+				return nil
+			}
+		}
+	}
+
+	if err := stream.Err(); err != nil {
+		return fmt.Errorf("stream error: %w", err)
+	}
+
+	return errors.New("command output ended without an exit status")
 }
 
 func runCommandInSandboxAsync(ctx context.Context, sbx *sandbox.Sandbox, command string) <-chan error {
