@@ -127,11 +127,27 @@ func TestFetchSession_FastPath(t *testing.T) {
 	s := newFetchSession(0, 4*blockSize, cache)
 	s.bytesReady.Store(4 * blockSize)
 
-	// All blocks already covered — must return immediately via atomic fast path.
-	start := time.Now()
-	require.NoError(t, s.registerAndWait(t.Context(), 0))
-	require.NoError(t, s.registerAndWait(t.Context(), 3*blockSize))
-	require.Less(t, time.Since(start), time.Millisecond)
+	// All blocks are covered and the session lock is held, so only the
+	// lock-free fast path can return; the timeout only turns a call blocked
+	// on the lock into a failure.
+	s.mu.Lock()
+	result := make(chan error, 1)
+	go func() {
+		err := s.registerAndWait(t.Context(), 0)
+		if err == nil {
+			err = s.registerAndWait(t.Context(), 3*blockSize)
+		}
+		result <- err
+	}()
+
+	select {
+	case err := <-result:
+		s.mu.Unlock()
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		s.mu.Unlock()
+		t.Fatal("a covered block waited for the session lock instead of taking the fast path")
+	}
 }
 
 func TestFetchSession_ProgressiveAdvance(t *testing.T) {
