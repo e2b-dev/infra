@@ -204,6 +204,29 @@ func TestTemplateBuildDeleteTracksCleanupWithoutReleasingBuild(t *testing.T) {
 	require.Zero(t, s.info.OutstandingWork())
 }
 
+func TestTemplateBuildDeleteCancelsBuildAndDeletesArtifacts(t *testing.T) {
+	t.Parallel()
+
+	s, provider, req := newWorkTrackingServer(t, featureflags.DefaultFirecrackerVersion, "")
+	buildID := req.GetTemplate().GetBuildID()
+	info, err := s.buildCache.Create(req.GetTemplate().GetTeamID(), buildID, buildlogger.NewLogEntryLogger())
+	require.NoError(t, err)
+	provider.EXPECT().DeleteObjectsWithPrefix(mock.Anything, buildID).RunAndReturn(func(context.Context, string) error {
+		assert.Equal(t, templatemanager.TemplateBuildState_Failed, info.GetStatus())
+		assert.Equal(t, int64(1), s.info.OutstandingWork())
+
+		return nil
+	}).Once()
+
+	_, err = s.TemplateBuildDelete(t.Context(), &templatemanager.TemplateBuildDeleteRequest{
+		TemplateID: req.GetTemplate().GetTemplateID(), BuildID: buildID,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "build was cancelled", info.GetResult().Reason.GetMessage())
+	s.wg.Wait()
+	assert.Zero(t, s.info.OutstandingWork())
+}
+
 func TestTemplateBuildDeleteValidationReleasesWork(t *testing.T) {
 	t.Parallel()
 

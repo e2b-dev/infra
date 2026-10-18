@@ -370,7 +370,6 @@ func setupEnvVars(t *testing.T, dataDir, envdPath string) {
 	}
 
 	vars := map[string]string{
-		"ARTIFACTS_REGISTRY_PROVIDER":         "Local",
 		"FIRECRACKER_VERSIONS_DIR":            abs(filepath.Join(dataDir, "fc-versions")),
 		"HOST_ENVD_PATH":                      envdPath,
 		"HOST_KERNELS_DIR":                    abs(filepath.Join(dataDir, "kernels")),

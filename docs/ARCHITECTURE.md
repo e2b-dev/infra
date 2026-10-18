@@ -1045,7 +1045,10 @@ fresh resume touches, producing prefetch hints that speed up future sandbox star
 Template creation holds node work through foreground setup and asynchronous build completion,
 including layer uploads, synchronous cleanup, and final status publication. Cancellation can mark
 a build failed before execution finishes; the work hold remains until execution unwinds. Template
-deletion owns a separate hold until artifact cleanup returns.
+build deletion owns a separate hold until object-storage cleanup returns.
+`TemplateBuildDelete` cancels a running build and removes its build-ID prefix from template
+storage. It does not delete container registry images; build outputs are VM snapshots in
+object storage.
 
 ## Deployment topology
 

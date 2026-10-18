@@ -192,7 +192,6 @@ func BenchmarkConcurrentResume(b *testing.B) {
 	downloadKernel(b, linuxKernelFilename, linuxKernelURL)
 
 	// env vars
-	b.Setenv("ARTIFACTS_REGISTRY_PROVIDER", "Local")
 	b.Setenv("FIRECRACKER_VERSIONS_DIR", abs(filepath.Join("..", "..", "fc-versions", "builds")))
 	b.Setenv("HOST_ENVD_PATH", abs(filepath.Join("..", "..", "envd", "bin", "envd")))
 	b.Setenv("HOST_KERNELS_DIR", abs(kernelsDir))

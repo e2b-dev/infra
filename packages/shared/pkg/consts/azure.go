@@ -13,11 +13,6 @@ func AzureStorageAccountKey() string { return os.Getenv("AZURE_STORAGE_ACCOUNT_K
 
 func AzureStorageConnectionString() string { return os.Getenv("AZURE_STORAGE_CONNECTION_STRING") }
 
-const (
-	AzureContainerRegistryNameEnvVar = "AZURE_CONTAINER_REGISTRY_NAME"
-	AzureDockerRepositoryNameEnvVar  = "AZURE_DOCKER_REPOSITORY_NAME"
-)
+const AzureContainerRegistryNameEnvVar = "AZURE_CONTAINER_REGISTRY_NAME"
 
 func AzureContainerRegistryName() string { return os.Getenv(AzureContainerRegistryNameEnvVar) }
-
-func AzureDockerRepositoryName() string { return os.Getenv(AzureDockerRepositoryNameEnvVar) }
