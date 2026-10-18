@@ -26,7 +26,7 @@ import (
 
 func TestPostV2SandboxesSuppliesIdempotencyFields(t *testing.T) {
 	t.Parallel()
-	client := redisutils.SetupInstance(t)
+	client := redisutils.SetupContainerInstance(t)
 	source := ldtestdata.DataSource()
 	source.Update(source.Flag(featureflags.APIIdempotencyRoutes.Key()).ValueForAll(ldvalue.CopyArbitraryValue(map[string]bool{"POST /v2/sandboxes": true})))
 	flags, err := featureflags.NewClientWithDatasource(source)

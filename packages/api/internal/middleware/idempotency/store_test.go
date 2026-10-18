@@ -143,7 +143,8 @@ func TestRedisStore(t *testing.T) {
 
 func TestRedisDeadlineDuringSocketRead(t *testing.T) {
 	t.Parallel()
-	client := redisutils.SetupInstance(t)
+	// CLIENT PAUSE stalls every client on the server, so this test needs its own.
+	client := redisutils.SetupContainerInstance(t)
 	require.NoError(t, reserveScript.Load(t.Context(), client).Err())
 	require.NoError(t, client.Do(t.Context(), "CLIENT", "PAUSE", 500).Err())
 	s := &redisStore{client: client}

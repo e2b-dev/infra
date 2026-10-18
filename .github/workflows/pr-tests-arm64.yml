@@ -91,6 +91,9 @@ jobs:
       # The shards that set postgres share one server: each test copies its
       # own database from a migrated template on it.
       PG_TEST_DATABASE_URL: ${{ matrix.postgres && 'postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable' || '' }}
+      # The shards that set redis share one server: each test's client
+      # namespaces its keys (go.segfaultmedaddy.com/redistest).
+      REDIS_TEST_DATABASE_URL: ${{ matrix.redis && 'redis://localhost:6379/0' || '' }}
     # Service containers take no server flags, so the settings go in through
     # POSTGRES_INITDB_ARGS, which writes them into postgresql.conf. Durability
     # is traded for speed, and max_connections covers the parallel tests of
@@ -116,16 +119,29 @@ jobs:
           --health-start-interval 200ms
           --health-timeout 5s
           --health-retries 30
+      redis:
+        image: ${{ matrix.redis && 'redis:8-alpine' || '' }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-start-period 30s
+          --health-start-interval 200ms
+          --health-timeout 5s
+          --health-retries 30
     strategy:
       matrix:
         include:
           - package: packages/api
             test_path: ./...
             postgres: true
+            redis: true
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404-arm
           - package: packages/client-proxy
             test_path: ./...
+            redis: true
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404-arm
           - package: packages/db
@@ -146,6 +162,7 @@ jobs:
             runner: infra-runner-arm
           - package: packages/shared
             test_path: ./pkg/...
+            redis: true
             sudo: false
             runner: blacksmith-4vcpu-ubuntu-2404-arm
       fail-fast: false

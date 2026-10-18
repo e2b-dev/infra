@@ -49,7 +49,7 @@ func TestParseLimit(t *testing.T) {
 func TestAllowKeyLivesUntilBudgetRefills(t *testing.T) {
 	t.Parallel()
 
-	client := redis_utils.SetupInstance(t)
+	client := redis_utils.SetupContainerInstance(t)
 	limiter, err := New(client, nil, noop.NewMeterProvider())
 	require.NoError(t, err)
 	limit := Limit{Pauses: 3, Period: time.Minute}

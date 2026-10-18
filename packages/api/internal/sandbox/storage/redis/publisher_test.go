@@ -42,7 +42,7 @@ func newTestStorage(t *testing.T, client goredis.UniversalClient) *Storage {
 func TestPublisher_PublishEnqueuesAndDrainsToRedis(t *testing.T) {
 	t.Parallel()
 
-	client := redis_utils.SetupInstance(t)
+	client := redis_utils.SetupContainerInstance(t)
 	pub := newTestPublisher(t, client)
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
@@ -158,7 +158,7 @@ func TestPublisher_RunExitsOnContextCancel(t *testing.T) {
 func TestPublisher_CloseDrainsPending(t *testing.T) {
 	t.Parallel()
 
-	client := redis_utils.SetupInstance(t)
+	client := redis_utils.SetupContainerInstance(t)
 	pub := newTestPublisher(t, client)
 
 	pubsub := client.Subscribe(t.Context(), globalStorageNotifyChannel)

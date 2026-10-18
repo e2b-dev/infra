@@ -462,7 +462,7 @@ func TestRedisCache_RedisRefresh_Disabled(t *testing.T) {
 
 func TestRedisCache_DeleteByPrefix(t *testing.T) {
 	t.Parallel()
-	redisClient := redis_utils.SetupInstance(t)
+	redisClient := redis_utils.SetupContainerInstance(t)
 	rc := newTestRedisCache(t, redisClient)
 	defer rc.Close(t.Context())
 
@@ -491,7 +491,7 @@ func TestRedisCache_DeleteByPrefix(t *testing.T) {
 
 func TestRedisCache_DeleteByPrefix_NoMatches(t *testing.T) {
 	t.Parallel()
-	redisClient := redis_utils.SetupInstance(t)
+	redisClient := redis_utils.SetupContainerInstance(t)
 	rc := newTestRedisCache(t, redisClient)
 	defer rc.Close(t.Context())
 

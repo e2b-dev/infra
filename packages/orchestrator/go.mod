@@ -55,7 +55,7 @@ require (
 	github.com/ngrok/firewall_toolkit v0.0.18
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.6.0
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/shirou/gopsutil/v4 v4.26.6
 	github.com/soheilhy/cmux v0.1.5
 	github.com/stretchr/testify v1.12.1

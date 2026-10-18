@@ -224,6 +224,17 @@ export PG_TEST_DATABASE_URL="postgres://postgres:postgres@localhost:55432/postgr
 
 Without the variable those tests fail; `go test -short` skips them.
 
+# Unit tests that need Redis
+
+Most tests that call `redis_utils.SetupInstance` share one Redis server, named by `REDIS_TEST_DATABASE_URL`. Each test's client namespaces its keys and removes them when the test ends, so a disposable server is enough:
+
+```bash
+docker run -d --rm --name e2b-test-redis -p 56379:6379 redis:8-alpine --save "" --appendonly no
+export REDIS_TEST_DATABASE_URL="redis://localhost:56379/0"
+```
+
+Without the variable those tests fail; `go test -short` skips them. The few tests that rely on commands a namespaced client cannot isolate (SCAN patterns, raw key names in command hooks, the shared pub/sub channel) call `SetupContainerInstance` and still start a Redis container of their own.
+
 # Troubleshooting
 
 ### `/dev/kvm` not found

@@ -232,7 +232,7 @@ func TestNewRedisClientDoesNotRetryAPermanentError(t *testing.T) {
 	t.Run("rejected credentials", func(t *testing.T) {
 		t.Parallel()
 
-		backend := redis_utils.SetupInstance(t)
+		backend := redis_utils.SetupContainerInstance(t)
 		require.NoError(t, backend.ConfigSet(t.Context(), "requirepass", "secret").Err())
 
 		err := newClient(t, RedisConfig{RedisURL: backend.(*redis.Client).Options().Addr})

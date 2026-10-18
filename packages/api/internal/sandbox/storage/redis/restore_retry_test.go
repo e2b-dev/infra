@@ -30,7 +30,7 @@ func (h restoreCommandHook) ProcessHook(next redis.ProcessHook) redis.ProcessHoo
 func TestRestoreRunning_ReplayedWriteSucceeds(t *testing.T) {
 	t.Parallel()
 
-	client := redis_utils.SetupInstance(t)
+	client := redis_utils.SetupContainerInstance(t)
 	var replayed atomic.Bool
 	client.AddHook(restoreCommandHook(func(ctx context.Context, cmd redis.Cmder, next redis.ProcessHook) error {
 		args := cmd.Args()
@@ -68,7 +68,7 @@ func TestRestoreRunning_ReplayedWriteSucceeds(t *testing.T) {
 func TestRestoreRunning_RetryIndexFailureKeepsRestoredSandbox(t *testing.T) {
 	t.Parallel()
 
-	client := redis_utils.SetupInstance(t)
+	client := redis_utils.SetupContainerInstance(t)
 	var failIndexWrite atomic.Bool
 	client.AddHook(restoreCommandHook(func(ctx context.Context, cmd redis.Cmder, next redis.ProcessHook) error {
 		if cmd.Name() == "zadd" && cmd.Args()[1] == globalExpirationSet && failIndexWrite.CompareAndSwap(true, false) {

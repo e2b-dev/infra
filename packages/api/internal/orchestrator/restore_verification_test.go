@@ -66,7 +66,9 @@ func isRestoreRunningScript(cmd redis.Cmder) bool {
 	numKeys, _ := args[2].(int)
 	key, _ := args[3].(string)
 
-	return numKeys == 1 && strings.Contains(key, ":sandboxes:") && !strings.HasPrefix(key, "lock:")
+	// Contains, not HasPrefix: a namespaced test client puts its prefix
+	// before the lock key.
+	return numKeys == 1 && strings.Contains(key, ":sandboxes:") && !strings.Contains(key, "lock:sandbox:")
 }
 
 func successorOf(sbx sandbox.Sandbox) sandbox.Sandbox {

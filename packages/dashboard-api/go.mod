@@ -134,7 +134,7 @@ require (
 	github.com/quic-go/quic-go v0.61.0 // indirect
 	github.com/redis/go-redis/extra/rediscmd/v9 v9.17.3 // indirect
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3 // indirect
-	github.com/redis/go-redis/v9 v9.21.0 // indirect
+	github.com/redis/go-redis/v9 v9.22.0 // indirect
 	github.com/riverqueue/river/riverdriver v0.47.0 // indirect
 	github.com/riverqueue/river/riverdriver/riverdatabasesql v0.47.0 // indirect
 	github.com/riverqueue/river/rivershared v0.47.0 // indirect
@@ -173,6 +173,7 @@ require (
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.segfaultmedaddy.com/pgxephemeraltest/v2 v2.3.0 // indirect
+	go.segfaultmedaddy.com/redistest v0.2.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect

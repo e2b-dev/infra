@@ -48,7 +48,7 @@ require (
 	github.com/oapi-codegen/gin-middleware v1.0.2
 	github.com/oapi-codegen/runtime v1.6.0
 	github.com/posthog/posthog-go v0.0.0-20230801140217-d607812dee69
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/riverqueue/river v0.47.0
 	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.47.0
 	github.com/riverqueue/river/rivertype v0.47.0
@@ -410,6 +410,7 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.22.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	go.segfaultmedaddy.com/pgxephemeraltest/v2 v2.3.0 // indirect
+	go.segfaultmedaddy.com/redistest v0.2.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.uber.org/goleak v1.3.0 // indirect
 	go.uber.org/mock v0.6.0 // indirect

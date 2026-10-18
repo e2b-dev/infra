@@ -49,7 +49,7 @@ require (
 	github.com/pkg/xattr v0.4.12
 	github.com/pressly/goose/v3 v3.27.2
 	github.com/redis/go-redis/extra/redisotel/v9 v9.17.3
-	github.com/redis/go-redis/v9 v9.21.0
+	github.com/redis/go-redis/v9 v9.22.0
 	github.com/riverqueue/river v0.47.0
 	github.com/riverqueue/river/riverdriver v0.47.0
 	github.com/riverqueue/river/rivertype v0.47.0
@@ -76,6 +76,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.46.0
 	go.opentelemetry.io/otel/trace v1.46.0
 	go.opentelemetry.io/proto/otlp v1.11.0
+	go.segfaultmedaddy.com/redistest v0.2.0
 	go.uber.org/zap v1.28.0
 	golang.org/x/mod v0.41.0
 	golang.org/x/net v0.58.0

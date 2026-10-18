@@ -1029,7 +1029,7 @@ func TestCreateSandbox_RetainsWinningPlacement(t *testing.T) {
 			if want != nil {
 				want.ExecutionId = executionID
 			}
-			client := redis_utils.SetupInstance(t)
+			client := redis_utils.SetupContainerInstance(t)
 			rpc := &placementSandboxClient{placement: want}
 			o := newCreateSandboxTestOrchestratorOnRedis(t, client, ldtestdata.DataSource(),
 				func(node *nodemanager.TestNode) { node.SetSandboxClient(rpc) })

@@ -222,7 +222,7 @@ func TestSubscriptionManager_ConcurrentSubscribeDispatchCleanup(t *testing.T) {
 func TestSubscriptionManager_PubSubEndToEnd(t *testing.T) {
 	t.Parallel()
 
-	client := redis_utils.SetupInstance(t)
+	client := redis_utils.SetupContainerInstance(t)
 	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
@@ -249,7 +249,7 @@ func TestSubscriptionManager_PubSubEndToEnd(t *testing.T) {
 func TestSubscriptionManager_PubSubIgnoresUnrelatedKeys(t *testing.T) {
 	t.Parallel()
 
-	client := redis_utils.SetupInstance(t)
+	client := redis_utils.SetupContainerInstance(t)
 	storage := newTestStorage(t, client)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })
