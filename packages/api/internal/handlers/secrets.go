@@ -25,7 +25,6 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
@@ -42,12 +41,6 @@ const (
 	// is already shorter wins, since context.WithTimeout keeps the earlier one.
 	secretsBackendTimeout  = 25 * time.Second
 	secretLimitReachedCode = "secret_limit_reached"
-
-	// What a tier allowed before the limit was resolved with the others, for a
-	// cached team written before it existed. Delete once no such entry can be
-	// read.
-	baseTierProjectSecretsLimit = 10
-	paidTierProjectSecretsLimit = 100
 
 	// secretsReadinessService is the health service a backend reports SERVING
 	// only while it can take management calls.
@@ -363,19 +356,9 @@ func (a *APIStore) secretsBackend(c *gin.Context) (managementv1.SecretManagement
 }
 
 // projectSecretsLimit is the cap the backend enforces on a create: the team's
-// resolved limit, clamped to what the wire carries. A team cached by a binary
-// without the limit decodes it as zero, which the backend would read as no
-// limit sent; the tier decides for it instead.
+// resolved limit, clamped to what the wire carries.
 func projectSecretsLimit(team *types.Team) int32 {
-	limit := team.Limits.MaxSecrets
-	if limit <= 0 {
-		limit = paidTierProjectSecretsLimit
-		if team.Tier == constants.BaseTierID {
-			limit = baseTierProjectSecretsLimit
-		}
-	}
-
-	return int32(min(limit, math.MaxInt32))
+	return int32(min(team.Limits.MaxSecrets, math.MaxInt32))
 }
 
 // rejectSecretsRequest answers a request the API itself refused. reason is a

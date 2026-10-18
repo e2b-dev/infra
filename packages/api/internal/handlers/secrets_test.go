@@ -34,7 +34,6 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
-	"github.com/e2b-dev/infra/packages/api/internal/constants"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
@@ -565,15 +564,12 @@ func TestPostSecretsProjectSecretsLimit(t *testing.T) {
 
 	tests := []struct {
 		name  string
-		tier  string
 		limit int64
 		sent  int32
 	}{
-		{name: "tier limit", limit: 10, sent: 10},
-		{name: "pushed limit", limit: 250, sent: 250},
+		{name: "resolved limit", limit: 250, sent: 250},
 		{name: "limit above the wire's range is clamped", limit: math.MaxInt32 + 1, sent: math.MaxInt32},
-		{name: "cached before the limit, base tier", tier: constants.BaseTierID, limit: 0, sent: 10},
-		{name: "cached before the limit, paid tier", tier: "pro_v1", limit: 0, sent: 100},
+		{name: "no resolved limit leaves the backend's own", limit: 0, sent: 0},
 	}
 
 	for _, tt := range tests {
@@ -585,7 +581,7 @@ func TestPostSecretsProjectSecretsLimit(t *testing.T) {
 
 			ginCtx, recorder, teamID := newSecretsRequest(t, http.MethodPost, "/secrets", string(body))
 			sharedauth.SetTeamInfoForTest(t, ginCtx, &types.Team{
-				Team:   &authqueries.Team{ID: teamID, Tier: tt.tier},
+				Team:   &authqueries.Team{ID: teamID},
 				Limits: &types.TeamLimits{MaxSecrets: tt.limit},
 			})
 
