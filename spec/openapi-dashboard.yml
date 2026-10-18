@@ -725,12 +725,8 @@ components:
     TeamLimitsResponse:
       type: object
       required:
-        - tier
         - limits
       properties:
-        tier:
-          type: string
-          description: The team's raw tier identifier, exactly as stored (not normalized to a catalog plan).
         limits:
           $ref: "#/components/schemas/UserTeamLimits"
 
@@ -1894,7 +1890,7 @@ paths:
   /teams/{teamID}/limits:
     get:
       summary: Get team limits
-      description: Returns the team's tier and effective resource limits. Team-authenticated requests may read only the team they are scoped to.
+      description: Returns the team's effective resource limits. Team-authenticated requests may read only the team they are scoped to.
       tags: [teams]
       security:
         - AuthProviderBearerAuth: []

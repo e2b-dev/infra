@@ -38,25 +38,6 @@ func TestGetTeamsTeamIDLimitsSumsAnActiveAddonForATeamAuthedRequest(t *testing.T
 	require.Equal(t, baseline.EventsTtlDays+7, withAddon.EventsTtlDays)
 }
 
-func TestGetTeamsTeamIDLimitsReturnsTheRawTier(t *testing.T) {
-	t.Parallel()
-
-	db := testutils.SetupDatabase(t)
-	teamID := testutils.CreateTestTeam(t, db)
-	require.NoError(t, db.AuthDB.TestsRawSQL(t.Context(),
-		`INSERT INTO public.tiers (id, name, disk_mb, concurrent_instances, max_length_hours,
-			max_vcpu, max_ram_mb, concurrent_template_builds, events_ttl_days,
-			default_free_disk_size_mb, max_disk_size_mb)
-		 VALUES ('enterprise_test', 'Enterprise Test', 20480, 100, 24, 8, 8192, 20, 30, 10240, 51200)`,
-	))
-	require.NoError(t, db.AuthDB.TestsRawSQL(t.Context(),
-		`UPDATE public.teams SET tier = 'enterprise_test' WHERE id = $1`,
-		teamID,
-	))
-
-	require.Equal(t, "enterprise_test", getTeamLimitsOK(t, db, teamID, &teamID).Tier)
-}
-
 func TestGetTeamsTeamIDLimitsDoesNotSumAnExpiredAddon(t *testing.T) {
 	t.Parallel()
 

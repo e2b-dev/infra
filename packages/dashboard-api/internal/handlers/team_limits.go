@@ -39,7 +39,6 @@ func (s *APIStore) GetTeamsTeamIDLimits(c *gin.Context, teamID api.TeamID) {
 
 	limits := row.TeamLimit
 	c.JSON(http.StatusOK, api.TeamLimitsResponse{
-		Tier: row.Team.Tier,
 		Limits: api.UserTeamLimits{
 			MaxLengthHours:           limits.MaxLengthHours,
 			ConcurrentSandboxes:      limits.ConcurrentSandboxes,
