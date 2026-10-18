@@ -109,7 +109,7 @@ func (c *apiClient) loadSnapshot(
 
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("context canceled while waiting for uffd ready: %w", ctx.Err())
+		return fmt.Errorf("context canceled while waiting for uffd ready: %w", context.Cause(ctx))
 	case <-uffdReady:
 		// Wait for the uffd to be ready to serve requests
 	}

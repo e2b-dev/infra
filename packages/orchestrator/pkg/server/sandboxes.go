@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -449,6 +450,18 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if refusal := volumeRefusal(ctx, err); refusal != nil {
 			// The user's volume is unusable; the orchestrator itself is fine.
 			telemetry.ReportError(ctx, "sandbox volume not usable", err, telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()))
+
+			return nil, refusal
+		}
+		if refusal := memoryRefusal(err); refusal != nil {
+			logger.L().Warn(ctx, "create refused: node out of memory", zap.Error(err), logger.WithSandboxID(runtime.SandboxID))
+			// Placement retries this node with the same sandbox ID within a
+			// millisecond, so free the ID before answering. The rollback holds
+			// only the template pin here, so it is quick.
+			if cleanupErr := rollback.Run(ctx); cleanupErr != nil {
+				telemetry.ReportCriticalError(ctx, "failed to clean up sandbox start", cleanupErr)
+			}
+			rollback = nil
 
 			return nil, refusal
 		}
@@ -3061,6 +3074,19 @@ func volumeRefusal(ctx context.Context, err error) error {
 	}
 
 	return createRefused(ctx, codes.FailedPrecondition, "%s", volumeErr.Error())
+}
+
+// memoryRefusal is the create refusal for a node with no memory left to map
+// the guest memory, or nil when err is not one. Delete returns before the
+// killed sandbox's Firecracker exits, so a create right after a kill can find
+// the hugepage pool still held for a few hundred milliseconds. A refusal makes
+// placement retry the node with backoff instead of failing the create.
+func memoryRefusal(err error) error {
+	if !errors.Is(err, syscall.ENOMEM) {
+		return nil
+	}
+
+	return status.Errorf(codes.ResourceExhausted, "not enough memory on the node to start the sandbox, please retry: %s", err)
 }
 
 // filesystemOnlyDisabledStatus is the flag refusal with a typed detail, so the
