@@ -186,19 +186,6 @@ func TestUpsertProjectLimitsCarriesTheSecretLimitToTheView(t *testing.T) {
 			return rows.Scan(&limit)
 		}, teamID))
 	require.EqualValues(t, 37, limit)
-
-	body = strings.Replace(validLimitsBody, `"max_secrets": 25,`, ``, 1)
-	body = strings.Replace(body, `"revision": 2`, `"revision": 3`, 1)
-	recorder = callUpsertProjectLimits(t, store, teamID, body)
-	require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&limit)
-		}, teamID))
-	require.EqualValues(t, 10, limit, "a body without the limit leaves it to the tier")
 }
 
 func TestUpsertProjectLimitsRejectsAZeroSecretLimit(t *testing.T) {
@@ -220,33 +207,24 @@ func TestUpsertProjectLimitsCarriesDeleteRatesToTheView(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 	teamID := testutils.CreateTestTeam(t, db)
 	store, auth := newLimitsStore(db)
-	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(), `
-		UPDATE public.tiers SET api_team_rps_delete = 13
-		WHERE id = (SELECT tier FROM public.teams WHERE id = $1)
-	`, teamID))
 
 	const largeRate = int64(1<<32 + 7)
 	for _, step := range []struct {
 		revision int64
-		rate     *int64
+		rate     int64
 		want     int64
 		status   int
 	}{
-		{1, nil, 13, http.StatusNoContent},
-		{2, new(int64(33)), 33, http.StatusNoContent},
-		{3, new(largeRate), largeRate, http.StatusNoContent},
-		{2, new(int64(3)), largeRate, http.StatusNoContent},
-		{4, new(int64(-1)), largeRate, http.StatusBadRequest},
-		{4, new(int64(0)), 0, http.StatusNoContent},
-		{5, nil, 13, http.StatusNoContent},
+		{1, 33, 33, http.StatusNoContent},
+		{2, largeRate, largeRate, http.StatusNoContent},
+		{1, 3, largeRate, http.StatusNoContent},
+		{3, -1, largeRate, http.StatusBadRequest},
+		{3, 0, 0, http.StatusNoContent},
 	} {
 		var body map[string]any
 		require.NoError(t, json.Unmarshal([]byte(validLimitsBody), &body))
 		body["revision"] = step.revision
-		delete(body, "api_team_rps_delete")
-		if step.rate != nil {
-			body["api_team_rps_delete"] = *step.rate
-		}
+		body["api_team_rps_delete"] = step.rate
 		encoded, err := json.Marshal(body)
 		require.NoError(t, err)
 		invalidations := len(auth.invalidated)

@@ -132,8 +132,8 @@ func TestProjectLimitsRejectsFreeDiskAboveTheCeiling(t *testing.T) {
 			INSERT INTO public.project_limits (
 				team_id, max_length_hours, concurrent_sandboxes, concurrent_template_builds,
 				max_vcpu, max_ram_mb, disk_mb, events_ttl_days,
-				default_free_disk_size_mb, max_disk_size_mb, api_team_rps_list, api_team_rps_delete
-			) VALUES ($1, 1, 1, 1, 1, 1, 1, 1, $2, $3, 0, 0)
+				default_free_disk_size_mb, max_disk_size_mb, api_team_rps_list, api_team_rps_delete, max_secrets
+			) VALUES ($1, 1, 1, 1, 1, 1, 1, 1, $2, $3, 0, 0, 1)
 			ON CONFLICT (team_id) DO UPDATE SET
 				default_free_disk_size_mb = EXCLUDED.default_free_disk_size_mb,
 				max_disk_size_mb = EXCLUDED.max_disk_size_mb
@@ -165,8 +165,8 @@ func TestProjectLimitsIsRemovedWithItsTeam(t *testing.T) {
 		INSERT INTO public.project_limits (
 			team_id, max_length_hours, concurrent_sandboxes, concurrent_template_builds,
 			max_vcpu, max_ram_mb, disk_mb, events_ttl_days,
-			default_free_disk_size_mb, max_disk_size_mb, api_team_rps_list, api_team_rps_delete
-		) VALUES ($1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0)
+			default_free_disk_size_mb, max_disk_size_mb, api_team_rps_list, api_team_rps_delete, max_secrets
+		) VALUES ($1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1)
 	`, teamID)
 	require.NoError(t, err)
 

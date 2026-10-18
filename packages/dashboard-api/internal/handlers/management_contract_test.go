@@ -193,39 +193,31 @@ func (r *routeRecorder) ManagementDetachProjectCluster(c *gin.Context, _ api.Pro
 	r.report(c, "detachProjectCluster")
 }
 
-// Zero disables the list rate limit, so a sender that leaves the rate out must be
-// refused by the request validator rather than decoded as zero.
-func TestProjectLimitsContractRequiresTheListRate(t *testing.T) {
+// Zero disables the list and delete rates, so a sender that leaves one out must
+// be refused by the request validator rather than decoded as zero. The secret
+// limit has no zero meaning at all.
+func TestProjectLimitsContractRequiresTheRatesAndTheSecretLimit(t *testing.T) {
 	t.Parallel()
 
 	swagger, err := api.GetSwagger()
 	require.NoError(t, err)
 	schema := swagger.Components.Schemas["ManagementProjectLimits"].Value
 
-	var body map[string]any
-	require.NoError(t, json.Unmarshal([]byte(validLimitsBody), &body))
-	require.NoError(t, schema.VisitJSON(body))
+	valid := func() map[string]any {
+		var body map[string]any
+		require.NoError(t, json.Unmarshal([]byte(validLimitsBody), &body))
 
-	delete(body, "api_team_rps_list")
-	require.ErrorContains(t, schema.VisitJSON(body), "api_team_rps_list")
-}
+		return body
+	}
+	require.NoError(t, schema.VisitJSON(valid()))
 
-// The tier decides the secret limit for a project no push has reached, so a
-// sender must say the limit outright and may not send a cap of zero.
-func TestProjectLimitsContractTakesAPositiveOrAbsentSecretLimit(t *testing.T) {
-	t.Parallel()
+	for _, field := range []string{"api_team_rps_list", "api_team_rps_delete", "max_secrets"} {
+		body := valid()
+		delete(body, field)
+		require.ErrorContains(t, schema.VisitJSON(body), field)
+	}
 
-	swagger, err := api.GetSwagger()
-	require.NoError(t, err)
-	schema := swagger.Components.Schemas["ManagementProjectLimits"].Value
-
-	var body map[string]any
-	require.NoError(t, json.Unmarshal([]byte(validLimitsBody), &body))
-	require.NoError(t, schema.VisitJSON(body))
-
+	body := valid()
 	body["max_secrets"] = 0
 	require.ErrorContains(t, schema.VisitJSON(body), "max_secrets")
-
-	delete(body, "max_secrets")
-	require.NoError(t, schema.VisitJSON(body))
 }

@@ -1328,6 +1328,8 @@ components:
         - events_ttl_days
         - default_free_disk_size_mb
         - api_team_rps_list
+        - api_team_rps_delete
+        - max_secrets
       anyOf:
         - required: [max_free_disk_size_mb]
         - required: [max_disk_size_mb]
@@ -1411,17 +1413,12 @@ components:
           minimum: 0
           description: >-
             Requests per second a project may make to each delete endpoint. Zero
-            disables the limit. Absent from a sender that has not resolved it;
-            this side then stores no value and the project's tier and add-ons
-            decide.
+            disables the limit.
         max_secrets:
           type: integer
           format: int32
           minimum: 1
-          description: >-
-            Live secrets the project may hold. Absent from a sender that
-            predates the field; this side then stores no value and the
-            project's tier decides.
+          description: Live secrets the project may hold.
         decided_at:
           $ref: "#/components/schemas/ManagementDecidedAt"
 

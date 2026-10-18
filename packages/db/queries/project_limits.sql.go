@@ -134,8 +134,8 @@ type UpsertProjectLimitsParams struct {
 	DefaultFreeDiskSizeMb    int64
 	MaxFreeDiskSizeMb        int64
 	ApiTeamRpsList           int64
-	ApiTeamRpsDelete         *int64
-	MaxSecrets               *int64
+	ApiTeamRpsDelete         int64
+	MaxSecrets               int64
 }
 
 // UpsertProjectLimits records a project's effective limits, which the

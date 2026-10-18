@@ -42,10 +42,8 @@ type ProjectLimitsProjection struct {
 	DefaultFreeDiskSizeMB    int64
 	MaxFreeDiskSizeMB        int64
 	APITeamRPSList           int64
-
-	// Nil when the sender has not resolved the limit; the tier then decides.
-	APITeamRPSDelete *int64
-	MaxSecrets       *int64
+	APITeamRPSDelete         int64
+	MaxSecrets               int64
 }
 
 // ApplyProjectLimits records a project's effective limits, behind the revision
@@ -169,21 +167,13 @@ func validateProjectLimitsProjection(projection ProjectLimitsProjection) error {
 		{field: "default_free_disk_size_mb", value: projection.DefaultFreeDiskSizeMB, floor: 0},
 		{field: "max_free_disk_size_mb", value: projection.MaxFreeDiskSizeMB, floor: 1},
 		{field: "api_team_rps_list", value: projection.APITeamRPSList, floor: 0},
+		{field: "api_team_rps_delete", value: projection.APITeamRPSDelete, floor: 0},
+		{field: "max_secrets", value: projection.MaxSecrets, floor: 1},
 	} {
 		if floored.value < floored.floor {
 			return fmt.Errorf("%w: %s must be at least %d, got %d",
 				ErrInvalidProjectLimits, floored.field, floored.floor, floored.value)
 		}
-	}
-
-	if projection.APITeamRPSDelete != nil && *projection.APITeamRPSDelete < 0 {
-		return fmt.Errorf("%w: api_team_rps_delete must be at least 0, got %d",
-			ErrInvalidProjectLimits, *projection.APITeamRPSDelete)
-	}
-
-	if projection.MaxSecrets != nil && *projection.MaxSecrets < 1 {
-		return fmt.Errorf("%w: max_secrets must be at least 1, got %d",
-			ErrInvalidProjectLimits, *projection.MaxSecrets)
 	}
 
 	if projection.DefaultFreeDiskSizeMB > projection.MaxFreeDiskSizeMB {

@@ -77,8 +77,8 @@ INSERT INTO public.project_limits (
     sqlc.arg(max_free_disk_size_mb)::bigint,
     sqlc.arg(max_free_disk_size_mb)::bigint,
     sqlc.arg(api_team_rps_list)::bigint,
-    sqlc.narg(api_team_rps_delete)::bigint,
-    sqlc.narg(max_secrets)::bigint,
+    sqlc.arg(api_team_rps_delete)::bigint,
+    sqlc.arg(max_secrets)::bigint,
     now()
 )
 ON CONFLICT (team_id) DO UPDATE SET

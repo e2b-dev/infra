@@ -25,7 +25,8 @@ func projectLimits(projectID uuid.UUID, revision int64) ProjectLimitsProjection 
 		DefaultFreeDiskSizeMB:    10240,
 		MaxFreeDiskSizeMB:        51200,
 		APITeamRPSList:           60,
-		MaxSecrets:               new(int64(25)),
+		APITeamRPSDelete:         20,
+		MaxSecrets:               25,
 	}
 }
 
@@ -86,6 +87,7 @@ func TestValidateProjectLimitsProjection(t *testing.T) {
 	accepted := map[string]func(*ProjectLimitsProjection){
 		"no default free disk":   func(p *ProjectLimitsProjection) { p.DefaultFreeDiskSizeMB = 0 },
 		"disabled list rate":     func(p *ProjectLimitsProjection) { p.APITeamRPSList = 0 },
+		"disabled delete rate":   func(p *ProjectLimitsProjection) { p.APITeamRPSDelete = 0 },
 		"free disk at ceiling":   func(p *ProjectLimitsProjection) { p.DefaultFreeDiskSizeMB = p.MaxFreeDiskSizeMB },
 		"every limit at a floor": func(p *ProjectLimitsProjection) { *p = floors(p.ProjectID) },
 	}
@@ -109,7 +111,8 @@ func TestValidateProjectLimitsProjection(t *testing.T) {
 		"negative default free disk":  func(p *ProjectLimitsProjection) { p.DefaultFreeDiskSizeMB = -1 },
 		"zero free disk ceiling":      func(p *ProjectLimitsProjection) { p.MaxFreeDiskSizeMB, p.DefaultFreeDiskSizeMB = 0, 0 },
 		"negative list rate":          func(p *ProjectLimitsProjection) { p.APITeamRPSList = -1 },
-		"zero secrets":                func(p *ProjectLimitsProjection) { p.MaxSecrets = new(int64(0)) },
+		"negative delete rate":        func(p *ProjectLimitsProjection) { p.APITeamRPSDelete = -1 },
+		"zero secrets":                func(p *ProjectLimitsProjection) { p.MaxSecrets = 0 },
 		"free disk above its ceiling": func(p *ProjectLimitsProjection) { p.DefaultFreeDiskSizeMB = p.MaxFreeDiskSizeMB + 1 },
 	}
 	for name, change := range refused {
@@ -123,7 +126,7 @@ func floors(projectID uuid.UUID) ProjectLimitsProjection {
 	return ProjectLimitsProjection{
 		ProjectID: projectID, Revision: 1, MaxLengthHours: 1, ConcurrentSandboxes: 1,
 		ConcurrentTemplateBuilds: 1, MaxVCPU: 1, MaxRAMMB: 1, DiskMB: 1, EventsTTLDays: 1,
-		MaxFreeDiskSizeMB: 1,
+		MaxFreeDiskSizeMB: 1, MaxSecrets: 1,
 	}
 }
 
@@ -311,12 +314,7 @@ func TestApplyProjectLimitsPushesTheSecretLimit(t *testing.T) {
 	require.EqualValues(t, 10, secretLimit(t, db, teamID), "an unpushed project is on its tier")
 
 	pushed := projectLimits(teamID, 1)
-	pushed.MaxSecrets = new(int64(70))
+	pushed.MaxSecrets = 70
 	require.NoError(t, service.ApplyProjectLimits(t.Context(), pushed))
 	require.EqualValues(t, 70, secretLimit(t, db, teamID))
-
-	unsent := projectLimits(teamID, 2)
-	unsent.MaxSecrets = nil
-	require.NoError(t, service.ApplyProjectLimits(t.Context(), unsent))
-	require.EqualValues(t, 10, secretLimit(t, db, teamID), "a push without the limit leaves it to the tier")
 }

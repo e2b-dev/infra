@@ -169,8 +169,8 @@ type ProjectLimit struct {
 	UpdatedAt                time.Time
 	MaxFreeDiskSizeMb        pgtype.Int8
 	ApiTeamRpsList           int64
-	MaxSecrets               pgtype.Int8
-	ApiTeamRpsDelete         pgtype.Int8
+	MaxSecrets               int64
+	ApiTeamRpsDelete         int64
 }
 
 type ProjectionProjectBlock struct {

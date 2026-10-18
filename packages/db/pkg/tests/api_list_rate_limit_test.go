@@ -63,8 +63,8 @@ func TestAPIListRateResolvesTierAndActiveAddons(t *testing.T) {
 		INSERT INTO public.project_limits (
 			team_id, max_length_hours, concurrent_sandboxes, concurrent_template_builds,
 			max_vcpu, max_ram_mb, disk_mb, events_ttl_days, default_free_disk_size_mb, max_disk_size_mb,
-			api_team_rps_list, api_team_rps_delete
-		) VALUES ($1, 1, 200, 20, 8, 8192, 10240, 7, 10240, 25600, 40, 0)
+			api_team_rps_list, api_team_rps_delete, max_secrets
+		) VALUES ($1, 1, 200, 20, 8, 8192, 10240, 7, 10240, 25600, 40, 0, 10)
 	`, teamID)
 	require.NoError(t, err)
 	assert.Equal(t, int64(40), resolved(teamID), "a pushed rate replaces the tier and team add-on rate")
