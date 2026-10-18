@@ -49,7 +49,7 @@ func newTestPrefetcher(t *testing.T, results ...prefaultResult) *Prefetcher {
 		ch <- r
 	}
 
-	return &Prefetcher{logger: log, source: &fakeSlicer{blockSize: 4096}, uffd: &fakeBackend{results: ch}}
+	return &Prefetcher{logger: log, uffd: &fakeBackend{results: ch}}
 }
 
 func waitDone(t *testing.T, done <-chan struct{}) {
@@ -81,7 +81,7 @@ func TestCopyWorkerCancelsRunOnErrClosed(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		p.copyWorker(ctx, cancelRun, copyCh, 4096, &copied, &skipped)
+		p.copyWorker(ctx, cancelRun, copyCh, &copied, &skipped)
 	}()
 
 	waitDone(t, done)
@@ -119,7 +119,7 @@ func TestCopyWorkerCountsOnlyInstalledAsCopied(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		p.copyWorker(ctx, cancelRun, copyCh, 4096, &copied, &skipped)
+		p.copyWorker(ctx, cancelRun, copyCh, &copied, &skipped)
 	}()
 
 	waitDone(t, done)
@@ -206,11 +206,12 @@ func (f *fakeSlicer) Slice(_ context.Context, off, length int64) ([]byte, error)
 
 func (f *fakeSlicer) BlockSize() int64 { return f.blockSize }
 
-// TestFetchWorkerQueuesCoalescedOffsetsPerPage verifies that coalescing one
-// source.Slice fetch across several blocks still queues exactly one offset per
-// page. The copy phase re-reads each page, so no fetched extent payload is
-// retained by the queue.
-func TestFetchWorkerQueuesCoalescedOffsetsPerPage(t *testing.T) {
+// TestFetchWorkerSplitsCoalescedExtentIntoPerPageCopies is the prefetcher-level
+// check that coalescing the fetch (one source.Slice call spanning several
+// blocks) doesn't change what gets queued for copy: the copy phase must still
+// see exactly one page-sized prefetchData per block, each carrying that
+// block's own bytes at its own offset — never the whole coalesced extent.
+func TestFetchWorkerSplitsCoalescedExtentIntoPerPageCopies(t *testing.T) {
 	t.Parallel()
 
 	const blockSize = 4096
@@ -245,6 +246,8 @@ func TestFetchWorkerQueuesCoalescedOffsetsPerPage(t *testing.T) {
 	for i, d := range got {
 		wantOffset := header.BlockOffset(int64(startIdx+i), blockSize)
 		require.Equal(t, wantOffset, d.offset)
+		require.Len(t, d.data, blockSize, "copy data must be exactly one page, never a multi-block extent")
+		require.Equal(t, byte(wantOffset), d.data[0], "each page must carry its own block's bytes")
 	}
 }
 

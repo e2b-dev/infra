@@ -28,6 +28,7 @@ var tracer = otel.Tracer("github.com/e2b-dev/infra/packages/orchestrator/pkg/san
 
 type prefetchData struct {
 	offset int64
+	data   []byte
 }
 
 // extent is a run of contiguous block indices fetched from the source in a
@@ -189,7 +190,7 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 	// Channels for work distribution
 	// Fetch channel: all extents to fetch (large buffer so main goroutine doesn't block)
 	fetchCh := make(chan extent, len(extents))
-	// Copy channel: offsets warmed successfully, ready to re-read and install. Only created
+	// Copy channel: pages fetched successfully, ready to install. Only created
 	// when prefaulting; a fetch-only run leaves it nil and skips the copy phase,
 	// so fetched bytes are dropped after warming the cache (no in-memory pile-up).
 	var copyCh chan prefetchData
@@ -228,9 +229,9 @@ func (p *Prefetcher) Start(ctx context.Context) error {
 
 	// Start copy coordinator - waits for uffd ready, then spawns copy workers.
 	// Skipped entirely for fetch-only runs.
-	if p.Prefault && maxCopyWorkers > 0 {
+	if p.Prefault {
 		copyWg.Go(func() {
-			p.startCopyWorkers(ctx, cancelRun, copyCh, maxCopyWorkers, blockSize, &copyStart, &copiedCount, &copySkippedCount)
+			p.startCopyWorkers(ctx, cancelRun, copyCh, maxCopyWorkers, &copyStart, &copiedCount, &copySkippedCount)
 		})
 	}
 
@@ -274,7 +275,6 @@ func (p *Prefetcher) startCopyWorkers(
 	cancelRun context.CancelFunc,
 	copyCh chan prefetchData,
 	maxCopyWorkers int,
-	blockSize int64,
 	copyStart *atomic.Pointer[time.Time],
 	copiedCount *atomic.Uint64,
 	copySkippedCount *atomic.Uint64,
@@ -296,7 +296,7 @@ func (p *Prefetcher) startCopyWorkers(
 
 	for range maxCopyWorkers {
 		copyWorkerWg.Go(func() {
-			p.copyWorker(ctx, cancelRun, copyCh, blockSize, copiedCount, copySkippedCount)
+			p.copyWorker(ctx, cancelRun, copyCh, copiedCount, copySkippedCount)
 		})
 	}
 
@@ -307,9 +307,8 @@ func (p *Prefetcher) startCopyWorkers(
 // extent is one contiguous run of blocks fetched in a single source.Slice
 // call; with coalescing off (the default) every extent is a single block,
 // reproducing the plain per-block fetch. The copy phase always stays
-// per-block: only offsets are queued, then each page is re-read after Ready
-// because Userfaultfd.Prefault installs one page per call. The queue never
-// retains owned extent payloads while guest memory is unavailable.
+// per-block: an extent is split into page-sized sub-slices because
+// Userfaultfd.Prefault installs one page per call.
 func (p *Prefetcher) fetchWorker(
 	ctx context.Context,
 	fetchCh <-chan extent,
@@ -360,7 +359,7 @@ func (p *Prefetcher) fetchWorker(
 
 			fetchedCount.Add(uint64(e.blocks))
 
-			// Queue each page offset for copy (non-blocking - channel has enough
+			// Queue each page for copy (non-blocking - channel has enough
 			// capacity). Fetch-only runs pass a nil copyCh: warming the cache is
 			// the whole job, so the fetched bytes are dropped here.
 			if copyCh == nil {
@@ -368,8 +367,9 @@ func (p *Prefetcher) fetchWorker(
 			}
 			for b := range e.blocks {
 				off := baseOffset + int64(b)*blockSize
+				sub := data[int64(b)*blockSize : int64(b+1)*blockSize]
 				select {
-				case copyCh <- prefetchData{offset: off}:
+				case copyCh <- prefetchData{offset: off, data: sub}:
 				case <-ctx.Done():
 					return
 				}
@@ -383,7 +383,6 @@ func (p *Prefetcher) copyWorker(
 	ctx context.Context,
 	cancelRun context.CancelFunc,
 	copyCh <-chan prefetchData,
-	blockSize int64,
 	copiedCount *atomic.Uint64,
 	skippedCount *atomic.Uint64,
 ) {
@@ -396,18 +395,7 @@ func (p *Prefetcher) copyWorker(
 				return
 			}
 
-			data, err := p.source.Slice(ctx, d.offset, blockSize)
-			if err != nil || int64(len(data)) != blockSize {
-				p.logger.Debug(ctx, "prefetch: failed to re-read page for copy",
-					zap.Int64("offset", d.offset),
-					zap.Int("got_bytes", len(data)),
-					zap.Error(err),
-				)
-				skippedCount.Add(1)
-
-				continue
-			}
-			installed, err := p.uffd.Prefault(ctx, d.offset, data)
+			installed, err := p.uffd.Prefault(ctx, d.offset, d.data)
 			if errors.Is(err, userfaultfd.ErrClosed) {
 				// The uffd is gone (sandbox teardown): every remaining queued
 				// page would hit the same path. Cancel the run so the fetch

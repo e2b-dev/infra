@@ -4,7 +4,6 @@ package build
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math"
 	"os"
@@ -19,10 +18,8 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
-	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/units"
 	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
@@ -443,68 +440,4 @@ func diskUsage(path string) (uint64, uint64, error) {
 
 func (s *DiffStore) RemoveCache() {
 	s.cache.DeleteAll()
-}
-
-var (
-	// ErrDiffNotPresent: DiscardRanges was asked for a key the store does not hold; it never creates one.
-	ErrDiffNotPresent = errors.New("diff not present in store")
-	// ErrDiffStorePinned: the entry is pinned, so its shared state must not be torn by a discard.
-	ErrDiffStorePinned = errors.New("diff is pinned in the store")
-	// ErrDiffNotDiscardable: the diff is not storage-backed, so it has no upstream to refetch from.
-	ErrDiffNotDiscardable = errors.New("diff does not support discard")
-)
-
-// Discardable is a Diff whose cached ranges can be returned to not-present so a
-// later read refetches them from upstream (see block.Chunker.DiscardRuns). Only
-// storage-backed diffs implement it.
-type Discardable interface {
-	DiscardRuns(runs []block.Range) (block.DiscardStats, error)
-}
-
-// DiscardRanges discards the given runs of a cached diff in one call, returning
-// the bytes present and the extent punched. It requires the entry present and unpinned; it never creates
-// one. The runs are the entry's own packed storage offsets
-// (BuildMap.Offset/Length), the space the chunker cache is addressed in, not
-// device offsets.
-func (s *DiffStore) DiscardRanges(key DiffStoreKey, runs []header.BuildMap) (block.DiscardStats, error) {
-	if s.isPinned(key) {
-		return block.DiscardStats{}, ErrDiffStorePinned
-	}
-	d, ok := s.Lookup(key)
-	if !ok {
-		return block.DiscardStats{}, ErrDiffNotPresent
-	}
-
-	return s.discardRanges(d, runs)
-}
-
-// DiscardRangesOf is DiscardRanges on a handle the caller already holds and
-// reads through, so an eviction between the caller's lookup and the discard
-// cannot punch a fresh entry while the held one keeps its blocks; a held
-// handle the store has closed reports the closed cache. The pin is honoured
-// as for DiscardRanges.
-func (s *DiffStore) DiscardRangesOf(d Diff, runs []header.BuildMap) (block.DiscardStats, error) {
-	if s.isPinned(d.CacheKey()) {
-		return block.DiscardStats{}, ErrDiffStorePinned
-	}
-
-	return s.discardRanges(d, runs)
-}
-
-func (s *DiffStore) discardRanges(d Diff, runs []header.BuildMap) (block.DiscardStats, error) {
-	disc, ok := d.(Discardable)
-	if !ok {
-		return block.DiscardStats{}, fmt.Errorf("diff %s: %w", d.CacheKey(), ErrDiffNotDiscardable)
-	}
-
-	ranges := make([]block.Range, 0, len(runs))
-	for _, r := range runs {
-		ranges = append(ranges, block.Range{Start: int64(r.Offset), Size: int64(r.Length)})
-	}
-	stats, err := disc.DiscardRuns(ranges)
-	if err != nil {
-		return block.DiscardStats{}, fmt.Errorf("discard %d runs: %w", len(runs), err)
-	}
-
-	return stats, nil
 }

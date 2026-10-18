@@ -4,7 +4,6 @@ package block
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -12,23 +11,11 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 )
 
-// errFetchStale terminates a session whose chunk was discarded while it was
-// alive; it never marks the chunk present, and its waiters fetch again.
-var errFetchStale = errors.New("fetch session stale: its chunk was discarded")
-
 type fetchSession struct {
 	// chunk is what we are fetching, can be >= 1 block. chunkOff/chunkLen are absolute offsets in U-space.
 	chunkOff int64
 	chunkLen int64
 	cache    *Cache
-	// gen is the cache's discard generation when the session was created;
-	// stale, under the chunker's fetchMu, records that a later discard overlapped it.
-	gen   uint64
-	stale bool
-	// cancel ends the fetch's context; a discard overlapping the chunk calls it
-	// under the chunker's fetchMu so a stale stream stops at once, not at its
-	// timeout. Never nil: a session without a context has a no-op.
-	cancel context.CancelFunc
 
 	mu   sync.Mutex
 	cond sync.Cond // broadcast on progress; lazily initialized with mu
@@ -58,44 +45,10 @@ func (s *fetchSession) contains(off, length int64) bool {
 	return s.chunkOff <= off && s.chunkOff+s.chunkLen >= off+length
 }
 
-// overlaps reports whether the session's chunk shares any byte with [off, off+length).
-func (s *fetchSession) overlaps(off, length int64) bool {
-	return s.chunkOff < off+length && off < s.chunkOff+s.chunkLen
-}
-
 // terminated reports whether the session reached a terminal state.
 // Must be called with mu held.
 func (s *fetchSession) terminated() bool {
 	return s.done
-}
-
-func (s *fetchSession) isTerminated() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.done
-}
-
-// waitTerminated blocks until the session terminates or ctx is done.
-func (s *fetchSession) waitTerminated(ctx context.Context) error {
-	stop := context.AfterFunc(ctx, func() {
-		s.cond.L.Lock()
-		defer s.cond.L.Unlock()
-		s.cond.Broadcast()
-	})
-	defer stop()
-
-	s.cond.L.Lock()
-	defer s.cond.L.Unlock()
-
-	for !s.terminated() {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		s.cond.Wait()
-	}
-
-	return nil
 }
 
 func newFetchSession(chunkOff, chunkLen int64, cache *Cache) *fetchSession {
@@ -103,8 +56,6 @@ func newFetchSession(chunkOff, chunkLen int64, cache *Cache) *fetchSession {
 		chunkOff: chunkOff,
 		chunkLen: chunkLen,
 		cache:    cache,
-		gen:      cache.discardGen.Load(),
-		cancel:   func() {},
 	}
 	s.cond.L = &s.mu
 

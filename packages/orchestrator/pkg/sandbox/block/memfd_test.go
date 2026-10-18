@@ -657,13 +657,9 @@ func deadStructureTotals(t *testing.T, reader *sdkmetric.ManualReader) (outcomes
 	return collect(telemetry.OrchestratorDeadStructureOutcomeCounterName), collect(telemetry.OrchestratorDeadStructureBytesCounterName)
 }
 
-// failingSliceDevice fails every base read API, so the dedup compare fails on
-// the first dirty page that is not zero.
+// failingSliceDevice fails every base Slice, so the dedup compare fails on the
+// first dirty page that is not zero.
 type failingSliceDevice struct{ *fakeOriginalDevice }
-
-func (failingSliceDevice) ReadAt(context.Context, []byte, int64) (int, error) {
-	return 0, errors.New("base read failed")
-}
 
 func (failingSliceDevice) Slice(context.Context, int64, int64) ([]byte, error) {
 	return nil, errors.New("base slice failed")

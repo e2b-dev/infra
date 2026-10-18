@@ -94,26 +94,6 @@ func (t *Tracker) SetRange(start, end uint32, state State) {
 	}
 }
 
-// Discard returns [start, end) to NotPresent so a later read falls through to
-// the previous layer or refetches. It reports how many indices were present.
-func (t *Tracker) Discard(start, end uint32) uint64 {
-	if end <= start {
-		return 0
-	}
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	s, e := uint64(start), uint64(end)
-	var present uint64
-	for _, bm := range []*roaring.Bitmap{t.dirty, t.zero, t.removed, t.clean} {
-		present += bm.CardinalityInRange(s, e)
-		bm.RemoveRange(s, e)
-	}
-
-	return present
-}
-
 // MarkInstalled records a read-side install (state Zero or Clean) for
 // [start, end), but only for indices currently NotPresent or Removed.
 // Installed states are never touched: an installer that was suspended

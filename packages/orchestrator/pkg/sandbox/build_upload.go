@@ -320,7 +320,7 @@ func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff 
 // consistent for the given block size. Frame size must be a positive multiple
 // of blockSize so that every block-sized read served by the chunker lies
 // inside one frame — otherwise Chunker.fetch fetches only the start frame and
-// cache.readAtDirect copies uninitialized mmap bytes into the tail.
+// cache.sliceDirect returns uninitialized mmap bytes for the tail.
 func validateCompressConfig(c storage.CompressConfig, blockSize uint64) error {
 	fs := c.FrameSize()
 	if fs <= 0 {

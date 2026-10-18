@@ -5,7 +5,6 @@ package block
 import (
 	"context"
 	"io"
-	"time"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
@@ -52,15 +51,6 @@ type Device interface {
 // without triggering a remote fetch.
 type CachePeeker interface {
 	IsCached(ctx context.Context, off, length int64) bool
-}
-
-// FetchWaiter answers when the fetches overlapping a range have terminated,
-// and how long one may take: a chunk is marked present only when its whole
-// fetch completes, so a presence query taken while one is in flight reads
-// the chunk as absent.
-type FetchWaiter interface {
-	WaitFetched(ctx context.Context, off, length int64) error
-	FetchTimeout() time.Duration
 }
 
 // DiffSource is what the diff/upload layer reads from. *Cache satisfies it

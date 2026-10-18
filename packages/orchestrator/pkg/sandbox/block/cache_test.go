@@ -210,18 +210,17 @@ func TestCopyFromProcess_HugepageToRegularPage(t *testing.T) {
 	require.NoError(t, compareData(data[:n], mem[pageSize*4:pageSize*8]))
 }
 
-func TestReadAtDirectOutOfBoundsReturnsBytesNotAvailable(t *testing.T) {
+func TestSliceDirectOutOfBoundsReturnsBytesNotAvailable(t *testing.T) {
 	t.Parallel()
 
 	cache, err := NewCache(16, 4, t.TempDir()+"/cache", false)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = cache.Close() })
 
-	buf := make([]byte, 4)
-	_, err = cache.readAtDirect(t.Context(), buf, 16)
+	_, err = cache.sliceDirect(16, 4)
 	require.ErrorIs(t, err, BytesNotAvailableError{})
 
-	_, err = cache.readAtDirect(t.Context(), buf, 32)
+	_, err = cache.sliceDirect(32, 4)
 	require.ErrorIs(t, err, BytesNotAvailableError{})
 }
 

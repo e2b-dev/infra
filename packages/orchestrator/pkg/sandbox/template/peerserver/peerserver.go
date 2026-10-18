@@ -22,7 +22,6 @@ var (
 )
 
 // Sender sends file data representing chunks to a caller.
-// Send may retain data after returning; callers must not modify sent bytes.
 type Sender interface {
 	Send(data []byte) error
 }

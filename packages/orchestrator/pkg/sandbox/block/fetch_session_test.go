@@ -492,14 +492,3 @@ func TestFetchSession_ConcurrentWaitersAndCancel(t *testing.T) {
 		require.NoError(t, err, "bg waiter %d", i)
 	}
 }
-
-// A session created without a fetch context carries a no-op cancel, so the
-// deferred cancel in runFetch is safe for every session, however it was made.
-func TestFetchSession_CancelIsAlwaysSet(t *testing.T) {
-	t.Parallel()
-
-	cache := makeTestCacheForSession(t, 4)
-	s := newFetchSession(0, 4*fetchSessionBlockSize, cache)
-	require.NotNil(t, s.cancel, "a session must never carry a nil cancel")
-	require.NotPanics(t, func() { s.cancel() })
-}
