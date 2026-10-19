@@ -27,14 +27,15 @@ type ActiveEnv struct {
 }
 
 type Cluster struct {
-	ID                 uuid.UUID
-	Endpoint           string
-	EndpointTls        bool
-	Token              string
-	SandboxProxyDomain *string
-	AuthOrgID          *string
-	Name               string
-	DeletionProtection bool
+	ID                  uuid.UUID
+	Endpoint            string
+	EndpointTls         bool
+	Token               string
+	SandboxProxyDomain  *string
+	AuthOrgID           *string
+	Name                string
+	DeletionProtection  bool
+	DeletionRequestedAt *time.Time
 }
 
 type EnvAlias struct {

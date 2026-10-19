@@ -118,6 +118,7 @@ func TestEveryManagementRouteReachesItsHandler(t *testing.T) {
 		{"applyProjectBlock", http.MethodPut, project + "/block", `{"revision":1,"blocked":false}`},
 		{"registerCluster", http.MethodPut, cluster, `{"name":"a","endpoint":"a:443","endpoint_tls":true,"token":"token"}`},
 		{"deleteCluster", http.MethodDelete, cluster, ""},
+		{"requestClusterDeletion", http.MethodPut, cluster + "/deletion", ""},
 		{"assignProjectCluster", http.MethodPut, projectCluster, ""},
 		{"detachProjectCluster", http.MethodDelete, projectCluster, ""},
 	} {
@@ -183,6 +184,10 @@ func (r *routeRecorder) ManagementRegisterCluster(c *gin.Context, _ api.ClusterI
 
 func (r *routeRecorder) ManagementDeleteCluster(c *gin.Context, _ api.ClusterID) {
 	r.report(c, "deleteCluster")
+}
+
+func (r *routeRecorder) ManagementRequestClusterDeletion(c *gin.Context, _ api.ClusterID) {
+	r.report(c, "requestClusterDeletion")
 }
 
 func (r *routeRecorder) ManagementAssignProjectCluster(c *gin.Context, _ api.ProjectID, _ api.ClusterID) {

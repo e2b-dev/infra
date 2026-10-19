@@ -128,6 +128,40 @@ func (s *APIStore) DeleteAdminClustersClusterID(c *gin.Context, clusterID api.Cl
 	c.Status(http.StatusNoContent)
 }
 
+// requestClusterDeletion records, under the cluster row's lock, that the
+// cluster is being deleted. A protection change in flight commits first and is
+// seen here; once recorded, a check constraint refuses turning protection on.
+func (s *APIStore) requestClusterDeletion(ctx context.Context, clusterID uuid.UUID) error {
+	if clusterID == consts.LocalClusterID {
+		return errLocalClusterDeletion
+	}
+
+	db, tx, err := s.db.WithTx(ctx)
+	if err != nil {
+		return fmt.Errorf("begin cluster deletion request: %w", err)
+	}
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
+
+	protected, err := db.Dashboard.LockClusterDeletionProtection(ctx, clusterID)
+	if dberrors.IsNotFoundError(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("lock cluster for deletion: %w", err)
+	}
+	if protected {
+		return errProtectedClusterDeletion
+	}
+	if err := db.Dashboard.RequestClusterDeletion(ctx, clusterID); err != nil {
+		return fmt.Errorf("record cluster deletion: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit cluster deletion request: %w", err)
+	}
+
+	return nil
+}
+
 func (s *APIStore) deleteCluster(ctx context.Context, clusterID uuid.UUID) error {
 	// The local cluster's teams and environments store a NULL cluster_id. The
 	// queries below match by equality, which never selects NULL, and its nil ID

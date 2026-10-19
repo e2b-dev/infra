@@ -58,3 +58,17 @@ func (s *APIStore) ManagementDetachProjectCluster(c *gin.Context, projectID api.
 func (s *APIStore) ManagementDeleteCluster(c *gin.Context, clusterID api.ClusterID) {
 	s.DeleteAdminClustersClusterID(c, clusterID)
 }
+
+func (s *APIStore) ManagementRequestClusterDeletion(c *gin.Context, clusterID api.ClusterID) {
+	err := s.requestClusterDeletion(c.Request.Context(), clusterID)
+	switch {
+	case errors.Is(err, errLocalClusterDeletion):
+		s.sendAPIStoreError(c, http.StatusBadRequest, "The local cluster cannot be deleted")
+	case errors.Is(err, errProtectedClusterDeletion):
+		s.sendAPIStoreError(c, http.StatusConflict, "Cluster has deletion protection turned on")
+	case err != nil:
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to record cluster deletion")
+	default:
+		c.Status(http.StatusNoContent)
+	}
+}

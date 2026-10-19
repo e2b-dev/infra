@@ -76,14 +76,15 @@ type BillingSandboxLog struct {
 }
 
 type Cluster struct {
-	ID                 uuid.UUID
-	Endpoint           string
-	EndpointTls        bool
-	Token              string
-	SandboxProxyDomain pgtype.Text
-	AuthOrgID          pgtype.Text
-	Name               string
-	DeletionProtection bool
+	ID                  uuid.UUID
+	Endpoint            string
+	EndpointTls         bool
+	Token               string
+	SandboxProxyDomain  pgtype.Text
+	AuthOrgID           pgtype.Text
+	Name                string
+	DeletionProtection  bool
+	DeletionRequestedAt *time.Time
 }
 
 type DefaultLimit struct {

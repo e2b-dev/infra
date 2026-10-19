@@ -63,6 +63,19 @@ WHERE clusters.name = EXCLUDED.name
   AND clusters.auth_org_id IS NOT DISTINCT FROM EXCLUDED.auth_org_id
 RETURNING id;
 
+-- name: LockClusterDeletionProtection :one
+-- Locks the row for the rest of the transaction, so a concurrent protection
+-- change commits before or after the caller's check, never between.
+SELECT deletion_protection
+FROM public.clusters
+WHERE id = sqlc.arg(cluster_id)::uuid
+FOR UPDATE;
+
+-- name: RequestClusterDeletion :exec
+UPDATE public.clusters
+SET deletion_requested_at = COALESCE(deletion_requested_at, now())
+WHERE id = sqlc.arg(cluster_id)::uuid;
+
 -- name: ClusterDeletionProtected :one
 SELECT EXISTS (
     SELECT FROM public.clusters

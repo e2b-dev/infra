@@ -220,6 +220,22 @@ func (q *Queries) DetachTeamCluster(ctx context.Context, arg DetachTeamClusterPa
 	return i, err
 }
 
+const lockClusterDeletionProtection = `-- name: LockClusterDeletionProtection :one
+SELECT deletion_protection
+FROM public.clusters
+WHERE id = $1::uuid
+FOR UPDATE
+`
+
+// Locks the row for the rest of the transaction, so a concurrent protection
+// change commits before or after the caller's check, never between.
+func (q *Queries) LockClusterDeletionProtection(ctx context.Context, clusterID uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, lockClusterDeletionProtection, clusterID)
+	var deletion_protection bool
+	err := row.Scan(&deletion_protection)
+	return deletion_protection, err
+}
+
 const registerManagedCluster = `-- name: RegisterManagedCluster :one
 INSERT INTO public.clusters (
     id,
@@ -287,6 +303,17 @@ WHERE env_id = ANY($1::text[])
 
 func (q *Queries) ReleaseEnvironmentsAliases(ctx context.Context, envIds []string) error {
 	_, err := q.db.Exec(ctx, releaseEnvironmentsAliases, envIds)
+	return err
+}
+
+const requestClusterDeletion = `-- name: RequestClusterDeletion :exec
+UPDATE public.clusters
+SET deletion_requested_at = COALESCE(deletion_requested_at, now())
+WHERE id = $1::uuid
+`
+
+func (q *Queries) RequestClusterDeletion(ctx context.Context, clusterID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, requestClusterDeletion, clusterID)
 	return err
 }
 

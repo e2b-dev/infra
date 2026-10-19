@@ -1490,6 +1490,32 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /v1/management/clusters/{clusterID}/deletion:
+    put:
+      operationId: managementRequestClusterDeletion
+      summary: Record that a cluster is being deleted (v1).
+      description: Records that the caller is deleting the cluster, for a caller that deletes the cluster's teams before the cluster itself. Refused while the cluster has deletion protection turned on; a protection change in flight commits before or after the check, never between. Once recorded, deletion protection cannot be turned on, so the cluster delete that follows is not refused for protection. Succeeds when the cluster is absent. Repeating the request succeeds. The local cluster's nil ID is rejected.
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/clusterID"
+      responses:
+        "204":
+          description: The deletion is recorded, or the cluster is absent.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "409":
+          description: The cluster has deletion protection turned on.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/500"
+
   /v1/management/clusters/{clusterID}/destroy-readiness:
     get:
       operationId: managementClusterDestroyReadiness
