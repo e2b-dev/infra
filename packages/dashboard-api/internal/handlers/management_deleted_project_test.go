@@ -42,8 +42,6 @@ func TestWritesToADeletedProjectAnswerNotFoundAndChangeNothing(t *testing.T) {
 		"block delivery":     {http.MethodPut, "/v1/management/projects/%s/block", `{"revision":1,"blocked":false}`},
 		"cluster assignment": {http.MethodPut, "/v1/management/projects/%s/cluster/" + clusterID.String(), ""},
 		"cluster detachment": {http.MethodDelete, "/v1/management/projects/%s/cluster/" + clusterID.String(), ""},
-		"admin block":        {http.MethodPut, "/admin/teams/%s/block", `{"reason":"abuse"}`},
-		"admin unblock":      {http.MethodDelete, "/admin/teams/%s/block", ""},
 		"admin ban":          {http.MethodPut, "/admin/teams/%s/ban", ""},
 		"admin unban":        {http.MethodDelete, "/admin/teams/%s/ban", ""},
 	} {

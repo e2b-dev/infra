@@ -16,7 +16,4 @@ func TestUnavailableServiceReportsNoIdentityProvider(t *testing.T) {
 
 	_, err := service.ProfilesByUserID(ctx, []uuid.UUID{userID})
 	require.ErrorIs(t, err, ErrNoIdentityProvider)
-
-	_, err = service.FindProfilesByEmail(ctx, "user@example.com")
-	require.ErrorIs(t, err, ErrNoIdentityProvider)
 }

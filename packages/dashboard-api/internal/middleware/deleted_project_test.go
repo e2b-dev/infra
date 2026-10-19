@@ -32,8 +32,6 @@ func TestRefuseDeletedProjectGuardsExactlyTheProjectWrites(t *testing.T) {
 		"PUT /v1/management/projects/:projectID/block":                 {},
 		"PUT /v1/management/projects/:projectID/cluster/:clusterID":    {},
 		"DELETE /v1/management/projects/:projectID/cluster/:clusterID": {},
-		"PUT /admin/teams/:teamID/block":                               {},
-		"DELETE /admin/teams/:teamID/block":                            {},
 		"PUT /admin/teams/:teamID/ban":                                 {},
 		"DELETE /admin/teams/:teamID/ban":                              {},
 	}, guarded)

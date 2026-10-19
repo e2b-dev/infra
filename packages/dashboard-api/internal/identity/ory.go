@@ -88,32 +88,6 @@ func (d *oryDirectory) ListIdentities(ctx context.Context, subjects []string) ([
 	return identities, nil
 }
 
-func (d *oryDirectory) SearchByEmail(ctx context.Context, email string) ([]Identity, error) {
-	normalized := strings.TrimSpace(email)
-	if normalized == "" {
-		return []Identity{}, nil
-	}
-
-	oryIdentities, resp, err := d.identities.ListIdentitiesExecute(
-		d.identities.ListIdentities(d.authCtx(ctx)).
-			CredentialsIdentifier(normalized).
-			IncludeCredential(oryProfileCredentialTypes),
-	)
-	if resp != nil && resp.Body != nil {
-		_ = resp.Body.Close()
-	}
-	if err != nil {
-		return nil, fmt.Errorf("ory list identities by credentials identifier: %w", err)
-	}
-
-	identities := make([]Identity, 0, len(oryIdentities))
-	for _, oryIdentity := range oryIdentities {
-		identities = append(identities, identityFromOry(oryIdentity))
-	}
-
-	return identities, nil
-}
-
 func identityFromOry(oryIdentity ory.Identity) Identity {
 	traits, _ := oryIdentity.Traits.(map[string]any)
 

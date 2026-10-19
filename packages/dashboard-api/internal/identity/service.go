@@ -12,7 +12,6 @@ import (
 
 type Service interface {
 	ProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (map[uuid.UUID]Profile, error)
-	FindProfilesByEmail(ctx context.Context, email string) ([]Profile, error)
 }
 
 type service struct {
@@ -60,51 +59,6 @@ func (s *service) ProfilesByUserID(ctx context.Context, userIDs []uuid.UUID) (ma
 	profiles := make(map[uuid.UUID]Profile, len(identities))
 	for userID, id := range identities {
 		profiles[userID] = ProfileFromIdentity(userID, id)
-	}
-
-	return profiles, nil
-}
-
-func (s *service) FindProfilesByEmail(ctx context.Context, email string) ([]Profile, error) {
-	normalized := strings.TrimSpace(email)
-	if normalized == "" {
-		return []Profile{}, nil
-	}
-
-	profiles := make([]Profile, 0)
-	for _, issuer := range s.issuers {
-		directory := s.directories[issuer]
-
-		identities, err := directory.SearchByEmail(ctx, normalized)
-		if err != nil {
-			return nil, err
-		}
-		if len(identities) == 0 {
-			continue
-		}
-
-		subjects := make([]string, 0, len(identities))
-		for _, id := range identities {
-			subjects = append(subjects, id.Subject)
-		}
-
-		linked, err := s.linkage.UsersForSubjects(ctx, issuer, subjects)
-		if err != nil {
-			return nil, fmt.Errorf("lookup user ids by subjects: %w", err)
-		}
-
-		userIDBySubject := make(map[string]uuid.UUID, len(linked))
-		for _, row := range linked {
-			userIDBySubject[row.Subject] = row.UserID
-		}
-
-		for _, id := range identities {
-			userID, ok := userIDBySubject[id.Subject]
-			if !ok {
-				continue
-			}
-			profiles = append(profiles, ProfileFromIdentity(userID, id))
-		}
 	}
 
 	return profiles, nil

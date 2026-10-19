@@ -9,11 +9,9 @@ import (
 
 type fakeDirectory struct {
 	identities map[string]Identity
-	byEmail    map[string][]Identity
 
 	listErr     error
 	listedBatch [][]string
-	searchedFor []string
 }
 
 func newFakeDirectory(identities ...Identity) *fakeDirectory {
@@ -41,12 +39,6 @@ func (d *fakeDirectory) ListIdentities(_ context.Context, subjects []string) ([]
 	return found, nil
 }
 
-func (d *fakeDirectory) SearchByEmail(_ context.Context, email string) ([]Identity, error) {
-	d.searchedFor = append(d.searchedFor, email)
-
-	return d.byEmail[email], nil
-}
-
 type fakeLinkage struct {
 	rows []LinkedIdentity
 
@@ -71,26 +63,6 @@ func (l *fakeLinkage) IdentitiesForUsers(_ context.Context, issuers []string, us
 			continue
 		}
 		if _, ok := wanted[row.UserID]; !ok {
-			continue
-		}
-		matched = append(matched, row)
-	}
-
-	return matched, nil
-}
-
-func (l *fakeLinkage) UsersForSubjects(_ context.Context, issuer string, subjects []string) ([]LinkedIdentity, error) {
-	wanted := make(map[string]struct{}, len(subjects))
-	for _, subject := range subjects {
-		wanted[subject] = struct{}{}
-	}
-
-	matched := make([]LinkedIdentity, 0, len(l.rows))
-	for _, row := range l.rows {
-		if row.Issuer != issuer {
-			continue
-		}
-		if _, ok := wanted[row.Subject]; !ok {
 			continue
 		}
 		matched = append(matched, row)
@@ -179,37 +151,5 @@ func TestServiceUserKeyedOpsIgnoreUnregisteredIssuerRows(t *testing.T) {
 	}
 	if len(profiles) != 0 {
 		t.Fatalf("expected foreign-issuer rows to be invisible, got %d profiles", len(profiles))
-	}
-}
-
-func TestServiceFindProfilesByEmailIntersectsLinkage(t *testing.T) {
-	t.Parallel()
-
-	userID := uuid.New()
-	linkedSubject := uuid.NewString()
-	unlinkedSubject := uuid.NewString()
-	email := "ada@example.test"
-
-	directory := newFakeDirectory()
-	directory.byEmail = map[string][]Identity{email: {
-		{Subject: linkedSubject, Email: email},
-		{Subject: unlinkedSubject, Email: email},
-	}}
-	linkage := &fakeLinkage{rows: []LinkedIdentity{{Issuer: issuerA, Subject: linkedSubject, UserID: userID}}}
-
-	svc, err := NewService(map[string]Directory{issuerA: directory}, linkage)
-	if err != nil {
-		t.Fatalf("failed to build service: %v", err)
-	}
-
-	profiles, err := svc.FindProfilesByEmail(t.Context(), email)
-	if err != nil {
-		t.Fatalf("FindProfilesByEmail returned error: %v", err)
-	}
-	if len(profiles) != 1 {
-		t.Fatalf("expected only linked identities to surface, got %d profiles", len(profiles))
-	}
-	if profiles[0].UserID != userID {
-		t.Fatalf("expected user %s, got %s", userID, profiles[0].UserID)
 	}
 }

@@ -2,9 +2,7 @@ package handlers
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -12,7 +10,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	dashboardqueries "github.com/e2b-dev/infra/packages/db/pkg/dashboard/queries"
-	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -25,36 +22,6 @@ func (s *APIStore) PutAdminTeamsTeamIDBan(c *gin.Context, teamID api.TeamID) {
 func (s *APIStore) DeleteAdminTeamsTeamIDBan(c *gin.Context, teamID api.TeamID) {
 	s.updateTeamAccess(c, teamID, "unbanned", func(ctx context.Context) (int64, error) {
 		return s.db.Dashboard.SetTeamBanned(ctx, dashboardqueries.SetTeamBannedParams{IsBanned: false, TeamID: teamID})
-	})
-}
-
-func (s *APIStore) PutAdminTeamsTeamIDBlock(c *gin.Context, teamID api.TeamID) {
-	body, err := ginutils.ParseBody[api.AdminTeamBlockRequest](c.Request.Context(), c)
-	if err != nil {
-		s.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
-
-		return
-	}
-
-	reason := strings.TrimSpace(body.Reason)
-	if reason == "" {
-		s.sendAPIStoreError(c, http.StatusBadRequest, "reason is required")
-
-		return
-	}
-
-	s.updateTeamAccess(c, teamID, "blocked", func(ctx context.Context) (int64, error) {
-		return s.db.Dashboard.SetTeamBlocked(ctx, dashboardqueries.SetTeamBlockedParams{
-			IsBlocked:     true,
-			BlockedReason: &reason,
-			TeamID:        teamID,
-		})
-	})
-}
-
-func (s *APIStore) DeleteAdminTeamsTeamIDBlock(c *gin.Context, teamID api.TeamID) {
-	s.updateTeamAccess(c, teamID, "unblocked", func(ctx context.Context) (int64, error) {
-		return s.db.Dashboard.SetTeamBlocked(ctx, dashboardqueries.SetTeamBlockedParams{IsBlocked: false, TeamID: teamID})
 	})
 }
 

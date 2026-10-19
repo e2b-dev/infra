@@ -58,52 +58,6 @@ func (s *APIStore) PostAdminUserProfilesResolve(c *gin.Context) {
 	})
 }
 
-func (s *APIStore) PostAdminUserProfilesByEmail(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	body, err := ginutils.ParseBody[api.AdminAuthProviderProfilesLookupEmailRequest](ctx, c)
-	if err != nil {
-		s.sendAPIStoreError(c, http.StatusBadRequest, "Invalid request body")
-
-		return
-	}
-
-	profiles, err := s.identityService.FindProfilesByEmail(ctx, string(body.Email))
-	if err != nil {
-		if s.abortIfNoIdentityProvider(c, err) {
-			return
-		}
-
-		logger.L().Error(ctx, "failed to look up auth provider profiles by email", zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to look up auth provider profiles")
-
-		return
-	}
-
-	c.JSON(http.StatusOK, api.AdminAuthProviderProfilesResponse{
-		Profiles: apiProfilesFromProfiles(profiles),
-	})
-}
-
-func (s *APIStore) GetAdminUserProfilesUserId(c *gin.Context, userId api.UserId) {
-	ctx := c.Request.Context()
-	profiles, err := s.identityService.ProfilesByUserID(ctx, []uuid.UUID{userId})
-	if err != nil {
-		if s.abortIfNoIdentityProvider(c, err) {
-			return
-		}
-
-		logger.L().Error(ctx, "failed to resolve auth provider profile", zap.Error(err))
-		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to resolve auth provider profile")
-
-		return
-	}
-
-	c.JSON(http.StatusOK, api.AdminAuthProviderProfilesResponse{
-		Profiles: apiProfilesFromMap([]uuid.UUID{userId}, profiles),
-	})
-}
-
 func apiProfilesFromMap(userIDs []uuid.UUID, profiles map[uuid.UUID]identity.Profile) []api.AdminAuthProviderProfile {
 	result := make([]api.AdminAuthProviderProfile, 0, len(profiles))
 	seen := make(map[uuid.UUID]struct{}, len(userIDs))
@@ -119,16 +73,6 @@ func apiProfilesFromMap(userIDs []uuid.UUID, profiles map[uuid.UUID]identity.Pro
 			continue
 		}
 
-		result = append(result, apiProfileFromProfile(profile))
-	}
-
-	return result
-}
-
-func apiProfilesFromProfiles(profiles []identity.Profile) []api.AdminAuthProviderProfile {
-	result := make([]api.AdminAuthProviderProfile, 0, len(profiles))
-
-	for _, profile := range profiles {
 		result = append(result, apiProfileFromProfile(profile))
 	}
 

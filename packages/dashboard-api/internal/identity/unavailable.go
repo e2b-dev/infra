@@ -26,7 +26,3 @@ func NewUnavailableService() Service {
 func (unavailableService) ProfilesByUserID(_ context.Context, _ []uuid.UUID) (map[uuid.UUID]Profile, error) {
 	return nil, ErrNoIdentityProvider
 }
-
-func (unavailableService) FindProfilesByEmail(_ context.Context, _ string) ([]Profile, error) {
-	return nil, ErrNoIdentityProvider
-}

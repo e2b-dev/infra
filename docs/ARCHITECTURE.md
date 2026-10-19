@@ -495,8 +495,8 @@ state. The `projection.project_blocks` revision and `public.teams.is_blocked` /
 `blocked_reason` commit together. Older or duplicate revisions leave stored state
 unchanged. Every accepted delivery invalidates the team auth cache; eviction
 failures return an error so retries can finish invalidation after commit. The API
-uses this state when admitting billable work. Direct admin block writes do not
-advance the projection revision; a newer management delivery replaces them.
+uses this state when admitting billable work. It is the only route that writes the
+team's block state.
 
 Limit and block deliveries may carry `decided_at`, when the caller decided that
 revision. The ledger row stores it beside the revision. Each delivery the ledger
@@ -540,8 +540,8 @@ envs created since (a sandbox that paused before the teardown killed it leaves a
 and it enqueues the teardown again, which is a no-op while one is still open. Afterwards a
 dashboard-api middleware, running after authentication, answers 404 to every write under
 `/v1/management/` or `/admin/` that names the project by `projectID` or `teamID` (project
-upsert, member, limits and block deliveries, cluster assignment and detachment, admin block
-and ban); the project DELETE is exempt so a retry still reaches it. Shared auth refuses a
+upsert, member, limits and block deliveries, cluster assignment and detachment, admin ban);
+the project DELETE is exempt so a retry still reaches it. Shared auth refuses a
 membership or API key still left for the project with 403, and the API leaves it out of a
 user's team list. Volumes, builds and stored artifacts are not reclaimed.
 

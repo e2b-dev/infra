@@ -21,10 +21,6 @@ func (emptyLinkage) IdentitiesForUsers(_ context.Context, _ []string, _ []uuid.U
 	return nil, nil
 }
 
-func (emptyLinkage) UsersForSubjects(_ context.Context, _ string, _ []string) ([]identity.LinkedIdentity, error) {
-	return nil, nil
-}
-
 func TestNewIdentityServiceWithoutOryIsUnavailable(t *testing.T) {
 	t.Parallel()
 
