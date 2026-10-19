@@ -41,7 +41,6 @@ const (
 	ClusterKind          ldcontext.Kind = "cluster"
 	BatcherKind          ldcontext.Kind = "batcher.name"
 	InstanceGroupKind    ldcontext.Kind = "instance-group"
-	TierKind             ldcontext.Kind = "tier"
 	ServiceKind          ldcontext.Kind = "service"
 	TemplateKind         ldcontext.Kind = "template"
 	VolumeKind           ldcontext.Kind = "volume"

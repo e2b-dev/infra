@@ -148,13 +148,6 @@ func TeamContext(teamID string) ldcontext.Context {
 		Build()
 }
 
-func TierContext(tierID, tierName string) ldcontext.Context {
-	return ldcontext.NewBuilder(tierID).
-		Kind(TierKind).
-		Name(tierName).
-		Build()
-}
-
 func UserContext(userID string) ldcontext.Context {
 	return ldcontext.NewWithKind(UserKind, userID)
 }
