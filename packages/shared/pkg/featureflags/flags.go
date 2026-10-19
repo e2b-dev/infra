@@ -454,7 +454,7 @@ var (
 	NetworkTransformRulesFlag = NewBoolFlag("network-transform-rules", env.IsDevelopment())
 	MaxNetworkRuleDomains     = NewIntFlag("max-network-rule-domains", 10)
 
-	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", env.IsDevelopment())
+	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", true)
 
 	// EgressProxyInterceptTracingFlag turns on connection, request and upstream
 	// spans for a sandbox's TLS-intercepted egress. Target the sandbox or team

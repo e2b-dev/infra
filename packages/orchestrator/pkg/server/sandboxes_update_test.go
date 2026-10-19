@@ -8,16 +8,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
+	"github.com/launchdarkly/go-server-sdk/v7/testhelpers/ldtestdata"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	internalevents "github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
@@ -229,6 +233,73 @@ func TestTransitionEgress(t *testing.T) {
 			}
 			assertSameEgress(t, tt.wantSeen, seen)
 			assertSameEgress(t, tt.wantFinal, cfg.GetNetworkEgress())
+		})
+	}
+}
+
+// TestUpdate_EgressProxyFlagGate checks the egress proxy kill switch: an
+// unresolved flag lets the request through to the build check, which the
+// no-op proxy answers with Unimplemented, and only an explicit false refuses.
+func TestUpdate_EgressProxyFlagGate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		flag     *bool
+		wantCode codes.Code
+	}{
+		{name: "flag unresolved falls back to enabled", flag: nil, wantCode: codes.Unimplemented},
+		{name: "flag on", flag: new(true), wantCode: codes.Unimplemented},
+		{name: "flag off refuses the team", flag: new(false), wantCode: codes.PermissionDenied},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			td := ldtestdata.DataSource()
+			if tt.flag != nil {
+				td.Update(td.Flag(featureflags.BYOPProxyEnabledFlag.Key()).ValueForAll(ldvalue.Bool(*tt.flag)))
+			}
+			ff, err := featureflags.NewClientWithDatasource(td)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
+
+			slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{})
+			require.NoError(t, err)
+
+			sbx := &sandbox.Sandbox{
+				Metadata: &sandbox.Metadata{
+					Config:  sandbox.NewConfig(sandbox.Config{}),
+					Runtime: sandboxtypes.RuntimeMetadata{SandboxID: id.Generate(), TeamID: id.Generate()},
+				},
+				Resources: &sandbox.Resources{Slot: slot},
+			}
+
+			sandboxMap := sandbox.NewSandboxesMap()
+			sandboxMap.AssignNetwork(t.Context(), sbx)
+			sandboxMap.MarkRunning(t.Context(), sbx)
+
+			s := &Server{
+				sandboxFactory: sandbox.NewFactory(
+					t.Context(), cfg.BuilderConfig{},
+					nil, nil, ff, nil, nil, network.NewNoopEgressProxy(), nil, sandboxMap,
+				),
+				featureFlags:     ff,
+				info:             &service.ServiceInfo{},
+				sbxEventsService: internalevents.NewEventsService(nil),
+			}
+
+			_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+				SandboxId: sbx.Runtime.SandboxID,
+				Egress: &orchestrator.SandboxNetworkEgressConfig{
+					EgressProxyAddress: "203.0.113.5:1080",
+				},
+			})
+
+			require.Error(t, err)
+			assert.Equal(t, tt.wantCode, status.Code(err))
+			assert.Nil(t, sbx.Config.GetNetworkEgress())
 		})
 	}
 }
