@@ -16,12 +16,12 @@ import (
 )
 
 // MaxConcurrentSandboxes gates parallel sandbox creation in tests. The
-// integration test team is granted extra capacity in seed.go (base tier 20 +
-// addon 200 = 220), so this can stay well below that ceiling.
+// integration test team is granted extra capacity in seed.go (default 20 +
+// 200 = 220), so this can stay well below that ceiling.
 const MaxConcurrentSandboxes = 100
 
 // sandboxSemaphore gates sandbox creation so parallel tests don't exceed the
-// tier's concurrent instance limit. A slot is acquired before creation and
+// team's concurrent sandbox limit. A slot is acquired before creation and
 // released after teardown in t.Cleanup.
 var sandboxSemaphore = make(chan struct{}, MaxConcurrentSandboxes)
 

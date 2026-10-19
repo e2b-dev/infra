@@ -24,8 +24,8 @@ var (
 )
 
 // The values arrive absolute: the caller owns plans and add-ons and has already
-// resolved them, which is what lets team_limits prefer this row over the tier it
-// would otherwise compute from.
+// resolved them, which is what lets the team lookups prefer this row over
+// default_limits.
 type ProjectLimitsProjection struct {
 	ProjectID uuid.UUID
 	Revision  int64

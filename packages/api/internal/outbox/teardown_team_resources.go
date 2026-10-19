@@ -64,7 +64,7 @@ func (w *teamResourcesTeardownWorker) Work(ctx context.Context, job *river.Job[o
 // retries until it is blocked or gone. A missing team does not stop the
 // teardown.
 func (w *teamResourcesTeardownWorker) checkTeamBlocked(ctx context.Context, teamID uuid.UUID) error {
-	team, err := w.teams.GetTeamWithTierByTeamID(ctx, teamID)
+	team, err := w.teams.GetTeamByTeamID(ctx, teamID)
 	if dberrors.IsNotFoundError(err) {
 		return nil
 	}

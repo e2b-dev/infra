@@ -35,10 +35,10 @@ const validLimitsBody = `{
 	"max_disk_size_mb": 51200
 }`
 
-// The push is the only way limits reach this side, and team_limits is what
-// gates sandbox creation. Asserting through the view rather than the table
-// proves the two are actually wired together.
-func TestUpsertProjectLimitsIsVisibleThroughTheView(t *testing.T) {
+// The push is the only way limits reach this side, and the team lookups are
+// what gates sandbox creation. Asserting through a lookup rather than the
+// table proves the two are actually wired together.
+func TestUpsertProjectLimitsIsVisibleThroughTheTeamLookup(t *testing.T) {
 	t.Parallel()
 
 	for name, body := range map[string]string{
@@ -131,7 +131,7 @@ func TestUpsertProjectLimitsRejectsFreeDiskAboveTheCeiling(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, recorder.Code)
 }
 
-func TestUpsertProjectLimitsCarriesTheListRateToTheView(t *testing.T) {
+func TestUpsertProjectLimitsCarriesTheListRateToTheTeamLookup(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -142,15 +142,9 @@ func TestUpsertProjectLimitsCarriesTheListRateToTheView(t *testing.T) {
 	recorder := callUpsertProjectLimits(t, store, teamID, body)
 	require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
 
-	var rate int64
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT api_team_rps_list FROM public.team_limits WHERE id = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&rate)
-		}, teamID))
-	require.EqualValues(t, 33, rate)
+	limits, err := db.AuthDB.GetTeamByTeamID(t.Context(), teamID)
+	require.NoError(t, err)
+	require.EqualValues(t, 33, limits.ApiTeamRpsList)
 }
 
 func TestUpsertProjectLimitsRejectsANegativeListRate(t *testing.T) {
@@ -166,7 +160,7 @@ func TestUpsertProjectLimitsRejectsANegativeListRate(t *testing.T) {
 	require.Empty(t, auth.invalidated)
 }
 
-func TestUpsertProjectLimitsCarriesTheSecretLimitToTheView(t *testing.T) {
+func TestUpsertProjectLimitsCarriesTheSecretLimitToTheTeamLookup(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -177,15 +171,9 @@ func TestUpsertProjectLimitsCarriesTheSecretLimitToTheView(t *testing.T) {
 	recorder := callUpsertProjectLimits(t, store, teamID, body)
 	require.Equal(t, http.StatusNoContent, recorder.Code, recorder.Body.String())
 
-	var limit int64
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&limit)
-		}, teamID))
-	require.EqualValues(t, 37, limit)
+	limits, err := db.AuthDB.GetTeamByTeamID(t.Context(), teamID)
+	require.NoError(t, err)
+	require.EqualValues(t, 37, limits.MaxSecrets)
 }
 
 func TestUpsertProjectLimitsRejectsAZeroSecretLimit(t *testing.T) {
@@ -201,7 +189,7 @@ func TestUpsertProjectLimitsRejectsAZeroSecretLimit(t *testing.T) {
 	require.Empty(t, auth.invalidated)
 }
 
-func TestUpsertProjectLimitsCarriesDeleteRatesToTheView(t *testing.T) {
+func TestUpsertProjectLimitsCarriesDeleteRatesToTheTeamLookup(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -233,15 +221,9 @@ func TestUpsertProjectLimitsCarriesDeleteRatesToTheView(t *testing.T) {
 		if step.status == http.StatusBadRequest {
 			assert.Len(t, auth.invalidated, invalidations)
 		}
-		var rate int64
-		require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-			"SELECT api_team_rps_delete FROM public.team_limits WHERE id = $1",
-			func(rows pgx.Rows) error {
-				require.True(t, rows.Next())
-
-				return rows.Scan(&rate)
-			}, teamID))
-		assert.Equal(t, step.want, rate, "revision %d", step.revision)
+		limits, err := db.AuthDB.GetTeamByTeamID(t.Context(), teamID)
+		require.NoError(t, err)
+		assert.Equal(t, step.want, limits.ApiTeamRpsDelete, "revision %d", step.revision)
 	}
 }
 
@@ -297,31 +279,21 @@ func callUpsertProjectLimits(t *testing.T, store *APIStore, teamID uuid.UUID, bo
 func readTeamLimits(t *testing.T, db *testutils.Database, teamID uuid.UUID) map[string]int64 {
 	t.Helper()
 
-	var raw []byte
-	err := db.SqlcClient.TestsRawSQLQuery(t.Context(), `
-		SELECT json_build_object(
-			'max_length_hours', max_length_hours,
-			'concurrent_sandboxes', concurrent_sandboxes,
-			'concurrent_template_builds', concurrent_template_builds,
-			'max_vcpu', max_vcpu,
-			'max_ram_mb', max_ram_mb,
-			'disk_mb', disk_mb,
-			'events_ttl_days', events_ttl_days,
-			'default_free_disk_size_mb', default_free_disk_size_mb,
-			'max_disk_size_mb', max_disk_size_mb,
-			'max_free_disk_size_mb', max_free_disk_size_mb
-		) FROM public.team_limits WHERE id = $1`,
-		func(r pgx.Rows) error {
-			r.Next()
-
-			return r.Scan(&raw)
-		}, teamID)
+	limits, err := db.AuthDB.GetTeamByTeamID(t.Context(), teamID)
 	require.NoError(t, err)
 
-	out := map[string]int64{}
-	require.NoError(t, json.Unmarshal(raw, &out))
-
-	return out
+	return map[string]int64{
+		"max_length_hours":           limits.MaxLengthHours,
+		"concurrent_sandboxes":       limits.ConcurrentSandboxes,
+		"concurrent_template_builds": limits.ConcurrentTemplateBuilds,
+		"max_vcpu":                   limits.MaxVcpu,
+		"max_ram_mb":                 limits.MaxRamMb,
+		"disk_mb":                    limits.DiskMb,
+		"events_ttl_days":            limits.EventsTtlDays,
+		"default_free_disk_size_mb":  limits.DefaultFreeDiskSizeMb,
+		"max_disk_size_mb":           limits.MaxDiskSizeMb,
+		"max_free_disk_size_mb":      limits.MaxFreeDiskSizeMb,
+	}
 }
 
 type recordingCacheAuthService struct {

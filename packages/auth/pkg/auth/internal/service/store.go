@@ -35,7 +35,7 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 	// read replica here races replication lag and could re-cache a
 	// just-deleted key for the full cache TTL, so key revocation must be
 	// read-after-write safe.
-	result, err := s.authDB.GetTeamWithTierByAPIKey(ctx, hashedKey)
+	result, err := s.authDB.GetTeamByAPIKey(ctx, hashedKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get team from API key: %w", err)
 	}
@@ -57,16 +57,14 @@ func (s *authStoreImpl) GetTeamByHashedAPIKey(ctx context.Context, hashedKey str
 		}
 	}()
 
-	team := types.NewTeam(&result.Team, &result.TeamLimit)
-
-	return team, nil
+	return types.NewTeam(authqueries.GetTeamByTeamIDRow(result)), nil
 }
 
 func (s *authStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*types.Team, error) {
 	ctx, span := tracer.Start(ctx, "get team by id auth")
 	defer span.End()
 
-	result, err := s.authDB.GetTeamWithTierByTeamID(ctx, teamID)
+	result, err := s.authDB.GetTeamByTeamID(ctx, teamID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get team from team ID: %w", err)
 	}
@@ -75,9 +73,7 @@ func (s *authStoreImpl) GetTeamByID(ctx context.Context, teamID uuid.UUID) (*typ
 		return nil, err
 	}
 
-	team := types.NewTeam(&result.Team, &result.TeamLimit)
-
-	return team, nil
+	return types.NewTeam(result), nil
 }
 
 func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UUID, teamID string) (*types.Team, error) {
@@ -89,7 +85,7 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 		return nil, fmt.Errorf("failed to parse team ID: %w", err)
 	}
 
-	result, err := s.authDB.GetTeamWithTierByTeamAndUser(ctx, authqueries.GetTeamWithTierByTeamAndUserParams{
+	result, err := s.authDB.GetTeamByTeamAndUser(ctx, authqueries.GetTeamByTeamAndUserParams{
 		ID:     teamIDParsed,
 		UserID: userID,
 	})
@@ -105,9 +101,7 @@ func (s *authStoreImpl) GetTeamByIDAndUserID(ctx context.Context, userID uuid.UU
 		return nil, err
 	}
 
-	team := types.NewTeam(&result.Team, &result.TeamLimit)
-
-	return team, nil
+	return types.NewTeam(authqueries.GetTeamByTeamIDRow(result)), nil
 }
 
 func (s *authStoreImpl) GetTeamAPIKeyHashes(ctx context.Context, teamID uuid.UUID) ([]string, error) {

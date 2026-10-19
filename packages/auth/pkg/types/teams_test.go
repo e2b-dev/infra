@@ -11,7 +11,7 @@ import (
 func TestNewTeamPreservesAPIRates(t *testing.T) {
 	t.Parallel()
 
-	team := NewTeam(&authqueries.Team{}, &authqueries.TeamLimit{ApiTeamRpsList: 1 << 32, ApiTeamRpsDelete: 1<<32 + 1})
+	team := NewTeam(authqueries.GetTeamByTeamIDRow{ApiTeamRpsList: 1 << 32, ApiTeamRpsDelete: 1<<32 + 1})
 	assert.Equal(t, int64(1<<32), team.Limits.APITeamRPSList)
 	assert.Equal(t, int64(1<<32+1), team.Limits.APITeamRPSDelete)
 }
@@ -19,6 +19,6 @@ func TestNewTeamPreservesAPIRates(t *testing.T) {
 func TestNewTeamPreservesTheSecretLimit(t *testing.T) {
 	t.Parallel()
 
-	team := NewTeam(&authqueries.Team{}, &authqueries.TeamLimit{MaxSecrets: 1 << 32})
+	team := NewTeam(authqueries.GetTeamByTeamIDRow{MaxSecrets: 1 << 32})
 	assert.Equal(t, int64(1<<32), team.Limits.MaxSecrets)
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,10 +21,11 @@ func TestRequestTemplateBuild(t *testing.T) {
 	t.Parallel()
 	c := setup.GetAPIClient()
 	db := setup.GetTestDBClient(t)
-	defaultFreeDisk := readFreeDiskSize(t, db,
-		`SELECT default_free_disk_size_mb FROM public.team_limits WHERE id = $1`, setup.TeamID)
-	maxFreeDisk := readFreeDiskSize(t, db,
-		`SELECT max_free_disk_size_mb FROM public.team_limits WHERE id = $1`, setup.TeamID)
+	teamID, err := uuid.Parse(setup.TeamID)
+	require.NoError(t, err)
+	limits, err := db.AuthDb.GetTeamByTeamID(t.Context(), teamID)
+	require.NoError(t, err)
+	defaultFreeDisk, maxFreeDisk := limits.DefaultFreeDiskSizeMb, limits.MaxFreeDiskSizeMb
 
 	for _, test := range []struct {
 		name      string

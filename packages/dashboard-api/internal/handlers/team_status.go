@@ -24,13 +24,13 @@ func (s *APIStore) GetTeamsTeamIDStatus(c *gin.Context, teamID api.TeamID) {
 	)
 
 	if userID, ok := auth.GetUserID(c); ok {
-		row, queryErr := s.authDB.GetTeamWithTierByTeamAndUser(ctx, authqueries.GetTeamWithTierByTeamAndUserParams{
+		row, queryErr := s.authDB.GetTeamByTeamAndUser(ctx, authqueries.GetTeamByTeamAndUserParams{
 			UserID: userID,
 			ID:     teamID,
 		})
 		team, err = row.Team, queryErr
 	} else {
-		row, queryErr := s.authDB.GetTeamWithTierByTeamID(ctx, teamID)
+		row, queryErr := s.authDB.GetTeamByTeamID(ctx, teamID)
 		team, err = row.Team, queryErr
 	}
 

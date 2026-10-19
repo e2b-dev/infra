@@ -15,8 +15,8 @@ import (
 
 // defaultProjectTier is the only tier this side ever assigns, and it assigns it
 // once. The contract names none: the caller's plan vocabulary is its own, and
-// the limits it actually wants arrive absolute through the limits route, which
-// team_limits reads in preference to the tier.
+// the limits it actually wants arrive absolute through the limits route. The
+// team lookups do not read the tier.
 const defaultProjectTier = "base_v1"
 
 const teamSlugUniqueConstraint = "teams_slug_unique"

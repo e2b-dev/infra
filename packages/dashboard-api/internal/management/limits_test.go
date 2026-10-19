@@ -8,6 +8,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
@@ -30,21 +31,21 @@ func projectLimits(projectID uuid.UUID, revision int64) ProjectLimitsProjection 
 	}
 }
 
-// Read through the view, not the table: team_limits is what gates sandbox
+// Read through the team lookup, not the table: it is what gates sandbox
 // creation, and the push only matters where it is read.
+func resolvedLimits(t *testing.T, db *testutils.Database, teamID uuid.UUID) authqueries.GetTeamByTeamIDRow {
+	t.Helper()
+
+	limits, err := db.AuthDB.GetTeamByTeamID(t.Context(), teamID)
+	require.NoError(t, err)
+
+	return limits
+}
+
 func concurrentSandboxes(t *testing.T, db *testutils.Database, teamID uuid.UUID) int64 {
 	t.Helper()
 
-	var sandboxes int64
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT concurrent_sandboxes FROM public.team_limits WHERE id = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&sandboxes)
-		}, teamID))
-
-	return sandboxes
+	return resolvedLimits(t, db, teamID).ConcurrentSandboxes
 }
 
 func ledgerRevision(t *testing.T, db *testutils.Database, teamID uuid.UUID) *int64 {
@@ -215,9 +216,9 @@ func TestApplyProjectLimitsLeavesTheLedgerBehindARejectedWrite(t *testing.T) {
 	require.EqualValues(t, 40, concurrentSandboxes(t, db, teamID))
 }
 
-// Until a project is pushed to, team_limits answers from the tier as it always
-// has. The ledger row alone must not change that.
-func TestApplyProjectLimitsLeavesAnUnpushedProjectOnItsTier(t *testing.T) {
+// Until a project is pushed to, the team lookups answer from
+// default_limits. The ledger row alone must not change that.
+func TestApplyProjectLimitsLeavesAnUnpushedProjectOnTheDefaults(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -240,24 +241,15 @@ func TestApplyProjectLimitsLeavesAnUnpushedProjectOnItsTier(t *testing.T) {
 func listRate(t *testing.T, db *testutils.Database, teamID uuid.UUID) int64 {
 	t.Helper()
 
-	var rate int64
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT api_team_rps_list FROM public.team_limits WHERE id = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&rate)
-		}, teamID))
-
-	return rate
+	return resolvedLimits(t, db, teamID).ApiTeamRpsList
 }
 
-func setTierListRate(t *testing.T, db *testutils.Database, teamID uuid.UUID, rate int64) {
+func setDefaultListRate(t *testing.T, db *testutils.Database, rate int64) {
 	t.Helper()
 
 	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"UPDATE public.tiers SET api_team_rps_list = $2 WHERE id = (SELECT tier FROM public.teams WHERE id = $1)",
-		func(pgx.Rows) error { return nil }, teamID, rate))
+		"UPDATE public.default_limits SET api_team_rps_list = $1",
+		func(pgx.Rows) error { return nil }, rate))
 }
 
 func TestApplyProjectLimitsPushesTheListRate(t *testing.T) {
@@ -266,7 +258,7 @@ func TestApplyProjectLimitsPushesTheListRate(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 	service, _ := newService(db)
 	teamID := testutils.CreateTestTeam(t, db)
-	setTierListRate(t, db, teamID, 25)
+	setDefaultListRate(t, db, 25)
 
 	pushed := projectLimits(teamID, 1)
 	pushed.APITeamRPSList = 70
@@ -279,13 +271,13 @@ func TestApplyProjectLimitsPushesTheListRate(t *testing.T) {
 	require.EqualValues(t, 0, listRate(t, db, teamID), "a pushed zero disables the limit rather than falling back")
 }
 
-func TestAnUnpushedProjectKeepsItsTierListRate(t *testing.T) {
+func TestAnUnpushedProjectKeepsTheDefaultListRate(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
 	_, _ = newService(db)
 	teamID := testutils.CreateTestTeam(t, db)
-	setTierListRate(t, db, teamID, 25)
+	setDefaultListRate(t, db, 25)
 
 	require.EqualValues(t, 25, listRate(t, db, teamID))
 }
@@ -293,16 +285,7 @@ func TestAnUnpushedProjectKeepsItsTierListRate(t *testing.T) {
 func secretLimit(t *testing.T, db *testutils.Database, teamID uuid.UUID) int64 {
 	t.Helper()
 
-	var limit int64
-	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
-		"SELECT max_secrets FROM public.team_limits WHERE id = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&limit)
-		}, teamID))
-
-	return limit
+	return resolvedLimits(t, db, teamID).MaxSecrets
 }
 
 func TestApplyProjectLimitsPushesTheSecretLimit(t *testing.T) {
@@ -311,7 +294,7 @@ func TestApplyProjectLimitsPushesTheSecretLimit(t *testing.T) {
 	db := testutils.SetupDatabase(t)
 	service, _ := newService(db)
 	teamID := testutils.CreateTestTeam(t, db)
-	require.EqualValues(t, 10, secretLimit(t, db, teamID), "an unpushed project is on its tier")
+	require.EqualValues(t, 10, secretLimit(t, db, teamID), "an unpushed project is on the defaults")
 
 	pushed := projectLimits(teamID, 1)
 	pushed.MaxSecrets = 70

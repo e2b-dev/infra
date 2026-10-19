@@ -35,8 +35,8 @@ WITH changed AS (
 )
 SELECT EXISTS (SELECT 1 FROM changed) AS applied;
 
--- UpsertProjectLimits records a project's effective limits, which the
--- team_limits view reads in preference to the tier-plus-addons arithmetic.
+-- UpsertProjectLimits records a project's effective limits, which the team
+-- lookups read in preference to default_limits.
 --
 -- Every column is supplied on every call: the caller sends a complete set, so
 -- there is no partial update to merge and no prior row to read first.

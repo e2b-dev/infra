@@ -15,33 +15,33 @@ func (t *Team) TeamID() string {
 }
 
 func newTeamLimits(
-	teamLimits *authqueries.TeamLimit,
+	row *authqueries.GetTeamByTeamIDRow,
 ) *TeamLimits {
 	return &TeamLimits{
-		SandboxConcurrency: teamLimits.ConcurrentSandboxes,
-		BuildConcurrency:   teamLimits.ConcurrentTemplateBuilds,
-		MaxLengthHours:     teamLimits.MaxLengthHours,
-		MaxVcpu:            teamLimits.MaxVcpu,
-		MaxRamMb:           teamLimits.MaxRamMb,
-		DiskMb:             teamLimits.DiskMb,
-		EventsTTLDays:      teamLimits.EventsTtlDays,
-		APITeamRPSList:     teamLimits.ApiTeamRpsList,
-		APITeamRPSDelete:   teamLimits.ApiTeamRpsDelete,
+		SandboxConcurrency: row.ConcurrentSandboxes,
+		BuildConcurrency:   row.ConcurrentTemplateBuilds,
+		MaxLengthHours:     row.MaxLengthHours,
+		MaxVcpu:            row.MaxVcpu,
+		MaxRamMb:           row.MaxRamMb,
+		DiskMb:             row.DiskMb,
+		EventsTTLDays:      row.EventsTtlDays,
+		APITeamRPSList:     row.ApiTeamRpsList,
+		APITeamRPSDelete:   row.ApiTeamRpsDelete,
 
-		DefaultFreeDiskSizeMb: teamLimits.DefaultFreeDiskSizeMb,
-		MaxFreeDiskSizeMb:     teamLimits.MaxFreeDiskSizeMb,
+		DefaultFreeDiskSizeMb: row.DefaultFreeDiskSizeMb,
+		MaxFreeDiskSizeMb:     row.MaxFreeDiskSizeMb,
 
-		MaxSecrets: teamLimits.MaxSecrets,
+		MaxSecrets: row.MaxSecrets,
 	}
 }
 
-func NewTeam(
-	team *authqueries.Team,
-	teamLimits *authqueries.TeamLimit,
-) *Team {
+// NewTeam takes the row of a single-team lookup. The other lookups return the
+// same columns, so their rows convert to this type; a lookup whose column list
+// drifts stops compiling at the conversion.
+func NewTeam(row authqueries.GetTeamByTeamIDRow) *Team {
 	return &Team{
-		Team:   team,
-		Limits: newTeamLimits(teamLimits),
+		Team:   &row.Team,
+		Limits: newTeamLimits(&row),
 	}
 }
 

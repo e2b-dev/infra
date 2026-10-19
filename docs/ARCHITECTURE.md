@@ -120,11 +120,12 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   The `list` group uses `api_team_rps_list`; the `delete` group uses `api_team_rps_delete` only
   for sandbox and template deletion. Other DELETE operations are ungrouped.
   Delete rates default to zero until configured.
-  A group's rate is one of the team's limits and resolves with the rest of them through the
-  `team_limits` view, which authentication caches; it has no source of its own.
+  A group's rate is one of the team's limits and resolves with the rest of them in the statement
+  that loads the team, which authentication caches; it has no source of its own.
   Propagated project limits carry both rates, and each accepted revision replaces
-  them. A team without pushed limits uses the tier and active add-ons; zero
-  disables group limiting.
+  them. A team with no `project_limits` row uses the deployment's `default_limits`; zero
+  disables group limiting. The migration that added `default_limits` gave every existing team a
+  row holding its limits at the time, so a change to the defaults reaches only teams created since.
   A positive rate sets both requests per second and burst capacity. Redis enforces a separate
   budget for each team, HTTP method, and route template across API replicas: groups select
   rates, but routes do not share a budget. Exhausted budgets return HTTP 429 with rate-limit
@@ -191,8 +192,8 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   a marker to a value at sandbox egress, never here. Without a configured address, or with the flag
   off, the routes stay registered and answer 403. Responses are `Cache-Control: no-store`, request bodies are capped at 512 KiB, and values
   at 64 KiB. A create carries the cap on live secrets the backend enforces: `max_secrets` is one
-  of the team's limits and resolves with the rest of them through the `team_limits` view (a pushed
-  `project_limits` value, else the tier's `max_secrets` plus active add-ons' `extra_max_secrets`).
+  of the team's limits and resolves with the rest of them in the statement that loads the team (its
+  `project_limits` value, else the deployment's `default_limits`).
 - **Sandbox events and webhooks**: `/events/sandboxes` reads a team's sandbox lifecycle events,
   and `/events/webhooks` manages the webhook subscriptions those events are delivered to, along
   with each subscription's delivery attempts and delivery statistics. The API stores none of
@@ -470,7 +471,7 @@ The `/v1/management` operations are the cluster's half of a contract the workspa
 project upsert (a project is a `public.teams` row created from a caller-supplied UUID; the tier is
 assigned once at creation from a local default and no push moves it; an optional cluster ID is
 stored on the project, with omission preserving its current assignment; a changed slug renames the project, and nothing else follows it), per-member projection,
-and limit sync (into `project_limits`, which `team_limits` reads in preference to `tiers`). All are
+and limit sync (into `project_limits`, which the team lookups read in preference to `default_limits`). All are
 idempotent, because the caller is level-triggered and retries. `PUT
 /v1/management/projects/{projectID}/members/{userID}` applies the desired presence for one user,
 gated by a monotonic per-project/user revision stored in `projection.project_members`; duplicate or
@@ -548,7 +549,7 @@ user's team list. Volumes, builds and stored artifacts are not reclaimed.
 
 | Store | Owner packages | What lives there |
 |---|---|---|
-| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `tiers` (quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the `team_limits` view reads it in preference to `tiers`), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `volumes`, `clusters` |
+| **PostgreSQL** | `packages/db` (goose migrations, sqlc) | Durable control-plane state: `teams`, `users`, `default_limits` (the one row of quota defaults), `project_limits` (per-team quota overrides pushed in by the owning service; the team lookups read it in preference to `default_limits`), `tiers` and `addons` (read for limits only by the legacy `team_limits` view), `envs` (templates), `env_builds` (build rows: vcpu, ram_mb, status, versions), `env_aliases`, `snapshots` (paused sandboxes), `team_api_keys`, `volumes`, `clusters` |
 | **Redis** | API, client-proxy, orchestrator | Ephemeral runtime state: running-sandbox store (source of truth), sandbox→node routing catalog, team/template/snapshot caches, rate limiting, P2P chunk peer registry |
 | **ClickHouse** | `packages/clickhouse` | Time-series/analytics: `metrics_gauge`/`metrics_sum` (written by the OTel collector), `sandbox_events`, `sandbox_host_stats` (written by orchestrator), team metrics, and optionally `sandbox_logs` during the log migration. Read by API and dashboard-api |
 | **Object storage** (GCS/S3/local, `packages/shared/pkg/storage`) | orchestrator, template-manager | Template & snapshot artifacts, keyed by build ID: `{buildID}/memfile`, `{buildID}/rootfs.ext4`, `{buildID}/snapfile`, `{buildID}/metadata.json` + `.header` index files |

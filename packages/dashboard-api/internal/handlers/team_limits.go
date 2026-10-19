@@ -23,7 +23,7 @@ func (s *APIStore) GetTeamsTeamIDLimits(c *gin.Context, teamID api.TeamID) {
 		}
 	}
 
-	row, err := s.authDB.GetTeamWithTierByTeamID(ctx, teamID)
+	row, err := s.authDB.GetTeamByTeamID(ctx, teamID)
 	if err != nil {
 		if dberrors.IsNotFoundError(err) {
 			s.sendAPIStoreError(c, http.StatusNotFound, "Team not found")
@@ -37,16 +37,15 @@ func (s *APIStore) GetTeamsTeamIDLimits(c *gin.Context, teamID api.TeamID) {
 		return
 	}
 
-	limits := row.TeamLimit
 	c.JSON(http.StatusOK, api.TeamLimitsResponse{
 		Limits: api.UserTeamLimits{
-			MaxLengthHours:           limits.MaxLengthHours,
-			ConcurrentSandboxes:      limits.ConcurrentSandboxes,
-			ConcurrentTemplateBuilds: limits.ConcurrentTemplateBuilds,
-			MaxVcpu:                  limits.MaxVcpu,
-			MaxRamMb:                 limits.MaxRamMb,
-			DiskMb:                   limits.DiskMb,
-			EventsTtlDays:            limits.EventsTtlDays,
+			MaxLengthHours:           row.MaxLengthHours,
+			ConcurrentSandboxes:      row.ConcurrentSandboxes,
+			ConcurrentTemplateBuilds: row.ConcurrentTemplateBuilds,
+			MaxVcpu:                  row.MaxVcpu,
+			MaxRamMb:                 row.MaxRamMb,
+			DiskMb:                   row.DiskMb,
+			EventsTtlDays:            row.EventsTtlDays,
 		},
 	})
 }

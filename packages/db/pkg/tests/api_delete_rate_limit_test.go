@@ -14,7 +14,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-func TestAPIDeleteRateResolvesTierAndActiveAddons(t *testing.T) {
+func TestAPIDeleteRateResolvesDefaultsUntilPushed(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -25,33 +25,16 @@ func TestAPIDeleteRateResolvesTierAndActiveAddons(t *testing.T) {
 	otherTeamID := seedTeam(t, sqlDB, "other-delete-rate")
 	resolved := func(id uuid.UUID) int64 {
 		t.Helper()
-		row, err := db.AuthDB.GetTeamWithTierByTeamID(t.Context(), id)
+		row, err := db.AuthDB.GetTeamByTeamID(t.Context(), id)
 		require.NoError(t, err)
 
-		return row.TeamLimit.ApiTeamRpsDelete
+		return row.ApiTeamRpsDelete
 	}
 	assert.Zero(t, resolved(teamID))
-	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.tiers SET api_team_rps_delete = 5, api_team_rps_list = 13 WHERE id = 'base_v1'`)
-	require.NoError(t, err)
-	assert.Equal(t, int64(5), resolved(teamID))
-	_, err = sqlDB.ExecContext(t.Context(), `
-		INSERT INTO public.addons (team_id, name, extra_api_team_rps_delete, valid_from, valid_to, added_by)
-		VALUES
-		($1, 'active', 2, now() - interval '1 hour', NULL, $3),
-		($1, 'active with end', 3, now() - interval '1 hour', now() + interval '1 hour', $3),
-		($1, 'expired', 100, now() - interval '2 hours', now() - interval '1 hour', $3),
-		($1, 'future', 100, now() + interval '1 hour', NULL, $3),
-		($2, 'other team', 7, now() - interval '1 hour', NULL, $3)
-	`, teamID, otherTeamID, uuid.Nil)
-	require.NoError(t, err)
-	assert.Equal(t, int64(10), resolved(teamID))
-	assert.Equal(t, int64(12), resolved(otherTeamID))
 	const largeRPS int64 = 1 << 32
-	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.tiers SET api_team_rps_delete = $1 WHERE id = 'base_v1'`, largeRPS)
+	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.default_limits SET api_team_rps_delete = $1`, largeRPS)
 	require.NoError(t, err)
-	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.addons SET extra_api_team_rps_delete = $1 WHERE team_id = $2 AND name = 'active'`, largeRPS+1, teamID)
-	require.NoError(t, err)
-	assert.Equal(t, 2*largeRPS+4, resolved(teamID))
+	assert.Equal(t, largeRPS, resolved(teamID))
 	_, err = sqlDB.ExecContext(t.Context(), `
 		INSERT INTO public.project_limits (
 			team_id, max_length_hours, concurrent_sandboxes, concurrent_template_builds,
@@ -60,19 +43,12 @@ func TestAPIDeleteRateResolvesTierAndActiveAddons(t *testing.T) {
 		) VALUES ($1, 1, 200, 20, 8, 8192, 10240, 7, 10240, 25600, 41, 43, 10)
 	`, teamID)
 	require.NoError(t, err)
-	assert.Equal(t, int64(43), resolved(teamID))
-	row, err := db.AuthDB.GetTeamWithTierByTeamID(t.Context(), teamID)
+	assert.Equal(t, int64(43), resolved(teamID), "a pushed rate replaces the default")
+	assert.Equal(t, largeRPS, resolved(otherTeamID), "another team's push does not reach this one")
+	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.project_limits SET api_team_rps_delete = 0 WHERE team_id = $1`, teamID)
 	require.NoError(t, err)
-	assert.Equal(t, int64(41), row.TeamLimit.ApiTeamRpsList)
-	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.project_limits SET api_team_rps_list = 0 WHERE team_id = $1`, teamID)
-	require.NoError(t, err)
-	row, err = db.AuthDB.GetTeamWithTierByTeamID(t.Context(), teamID)
-	require.NoError(t, err)
-	assert.Zero(t, row.TeamLimit.ApiTeamRpsList)
-	assert.Equal(t, int64(43), row.TeamLimit.ApiTeamRpsDelete)
-	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.tiers SET api_team_rps_delete = -1 WHERE id = 'base_v1'`)
-	require.Error(t, err)
-	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.addons SET extra_api_team_rps_delete = -1 WHERE team_id = $1`, teamID)
+	assert.Zero(t, resolved(teamID), "a pushed zero disables the limit rather than falling back")
+	_, err = sqlDB.ExecContext(t.Context(), `UPDATE public.default_limits SET api_team_rps_delete = -1`)
 	require.Error(t, err)
 }
 
@@ -116,9 +92,9 @@ func TestAPIDeleteRateMigrationRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	_, err = provider.Up(t.Context())
 	require.NoError(t, err)
-	row, err := db.AuthDB.GetTeamWithTierByTeamID(t.Context(), teamID)
+	row, err := db.AuthDB.GetTeamByTeamID(t.Context(), teamID)
 	require.NoError(t, err)
-	assert.Equal(t, int64(17), row.TeamLimit.ApiTeamRpsDelete, "a row pushed before the column keeps the tier's rate and add-ons")
+	assert.Equal(t, int64(17), row.ApiTeamRpsDelete, "a row pushed before the column keeps the tier's rate and add-ons")
 	assert.JSONEq(t, before, otherLimits())
 	_, err = provider.DownTo(t.Context(), 20261002234434)
 	require.NoError(t, err)
@@ -126,8 +102,8 @@ func TestAPIDeleteRateMigrationRoundTrip(t *testing.T) {
 	_, err = provider.Up(t.Context())
 	require.NoError(t, err)
 	assert.JSONEq(t, before, otherLimits())
-	row, err = db.AuthDB.GetTeamWithTierByTeamID(t.Context(), teamID)
+	row, err = db.AuthDB.GetTeamByTeamID(t.Context(), teamID)
 	require.NoError(t, err)
-	assert.Zero(t, row.TeamLimit.ApiTeamRpsDelete)
-	assert.Equal(t, int64(43), row.TeamLimit.ApiTeamRpsList)
+	assert.Zero(t, row.ApiTeamRpsDelete)
+	assert.Equal(t, int64(43), row.ApiTeamRpsList)
 }

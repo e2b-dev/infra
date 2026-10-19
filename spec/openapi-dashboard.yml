@@ -1163,8 +1163,8 @@ components:
 
         A project's tier is not among them. It is assigned once, at creation,
         from this side's own default, and no push moves it — limits arrive
-        separately and in full through upsertProjectLimits, which takes
-        precedence over the tier anyway.
+        separately and in full through upsertProjectLimits, and none is
+        resolved from the tier.
       required: [name, slug, email]
       properties:
         cluster_id:
@@ -1301,11 +1301,12 @@ components:
         arithmetic of its own.
 
 
-        The minimums below track the CHECK constraints on tiers, which is the
-        contract for what a limit may be. project_limits stores the same values
-        under looser constraints on purpose — it is a push target, and a floor
-        that only rejects the impossible keeps a future decision about what is
-        allowed a change to this schema rather than a migration.
+        The minimums below are the contract for what a limit may be, at least
+        as strict as the CHECK constraints on default_limits. project_limits
+        stores the same values under looser constraints on purpose — it is a
+        push target, and a floor that only rejects the impossible keeps a
+        future decision about what is allowed a change to this schema rather
+        than a migration.
 
 
         `max_disk_size_mb` and `max_free_disk_size_mb` are one ceiling under two

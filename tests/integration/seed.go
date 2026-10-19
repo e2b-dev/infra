@@ -129,13 +129,22 @@ VALUES ($1, $2, $3, $4, $5, $6)
 	}
 
 	// Grant the integration test team extra capacity so parallel tests don't
-	// hit the base tier's 20-sandbox cap.
+	// hit the default 20-sandbox cap.
 	err = db.TestsRawSQL(ctx, `
-INSERT INTO addons (team_id, name, extra_concurrent_sandboxes, extra_concurrent_template_builds, added_by)
-VALUES ($1, 'integration-tests-extra-capacity', 200, 50, '00000000-0000-0000-0000-000000000000')
+INSERT INTO project_limits (
+	team_id, max_length_hours, concurrent_sandboxes, concurrent_template_builds,
+	max_vcpu, max_ram_mb, disk_mb, events_ttl_days,
+	default_free_disk_size_mb, max_disk_size_mb, max_free_disk_size_mb,
+	api_team_rps_list, api_team_rps_delete, max_secrets
+)
+SELECT $1, max_length_hours, concurrent_sandboxes + 200, concurrent_template_builds + 50,
+	max_vcpu, max_ram_mb, disk_mb, events_ttl_days,
+	default_free_disk_size_mb, max_disk_size_mb, max_disk_size_mb,
+	api_team_rps_list, api_team_rps_delete, max_secrets
+FROM default_limits
 `, data.TeamID)
 	if err != nil {
-		return fmt.Errorf("failed to create test team addon: %w", err)
+		return fmt.Errorf("failed to set test team limits: %w", err)
 	}
 
 	// User-Team
