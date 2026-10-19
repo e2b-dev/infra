@@ -569,7 +569,7 @@ func TestPostSecretsProjectSecretsLimit(t *testing.T) {
 	}{
 		{name: "resolved limit", limit: 250, sent: 250},
 		{name: "limit above the wire's range is clamped", limit: math.MaxInt32 + 1, sent: math.MaxInt32},
-		{name: "no resolved limit leaves the backend's own", limit: 0, sent: 0},
+		{name: "a zero limit is sent unchanged", limit: 0, sent: 0},
 	}
 
 	for _, tt := range tests {

@@ -307,7 +307,7 @@ type CreateSecretRequest struct {
 	// Customer metadata for the logical secret. Omission defaults to empty.
 	Metadata map[string]string `protobuf:"bytes,4,rep,name=metadata,proto3" json:"metadata,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
 	// Live secrets the project may hold, as the caller resolved it for the
-	// project's plan. Zero or omitted leaves the backend's own limit in place.
+	// project's plan. At least one; a create without it is refused.
 	ProjectSecretsLimit int32 `protobuf:"varint,5,opt,name=project_secrets_limit,json=projectSecretsLimit,proto3" json:"project_secrets_limit,omitempty"`
 	unknownFields       protoimpl.UnknownFields
 	sizeCache           protoimpl.SizeCache
