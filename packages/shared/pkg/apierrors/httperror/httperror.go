@@ -14,7 +14,21 @@ import (
 // ContentType is the Content-Type of every error response.
 const ContentType = "application/json; charset=utf-8"
 
+// ShouldRetryHeader carries an error's explicit retry classification.
+const ShouldRetryHeader = "Should-Retry"
+
 var _ error = (*APIError)(nil)
+
+// Retryability states whether the condition behind an error may clear, so
+// that retrying the request could succeed. It says nothing about idempotency
+// keys. Error responses carry it as ShouldRetryHeader; the zero value leaves the header unchanged.
+type Retryability int
+
+const (
+	UndefinedRetry Retryability = iota
+	CanRetry
+	NoRetry
+)
 
 // APIError represents a structured error with an HTTP status code and client-facing message.
 type APIError struct {
@@ -24,6 +38,7 @@ type APIError struct {
 	// ErrorCode is an optional machine-readable semantic code (e.g.
 	// "sandbox_capacity_unavailable") rendered as error_code in the body.
 	ErrorCode string
+	Retryable Retryability
 }
 
 func (e *APIError) Error() string {
@@ -47,9 +62,19 @@ func encode(apiErr *APIError) ([]byte, error) {
 	return encoded, nil
 }
 
+func setRetryHeader(header http.Header, retryable Retryability) {
+	switch retryable {
+	case CanRetry:
+		header.Set(ShouldRetryHeader, "true")
+	case NoRetry:
+		header.Set(ShouldRetryHeader, "false")
+	}
+}
+
 // Write answers w with the error. If the body cannot be encoded, w still gets
-// the status, with no body, and Write returns the encoding error.
+// the status and Should-Retry, with no body, and Write returns the encoding error.
 func Write(w http.ResponseWriter, apiErr *APIError) error {
+	setRetryHeader(w.Header(), apiErr.Retryable)
 	encoded, err := encode(apiErr)
 	if err != nil {
 		w.WriteHeader(apiErr.Code)
@@ -75,9 +100,12 @@ func Response(apiErr *APIError) (*http.Response, error) {
 		return nil, err
 	}
 
+	header := http.Header{"Content-Type": {ContentType}}
+	setRetryHeader(header, apiErr.Retryable)
+
 	return &http.Response{
 		StatusCode: apiErr.Code,
-		Header:     http.Header{"Content-Type": {ContentType}},
+		Header:     header,
 		Body:       io.NopCloser(bytes.NewReader(encoded)),
 	}, nil
 }

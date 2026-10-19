@@ -48,3 +48,36 @@ func TestSendAPIErrorAnswersInTheAPIErrorShape(t *testing.T) {
 		})
 	}
 }
+
+func TestSendAPIErrorSetsShouldRetryFromTheError(t *testing.T) {
+	t.Parallel()
+
+	for name, tc := range map[string]struct {
+		retryable Retryability
+		existing  string
+		want      string
+	}{
+		"undefined leaves absent header unset": {retryable: UndefinedRetry},
+		"undefined preserves true":             {retryable: UndefinedRetry, existing: "true", want: "true"},
+		"undefined preserves false":            {retryable: UndefinedRetry, existing: "false", want: "false"},
+		"no retry":                             {retryable: NoRetry, existing: "true", want: "false"},
+		"can retry":                            {retryable: CanRetry, existing: "false", want: "true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			if tc.existing != "" {
+				c.Header(ShouldRetryHeader, tc.existing)
+			}
+
+			SendAPIError(c, &APIError{Code: http.StatusServiceUnavailable, ClientMsg: "unavailable", Retryable: tc.retryable})
+
+			header := recorder.Result().Header
+			_, present := header[ShouldRetryHeader]
+			assert.Equal(t, tc.want != "", present)
+			assert.Equal(t, tc.want, header.Get(ShouldRetryHeader))
+		})
+	}
+}

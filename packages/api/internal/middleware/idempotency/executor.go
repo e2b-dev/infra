@@ -43,27 +43,27 @@ func (e *executor) run(c *gin.Context, requestContent any, operation func()) {
 	ctx := c.Request.Context()
 	deadline, ok := ctx.Deadline()
 	if !ok {
-		unavailable(c, errors.New("idempotency requires a request deadline"))
+		unavailable(c, errors.New("idempotency requires a request deadline"), apierrors.NoRetry)
 
 		return
 	}
 	digest, err := fingerprint(c.Request, requestContent)
 	if err != nil {
-		reject(c, http.StatusBadRequest, "Invalid request for idempotency")
+		reject(c, http.StatusBadRequest, "Invalid request for idempotency", apierrors.NoRetry)
 
 		return
 	}
 	owner := uuid.NewString()
 	result, err := e.store.reserve(ctx, e.key, digest, owner, e.retentionSeconds, deadline.Add(completionTimeout))
 	if err != nil {
-		unavailable(c, err)
+		unavailable(c, err, apierrors.CanRetry)
 
 		return
 	}
 	if result.state == stateOwner {
 		if err := ctx.Err(); err != nil {
 			releaseUnusedReservation(ctx, e.store, e.key, owner)
-			unavailable(c, err)
+			unavailable(c, err, apierrors.CanRetry)
 
 			return
 		}
@@ -80,6 +80,7 @@ func (e *executor) run(c *gin.Context, requestContent any, operation func()) {
 			Code:      http.StatusConflict,
 			ClientMsg: "Idempotency-Key was already used with a different request",
 			ErrorCode: "idempotency_request_mismatch",
+			Retryable: apierrors.NoRetry,
 		})
 	case statePending:
 		c.Abort()
@@ -87,6 +88,7 @@ func (e *executor) run(c *gin.Context, requestContent any, operation func()) {
 			Code:      http.StatusConflict,
 			ClientMsg: "The original request has not recorded a response yet. Retry with the same Idempotency-Key.",
 			ErrorCode: "idempotency_in_progress",
+			Retryable: apierrors.CanRetry,
 		})
 	case stateOutcomeUnknown:
 		c.Abort()
@@ -94,9 +96,10 @@ func (e *executor) run(c *gin.Context, requestContent any, operation func()) {
 			Code:      http.StatusUnprocessableEntity,
 			ClientMsg: "The original request has no recorded response and its outcome is unknown. This request was not executed again.",
 			ErrorCode: "idempotency_outcome_unknown",
+			Retryable: apierrors.NoRetry,
 		})
 	default:
-		unavailable(c, errors.New("idempotency result is unavailable"))
+		unavailable(c, errors.New("idempotency result is unavailable"), apierrors.NoRetry)
 	}
 }
 
@@ -114,7 +117,14 @@ func execute(c *gin.Context, store store, key, owner string, operation func()) {
 	buffer := newResponseCapture(original)
 	defer buffer.release()
 	c.Writer = buffer
-	defer func() { c.Writer = original }()
+	completed := false
+	defer func() {
+		c.Writer = original
+		// The buffer shares the live header map; drop the hint of the response a panic discarded.
+		if !completed {
+			c.Writer.Header().Del(apierrors.ShouldRetryHeader)
+		}
+	}()
 	// A panic can follow side effects even if nothing was written; keep the reservation.
 	operation()
 	c.Writer = original
@@ -127,6 +137,7 @@ func execute(c *gin.Context, store store, key, owner string, operation func()) {
 		logger.L().Warn(c.Request.Context(), "Failed to persist idempotency response; returning original response", zap.Error(err))
 	}
 	writeResponse(c, result)
+	completed = true
 }
 
 func replay(c *gin.Context, result cachedResponse) {
@@ -142,12 +153,12 @@ func writeResponse(c *gin.Context, result cachedResponse) {
 	}
 }
 
-func reject(c *gin.Context, status int, message string) {
+func reject(c *gin.Context, status int, message string, retryable apierrors.Retryability) {
 	c.Abort()
-	apierrors.SendAPIStoreError(c, status, message)
+	apierrors.SendAPIError(c, &apierrors.APIError{Code: status, ClientMsg: message, Retryable: retryable})
 }
 
-func unavailable(c *gin.Context, err error) {
+func unavailable(c *gin.Context, err error, retryable apierrors.Retryability) {
 	logger.L().Warn(c.Request.Context(), "Idempotency unavailable", zap.Error(err))
-	reject(c, http.StatusServiceUnavailable, "Request result is unavailable; retry with the same Idempotency-Key")
+	reject(c, http.StatusServiceUnavailable, "Request result is unavailable; retry with the same Idempotency-Key", retryable)
 }

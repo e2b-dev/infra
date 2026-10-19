@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
@@ -41,9 +42,11 @@ func TestPlacementAPIError(t *testing.T) {
 		wantCode      int
 		wantErrorCode string
 		wantMsg       string
+		wantRetry     apierrors.Retryability
 	}{
 		{
 			name:          "timeout",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.PlacementTimeoutError{Attempts: 2},
 			wantCode:      http.StatusGatewayTimeout,
 			wantErrorCode: "sandbox_placement_timeout",
@@ -55,6 +58,7 @@ func TestPlacementAPIError(t *testing.T) {
 			wantCode:      http.StatusGatewayTimeout,
 			wantErrorCode: "sandbox_placement_timeout",
 			wantMsg:       "Failed to place sandbox: placement timed out, please retry",
+			wantRetry:     apierrors.CanRetry,
 		},
 		{
 			name:          "no nodes available",
@@ -62,6 +66,7 @@ func TestPlacementAPIError(t *testing.T) {
 			wantCode:      http.StatusServiceUnavailable,
 			wantErrorCode: "sandbox_capacity_unavailable",
 			wantMsg:       "Failed to place sandbox: not enough capacity for the requested resources right now, please retry shortly",
+			wantRetry:     apierrors.CanRetry,
 		},
 		{
 			name:          "no eligible node",
@@ -69,11 +74,13 @@ func TestPlacementAPIError(t *testing.T) {
 			wantCode:      http.StatusServiceUnavailable,
 			wantErrorCode: "sandbox_no_compatible_node",
 			wantMsg:       "Failed to place sandbox: no compatible node for this template's requirements",
+			wantRetry:     apierrors.CanRetry,
 		},
 		{
 			// Distinct from "no eligible node": the cluster is not busy, it is
 			// too old, and the client must not be told to retry.
 			name:          "feature unsupported by the cluster",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.UnsupportedFeatureError{Features: []string{"https-backend-ports"}, MinVersion: "0.11.0"},
 			wantCode:      http.StatusServiceUnavailable,
 			wantErrorCode: "sandbox_feature_unsupported",
@@ -83,6 +90,7 @@ func TestPlacementAPIError(t *testing.T) {
 			// A pause's files are still uploading when the resume is placed:
 			// the node's answer is transient and keeps the retryable code.
 			name:          "create failed forwards sandbox files not found",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.FailedPrecondition, "sandbox files for 'abc' not found")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
@@ -92,6 +100,7 @@ func TestPlacementAPIError(t *testing.T) {
 			// A node that predates the typed detail: the message says the
 			// refusal is for good.
 			name:          "create refused by the vcpu bounds message",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.InvalidArgument, "vcpu 0 must be at least 1")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_refused",
@@ -102,6 +111,7 @@ func TestPlacementAPIError(t *testing.T) {
 			// 400 is not the client's: no REST field reaches the refused
 			// checks, so the answer is a server error.
 			name:          "create refused by the typed detail",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatus(t, codes.InvalidArgument, "invalid volume mount path")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_refused",
@@ -114,6 +124,7 @@ func TestPlacementAPIError(t *testing.T) {
 			// refusal rather than a failure the proxy retries for the
 			// whole budget.
 			name:          "create refused by the typed detail as Internal is final",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 1, LastErr: createRefusedStatusWith(t, codes.Internal, "vcpu 0 must be at least 1", http.StatusInternalServerError)},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_refused",
@@ -123,6 +134,7 @@ func TestPlacementAPIError(t *testing.T) {
 			// The text-match shim stays behind the safe codes: without
 			// the detail an Internal status is not read.
 			name:          "create failed hides the vcpu bounds text on an unsafe code",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.Internal, "vcpu 0 must be at least 1")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
@@ -130,6 +142,7 @@ func TestPlacementAPIError(t *testing.T) {
 		},
 		{
 			name:          "create refused with a server status keeps it",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatusWith(t, codes.FailedPrecondition, "node refuses this build for good", http.StatusNotImplemented)},
 			wantCode:      http.StatusNotImplemented,
 			wantErrorCode: "sandbox_create_refused",
@@ -137,6 +150,7 @@ func TestPlacementAPIError(t *testing.T) {
 		},
 		{
 			name:          "create refused with a success status is a server error",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatusWith(t, codes.FailedPrecondition, "node refuses this build for good", http.StatusOK)},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_refused",
@@ -144,6 +158,7 @@ func TestPlacementAPIError(t *testing.T) {
 		},
 		{
 			name:          "create refused with a status beyond HTTP is a server error",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: createRefusedStatusWith(t, codes.FailedPrecondition, "node refuses this build for good", 1000)},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_refused",
@@ -153,6 +168,7 @@ func TestPlacementAPIError(t *testing.T) {
 			// A node draining refuses with FailedPrecondition too; another
 			// node takes the sandbox, so the code says to retry.
 			name:          "create failed forwards a transient node refusal",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.FailedPrecondition, "node is draining")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
@@ -160,6 +176,7 @@ func TestPlacementAPIError(t *testing.T) {
 		},
 		{
 			name:          "create failed forwards a per-host vcpu refusal",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.InvalidArgument, "cannot cold-boot a VM with 8 vcpus on this host")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
@@ -167,6 +184,7 @@ func TestPlacementAPIError(t *testing.T) {
 		},
 		{
 			name:          "create failed forwards an unknown invalid-argument message",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.InvalidArgument, "invalid volume mount path")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
@@ -174,6 +192,7 @@ func TestPlacementAPIError(t *testing.T) {
 		},
 		{
 			name:          "create failed hides unsafe status message",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 3, LastErr: status.Error(codes.Internal, "node ip-10-0-0-1: disk full")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
@@ -181,6 +200,7 @@ func TestPlacementAPIError(t *testing.T) {
 		},
 		{
 			name:          "create failed hides non-grpc error",
+			wantRetry:     apierrors.NoRetry,
 			err:           placement.SandboxCreateError{Attempts: 2, LastErr: errors.New("dial tcp 10.0.0.1: connection refused")},
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "sandbox_create_failed",
@@ -192,9 +212,11 @@ func TestPlacementAPIError(t *testing.T) {
 			wantCode:      http.StatusServiceUnavailable,
 			wantErrorCode: "sandbox_capacity_unavailable",
 			wantMsg:       "Failed to place sandbox: not enough capacity for the requested resources right now, please retry shortly",
+			wantRetry:     apierrors.CanRetry,
 		},
 		{
 			name:          "unknown error keeps generic message",
+			wantRetry:     apierrors.NoRetry,
 			err:           errors.New("boom"),
 			wantCode:      http.StatusInternalServerError,
 			wantErrorCode: "internal_server_error",
@@ -212,6 +234,7 @@ func TestPlacementAPIError(t *testing.T) {
 			assert.Equal(t, tt.wantCode, apiErr.Code)
 			assert.Equal(t, tt.wantErrorCode, apiErr.ErrorCode)
 			assert.Equal(t, tt.wantMsg, apiErr.ClientMsg)
+			assert.Equal(t, tt.wantRetry, apiErr.Retryable)
 			assert.ErrorContains(t, apiErr.Err, tt.err.Error())
 		})
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/placement"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 )
@@ -115,6 +116,7 @@ func placementAPIError(err error) *api.APIError {
 			ErrorCode: errorCode,
 			ClientMsg: message,
 			Err:       fmt.Errorf("failed to place sandbox: %w", err),
+			Retryable: apierrors.NoRetry,
 		}
 	}
 
@@ -129,18 +131,27 @@ func placementAPIError(err error) *api.APIError {
 	switch {
 	case errors.As(err, &timeoutErr):
 		if timeoutErr.Attempts == 0 {
-			return apiErr(http.StatusGatewayTimeout, errCodePlacementTimeout, placementMessagePrefix+": placement timed out, please retry")
+			result := apiErr(http.StatusGatewayTimeout, errCodePlacementTimeout, placementMessagePrefix+": placement timed out, please retry")
+			result.Retryable = apierrors.CanRetry
+
+			return result
 		}
 
 		return apiErr(http.StatusGatewayTimeout, errCodePlacementTimeout, fmt.Sprintf("%s: placement timed out after %d attempt(s), please retry", placementMessagePrefix, timeoutErr.Attempts))
 	case errors.As(err, &noNodesErr):
-		return apiErr(http.StatusServiceUnavailable, errCodeCapacityUnavailable, placementMessagePrefix+": not enough capacity for the requested resources right now, please retry shortly")
+		result := apiErr(http.StatusServiceUnavailable, errCodeCapacityUnavailable, placementMessagePrefix+": not enough capacity for the requested resources right now, please retry shortly")
+		result.Retryable = apierrors.CanRetry
+
+		return result
 	case errors.As(err, &unsupportedErr):
 		// Same status as the sibling refusals; the error code carries the
 		// distinction, and the message offers no retry because none helps.
 		return apiErr(http.StatusServiceUnavailable, errCodeFeatureUnsupported, fmt.Sprintf("%s: no available orchestrator at version %s or above for a feature the request asked for", placementMessagePrefix, unsupportedErr.MinVersion))
 	case errors.As(err, &noEligibleErr):
-		return apiErr(http.StatusServiceUnavailable, errCodeNoCompatibleNode, placementMessagePrefix+": no compatible node for this template's requirements")
+		result := apiErr(http.StatusServiceUnavailable, errCodeNoCompatibleNode, placementMessagePrefix+": no compatible node for this template's requirements")
+		result.Retryable = apierrors.CanRetry
+
+		return result
 	case errors.As(err, &createErr):
 		if st, ok := status.FromError(createErr.LastErr); ok {
 			// The typed detail decides whatever the code, as placement

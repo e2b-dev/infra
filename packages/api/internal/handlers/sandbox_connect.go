@@ -224,7 +224,9 @@ func (a *APIStore) connectSandbox(c *gin.Context, sandboxID api.SandboxID, timeo
 	)
 	setMemoryOverrideOutcome(c, memory, createErr)
 	if createErr != nil {
-		apierrors.SendAPIError(c, createErr)
+		responseErr := *createErr
+		responseErr.Retryable = apierrors.UndefinedRetry
+		apierrors.SendAPIError(c, &responseErr)
 
 		return
 	}

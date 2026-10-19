@@ -204,7 +204,9 @@ func (a *APIStore) PostSandboxesSandboxIDResume(c *gin.Context, sandboxID api.Sa
 	)
 	setMemoryOverrideOutcome(c, body.Memory, createErr)
 	if createErr != nil {
-		apierrors.SendAPIError(c, createErr)
+		responseErr := *createErr
+		responseErr.Retryable = apierrors.UndefinedRetry
+		apierrors.SendAPIError(c, &responseErr)
 
 		return
 	}

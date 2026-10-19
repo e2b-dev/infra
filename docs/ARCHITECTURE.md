@@ -681,14 +681,14 @@ retry errors do not replace the owner's cached result.
 ##### Response storage and delivery
 
 The executor captures the handler's status and body, then attempts to persist them before
-delivery. Redis stores one JSON value containing the status, base64-encoded body, and allowlisted
-headers. Base64 preserves arbitrary response bytes; the separate serialized buffer lets Redis
-finish a write after the HTTP capture buffer has been released. The cache includes handler errors
-as well as successful responses, keeping retries attached to one attempt without inferring which
-errors permit safe re-execution.
+delivery. Redis stores one JSON value containing the status, base64-encoded body, allowlisted
+headers, and optional retryability value. Base64 preserves arbitrary response bytes; the separate serialized
+buffer lets Redis finish a write after the HTTP capture buffer has been released. The cache includes
+handler errors as well as successful responses, keeping retries attached to one attempt without
+inferring which errors permit safe re-execution.
 
 The handler edits response headers in place while the executor buffers status and body writes.
-Only `Content-Type`, when present, enters the cache. Replay applies that header over the current
+`Content-Type`, when present, enters the cache. Replay applies that header over the current
 request's headers, preserving fresh request IDs, rate limits, and cross-origin resource sharing
 (CORS) values. The capture pool reuses allocations up to 64 KiB and erases body contents before
 reuse because responses can contain credentials.
@@ -717,6 +717,50 @@ or remove it. Operators must choose retention longer than the operation window: 
 a new owner even if the first operation is still running. Redis eviction or data loss, a different
 key, and feature bypass also permit another execution. Redis capacity and access controls must
 account for cached response volume and the sandbox credentials those responses can contain.
+
+#### Sandbox creation retry hints
+
+`POST /v2/sandboxes` answers errors with `Should-Retry`, exposed through CORS. The header states
+whether the condition behind the error may clear, so that retrying the request could succeed:
+`true` for a transient failure such as missing capacity, a rate limit, or a creation still in
+progress (retry after `Retry-After` when present, otherwise with exponential backoff); `false`
+for a failure a retry cannot fix, such as a malformed request or a configuration fault, and for
+an outcome that is unknown, where a retry could create a second sandbox. The header says nothing
+about idempotency keys. The executor records every handler result under the key, success or
+error, and replays it for as long as the record lives; the caller decides whether a retry keeps
+the key or takes a new one, and the error code names the situation that decision depends on.
+
+Each error carries its classification in `APIError.Retryable`, a `Retryability` enum, and the
+error writer (`httperror.Write`, behind `SendAPIError`) sets the header from it: `CanRetry` and
+`NoRetry` map to `true` and `false`. `UndefinedRetry` (the zero value) leaves the header unchanged:
+an absent header stays absent, and a value set earlier is preserved. Callers that discard a
+response must explicitly remove its retry hint.
+The v2 handler, the rate limiter on that route, and the idempotency executor classify their
+errors. Other creation routes share the creation path, so they reset `Retryable` to
+`UndefinedRetry` before sending. Successful responses omit the header, and so do admission
+errors that carry no classification. A recovered panic removes any hint the handler wrote,
+because the hint described a response the panic replaced. Idempotency stores the header with
+the cached response and replays it, including its absence.
+
+| Response | Should-Retry |
+|---|---|
+| Successful creation or replay | absent |
+| Authentication/schema/parameter validation errors (including 400, 408, and 5xx), blocked-team rejection, oversized body, or recovered panic | absent |
+| Handler input validation, permissions, or missing template/tag | `false` |
+| Idempotency key rejected by the middleware's own check, or idempotency configuration fault (retention flag unreadable or not positive, no request deadline) | `false` |
+| Request rate limit, with or without a key | `true` |
+| Idempotency reservation/lookup failure, or original request still in progress (`idempotency_in_progress`) | `true` |
+| Idempotency request mismatch, or unknown outcome of the original request (`idempotency_outcome_unknown`) | `false` |
+| Cancellation after acquiring a new idempotency reservation but before execution | `true` |
+| Template/volume lookup failure, token generation failure, concurrency reservation error/limit, or unavailable cluster information | `true` |
+| Invalid stored build versions or unsupported orchestrator capability | `false` |
+| No available/compatible node, only capacity refusals, or placement timeout before any non-refused create attempt | `true` |
+| Failed/uncertain create RPC, timeout after a create attempt, or sandbox-store write failure | `false` |
+
+Placement retains uncertainty from earlier attempts even when the last node reports a permanent
+error. A sandbox-store write error follows a successful create RPC and only starts asynchronous
+cleanup, so a retry could run alongside the sandbox being removed. Classification is not based
+on HTTP status alone.
 
 ### Sandbox traffic
 

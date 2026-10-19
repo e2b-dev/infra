@@ -541,7 +541,7 @@ type Error struct {
 	// Code Error code
 	Code int32 `json:"code"`
 
-	// ErrorCode Machine-readable semantic error code. Not a closed set; initial values: sandbox_capacity_unavailable, sandbox_placement_timeout, sandbox_no_compatible_node, sandbox_create_failed, internal_server_error, secret_limit_reached, idempotency_request_mismatch, idempotency_in_progress, idempotency_outcome_unknown.
+	// ErrorCode Machine-readable semantic error code. Not a closed set; initial values: sandbox_capacity_unavailable, sandbox_placement_timeout, sandbox_no_compatible_node, sandbox_create_failed (a node could not create the sandbox this time; retry), sandbox_create_refused (a node refused the sandbox for a reason no retry changes, such as a vcpu count out of bounds in the stored build; a server error, since no request field reaches that check), internal_server_error, secret_limit_reached, idempotency_request_mismatch, idempotency_in_progress, idempotency_outcome_unknown.
 	ErrorCode *string `json:"error_code,omitempty"`
 
 	// Message Error
@@ -15132,9 +15132,40 @@ func (r GetV2SandboxesResponse) ContentType() string {
 	return ""
 }
 
+// PostV2SandboxesResponse400Headers the declared response headers of an HTTP 400 response for PostV2Sandboxes
+type PostV2SandboxesResponse400Headers struct {
+	ShouldRetry *bool
+}
+
+// PostV2SandboxesResponse409Headers the declared response headers of an HTTP 409 response for PostV2Sandboxes
+type PostV2SandboxesResponse409Headers struct {
+	ShouldRetry *bool
+}
+
+// PostV2SandboxesResponse422Headers the declared response headers of an HTTP 422 response for PostV2Sandboxes
+type PostV2SandboxesResponse422Headers struct {
+	ShouldRetry *bool
+}
+
 // PostV2SandboxesResponse429Headers the declared response headers of an HTTP 429 response for PostV2Sandboxes
 type PostV2SandboxesResponse429Headers struct {
-	RetryAfter *int
+	RetryAfter  *int
+	ShouldRetry *bool
+}
+
+// PostV2SandboxesResponse500Headers the declared response headers of an HTTP 500 response for PostV2Sandboxes
+type PostV2SandboxesResponse500Headers struct {
+	ShouldRetry *bool
+}
+
+// PostV2SandboxesResponse503Headers the declared response headers of an HTTP 503 response for PostV2Sandboxes
+type PostV2SandboxesResponse503Headers struct {
+	ShouldRetry *bool
+}
+
+// PostV2SandboxesResponse504Headers the declared response headers of an HTTP 504 response for PostV2Sandboxes
+type PostV2SandboxesResponse504Headers struct {
+	ShouldRetry *bool
 }
 
 type PostV2SandboxesResponse struct {
@@ -15143,7 +15174,7 @@ type PostV2SandboxesResponse struct {
 	// JSON201 the response for an HTTP 201 `application/json` response
 	JSON201 *Sandbox
 	// JSON400 the response for an HTTP 400 `application/json` response
-	JSON400 *N400
+	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
 	// JSON409 the response for an HTTP 409 `application/json` response
@@ -15151,15 +15182,27 @@ type PostV2SandboxesResponse struct {
 	// JSON422 the response for an HTTP 422 `application/json` response
 	JSON422 *Error
 	// JSON429 the response for an HTTP 429 `application/json` response
-	JSON429 *N429
+	JSON429 *Error
 	// JSON500 the response for an HTTP 500 `application/json` response
-	JSON500 *N500
+	JSON500 *Error
 	// JSON503 the response for an HTTP 503 `application/json` response
-	JSON503 *N503
+	JSON503 *Error
 	// JSON504 the response for an HTTP 504 `application/json` response
-	JSON504 *N504
+	JSON504 *Error
+	// Headers400 the parsed response headers for an HTTP 400 response
+	Headers400 *PostV2SandboxesResponse400Headers
+	// Headers409 the parsed response headers for an HTTP 409 response
+	Headers409 *PostV2SandboxesResponse409Headers
+	// Headers422 the parsed response headers for an HTTP 422 response
+	Headers422 *PostV2SandboxesResponse422Headers
 	// Headers429 the parsed response headers for an HTTP 429 response
 	Headers429 *PostV2SandboxesResponse429Headers
+	// Headers500 the parsed response headers for an HTTP 500 response
+	Headers500 *PostV2SandboxesResponse500Headers
+	// Headers503 the parsed response headers for an HTTP 503 response
+	Headers503 *PostV2SandboxesResponse503Headers
+	// Headers504 the parsed response headers for an HTTP 504 response
+	Headers504 *PostV2SandboxesResponse504Headers
 }
 
 // GetJSON201 returns the response for an HTTP 201 `application/json` response
@@ -15168,7 +15211,7 @@ func (r PostV2SandboxesResponse) GetJSON201() *Sandbox {
 }
 
 // GetJSON400 returns the response for an HTTP 400 `application/json` response
-func (r PostV2SandboxesResponse) GetJSON400() *N400 {
+func (r PostV2SandboxesResponse) GetJSON400() *Error {
 	return r.JSON400
 }
 
@@ -15188,22 +15231,22 @@ func (r PostV2SandboxesResponse) GetJSON422() *Error {
 }
 
 // GetJSON429 returns the response for an HTTP 429 `application/json` response
-func (r PostV2SandboxesResponse) GetJSON429() *N429 {
+func (r PostV2SandboxesResponse) GetJSON429() *Error {
 	return r.JSON429
 }
 
 // GetJSON500 returns the response for an HTTP 500 `application/json` response
-func (r PostV2SandboxesResponse) GetJSON500() *N500 {
+func (r PostV2SandboxesResponse) GetJSON500() *Error {
 	return r.JSON500
 }
 
 // GetJSON503 returns the response for an HTTP 503 `application/json` response
-func (r PostV2SandboxesResponse) GetJSON503() *N503 {
+func (r PostV2SandboxesResponse) GetJSON503() *Error {
 	return r.JSON503
 }
 
 // GetJSON504 returns the response for an HTTP 504 `application/json` response
-func (r PostV2SandboxesResponse) GetJSON504() *N504 {
+func (r PostV2SandboxesResponse) GetJSON504() *Error {
 	return r.JSON504
 }
 
@@ -22083,7 +22126,7 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
-		var dest N400
+		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -22111,28 +22154,28 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
-		var dest N429
+		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON429 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
-		var dest N500
+		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON500 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 503:
-		var dest N503
+		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
 		response.JSON503 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 504:
-		var dest N504
+		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -22141,6 +22184,36 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 	}
 
 	switch {
+	case rsp.StatusCode == 400:
+		var headers PostV2SandboxesResponse400Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers400 = &headers
+	case rsp.StatusCode == 409:
+		var headers PostV2SandboxesResponse409Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers409 = &headers
+	case rsp.StatusCode == 422:
+		var headers PostV2SandboxesResponse422Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers422 = &headers
 	case rsp.StatusCode == 429:
 		var headers PostV2SandboxesResponse429Headers
 		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
@@ -22150,7 +22223,44 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 			}
 			headers.RetryAfter = &value
 		}
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
 		response.Headers429 = &headers
+	case rsp.StatusCode == 500:
+		var headers PostV2SandboxesResponse500Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers500 = &headers
+	case rsp.StatusCode == 503:
+		var headers PostV2SandboxesResponse503Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers503 = &headers
+	case rsp.StatusCode == 504:
+		var headers PostV2SandboxesResponse504Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers504 = &headers
 	}
 
 	return response, nil

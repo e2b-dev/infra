@@ -20,6 +20,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/middleware"
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors/httperror"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -258,8 +259,12 @@ func writeRateLimitResult(c *gin.Context, burst int64, result *redis_rate.Result
 	}
 
 	c.Header("Retry-After", strconv.Itoa(retryAfterSecs))
-	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-		"code":    http.StatusTooManyRequests,
-		"message": "Rate limit exceeded",
-	})
+	apiErr := &httperror.APIError{Code: http.StatusTooManyRequests, ClientMsg: "Rate limit exceeded"}
+	if c.Request.Method == http.MethodPost && c.FullPath() == "/v2/sandboxes" {
+		apiErr.Retryable = httperror.CanRetry
+	}
+	c.Abort()
+	if err := httperror.Write(c.Writer, apiErr); err != nil {
+		_ = c.Error(err)
+	}
 }

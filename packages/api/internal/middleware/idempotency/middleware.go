@@ -9,6 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 )
 
@@ -39,19 +40,20 @@ func middleware(store store, flags *featureflags.Client) gin.HandlerFunc {
 		if len(values) != 1 || len(values[0]) < 1 || len(values[0]) > 255 || strings.ContainsFunc(values[0], func(r rune) bool {
 			return (r < 'a' || r > 'z') && (r < '0' || r > '9')
 		}) {
-			reject(c, http.StatusBadRequest, "Idempotency-Key must contain one value of 1 to 255 lowercase ASCII letters or digits")
+			reject(c, http.StatusBadRequest, "Idempotency-Key must contain one value of 1 to 255 lowercase ASCII letters or digits", apierrors.NoRetry)
 
 			return
 		}
 
+		// Both are configuration faults: a retry cannot clear them.
 		retentionSeconds, err := flags.IntFlagWithError(ctx, featureflags.APIIdempotencyTTLSeconds)
 		if err != nil {
-			unavailable(c, err)
+			unavailable(c, err, apierrors.NoRetry)
 
 			return
 		}
 		if retentionSeconds <= 0 {
-			unavailable(c, fmt.Errorf("%s must be greater than zero", featureflags.APIIdempotencyTTLSeconds.Key()))
+			unavailable(c, fmt.Errorf("%s must be greater than zero", featureflags.APIIdempotencyTTLSeconds.Key()), apierrors.NoRetry)
 
 			return
 		}

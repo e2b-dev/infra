@@ -13,13 +13,24 @@ import (
 // APIError represents a structured error with an HTTP status code and client-facing message.
 type APIError = httperror.APIError
 
+type Retryability = httperror.Retryability
+
+const ShouldRetryHeader = httperror.ShouldRetryHeader
+
+const (
+	UndefinedRetry = httperror.UndefinedRetry
+	CanRetry       = httperror.CanRetry
+	NoRetry        = httperror.NoRetry
+)
+
 // SendAPIStoreError sends a JSON error response and records the error on the gin context.
 func SendAPIStoreError(c *gin.Context, code int, message string) {
 	SendAPIError(c, &APIError{Code: code, ClientMsg: message})
 }
 
 // SendAPIError sends a JSON error response like SendAPIStoreError, adding
-// error_code to the body when the error carries a semantic code.
+// error_code to the body when the error carries a semantic code, and setting
+// Should-Retry when Retryable is explicit, otherwise leaving the header unchanged.
 func SendAPIError(c *gin.Context, apiErr *APIError) {
 	c.Error(errors.New(apiErr.ClientMsg))
 

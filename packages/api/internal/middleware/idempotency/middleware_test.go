@@ -33,7 +33,6 @@ import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sharedmiddleware "github.com/e2b-dev/infra/packages/shared/pkg/middleware"
 	redisutils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -48,9 +47,9 @@ type createHandler struct {
 }
 
 func (h createHandler) PostV2Sandboxes(c *gin.Context, _ api.PostV2SandboxesParams) {
-	body, err := ginutils.ParseBody[api.NewSandboxV2](c.Request.Context(), c)
-	if err != nil {
-		apierrors.SendAPIStoreError(c, http.StatusBadRequest, "Invalid create request")
+	var body api.NewSandboxV2
+	if err := c.ShouldBind(&body); err != nil {
+		apierrors.SendAPIError(c, &apierrors.APIError{Code: http.StatusBadRequest, ClientMsg: "Invalid create request", Retryable: apierrors.NoRetry})
 
 		return
 	}
@@ -161,35 +160,39 @@ func validatedRequest(t *testing.T, flags *featureflags.Client, body string) api
 
 func TestBypassAndKeyValidation(t *testing.T) {
 	t.Parallel()
+	// The schema catches most malformed keys before the middleware, so those
+	// 400s carry no hint; only the middleware's own rejection classifies. The
+	// 503s are reserve failures, a transient condition.
 	for _, tc := range []struct {
 		name, path string
 		disabled   bool
 		keys       []string
 		want       int
+		wantRetry  string
 	}{
-		{"absent", "/v2/sandboxes", false, nil, 201},
-		{"disabled absent", "/v2/sandboxes", true, nil, 201},
-		{"disabled valid", "/v2/sandboxes", true, []string{"key"}, 201},
-		{"disabled empty", "/v2/sandboxes", true, []string{""}, 400},
-		{"disabled repeated", "/v2/sandboxes", true, []string{"a", "b"}, 400},
-		{"disabled overlong", "/v2/sandboxes", true, []string{strings.Repeat("a", 256)}, 400},
-		{"disabled invalid utf8", "/v2/sandboxes", true, []string{"\xff"}, 400},
-		{"disabled 255 characters", "/v2/sandboxes", true, []string{strings.Repeat("a", 255)}, 201},
-		{"disabled unicode", "/v2/sandboxes", true, []string{"\u754c"}, 400},
-		{"disabled uppercase", "/v2/sandboxes", true, []string{"ABC"}, 400},
-		{"v1 valid", "/sandboxes", false, []string{"key"}, 201},
-		{"v1 repeated", "/sandboxes", false, []string{"a", "b"}, 201},
-		{"empty", "/v2/sandboxes", false, []string{""}, 400},
-		{"repeated", "/v2/sandboxes", false, []string{"a", "a"}, 400},
-		{"overlong", "/v2/sandboxes", false, []string{strings.Repeat("\u754c", 256)}, 400},
-		{"invalid utf8", "/v2/sandboxes", false, []string{"\xff"}, 400},
-		{"255 characters", "/v2/sandboxes", false, []string{strings.Repeat("a", 255)}, 503},
-		{"lowercase alphanumeric", "/v2/sandboxes", false, []string{"abc0123456789xyz"}, 503},
-		{"uppercase", "/v2/sandboxes", false, []string{"ABC"}, 400},
-		{"punctuation", "/v2/sandboxes", false, []string{"abc-123"}, 400},
-		{"whitespace", "/v2/sandboxes", false, []string{" abc "}, 400},
-		{"unicode", "/v2/sandboxes", false, []string{"\u754c"}, 400},
-		{"non BMP", "/v2/sandboxes", false, []string{strings.Repeat("😀", 128)}, 400},
+		{"absent", "/v2/sandboxes", false, nil, 201, ""},
+		{"disabled absent", "/v2/sandboxes", true, nil, 201, ""},
+		{"disabled valid", "/v2/sandboxes", true, []string{"key"}, 201, ""},
+		{"disabled empty", "/v2/sandboxes", true, []string{""}, 400, ""},
+		{"disabled repeated", "/v2/sandboxes", true, []string{"a", "b"}, 400, ""},
+		{"disabled overlong", "/v2/sandboxes", true, []string{strings.Repeat("a", 256)}, 400, ""},
+		{"disabled invalid utf8", "/v2/sandboxes", true, []string{"\xff"}, 400, ""},
+		{"disabled 255 characters", "/v2/sandboxes", true, []string{strings.Repeat("a", 255)}, 201, ""},
+		{"disabled unicode", "/v2/sandboxes", true, []string{"\u754c"}, 400, ""},
+		{"disabled uppercase", "/v2/sandboxes", true, []string{"ABC"}, 400, ""},
+		{"v1 valid", "/sandboxes", false, []string{"key"}, 201, ""},
+		{"v1 repeated", "/sandboxes", false, []string{"a", "b"}, 201, ""},
+		{"empty", "/v2/sandboxes", false, []string{""}, 400, ""},
+		{"repeated", "/v2/sandboxes", false, []string{"a", "a"}, 400, "false"},
+		{"overlong", "/v2/sandboxes", false, []string{strings.Repeat("\u754c", 256)}, 400, ""},
+		{"invalid utf8", "/v2/sandboxes", false, []string{"\xff"}, 400, ""},
+		{"255 characters", "/v2/sandboxes", false, []string{strings.Repeat("a", 255)}, 503, "true"},
+		{"lowercase alphanumeric", "/v2/sandboxes", false, []string{"abc0123456789xyz"}, 503, "true"},
+		{"uppercase", "/v2/sandboxes", false, []string{"ABC"}, 400, ""},
+		{"punctuation", "/v2/sandboxes", false, []string{"abc-123"}, 400, ""},
+		{"whitespace", "/v2/sandboxes", false, []string{" abc "}, 400, ""},
+		{"unicode", "/v2/sandboxes", false, []string{"\u754c"}, 400, ""},
+		{"non BMP", "/v2/sandboxes", false, []string{strings.Repeat("😀", 128)}, 400, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -201,6 +204,7 @@ func TestBypassAndKeyValidation(t *testing.T) {
 			})
 			w := request(t.Context(), r, tc.path, validBody, tc.keys)
 			require.Equal(t, tc.want, w.Code, w.Body.String())
+			require.Equal(t, tc.wantRetry, w.Result().Header.Get("Should-Retry"))
 			require.Equal(t, tc.want == 201, calls == 1)
 		})
 	}
@@ -214,10 +218,11 @@ func TestDisabledCreatePreservesIdempotencyHeader(t *testing.T) {
 	r := testRouter(t, flags, faultStore{reserveErr: errors.New("unexpected reservation")}, uuid.New(), time.Second, func(c *gin.Context) {
 		captured = c.Request.Header
 		require.Equal(t, keys, captured.Values(headerName))
-		c.Status(http.StatusCreated)
+		apierrors.SendAPIError(c, &apierrors.APIError{Code: http.StatusServiceUnavailable, ClientMsg: "transient create failure", Retryable: apierrors.CanRetry})
 	})
 	w := request(t.Context(), r, "/v2/sandboxes", validBody, keys)
-	require.Equal(t, http.StatusCreated, w.Code)
+	require.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Equal(t, "true", w.Result().Header.Get("Should-Retry"))
 	require.Equal(t, keys, captured.Values(headerName))
 	require.Equal(t, "a", captured.Get("X-API-Key"))
 }
@@ -251,6 +256,7 @@ func TestUnrelatedRoutesIgnoreIdempotencyHeader(t *testing.T) {
 					})
 					w := methodRequest(t.Context(), r, route.method, route.path, "", header.keys)
 					require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+					require.Empty(t, w.Result().Header.Get("Should-Retry"))
 					require.Equal(t, 1, calls)
 				})
 			}
@@ -261,14 +267,22 @@ func TestUnrelatedRoutesIgnoreIdempotencyHeader(t *testing.T) {
 func TestMalformedCreateDoesNotReserve(t *testing.T) {
 	t.Parallel()
 	flags, _ := testFlags(t, false, 86400)
-	for _, body := range []string{"", "{", `{"templateID":}`, `{"templateID":"base","timeout":"bad"}`, `{"templateID":"base","timeout":300.0}`, `{"templateID":"base","network":null}`} {
-		t.Run(body, func(t *testing.T) {
+	for _, tc := range []struct{ body, wantRetry string }{
+		{body: ""},
+		{body: "{"},
+		{body: `{"templateID":}`},
+		{body: `{"templateID":"base","timeout":"bad"}`},
+		{body: `{"templateID":"base","timeout":300.0}`, wantRetry: "false"},
+		{body: `{"templateID":"base","network":null}`},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
 			t.Parallel()
 			r := testRouter(t, flags, faultStore{reserveErr: errors.New("unexpected reservation")}, uuid.New(), time.Second, func(_ *gin.Context) {
 				t.Error("malformed create executed")
 			})
-			w := request(t.Context(), r, "/v2/sandboxes", body, []string{"key"})
+			w := request(t.Context(), r, "/v2/sandboxes", tc.body, []string{"key"})
 			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			assert.Equal(t, tc.wantRetry, w.Result().Header.Get("Should-Retry"))
 		})
 	}
 }
@@ -325,6 +339,7 @@ func TestRedisMiddleware(t *testing.T) {
 		require.EqualValues(t, 1, calls.Load())
 		for i, result := range responses {
 			require.Equal(t, http.StatusConflict, result.Code, result.Body.String())
+			require.Equal(t, "true", result.Result().Header.Get("Should-Retry"))
 			require.JSONEq(t, `{"code":409,"message":"The original request has not recorded a response yet. Retry with the same Idempotency-Key.","error_code":"idempotency_in_progress"}`, result.Body.String())
 			require.Equal(t, fmt.Sprint(i), result.Header().Get("X-Request-ID"))
 			require.Equal(t, "10", result.Header().Get("RateLimit-Remaining"))
@@ -337,10 +352,12 @@ func TestRedisMiddleware(t *testing.T) {
 		releaseOwner()
 		original := <-owner
 		require.Equal(t, http.StatusCreated, original.Code, original.Body.String())
+		assert.NotContains(t, original.Result().Header, "Should-Retry")
 		replayed := request(t.Context(), routers[1], "/v2/sandboxes", validBody, []string{"key"},
 			"X-API-Key", "b", "X-Request-ID", "retry", "RateLimit-Remaining", "9")
 		require.Equal(t, original.Code, replayed.Code, replayed.Body.String())
 		require.Equal(t, original.Body.String(), replayed.Body.String())
+		assert.NotContains(t, replayed.Result().Header, "Should-Retry")
 		require.Equal(t, "retry", replayed.Header().Get("X-Request-ID"))
 		require.Equal(t, "9", replayed.Header().Get("RateLimit-Remaining"))
 		require.EqualValues(t, 1, calls.Load())
@@ -359,22 +376,26 @@ func TestRedisMiddleware(t *testing.T) {
 		require.NoError(t, err)
 		r := testRouter(t, flags, s, team, untilTestDeadline(t), func(c *gin.Context) {
 			calls.Add(1)
-			c.Data(500, "application/json", []byte(`{"code":500,"message":"original error"}`))
+			apierrors.SendAPIError(c, &apierrors.APIError{Code: http.StatusInternalServerError, ClientMsg: "original error", Retryable: apierrors.CanRetry})
 		}, limiter, func(c *gin.Context) { auth.MustGetTeamInfo(c).IsBlocked = blocked.Load() })
 		w := request(t.Context(), r, "/v2/sandboxes", `{}`, []string{"key"})
 		require.Equal(t, 400, w.Code)
 		require.Zero(t, client.Exists(t.Context(), recordKey(team.String(), "key")).Val())
 		original := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		require.Equal(t, 500, original.Code)
+		require.Equal(t, "true", original.Result().Header.Get("Should-Retry"))
 		w = request(t.Context(), r, "/v2/sandboxes", `{"templateID":"other"}`, []string{"key"})
 		require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
 		require.JSONEq(t, `{"code":409,"message":"Idempotency-Key was already used with a different request","error_code":"idempotency_request_mismatch"}`, w.Body.String())
+		require.Equal(t, "false", w.Result().Header.Get("Should-Retry"))
 		w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"}, "Content-Type", "application/json; charset=utf-8")
 		require.Equal(t, original.Code, w.Code, w.Body.String())
 		require.Equal(t, original.Body.String(), w.Body.String())
 		blocked.Store(true)
+		require.Equal(t, "true", w.Result().Header.Get("Should-Retry"))
 		w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		require.Equal(t, 403, w.Code, w.Body.String())
+		require.Empty(t, w.Result().Header.Get("Should-Retry"))
 		blocked.Store(false)
 		w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"}, "X-API-Key", "revoked")
 		require.NotEqual(t, 500, w.Code)
@@ -386,8 +407,40 @@ func TestRedisMiddleware(t *testing.T) {
 		request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		w = request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 		require.Equal(t, 429, w.Code, w.Body.String())
+		require.Equal(t, "true", w.Result().Header.Get("Should-Retry"))
 		require.EqualValues(t, 1, calls.Load())
 	})
+
+	for _, tc := range []struct {
+		name      string
+		retryable apierrors.Retryability
+		wantRetry string
+	}{
+		{name: "undefined", retryable: apierrors.UndefinedRetry},
+		{name: "no retry", retryable: apierrors.NoRetry, wantRetry: "false"},
+		{name: "can retry", retryable: apierrors.CanRetry, wantRetry: "true"},
+	} {
+		t.Run("retry metadata survives replay/"+tc.name, func(t *testing.T) {
+			t.Parallel()
+			flags, _ := testFlags(t, false, 86400)
+			calls := 0
+			r := testRouter(t, flags, s, uuid.New(), time.Second, func(c *gin.Context) {
+				calls++
+				apierrors.SendAPIError(c, &apierrors.APIError{Code: http.StatusServiceUnavailable, ClientMsg: "unavailable", Retryable: tc.retryable})
+			})
+			for range 2 {
+				w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
+				require.Equal(t, http.StatusServiceUnavailable, w.Code)
+				if tc.wantRetry == "" {
+					assert.NotContains(t, w.Result().Header, "Should-Retry")
+				} else {
+					assert.Equal(t, tc.wantRetry, w.Result().Header.Get("Should-Retry"))
+				}
+				assert.JSONEq(t, `{"code":503,"message":"unavailable"}`, w.Body.String())
+			}
+			assert.Equal(t, 1, calls)
+		})
+	}
 
 	t.Run("equivalent parsed requests replay", func(t *testing.T) {
 		t.Parallel()
@@ -508,7 +561,7 @@ func TestRedisMiddleware(t *testing.T) {
 
 	t.Run("redis failure paths retain uncertain reservations", func(t *testing.T) {
 		t.Parallel()
-		for _, phase := range []string{"reserve", "abandoned", "complete", "panic"} {
+		for _, phase := range []string{"reserve", "abandoned", "complete", "panic", "panic after retryable error"} {
 			t.Run(phase, func(t *testing.T) {
 				t.Parallel()
 				flags, _ := testFlags(t, false, 86400)
@@ -530,16 +583,21 @@ func TestRedisMiddleware(t *testing.T) {
 				calls := 0
 				r := testRouter(t, flags, fault, team, untilTestDeadline(t), func(c *gin.Context) {
 					calls++
-					c.Data(201, "application/json", []byte(`{"sandboxID":"original"}`))
+					if phase == "panic after retryable error" {
+						apierrors.SendAPIError(c, &apierrors.APIError{Code: http.StatusInternalServerError, ClientMsg: "buffered error", Retryable: apierrors.CanRetry})
+					} else {
+						c.Data(201, "application/json", []byte(`{"sandboxID":"original"}`))
+					}
 					c.Writer.Flush()
-					if phase == "panic" {
+					if strings.HasPrefix(phase, "panic") {
 						panic("uncertain create")
 					}
 				})
 				w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
 				switch phase {
-				case "panic":
+				case "panic", "panic after retryable error":
 					require.Equal(t, 500, w.Code)
+					assert.Empty(t, w.Body.String())
 				case "complete":
 					require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 					require.JSONEq(t, `{"sandboxID":"original"}`, w.Body.String())
@@ -547,6 +605,13 @@ func TestRedisMiddleware(t *testing.T) {
 					require.Equal(t, http.StatusConflict, w.Code, w.Body.String())
 				default:
 					require.Equal(t, 503, w.Code, w.Body.String())
+				}
+				switch phase {
+				case "reserve", "abandoned":
+					require.Equal(t, "true", w.Result().Header.Get("Should-Retry"))
+				default:
+					// A panic discards the handler's buffered hint with its response.
+					require.NotContains(t, w.Result().Header, "Should-Retry")
 				}
 				if phase == "reserve" {
 					require.Zero(t, calls)
@@ -709,6 +774,7 @@ func TestResponseDeadlineFromOriginalRequest(t *testing.T) {
 		w = request(t.Context(), retryRouter, "/v2/sandboxes", validBody, []string{"key"})
 		require.Equal(t, http.StatusUnprocessableEntity, w.Code, w.Body.String())
 		require.Contains(t, w.Body.String(), `"error_code":"idempotency_outcome_unknown"`)
+		require.Equal(t, "false", w.Result().Header.Get("Should-Retry"))
 		require.Equal(t, 1, calls)
 		require.Zero(t, completeCalls)
 		releaseOwner()
@@ -838,6 +904,18 @@ func TestRetentionFlagValidation(t *testing.T) {
 			require.GreaterOrEqual(t, ttl, retention-elapsed)
 		})
 	}
+}
+
+func TestInvalidRetentionRejectsKeyedRequestsAsPermanent(t *testing.T) {
+	t.Parallel()
+	flags, _ := testFlags(t, false, 0)
+	r := testRouter(t, flags, faultStore{reserveErr: errors.New("unexpected reservation")}, uuid.New(), time.Second, func(_ *gin.Context) {
+		t.Error("misconfigured idempotency executed the request")
+	})
+	w := request(t.Context(), r, "/v2/sandboxes", validBody, []string{"key"})
+	require.Equal(t, http.StatusServiceUnavailable, w.Code, w.Body.String())
+	// A configuration fault is not cleared by retrying.
+	require.Equal(t, "false", w.Result().Header.Get("Should-Retry"))
 }
 
 func redisMillis(t *testing.T, client redis.UniversalClient) int64 {

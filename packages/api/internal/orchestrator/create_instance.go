@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/builds"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/clusters"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/fcversion"
@@ -270,7 +271,8 @@ func (o *Orchestrator) CreateSandbox(
 				ClientMsg: fmt.Sprintf(
 					"you have reached the maximum number of concurrent E2B sandboxes (%d). If you need more, "+
 						"please visit 'https://e2b.dev/docs/billing'", totalConcurrentInstances),
-				Err: fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
+				Err:       fmt.Errorf("team '%s' has reached the maximum number of instances (%d)", team.ID, totalConcurrentInstances),
+				Retryable: apierrors.CanRetry,
 			}
 		default:
 			logger.L().Error(ctx, "failed to reserve sandbox for team", logger.WithSandboxID(sandboxID), zap.Error(err))
@@ -279,6 +281,7 @@ func (o *Orchestrator) CreateSandbox(
 				Code:      http.StatusInternalServerError,
 				ClientMsg: fmt.Sprintf("Failed to create sandbox: %s", err),
 				Err:       err,
+				Retryable: apierrors.CanRetry,
 			}
 		}
 	}
@@ -313,6 +316,7 @@ func (o *Orchestrator) CreateSandbox(
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Error waiting for sandbox to start",
 				Err:       err,
+				Retryable: apierrors.NoRetry,
 			}
 		}
 
@@ -360,6 +364,7 @@ func (o *Orchestrator) CreateSandbox(
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to get build information for the template",
 			Err:       errMsg,
+			Retryable: apierrors.NoRetry,
 		}
 	}
 
@@ -374,6 +379,7 @@ func (o *Orchestrator) CreateSandbox(
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Error while looking for sandbox cluster information",
 				Err:       fmt.Errorf("cannot access cluster %s associated with team id %s that spawned sandbox %s", *team.ClusterID, team.ID, sandboxID),
+				Retryable: apierrors.CanRetry,
 			}
 		}
 
@@ -389,6 +395,7 @@ func (o *Orchestrator) CreateSandbox(
 				Code:      http.StatusInternalServerError,
 				ClientMsg: "Failed to create traffic access token",
 				Err:       fmt.Errorf("failed to create traffic access token for sandbox %s: %w", sandboxID, err),
+				Retryable: apierrors.CanRetry,
 			}
 		}
 
@@ -644,6 +651,7 @@ func (o *Orchestrator) CreateSandbox(
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "Failed to create sandbox",
 			Err:       fmt.Errorf("failed to add sandbox to store: %w", err),
+			Retryable: apierrors.NoRetry,
 		}
 	}
 

@@ -50,6 +50,7 @@ func TestCancellationAfterReservationReleasesUnusedKey(t *testing.T) {
 	r := testRouter(t, flags, cancelAfterReserveStore{store: s, cancel: cancel}, team, time.Minute, handler)
 	first := request(ctx, r, "/v2/sandboxes", validBody, []string{"key"})
 	require.Equal(t, http.StatusServiceUnavailable, first.Code, first.Body.String())
+	require.Equal(t, "true", first.Result().Header.Get("Should-Retry"))
 	require.Zero(t, calls)
 	exists, err := client.Exists(t.Context(), key).Result()
 	require.NoError(t, err)

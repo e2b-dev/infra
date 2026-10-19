@@ -5,6 +5,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
 // allowedRequestHeaders enumerates the request headers a browser may send
@@ -48,6 +49,7 @@ var exposedResponseHeaders = []string{
 	"RateLimit-Remaining",
 	"RateLimit-Reset",
 	"Retry-After",
+	apierrors.ShouldRetryHeader,
 }
 
 // CORS returns the gin CORS middleware for the api service.

@@ -12,9 +12,11 @@ import (
 
 	"github.com/felixge/httpsnoop"
 	"github.com/gin-gonic/gin"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/apierrors"
 )
 
-var cachedResponseHeaders = [...]string{"Content-Type"}
+var cachedResponseHeaders = [...]string{"Content-Type", apierrors.ShouldRetryHeader}
 
 const maxPooledResponseBytes = 64 * 1024
 

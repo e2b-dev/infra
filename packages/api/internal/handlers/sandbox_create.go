@@ -78,16 +78,29 @@ func (a *APIStore) PostSandboxes(c *gin.Context) {
 	}
 
 	body.Secure = new(true)
-	a.createSandbox(c, body, sandbox.SandboxTimeoutDefault)
+	sbx, apiErr := a.createSandbox(c, body, sandbox.SandboxTimeoutDefault)
+	if apiErr != nil {
+		// Only POST /v2/sandboxes exposes Should-Retry.
+		apiErr.Retryable = apierrors.UndefinedRetry
+		apierrors.SendAPIError(c, apiErr)
+
+		return
+	}
+	c.JSON(http.StatusCreated, sbx)
 }
 
 // PostV2Sandboxes creates a sandbox with secured envd access; the request has no secure field to opt out.
 func (a *APIStore) PostV2Sandboxes(c *gin.Context, _ api.PostV2SandboxesParams) {
 	ctx := c.Request.Context()
 
-	body, err := ginutils.ParseBody[api.PostV2SandboxesJSONRequestBody](ctx, c)
-	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Error when parsing request: %s", err))
+	var body api.PostV2SandboxesJSONRequestBody
+	// ShouldBind, unlike Bind, leaves the response uncommitted so Should-Retry can still be set.
+	if err := c.ShouldBind(&body); err != nil {
+		apierrors.SendAPIError(c, &apierrors.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: fmt.Sprintf("Error when parsing request: %s", err),
+			Retryable: apierrors.NoRetry,
+		})
 
 		telemetry.ReportCriticalError(ctx, "error when parsing request", err)
 
@@ -95,7 +108,13 @@ func (a *APIStore) PostV2Sandboxes(c *gin.Context, _ api.PostV2SandboxesParams) 
 	}
 
 	idempotency.Execute(c, body, func() {
-		a.createSandbox(c, newSandboxFromV2(body), sandbox.SandboxTimeoutDefaultV2)
+		sbx, apiErr := a.createSandbox(c, newSandboxFromV2(body), sandbox.SandboxTimeoutDefaultV2)
+		if apiErr != nil {
+			apierrors.SendAPIError(c, apiErr)
+
+			return
+		}
+		c.JSON(http.StatusCreated, sbx)
 	})
 }
 
@@ -120,7 +139,7 @@ func newSandboxFromV2(body api.NewSandboxV2) api.NewSandbox {
 }
 
 // createSandbox runs the shared create flow; defaultTimeout applies when the body omits timeout.
-func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTimeout time.Duration) {
+func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTimeout time.Duration) (*api.Sandbox, *api.APIError) {
 	ctx := c.Request.Context()
 
 	// Get team from context, use TeamContextKey
@@ -136,10 +155,13 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 
 	identifier, tag, err := id.ParseName(body.TemplateID)
 	if err != nil {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid template reference: %s", err))
 		telemetry.ReportError(ctx, "invalid template reference", err)
 
-		return
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: fmt.Sprintf("Invalid template reference: %s", err),
+			Retryable: apierrors.NoRetry,
+		}
 	}
 
 	clusterID := clusters.WithClusterFallback(teamInfo.Team.ClusterID)
@@ -147,9 +169,12 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 	if err != nil {
 		apiErr := templatecache.ErrorToAPIError(err, identifier)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when resolving template alias", apiErr.Err, attribute.String("identifier", identifier))
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		apiErr.Retryable = apierrors.NoRetry
+		if apiErr.Code == http.StatusInternalServerError {
+			apiErr.Retryable = apierrors.CanRetry
+		}
 
-		return
+		return nil, apiErr
 	}
 
 	env, build, err := a.templateCache.Get(ctx, aliasInfo.TemplateID, tag, teamInfo.Team.ID, clusterID)
@@ -166,9 +191,12 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 
 		apiErr := ref.APIError(err)
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error when getting template", apiErr.Err, telemetry.WithTemplateID(aliasInfo.TemplateID))
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		apiErr.Retryable = apierrors.NoRetry
+		if apiErr.Code == http.StatusInternalServerError {
+			apiErr.Retryable = apierrors.CanRetry
+		}
 
-		return
+		return nil, apiErr
 	}
 
 	telemetry.ReportEvent(ctx, "Checked team access")
@@ -207,9 +235,9 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 
 	timeout, apiErr := validateAndParseTimeoutWithDefault(body.Timeout, teamInfo.Limits.MaxLengthHours, defaultTimeout)
 	if apiErr != nil {
-		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+		apiErr.Retryable = apierrors.NoRetry
 
-		return
+		return nil, apiErr
 	}
 
 	autoResume := buildAutoResumeConfig(body.AutoResume)
@@ -222,17 +250,21 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 	// it is meaningless without autoPause; reject it rather than silently storing
 	// a no-op policy.
 	if autoPauseFilesystemOnly && !autoPause {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "autoPauseMemory=false only applies when autoPause is true.")
-
-		return
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "autoPauseMemory=false only applies when autoPause is true.",
+			Retryable: apierrors.NoRetry,
+		}
 	}
 
 	// A filesystem-only auto-pause produces a snapshot that traffic cannot
 	// auto-resume (it must be resumed explicitly), so the two are incompatible.
 	if autoPauseFilesystemOnly && autoResume != nil && autoResume.Policy == types.SandboxAutoResumeAny {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "autoPauseMemory=false (filesystem-only auto-pause) cannot be combined with autoResume: a filesystem-only snapshot cannot be auto-resumed by traffic and must be resumed explicitly.")
-
-		return
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "autoPauseMemory=false (filesystem-only auto-pause) cannot be combined with autoResume: a filesystem-only snapshot cannot be auto-resumed by traffic and must be resumed explicitly.",
+			Retryable: apierrors.NoRetry,
+		}
 	}
 
 	// A filesystem-only auto-pause also needs the sandbox's Firecracker
@@ -243,9 +275,11 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 	// (The evictor still degrades gracefully if resolution shifts between
 	// create and timeout.)
 	if autoPauseFilesystemOnly && !fcgate.SupportsFilesystemSnapshotsDeclared(ctx, a.featureFlags, build.FirecrackerVersion) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("autoPauseMemory=false requires a Firecracker release with filesystem-only snapshot support; this template's version is %q. Rebuild the template on a current release or omit autoPauseMemory.", build.FirecrackerVersion))
-
-		return
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: fmt.Sprintf("autoPauseMemory=false requires a Firecracker release with filesystem-only snapshot support; this template's version is %q. Rebuild the template on a current release or omit autoPauseMemory.", build.FirecrackerVersion),
+			Retryable: apierrors.NoRetry,
+		}
 	}
 
 	var envdAccessToken *string = nil
@@ -253,9 +287,8 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 		accessToken, tokenErr := a.getEnvdAccessToken(build.EnvdVersion, sandboxID)
 		if tokenErr != nil {
 			telemetry.ReportError(ctx, "secure envd access token error", tokenErr.Err, telemetry.WithSandboxID(sandboxID), telemetry.WithBuildID(build.ID.String()))
-			a.sendAPIStoreError(c, tokenErr.Code, tokenErr.ClientMsg)
 
-			return
+			return nil, tokenErr
 		}
 
 		envdAccessToken = &accessToken
@@ -264,15 +297,17 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 	iamCfg, iamErr := buildSandboxIam(body.Iam)
 	if iamErr != nil {
 		telemetry.ReportError(ctx, "invalid iam config", iamErr.Err, telemetry.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, iamErr.Code, iamErr.ClientMsg)
+		iamErr.Retryable = apierrors.NoRetry
 
-		return
+		return nil, iamErr
 	}
 
 	if iamCfg != nil && !a.featureFlags.BoolFlag(ctx, featureflags.SandboxIamTokensFlag, featureflags.TeamContext(teamInfo.Team.ID.String())) {
-		a.sendAPIStoreError(c, http.StatusBadRequest, "Sandbox IAM workload tokens are not available for your team.")
-
-		return
+		return nil, &api.APIError{
+			Code:      http.StatusBadRequest,
+			ClientMsg: "Sandbox IAM workload tokens are not available for your team.",
+			Retryable: apierrors.NoRetry,
+		}
 	}
 
 	allowInternetAccess := body.AllowInternetAccess
@@ -282,9 +317,9 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 		maxDomains := a.featureFlags.IntFlag(ctx, featureflags.MaxNetworkRuleDomains, featureflags.TeamContext(teamInfo.Team.ID.String()))
 		if err := validateNetworkConfig(ctx, a.featureFlags, teamInfo.Team.ID, sharedUtils.DerefOrDefault(build.EnvdVersion, ""), maxDomains, n); err != nil {
 			telemetry.ReportError(ctx, "invalid network config", err.Err, telemetry.WithSandboxID(sandboxID))
-			a.sendAPIStoreError(c, err.Code, err.ClientMsg)
+			err.Retryable = apierrors.NoRetry
 
-			return
+			return nil, err
 		}
 
 		network = &types.SandboxNetworkConfig{
@@ -303,18 +338,23 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 		if ep := n.EgressProxy; ep != nil {
 			if !a.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
 				telemetry.ReportEvent(ctx, "egressProxy rejected by BYOPProxyEnabledFlag")
-				a.sendAPIStoreError(c, http.StatusForbidden,
-					"Egress proxy (network.egressProxy) is not enabled for this team.")
 
-				return
+				return nil, &api.APIError{
+					Code:      http.StatusForbidden,
+					ClientMsg: "Egress proxy (network.egressProxy) is not enabled for this team.",
+					Retryable: apierrors.NoRetry,
+				}
 			}
 
 			canonical, err := sandbox_network.ValidateEgressProxy(ctx, apiEgressProxyToConfig(ep), nil)
 			if err != nil {
 				telemetry.ReportError(ctx, "invalid egress proxy config", err, telemetry.WithSandboxID(sandboxID))
-				a.sendAPIStoreError(c, http.StatusBadRequest, fmt.Sprintf("Invalid egress proxy config: %s", err))
 
-				return
+				return nil, &api.APIError{
+					Code:      http.StatusBadRequest,
+					ClientMsg: fmt.Sprintf("Invalid egress proxy config: %s", err),
+					Retryable: apierrors.NoRetry,
+				}
 			}
 
 			apiorch.ApplyValidatedEgressProxy(network.Egress, canonical)
@@ -326,27 +366,20 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 	)
 	if err != nil {
 		if errors.Is(err, errVolumesNotSupported) || errors.Is(err, errNoEnvdVersion) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, err.Error())
-
-			return
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: err.Error(), Retryable: apierrors.NoRetry}
 		}
 
 		if errors.Is(err, ErrVolumeMountsDisabled) {
-			a.sendAPIStoreError(c, http.StatusBadRequest, "Volume mounts are not enabled.")
-
-			return
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: "Volume mounts are not enabled.", Retryable: apierrors.NoRetry}
 		}
 
 		if vne, ok := errors.AsType[InvalidVolumeMountsError](err); ok {
-			a.sendAPIStoreError(c, http.StatusBadRequest, vne.Error())
-
-			return
+			return nil, &api.APIError{Code: http.StatusBadRequest, ClientMsg: vne.Error(), Retryable: apierrors.NoRetry}
 		}
 
 		telemetry.ReportError(ctx, "failed to convert volume mounts", err, telemetry.WithSandboxID(sandboxID))
-		a.sendAPIStoreError(c, http.StatusInternalServerError, "failed to convert volume mounts")
 
-		return
+		return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "failed to convert volume mounts", Retryable: apierrors.CanRetry}
 	}
 
 	getSandboxData := func(_ context.Context) (apiorch.SandboxMetadata, *api.APIError) {
@@ -382,9 +415,7 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 		mcp,
 	)
 	if createErr != nil {
-		apierrors.SendAPIError(c, createErr)
-
-		return
+		return nil, createErr
 	}
 
 	if n := body.Network; n != nil && n.Rules != nil && len(*n.Rules) > 0 {
@@ -400,7 +431,7 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 		)
 	}
 
-	c.JSON(http.StatusCreated, &sbx)
+	return sbx, nil
 }
 
 // iamTokenTypeJWTSVID is the only workload token type accepted in this version.
@@ -635,6 +666,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 			Code:      http.StatusBadRequest,
 			ClientMsg: "You need to re-build template to allow using secured access. Please visit https://e2b.dev/docs/sandbox/secured-access for more information.",
 			Err:       errors.New("envd version is required during envd access token creation"),
+			Retryable: apierrors.NoRetry,
 		}
 	}
 
@@ -645,6 +677,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "error during envd version check",
 			Err:       err,
+			Retryable: apierrors.NoRetry,
 		}
 	}
 	if !ok {
@@ -652,6 +685,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 			Code:      http.StatusBadRequest,
 			ClientMsg: "Template is not compatible with secured access. Please visit https://e2b.dev/docs/sandbox/secured-access for more information.",
 			Err:       errors.New("envd version is not supported for secure flag"),
+			Retryable: apierrors.NoRetry,
 		}
 	}
 
@@ -661,6 +695,7 @@ func (a *APIStore) getEnvdAccessToken(envdVersion *string, sandboxID string) (st
 			Code:      http.StatusInternalServerError,
 			ClientMsg: "error during sandbox access token generation",
 			Err:       err,
+			Retryable: apierrors.CanRetry,
 		}
 	}
 

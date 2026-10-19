@@ -351,6 +351,41 @@ func TestIntegration_ConcurrentAccess(t *testing.T) {
 
 type groupLimiterFunc func(context.Context, string, redis_rate.Limit) (*redis_rate.Result, error)
 
+func TestSandboxCreateRetryRateLimit(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name, path, key, wantRetry string
+	}{
+		{name: "unkeyed v1", path: "/sandboxes"},
+		{name: "unkeyed v2", path: "/v2/sandboxes", wantRetry: "true"},
+		{name: "keyed v2", path: "/v2/sandboxes", key: "key", wantRetry: "true"},
+		{name: "other operation", path: "/sandboxes/sbx/connect"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			flags := newTestFF(t, map[string]map[string]int{tc.path: {"rate": 1, "burst": 1}})
+			limiter := groupLimiterFunc(func(context.Context, string, redis_rate.Limit) (*redis_rate.Result, error) {
+				return &redis_rate.Result{Allowed: 0, RetryAfter: 2 * time.Second}, nil
+			})
+			router := gin.New()
+			router.Use(func(c *gin.Context) {
+				auth.SetTeamInfoForTest(t, c, &types.Team{Team: &authqueries.Team{ID: uuid.New()}})
+			}, newTestMiddleware(t, limiter, Config{FailOpen: true}, flags))
+			router.POST(tc.path, func(*gin.Context) { t.Error("rate-limited request executed") })
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, tc.path, nil)
+			if tc.key != "" {
+				req.Header.Set("Idempotency-Key", tc.key)
+			}
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, req)
+			require.Equal(t, http.StatusTooManyRequests, recorder.Code)
+			assert.Equal(t, tc.wantRetry, recorder.Result().Header.Get("Should-Retry"))
+			assert.Equal(t, "2", recorder.Result().Header.Get("Retry-After"))
+		})
+	}
+}
+
 func (f groupLimiterFunc) Allow(ctx context.Context, key string, limit redis_rate.Limit) (*redis_rate.Result, error) {
 	return f(ctx, key, limit)
 }
