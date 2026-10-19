@@ -76,6 +76,9 @@ inputs:
     default: "build"
 
 outputs:
+  performance-config:
+    description: Effective runtime and build configuration for timing comparisons
+    value: ${{ steps.performance-config.outputs.configuration }}
   template-published:
     description: "build-sandbox-template's published output: true when a base template is already published under the recipe key for this host"
     value: ${{ steps.build-template.outputs.published }}
@@ -142,6 +145,22 @@ runs:
         dedup_mode: ${{ inputs.dedup_mode }}
         disable_memfd: ${{ inputs.disable_memfd }}
         orchestrator-make-path: ${{ inputs.orchestrator-make-path }}
+
+    - name: Record performance configuration
+      id: performance-config
+      continue-on-error: true
+      shell: bash
+      env:
+        INTEGRATION_INPUTS: ${{ toJSON(inputs) }}
+      run: |
+        python3 - <<'PY'
+        import json, os
+        inputs = json.loads(os.environ["INTEGRATION_INPUTS"])
+        config = {k: v for k, v in inputs.items() if k != "base-template"}
+        config["build_flags"] = {k: os.environ.get(k, "") for k in ("RACE_FLAG", "DEBUG_GCFLAGS", "GOFLAGS")}
+        with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+            output.write("configuration=" + json.dumps(config, sort_keys=True) + "\n")
+        PY
 
     - name: Run Integration Tests
       shell: bash
