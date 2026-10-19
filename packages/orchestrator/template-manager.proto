@@ -66,6 +66,7 @@ message TemplateConfig {
   string buildID = 2;
 
   int32 memoryMB = 3;
+  // CPUs online during the build and in the final template.
   int32 vCpuCount = 4;
   int32 diskSizeMB = 5;
 
@@ -93,6 +94,11 @@ message TemplateConfig {
   // Optional during the rolling upgrade. When absent, the template manager
   // uses diskSizeMB as the post-build free-space target.
   optional int32 freeDiskSizeMB = 17;
+
+  // Capacity of the final template VM, of which vCpuCount are online.
+  // Provisioning and step VMs boot with vCpuCount; absent means the final VM does too.
+  // On x86, both counts must be 1 or even because each is a physical VM size.
+  optional int32 maxVCpuCount = 18;
 }
 
 message TemplateCreateRequest {

@@ -13,12 +13,15 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.opentelemetry.io/otel/sdk/metric/metricdata"
+	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
 	sbxtemplate "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/template"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/template/metadata"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage"
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
 type capacityOnlyTemplate struct {
@@ -121,22 +124,26 @@ func TestVerifyEnvdCpuCount(t *testing.T) {
 	t.Parallel()
 
 	for name, tc := range map[string]struct {
-		header  string
-		vmVcpus int64
-		wantErr bool
+		header      string
+		vmVcpus     int64
+		wantOutcome envdCpuReportOutcome
+		wantErr     bool
 	}{
-		"taken":                     {`{"online":2,"possible":16,"target":2}`, 16, false},
-		"rejected":                  {`{"online":2,"possible":2,"target":2,"rejected":"cpu target 4 outside 1..2"}`, 2, true},
-		"other":                     {`{"online":2,"possible":16,"target":4}`, 16, true},
-		"malformed":                 {`{`, 16, true},
-		"oversized":                 {`{"online":2,"possible":16,"target":2,"rejected":"` + strings.Repeat("x", 600) + `"}`, 16, true},
-		"old envd, spare vcpus":     {"", 16, true},
-		"old envd, vm of vcpu size": {"", 2, false},
-		"old envd, unknown size":    {"", 0, false},
+		"taken":                     {`{"online":2,"possible":16,"target":2}`, 16, envdCpuReportedOK, false},
+		"rejected":                  {`{"online":2,"possible":2,"target":2,"rejected":"cpu target 4 outside 1..2"}`, 16, envdCpuRejected, true},
+		"target mismatch":           {`{"online":2,"possible":16,"target":4}`, 16, envdCpuTargetMismatch, true},
+		"possible below VM size":    {`{"online":2,"possible":2,"target":2}`, 16, envdCpuPossibleLow, true},
+		"possible unavailable":      {`{"online":2,"possible":0,"target":2}`, 16, envdCpuPossibleUnknown, true},
+		"malformed":                 {`{`, 16, envdCpuUnreadable, true},
+		"oversized":                 {`{"online":2,"possible":16,"target":2,"rejected":"` + strings.Repeat("x", 600) + `"}`, 16, envdCpuUnreadable, true},
+		"old envd, spare vcpus":     {"", 16, envdCpuNoHeader, true},
+		"old envd, vm of vcpu size": {"", 2, envdCpuNoHeader, false},
+		"old envd, unknown size":    {"", 0, envdCpuNoHeader, false},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			err := verifyEnvdCpuCount(tc.header, 2, tc.vmVcpus)
+			outcome, err := verifyEnvdCpuCount(tc.header, 2, tc.vmVcpus)
+			assert.Equal(t, tc.wantOutcome, outcome)
 			if tc.wantErr {
 				require.Error(t, err)
 			} else {
@@ -144,6 +151,95 @@ func TestVerifyEnvdCpuCount(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Not parallel: overrides the package-level HTTP client and reads its metric provider
+// after every subtest has run.
+//
+//nolint:paralleltest // see above
+func TestInitEnvdCountsCpuReports(t *testing.T) {
+	originalClient := sandboxHttpClient
+	sandboxHttpClient = http.Client{Timeout: 5 * time.Second}
+	t.Cleanup(func() { sandboxHttpClient = originalClient })
+
+	for _, tc := range []struct {
+		name        string
+		header      string
+		status      int
+		vmVcpus     int64
+		wantFail    bool
+		wantAnomaly bool
+		first       bool
+		reinit      bool
+	}{
+		{name: "first init", header: `{"online":2,"possible":8,"target":2}`, status: http.StatusNoContent, vmVcpus: 8, first: true},
+		{name: "reinit", header: `{"online":2,"possible":8,"target":2}`, status: http.StatusNoContent, vmVcpus: 8, reinit: true},
+		{name: "reported capable", header: `{"online":2,"possible":8,"target":2}`, status: http.StatusNoContent, vmVcpus: 8},
+		{name: "missing header", status: http.StatusNoContent, vmVcpus: 8, wantAnomaly: true},
+		{name: "too few possible", header: `{"online":2,"possible":2,"target":2}`, status: http.StatusNoContent, vmVcpus: 8, wantAnomaly: true},
+		{name: "failed init is not counted", header: `{"online":2,"possible":8,"target":4}`, status: http.StatusServiceUnavailable, vmVcpus: 8, wantFail: true},
+		{name: "failed init without header is not an anomaly", status: http.StatusServiceUnavailable, vmVcpus: 8, wantFail: true},
+		{name: "no spare CPUs is not counted", status: http.StatusNoContent, vmVcpus: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) { //nolint:paralleltest
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				if tc.header != "" {
+					w.Header().Set("X-Envd-Cpus", tc.header)
+				}
+				w.WriteHeader(tc.status)
+			}))
+			defer server.Close()
+
+			s, _ := newMemoryTestSandbox(t, server.URL)
+			s.Config.Vcpu = 2
+			s.resolvedVmVcpus = tc.vmVcpus
+			// Isolate this test's cumulative metric points from other sandbox tests.
+			s.Runtime.SandboxType = sandboxtypes.SandboxType("cpu-report-test")
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			opts := envdInitOptions{}
+			if tc.reinit {
+				opts.reinit = newEnvdReinit(func(error) {})
+			}
+			err := s.initEnvd(ctx, StartTypeCreate, tc.first, opts)
+			if tc.wantFail {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			anomalies := testLogObserver.FilterMessage("envd CPU report anomaly").
+				FilterField(zap.String("sandbox.id", s.Runtime.SandboxID)).All()
+			if tc.wantAnomaly {
+				assert.Len(t, anomalies, 1)
+			} else {
+				assert.Empty(t, anomalies)
+			}
+		})
+	}
+
+	var metrics metricdata.ResourceMetrics
+	require.NoError(t, testMetricReader.Collect(t.Context(), &metrics))
+	counts := map[string]int64{}
+	for _, scope := range metrics.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != string(telemetry.EnvdCpuReport) {
+				continue
+			}
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok)
+			for _, point := range sum.DataPoints {
+				if !hasAttr(point.Attributes, "sandbox_type", "cpu-report-test") || !hasAttr(point.Attributes, "start_type", string(StartTypeCreate)) {
+					continue
+				}
+				outcome, ok := point.Attributes.Value("outcome")
+				require.True(t, ok)
+				init, ok := point.Attributes.Value("init")
+				require.True(t, ok)
+				counts[init.AsString()+"/"+outcome.AsString()] = point.Value
+			}
+		}
+	}
+	assert.Equal(t, map[string]int64{"first/reported_ok": 1, "reinit/reported_ok": 1, "repeat/reported_ok": 1, "repeat/no_header": 1, "repeat/possible_too_low": 1}, counts)
 }
 
 // Not parallel: overrides the package-level sandboxHttpClient.

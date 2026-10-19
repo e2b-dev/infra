@@ -136,6 +136,10 @@ func (sb *StepBuilder) Layer(
 	}
 
 	finalMetadata := sourceLayer.Metadata
+	// A new step boots at the online count, even when the cached source was
+	// snapshotted from a larger VM. Only finalize needs the final VM capacity.
+	// Pause records the stored size; this keeps the in-memory layer result in step.
+	finalMetadata.VcpuCount = sb.Config.VCpuCount
 	finalMetadata.Template = metadata.TemplateMetadata{
 		BuildID:            uuid.NewString(),
 		KernelVersion:      sb.Config.KernelVersion,

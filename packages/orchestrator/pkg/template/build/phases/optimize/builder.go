@@ -192,9 +192,10 @@ func (pb *OptimizeBuilder) collectMemoryPrefetchMapping(
 
 	// Configure sandbox for prefetch collection
 	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		Vcpu:      pb.Config.VCpuCount,
-		RamMB:     pb.Config.MemoryMB,
-		HugePages: pb.Config.HugePages,
+		Vcpu:              pb.Config.VCpuCount,
+		ConfiguredVmVcpus: pb.Config.MaxVCpuCount,
+		RamMB:             pb.Config.MemoryMB,
+		HugePages:         pb.Config.HugePages,
 
 		Envd: sandbox.EnvdMetadata{
 			Version: pb.EnvdVersion,

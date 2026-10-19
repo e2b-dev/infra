@@ -196,17 +196,8 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	isResume := req.GetSandbox().GetSnapshot()
 	vcpu, maxVcpus := req.GetSandbox().GetVcpu(), req.GetSandbox().GetMaxVcpus()
-	if vcpu < 1 {
-		return nil, createRefused(ctx, codes.InvalidArgument, "vcpu %d must be at least 1", vcpu)
-	}
-	if vcpu > fc.MaxVcpus {
-		return nil, createRefused(ctx, codes.InvalidArgument, "vcpu %d is above the %d a VM can have", vcpu, fc.MaxVcpus)
-	}
-	if maxVcpus != 0 && maxVcpus < vcpu {
-		return nil, createRefused(ctx, codes.InvalidArgument, "vcpu %d must be 1..max_vcpus %d", vcpu, maxVcpus)
-	}
-	if maxVcpus > fc.MaxVcpus {
-		return nil, createRefused(ctx, codes.InvalidArgument, "max_vcpus %d is above the %d a VM can have", maxVcpus, fc.MaxVcpus)
+	if err := fc.ValidateVcpus(vcpu, maxVcpus, "vcpu", "max_vcpus"); err != nil {
+		return nil, createRefused(ctx, codes.InvalidArgument, "%s", err.Error())
 	}
 	// fsOnly reports the ARTIFACT kind (filesystem-only snapshot), mirroring the
 	// fs_only pause label, so the historical fs-only latency cohort stays pure.

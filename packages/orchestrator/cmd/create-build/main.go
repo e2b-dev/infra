@@ -32,6 +32,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/artifact"
 	blockmetrics "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block/metrics"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/cgroup"
+	sbxfc "github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc/cputemplate"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -77,6 +78,7 @@ func main() {
 	kernel := flag.String("kernel", featureflags.DefaultKernelVersion, "kernel version")
 	fc := flag.String("firecracker", featureflags.DefaultFirecrackerVersion, "firecracker version")
 	vcpu := flag.Int("vcpu", 2, "vCPUs")
+	maxVcpu := flag.Int("max-vcpus", 0, "vCPUs in the final template VM, of which -vcpu are online; 0 means -vcpu")
 	memory := flag.Int("memory", 1024, "memory MB")
 	disk := flag.Int("disk", 1024, "disk MB")
 	hugePages := flag.Bool("hugepages", true, "use 2MB huge pages for memory (false = 4KB pages)")
@@ -102,6 +104,18 @@ func main() {
 
 	if *toBuild == "" {
 		log.Fatal("-to-build required")
+	}
+
+	if *maxVcpu != 0 {
+		if err := sbxfc.ValidateVcpus(int64(*vcpu), int64(*maxVcpu), "-vcpu", "-max-vcpus"); err != nil {
+			log.Fatalf("invalid flags: %v", err)
+		}
+		if !sbxfc.ValidMachineVcpus(int64(*vcpu)) {
+			log.Fatalf("invalid -vcpu %d: cannot boot an intermediate build VM with %d vcpus on this host", *vcpu, *vcpu)
+		}
+		if !sbxfc.ValidMachineVcpus(int64(*maxVcpu)) {
+			log.Fatalf("invalid -max-vcpus %d: cannot boot a VM with %d vcpus on this host", *maxVcpu, *maxVcpu)
+		}
 	}
 
 	var cpuTmpl *cputemplate.Template
@@ -148,7 +162,7 @@ func main() {
 		log.Fatalf("network config: %v", err)
 	}
 
-	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, cpuTmpl, localMode, *verbose, *timeout, builderConfig, networkConfig)
+	err = doBuild(ctx, *templateID, *toBuild, *fromBuild, *kernel, *fc, *vcpu, *maxVcpu, *memory, *disk, *hugePages, *startCmd, *setupCmd, *readyCmd, cpuTmpl, localMode, *verbose, *timeout, builderConfig, networkConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -243,7 +257,7 @@ func setupEnv(ctx context.Context, storagePath, sandboxDir, kernel, fc string, l
 func doBuild(
 	parentCtx context.Context,
 	templateID, buildID, fromBuild, kernel, fc string,
-	vcpu, memory, disk int,
+	vcpu, maxVcpu, memory, disk int,
 	hugePages bool,
 	startCmd, setupCmd, readyCmd string,
 	cpuTemplate *cputemplate.Template,
@@ -365,7 +379,18 @@ func doBuild(
 	defer templateCache.Stop()
 
 	buildMetrics, _ := metrics.NewBuildMetrics(noop.MeterProvider{})
-	sandboxFactory := sandbox.NewFactory(ctx, c.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroup.NewNoopManager(), network.NewNoopEgressProxy(), sandbox.NoopNetworkAssignHook{}, sandboxes)
+	// A VM larger than its online count needs a cpu limit, so it gets a real cgroup.
+	cgroupManager := cgroup.NewNoopManager()
+	if maxVcpu > vcpu {
+		cgroupManager, err = cgroup.NewManager()
+		if err != nil {
+			return fmt.Errorf("cgroup manager for -max-vcpus: %w", err)
+		}
+		if err := cgroupManager.Initialize(ctx); err != nil {
+			return fmt.Errorf("initialize cgroup root for -max-vcpus: %w", err)
+		}
+	}
+	sandboxFactory := sandbox.NewFactory(ctx, c.BuilderConfig, networkPool, devicePool, featureFlags, hoststats.NewNoopDelivery(), cgroupManager, network.NewNoopEgressProxy(), sandbox.NoopNetworkAssignHook{}, sandboxes)
 
 	// Layered V4 builds need the upload coordinator so child layers wait on
 	// their parents' header finalization. Redis is nil (CLI is single-host —
@@ -416,6 +441,7 @@ func doBuild(
 		TemplateID:         templateID,
 		Force:              &force,
 		VCpuCount:          int64(vcpu),
+		MaxVCpuCount:       int64(maxVcpu),
 		MemoryMB:           int64(memory),
 		DiskSizeMB:         int64(disk),
 		FreeDiskSizeMB:     int64(disk),

@@ -32,8 +32,12 @@ type TemplateConfig struct {
 	// Command to run when building the template.
 	StartCmd string
 
-	// The number of vCPUs to allocate to the VM.
+	// The number of vCPUs online during the build and in the final template.
 	VCpuCount int64
+
+	// Capacity of the final template VM, of which VCpuCount are online. Provisioning
+	// and step VMs boot with VCpuCount; 0 means the final VM also uses VCpuCount.
+	MaxVCpuCount int64
 
 	// The amount of RAM memory to allocate to the VM, in MiB.
 	MemoryMB int64
@@ -110,4 +114,17 @@ func MemfilePageSize(hugePages bool) int64 {
 
 func (e TemplateConfig) RootfsBlockSize() int64 {
 	return header.RootfsBlockSize
+}
+
+// VcpuSizing labels the final VM size a build requests: absent (maxVCpus 0),
+// equal, or resizable (more vCPUs than are online).
+func VcpuSizing(vcpus, maxVCpus int64) string {
+	switch {
+	case maxVCpus == 0:
+		return "absent"
+	case maxVCpus > vcpus:
+		return "resizable"
+	default:
+		return "equal"
+	}
 }

@@ -120,6 +120,11 @@ func (s *Sandbox) SetSyncWPForTest(v bool) {
 	s.useSyncWP = v
 }
 
+// SetMachineVcpusForTest sets the VM size a boot or resume would have resolved.
+func (s *Sandbox) SetMachineVcpusForTest(n int64) {
+	s.resolvedVmVcpus = n
+}
+
 // SetFeatureFlagsForTest gives the sandbox the flag client its flag reads use.
 func (s *Sandbox) SetFeatureFlagsForTest(ff *featureflags.Client) {
 	s.featureFlags = ff

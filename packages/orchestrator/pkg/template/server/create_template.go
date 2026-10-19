@@ -44,6 +44,7 @@ var (
 	// buildCPUTemplate counts builds by the digest of the CPU template applied and by result,
 	// so a template the build rejected is not read as a team that has none.
 	buildCPUTemplate = utils.Must(telemetry.GetCounter(meter, telemetry.TemplateBuildCPUTemplate))
+	buildVcpuSizing  = utils.Must(telemetry.GetCounter(meter, telemetry.TemplateBuildVcpuSizing))
 )
 
 func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templatemanager.TemplateCreateRequest) (*emptypb.Empty, error) {
@@ -54,11 +55,23 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 	defer childSpan.End()
 
 	cfg := templateRequest.GetTemplate()
+	childSpan.SetAttributes(telemetry.WithTemplateID(cfg.GetTemplateID()), telemetry.WithBuildID(cfg.GetBuildID()))
 
 	if cfg.GetFromImage() == "" && cfg.GetFromTemplate() == nil {
 		return nil, status.Error(codes.InvalidArgument, "template build requires either fromImage or fromTemplate")
 	}
 
+	if err := validateMaxVCpuCount(cfg); err != nil {
+		// Validation runs before a build sandbox exists, so the template and build
+		// IDs are the correlation keys for this rejected request.
+		buildVcpuSizing.Add(ctx, 1, metric.WithAttributes(attribute.String("result", "rejected")))
+		s.logger.Warn(ctx, "rejected template build VM sizing",
+			zap.Error(err), logger.WithTemplateID(cfg.GetTemplateID()), logger.WithBuildID(cfg.GetBuildID()),
+			zap.Int32("vcpu_count", cfg.GetVCpuCount()), zap.Int32("max_vcpu_count", cfg.GetMaxVCpuCount()),
+		)
+
+		return nil, err
+	}
 	for _, step := range cfg.GetSteps() {
 		if step.FilesHash == nil { //nolint:protogetter // we need the nil check too
 			continue
@@ -68,6 +81,10 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 			return nil, status.Error(codes.InvalidArgument, err.Error())
 		}
 	}
+
+	// Validation rejected a present 0, so 0 here means absent.
+	vcpuSizing := config.VcpuSizing(int64(cfg.GetVCpuCount()), int64(cfg.GetMaxVCpuCount()))
+	buildVcpuSizing.Add(ctx, 1, metric.WithAttributes(attribute.String("result", vcpuSizing)))
 
 	metadata := storage.Paths{
 		BuildID: cfg.GetBuildID(),
@@ -203,6 +220,7 @@ func (s *ServerStore) TemplateCreate(ctx context.Context, templateRequest *templ
 		TemplateID:           cfg.GetTemplateID(),
 		CacheScope:           cacheScope,
 		VCpuCount:            int64(cfg.GetVCpuCount()),
+		MaxVCpuCount:         int64(cfg.GetMaxVCpuCount()),
 		MemoryMB:             int64(cfg.GetMemoryMB()),
 		StartCmd:             cfg.GetStartCommand(),
 		ReadyCmd:             cfg.GetReadyCommand(),
@@ -319,6 +337,29 @@ const (
 	// cpuTemplateMalformed is a flag value that does not parse; the build fails.
 	cpuTemplateMalformed = "malformed"
 )
+
+// validateMaxVCpuCount rejects VM sizes the host cannot boot before any build VM starts.
+// Absent keeps the final VM at vCpuCount; an explicit 0 is rejected.
+func validateMaxVCpuCount(cfg *templatemanager.TemplateConfig) error {
+	if cfg.MaxVCpuCount == nil {
+		return nil
+	}
+	maxVCpus := int64(cfg.GetMaxVCpuCount())
+	if maxVCpus < 1 {
+		return status.Error(codes.InvalidArgument, "maxVCpuCount must be at least 1 when set")
+	}
+	if err := fc.ValidateVcpus(int64(cfg.GetVCpuCount()), maxVCpus, "vCpuCount", "maxVCpuCount"); err != nil {
+		return status.Error(codes.InvalidArgument, err.Error())
+	}
+	if !fc.ValidMachineVcpus(int64(cfg.GetVCpuCount())) {
+		return status.Errorf(codes.InvalidArgument, "cannot boot an intermediate build VM with %d vcpus on this host", cfg.GetVCpuCount())
+	}
+	if !fc.ValidMachineVcpus(maxVCpus) {
+		return status.Errorf(codes.InvalidArgument, "cannot boot a VM with %d vcpus on this host", maxVCpus)
+	}
+
+	return nil
+}
 
 func resolveFreeDiskSizeMB(cfg *templatemanager.TemplateConfig) int64 {
 	if cfg.FreeDiskSizeMB != nil {

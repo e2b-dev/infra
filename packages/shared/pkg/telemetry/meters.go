@@ -59,6 +59,10 @@ const (
 	// Held post-checkpoint envd re-inits stopped before they returned, by what stopped
 	// them: a following pause, or the sandbox's Firecracker exiting.
 	EnvdReinitCut CounterType = "orchestrator.sandbox.envd.reinit.cut"
+	// EnvdCpuReport counts /init responses for VMs with spare vCPUs by the guest's
+	// reported capacity outcome and by why the /init was sent (init: first start,
+	// reinit after a checkpoint, or repeat). The report is diagnostic, not trusted for CPU limits.
+	EnvdCpuReport CounterType = "orchestrator.sandbox.envd.cpu_report"
 
 	// 2 MiB chunks the pre-pause envd heap collapse attempted, split by the
 	// result attribute (collapsed|skipped): attempts = total, successful =
@@ -360,6 +364,9 @@ const (
 	// applied (empty for none) and by result: applied, rejected (the flag's template was
 	// unusable and the build fell back to none) or none (the flag sets no template).
 	TemplateBuildCPUTemplate CounterType = "orchestrator.template.build.cpu_template"
+	// TemplateBuildVcpuSizing counts the VM sizing builds request, before they run;
+	// template.build.result says what they built.
+	TemplateBuildVcpuSizing CounterType = "orchestrator.template.build.vcpu_sizing"
 
 	// PauseResumePrefetchHarvestAttempts counts pause-resume prefetch harvest
 	// attempts, by result (success|resume_failed|collect_failed|skipped). The
@@ -756,7 +763,7 @@ var counterDesc = map[CounterType]string{
 	ApiOrchestratorResumeOriginNodeRemap:         "Number of resume snapshots repointed to the fallback node a previous resume timed out on",
 	ApiOrchestratorPauseRefusalRestore:           "Outcomes of restoring a sandbox whose pause the node refused retryably, by outcome and caller.",
 	ApiSandboxListReads:                          "Sandbox list requests by team and by how the team's store read was served: disabled | read | shared | hit.",
-	BuildResultCounterName:                       "Number of template build results",
+	BuildResultCounterName:                       "Number of template build results, by result, requested vcpu_sizing (absent|equal|resizable) and built (resizable|not_resizable|none)",
 	BuildCacheResultCounterName:                  "Number of build cache results",
 	TeamSandboxCreated:                           "Counter of started sandboxes for the team in the interval",
 	OrchestratorHostBalanceDirtyPagesThreads:     "Cumulative stalled thread-polls during sandbox resume; rate() gives throttle intensity",
@@ -764,6 +771,7 @@ var counterDesc = map[CounterType]string{
 	EnvdReinitCut:                                "Post-checkpoint envd re-inits stopped before they returned, by what first stopped them, recorded when it did and counted once the re-init returns: pause (a following pause stopped a held one before its pre-pause freeze: cancelled it whatever it had written, or, before its gate chose the held loop, kept it from writing), kill (the sandbox's Firecracker process exited during a held one) or replace (a fresh re-init took its place: cancelled a held one in flight, or kept one from writing on either loop before its gate chose one)",
 	EnvdInitSlowDials:                            "Held envd init dials that took over 500 ms on a first customer start, by how that attempt ended: connect, write, response or success",
 	EnvdInitUnobservedHandlers:                   "Envd /init handlers that thawed the workload inline and completed after their client had gone, as envd counts them on the served /init of a first customer start that succeeded (X-Envd-Init-Unobserved)",
+	EnvdCpuReport:                                "Successful /init responses for VMs with spare vCPUs, by sandbox_type, start_type, outcome, and init (why the /init was sent: first, reinit or repeat)",
 	EnvdCollapseChunks:                           "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:         "Number of sandboxes killed, labeled by kill reason",
 	OrchestratorSandboxCrashedCounterName:        "Sandbox executions that ended without a recorded stop reason, labeled by cause (clean_exit/exit_error/external_signal/fault/memory_handler_failed/requested_signal/unknown)",
@@ -790,6 +798,7 @@ var counterDesc = map[CounterType]string{
 	OrchestratorFsRecoveryToolingUnsupported:     "Fires once per process when the host e2fsck rejects -E journal_only",
 	TemplateBuildCmdlineArgs:                     "Template builds by the guest kernel cmdline parameters applied",
 	TemplateBuildCPUTemplate:                     "Template builds by the digest of the custom Firecracker CPU template applied and by result (result=applied|rejected|none|malformed)",
+	TemplateBuildVcpuSizing:                      "Template build VM sizing requested, counted before the build runs, by result (absent|equal|resizable|rejected)",
 	OrchestratorEnvdUpgradeGated:                 "Resumes where the envd-upgrade-target flag named a target but a gate declined the upgrade, by reason",
 	OrchestratorEnvdBinaryCacheReads:             "Host envd binary cache lookups on the resume path, by what the lookup found (hit|miss), upgrade path, and on a miss its cause (not_warmed|stalled|cancelled|unreadable|no_cache)",
 	OrchestratorEnvdBinaryCacheDeliveries:        "Host envd binary reads at delivery time, by outcome (copy|stale) and upgrade path",
@@ -850,6 +859,7 @@ var counterUnits = map[CounterType]string{
 	EnvdInitUnobservedHandlers:                   "{handler}",
 	EnvdInitSlowDials:                            "{dial}",
 	EnvdReinitCut:                                "{reinit}",
+	EnvdCpuReport:                                "{response}",
 	EnvdCollapseChunks:                           "{chunk}",
 	OrchestratorSandboxKilledCounterName:         "{sandbox}",
 	OrchestratorSandboxCrashedCounterName:        "{sandbox}",
@@ -876,6 +886,7 @@ var counterUnits = map[CounterType]string{
 	OrchestratorFsRecoveryToolingUnsupported:     "{probe}",
 	TemplateBuildCmdlineArgs:                     "{build}",
 	TemplateBuildCPUTemplate:                     "{build}",
+	TemplateBuildVcpuSizing:                      "{build}",
 	OrchestratorEnvdUpgradeGated:                 "{sandbox}",
 	OrchestratorEnvdBinaryCacheReads:             "{read}",
 	OrchestratorEnvdBinaryCacheWarms:             "{warm}",

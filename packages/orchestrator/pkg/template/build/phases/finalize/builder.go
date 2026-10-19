@@ -147,9 +147,6 @@ func (ppb *PostProcessingBuilder) Layer(
 		result.BuildCPUTemplate = &buildTmpl
 	}
 
-	// Build always boots a fresh VM of this size, while the source layer may be a cached one of another.
-	result = result.WithVcpuCount(ppb.Config.VCpuCount)
-
 	return phases.LayerResult{
 		Metadata: result,
 		Cached:   false,
@@ -185,24 +182,7 @@ func (ppb *PostProcessingBuilder) Build(
 	}
 
 	// Configure sandbox for final layer
-	sbxConfig := sandbox.NewConfig(sandbox.Config{
-		Vcpu:              ppb.Config.VCpuCount,
-		RamMB:             ppb.Config.MemoryMB,
-		HugePages:         ppb.Config.HugePages,
-		FreePageReporting: ppb.Config.FreePageReporting,
-		FreePageHinting:   ppb.Config.FreePageHinting,
-
-		Envd: sandbox.EnvdMetadata{
-			Version:        ppb.EnvdVersion,
-			DefaultUser:    defaultUser,
-			DefaultWorkdir: defaultWorkdir,
-		},
-
-		FirecrackerConfig: fc.Config{
-			KernelVersion:      ppb.Config.KernelVersion,
-			FirecrackerVersion: ppb.Config.FirecrackerVersion,
-		},
-	})
+	sbxConfig := ppb.sandboxConfig(defaultUser, defaultWorkdir)
 
 	// Select the IO Engine to use for the rootfs drive
 	ioEngine := ppb.featureFlags.StringFlag(
@@ -229,7 +209,7 @@ func (ppb *PostProcessingBuilder) Build(
 		sandboxOptions...,
 	)
 
-	actionExecutor := layer.NewFunctionAction(ppb.postProcessingFn(userLogger))
+	actionExecutor := layer.NewFunctionAction(recordMachineVcpus(ppb.postProcessingFn(userLogger)))
 
 	templateProvider := layer.NewCacheSourceTemplateProvider(sourceLayer.Metadata.Template.BuildID)
 
@@ -255,6 +235,42 @@ func (ppb *PostProcessingBuilder) Build(
 		Cached:   false,
 		Hash:     currentLayer.Hash,
 	}, nil
+}
+
+// sandboxConfig is the finalize VM config, sized from the template's vCPU settings.
+func (ppb *PostProcessingBuilder) sandboxConfig(defaultUser, defaultWorkdir *string) *sandbox.Config {
+	return sandbox.NewConfig(sandbox.Config{
+		Vcpu:              ppb.Config.VCpuCount,
+		ConfiguredVmVcpus: ppb.Config.MaxVCpuCount,
+		RamMB:             ppb.Config.MemoryMB,
+		HugePages:         ppb.Config.HugePages,
+		FreePageReporting: ppb.Config.FreePageReporting,
+		FreePageHinting:   ppb.Config.FreePageHinting,
+
+		Envd: sandbox.EnvdMetadata{
+			Version:        ppb.EnvdVersion,
+			DefaultUser:    defaultUser,
+			DefaultWorkdir: defaultWorkdir,
+		},
+
+		FirecrackerConfig: fc.Config{
+			KernelVersion:      ppb.Config.KernelVersion,
+			FirecrackerVersion: ppb.Config.FirecrackerVersion,
+		},
+	})
+}
+
+// recordMachineVcpus records the size of the VM that booted, as the source layer
+// may be a cached one of another size; optimize re-uploads this metadata.
+func recordMachineVcpus(fn layer.FunctionActionFn) layer.FunctionActionFn {
+	return func(ctx context.Context, sbx *sandbox.Sandbox, meta metadata.Template) (metadata.Template, error) {
+		meta, err := fn(ctx, sbx, meta)
+		if err != nil {
+			return meta, err
+		}
+
+		return meta.WithVcpuCount(sbx.MachineVcpus()), nil
+	}
 }
 
 func (ppb *PostProcessingBuilder) postProcessingFn(userLogger logger.Logger) layer.FunctionActionFn {

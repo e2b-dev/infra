@@ -36,6 +36,25 @@ func ValidMachineVcpus(vcpus int64) bool {
 		(runtime.GOARCH == archARM64 || vcpus == 1 || vcpus%2 == 0)
 }
 
+// ValidateVcpus checks the online vCPUs and the VM size (vmVcpus, 0 = unset) against what a VM can have.
+// onlineName and vmName are the caller's field or flag names, used in the error messages.
+func ValidateVcpus(onlineVcpus, vmVcpus int64, onlineName, vmName string) error {
+	if onlineVcpus < 1 {
+		return fmt.Errorf("%s %d must be at least 1", onlineName, onlineVcpus)
+	}
+	if onlineVcpus > MaxVcpus {
+		return fmt.Errorf("%s %d is above the %d a VM can have", onlineName, onlineVcpus, MaxVcpus)
+	}
+	if vmVcpus != 0 && vmVcpus < onlineVcpus {
+		return fmt.Errorf("%s %d must be 1..%s %d", onlineName, onlineVcpus, vmName, vmVcpus)
+	}
+	if vmVcpus > MaxVcpus {
+		return fmt.Errorf("%s %d is above the %d a VM can have", vmName, vmVcpus, MaxVcpus)
+	}
+
+	return nil
+}
+
 type apiClient struct {
 	client *client.Firecracker
 }

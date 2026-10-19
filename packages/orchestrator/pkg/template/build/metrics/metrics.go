@@ -121,10 +121,13 @@ func (m *BuildMetrics) RecordPhaseDuration(ctx context.Context, teamID string, d
 	m.BuildPhaseDurationHistogram.Record(ctx, duration.Milliseconds(), metric.WithAttributes(attrs...))
 }
 
-// RecordBuildResult records the result of a build (success, user_error, or internal_error)
-func (m *BuildMetrics) RecordBuildResult(ctx context.Context, teamID string, resultType BuildResultType) {
+// RecordBuildResult records the result of a build (success, user_error, or internal_error),
+// the vCPU sizing it requested and whether it built a resizable template.
+func (m *BuildMetrics) RecordBuildResult(ctx context.Context, teamID string, resultType BuildResultType, vcpuSizing, built string) {
 	attrs := []attribute.KeyValue{
 		attribute.String("result", string(resultType)),
+		attribute.String("vcpu_sizing", vcpuSizing),
+		attribute.String("built", built),
 		telemetry.WithTeamID(teamID),
 	}
 	m.BuildResultCounter.Add(ctx, 1, metric.WithAttributes(attrs...))

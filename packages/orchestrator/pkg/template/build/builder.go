@@ -101,6 +101,8 @@ type Result struct {
 	FirecrackerVersion string
 	RootfsSizeMB       int64
 	SchedulingMetadata *orchestratorgrpc.SchedulingMetadata
+	// VcpuCount is the final template VM's vCPU count, as its metadata records.
+	VcpuCount int64
 }
 
 // Build builds the template, uploads it to storage and returns the result metadata.
@@ -142,7 +144,8 @@ func (b *Builder) Build(ctx context.Context, paths storage.Paths, cfg config.Tem
 		b.metrics.RecordBuildDuration(ctx, cfg.TeamID, duration, success)
 
 		resultType := ClassifyBuildResult(r, e)
-		b.metrics.RecordBuildResult(ctx, cfg.TeamID, resultType)
+		b.metrics.RecordBuildResult(ctx, cfg.TeamID, resultType,
+			config.VcpuSizing(cfg.VCpuCount, cfg.MaxVCpuCount), builtVcpuSizing(r, e, cfg.VCpuCount))
 		if success {
 			b.metrics.RecordRootfsSize(ctx, cfg.TeamID, units.MBToBytes(r.RootfsSizeMB))
 		}
@@ -458,6 +461,7 @@ func runBuild(
 		FirecrackerVersion: bc.Config.FirecrackerVersion,
 		RootfsSizeMB:       units.BytesToMB(int64(rootfsSize)),
 		SchedulingMetadata: templateSchedulingMetadata(ctx, builder.templateCache, lastLayerResult.Metadata.Template.BuildID),
+		VcpuCount:          lastLayerResult.Metadata.VcpuCount,
 	}, nil
 }
 

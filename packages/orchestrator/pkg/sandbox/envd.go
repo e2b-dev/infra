@@ -902,6 +902,36 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 		return err
 	}
 
+	// What envd did with cpuCount (X-Envd-Cpus). A failed /init cannot report whether
+	// envd accepted the target. The guest report is diagnostic; the host cgroup remains
+	// the CPU limit.
+	guestTarget := s.guestCpuCount()
+	cpuOutcome, cpuErr := verifyEnvdCpuCount(response.Header.Get("X-Envd-Cpus"), guestTarget, s.resolvedVmVcpus)
+	if s.resolvedVmVcpus > int64(guestTarget) {
+		initReason := envdInitRepeat
+		switch {
+		case opts.reinit != nil:
+			initReason = envdInitReinit
+		case recordMetrics:
+			initReason = envdInitFirst
+		}
+		envdCpuReports.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("sandbox_type", s.Runtime.SandboxType.String()),
+			attribute.String("start_type", string(startType)),
+			attribute.String("outcome", string(cpuOutcome)),
+			attribute.String("init", string(initReason)),
+		))
+	}
+	if cpuErr != nil {
+		telemetry.ReportError(ctx, "envd CPU report anomaly", cpuErr,
+			telemetry.WithSandboxID(s.Runtime.SandboxID),
+			telemetry.WithTemplateID(s.Runtime.TemplateID),
+			telemetry.WithBuildID(s.Runtime.BuildID),
+			telemetry.WithEnvdVersion(s.LiveEnvdVersion()),
+			attribute.Int("cpu_target", guestTarget),
+			attribute.Int64("vm_vcpus", s.resolvedVmVcpus))
+	}
+
 	report = readEnvdInitReport(response.Header, attempts.servedAge)
 	if held && s.skipThaw {
 		s.recordHarvestThaw(ctx, response.Header, gateVersion)
@@ -942,31 +972,61 @@ const (
 	envdCpusRejectedMaxLen = 100
 )
 
-// errEnvdCannotSetCpus is an envd without CPU hotplug in a VM with spare vCPUs: they all stay online.
-var errEnvdCannotSetCpus = errors.New("envd sent no X-Envd-Cpus, so it cannot offline the spare vcpus")
+// errEnvdCannotSetCpus is an envd without CPU hotplug in a VM with spare vCPUs.
+var errEnvdCannotSetCpus = errors.New("envd sent no X-Envd-Cpus, so it cannot manage the spare vcpus")
+
+// envdInitReason is why an /init was sent: the first start's, a post-checkpoint re-init's,
+// or any later one on the same handle (the envd upgrade readiness re-check).
+type envdInitReason string
+
+const (
+	envdInitFirst  envdInitReason = "first"
+	envdInitReinit envdInitReason = "reinit"
+	envdInitRepeat envdInitReason = "repeat"
+)
+
+type envdCpuReportOutcome string
+
+const (
+	envdCpuReportedOK      envdCpuReportOutcome = "reported_ok"
+	envdCpuNoHeader        envdCpuReportOutcome = "no_header"
+	envdCpuUnreadable      envdCpuReportOutcome = "unreadable"
+	envdCpuRejected        envdCpuReportOutcome = "rejected"
+	envdCpuTargetMismatch  envdCpuReportOutcome = "target_mismatch"
+	envdCpuPossibleLow     envdCpuReportOutcome = "possible_too_low"
+	envdCpuPossibleUnknown envdCpuReportOutcome = "possible_unknown"
+)
 
 // verifyEnvdCpuCount checks envd's X-Envd-Cpus answer to the cpuCount sent on /init. No header is an
 // envd that predates CPU hotplug, which matters only when the VM has more vCPUs than the sandbox uses.
-func verifyEnvdCpuCount(header string, want int, vmVcpus int64) error {
+func verifyEnvdCpuCount(header string, want int, vmVcpus int64) (envdCpuReportOutcome, error) {
 	if header == "" {
 		if vmVcpus > int64(want) {
-			return errEnvdCannotSetCpus
+			return envdCpuNoHeader, errEnvdCannotSetCpus
 		}
 
-		return nil
+		return envdCpuNoHeader, nil
 	}
 	r, err := decodeEnvdHeader[envdCpus](header, envdCpusHeaderMaxBytes)
 	if err != nil {
-		return fmt.Errorf("unreadable X-Envd-Cpus: %w", err)
+		return envdCpuUnreadable, fmt.Errorf("unreadable X-Envd-Cpus: %w", err)
 	}
 	if r.Rejected != "" {
-		return fmt.Errorf("cpu count %d rejected, guest keeps %d of %d: %s", want, r.Target, r.Possible, utils.Truncate(r.Rejected, envdCpusRejectedMaxLen))
+		return envdCpuRejected, fmt.Errorf("cpu count %d rejected, guest keeps %d of %d: %s", want, r.Target, r.Possible, utils.Truncate(r.Rejected, envdCpusRejectedMaxLen))
 	}
 	if r.Target != want {
-		return fmt.Errorf("cpu count %d sent, guest targets %d of %d", want, r.Target, r.Possible)
+		return envdCpuTargetMismatch, fmt.Errorf("cpu count %d sent, guest targets %d of %d", want, r.Target, r.Possible)
+	}
+	if vmVcpus > int64(want) {
+		if r.Possible <= 0 {
+			return envdCpuPossibleUnknown, fmt.Errorf("guest reported %d possible CPUs for a %d-vCPU VM", r.Possible, vmVcpus)
+		}
+		if int64(r.Possible) < vmVcpus {
+			return envdCpuPossibleLow, fmt.Errorf("guest reports %d possible CPUs for a %d-vCPU VM", r.Possible, vmVcpus)
+		}
 	}
 
-	return nil
+	return envdCpuReportedOK, nil
 }
 
 // envdFailedVolumeHeader names the volume path a failed /init could not mount.
@@ -1076,12 +1136,6 @@ func (s *Sandbox) readEnvdInitHeaders(ctx context.Context, header http.Header, s
 	// case there is nothing to compare and nothing is counted.
 	if d := header.Get("X-Envd-Defaults"); d != "" {
 		s.compareEnvdDefaults(ctx, d)
-	}
-	// What envd did with cpuCount (X-Envd-Cpus): a refused count must not pass silently.
-	if err := verifyEnvdCpuCount(header.Get("X-Envd-Cpus"), s.guestCpuCount(), s.resolvedVmVcpus); err != nil {
-		telemetry.ReportError(ctx, "envd did not take the cpu count", err,
-			telemetry.WithSandboxID(s.Runtime.SandboxID),
-			telemetry.WithEnvdVersion(s.LiveEnvdVersion()))
 	}
 	// The memory protection configured on envd's cgroup chain (X-Envd-Memory). Read
 	// before the init counters so the cohort it derives labels them for this start.

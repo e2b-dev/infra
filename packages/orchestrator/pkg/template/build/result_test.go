@@ -60,6 +60,16 @@ func TestClassifyBuildResult(t *testing.T) {
 	}
 }
 
+func TestBuiltVcpuSizing(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, "none", builtVcpuSizing(nil, errors.New("boom"), 2))
+	assert.Equal(t, "none", builtVcpuSizing(&Result{VcpuCount: 8}, errors.New("upload failed"), 2))
+	assert.Equal(t, "not_resizable", builtVcpuSizing(&Result{VcpuCount: 2}, nil, 2))
+	assert.Equal(t, "not_resizable", builtVcpuSizing(&Result{VcpuCount: 0}, nil, 2))
+	assert.Equal(t, "resizable", builtVcpuSizing(&Result{VcpuCount: 8}, nil, 2))
+}
+
 // TestBuildResultAttribute_MatchesMetricLabel pins the contract that the span
 // attribute carries exactly the metric label value, so a TraceQL filter on
 // build.result and a PromQL filter on result select the same builds.

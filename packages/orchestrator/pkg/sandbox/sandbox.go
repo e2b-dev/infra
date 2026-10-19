@@ -62,6 +62,7 @@ var (
 	envdInitSlowDials             = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdInitSlowDials))
 	harvestThaw                   = utils.Must(telemetry.GetCounter(meter, telemetry.PauseResumePrefetchHarvestThaw))
 	envdReinitCut                 = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdReinitCut))
+	envdCpuReports                = utils.Must(telemetry.GetCounter(meter, telemetry.EnvdCpuReport))
 	waitForEnvdDurationHistogram  = utils.Must(telemetry.GetHistogram(meter, telemetry.WaitForEnvdDurationHistogramName))
 	envdCollapseDurationHistogram = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdCollapseDurationHistogramName))
 	envdFreezeDurationHistogram   = utils.Must(telemetry.GetHistogram(meter, telemetry.EnvdFreezeDurationHistogramName))
@@ -642,6 +643,12 @@ func (s *Sandbox) UseSyncWP() bool {
 // runs, so it needs no locking.
 func (s *Sandbox) NetworkPlacement() *orchestrator.SandboxNetworkPlacement {
 	return s.networkPlacement
+}
+
+// MachineVcpus is how many vCPUs the Firecracker VM has, online or not. Pause records it
+// as the snapshot's vcpu_count. 0 when unknown (a legacy snapshot that never recorded it).
+func (s *Sandbox) MachineVcpus() int64 {
+	return s.resolvedVmVcpus
 }
 
 func (s *Sandbox) LoggerMetadata() sbxlogger.SandboxMetadata {
