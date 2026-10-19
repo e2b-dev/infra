@@ -127,13 +127,6 @@ components:
       schema:
         type: string
         format: uuid
-    teamSlug:
-      name: slug
-      in: query
-      required: true
-      description: Team slug to resolve.
-      schema:
-        type: string
     templates_limit:
       name: limit
       in: query
@@ -377,21 +370,6 @@ components:
           items:
             type: string
             format: uuid
-
-    AdminTeamBootstrapRequest:
-      type: object
-      required:
-        - name
-        - email
-      properties:
-        name:
-          type: string
-          minLength: 1
-          description: Team name.
-        email:
-          type: string
-          format: email
-          description: Billing/contact email for the team.
 
     AdminClusterCreateRequest:
       type: object
@@ -716,52 +694,6 @@ components:
         blockedReason:
           type: string
           nullable: true
-
-    TeamMember:
-      type: object
-      required:
-        - id
-        - email
-        - isDefault
-        - createdAt
-        - providers
-      properties:
-        id:
-          type: string
-          format: uuid
-        email:
-          type: string
-        name:
-          type: string
-          nullable: true
-        profilePictureUrl:
-          type: string
-          format: uri
-          nullable: true
-        providers:
-          type: array
-          items:
-            type: string
-        isDefault:
-          type: boolean
-        addedBy:
-          type: string
-          format: uuid
-          nullable: true
-        createdAt:
-          type: string
-          format: date-time
-          nullable: true
-
-    TeamMembersResponse:
-      type: object
-      required:
-        - members
-      properties:
-        members:
-          type: array
-          items:
-            $ref: "#/components/schemas/TeamMember"
 
     DefaultTemplateAlias:
       type: object
@@ -1112,18 +1044,6 @@ components:
           type: string
           nullable: true
           description: Cursor to pass to the next list request, or `null` if there is no next page.
-
-    TeamResolveResponse:
-      type: object
-      required:
-        - id
-        - slug
-      properties:
-        id:
-          type: string
-          format: uuid
-        slug:
-          type: string
 
     ManagementProjectUpsertRequest:
       type: object
@@ -1518,33 +1438,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /admin/teams/bootstrap:
-    post:
-      summary: Bootstrap team (retired)
-      description: >-
-        Retired: the operation never creates a team and always fails with 500.
-        The route and its request schema remain registered only until the Stripe
-        projects coordinator migrates to the workspace API. Create teams through
-        the workspace API instead.
-      deprecated: true
-      tags: [admin]
-      security:
-        - AdminApiKeyAuth: []
-        - AdminJWTAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/AdminTeamBootstrapRequest"
-      responses:
-        "400":
-          $ref: "#/components/responses/400"
-        "401":
-          $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
   /admin/clusters:
     post:
       summary: Create a cluster
@@ -1713,31 +1606,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /teams/resolve:
-    get:
-      summary: Resolve team identity
-      description: Resolves a team slug to the team's identity, validating the user is a member.
-      tags: [teams]
-      security:
-        - AuthProviderBearerAuth: []
-      parameters:
-        - $ref: "#/components/parameters/teamSlug"
-      responses:
-        "200":
-          description: Successfully resolved team.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TeamResolveResponse"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-
   /teams/{teamID}/status:
     get:
       summary: Get team access status
@@ -1790,28 +1658,6 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
-  /teams/{teamID}/members:
-    get:
-      summary: List team members
-      tags: [teams]
-      security:
-        - AuthProviderBearerAuth: []
-          AuthProviderTeamAuth: []
-      parameters:
-        - $ref: "#/components/parameters/teamID"
-      responses:
-        "200":
-          description: Successfully returned team members.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TeamMembersResponse"
-        "401":
-          $ref: "#/components/responses/401"
-        "403":
-          $ref: "#/components/responses/403"
-        "500":
-          $ref: "#/components/responses/500"
   /templates:
     get:
       summary: List team templates

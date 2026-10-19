@@ -14,15 +14,14 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (s *APIStore) requireAuthedTeamMatchesPath(c *gin.Context, teamID api.TeamID) (uuid.UUID, bool) {
-	authTeamID := auth.MustGetTeamID(c)
-	if authTeamID != teamID {
+func (s *APIStore) requireAuthedTeamMatchesPath(c *gin.Context, teamID api.TeamID) bool {
+	if auth.MustGetTeamID(c) != teamID {
 		s.sendAPIStoreError(c, http.StatusForbidden, "Team path parameter does not match authenticated team")
 
-		return uuid.Nil, false
+		return false
 	}
 
-	return authTeamID, true
+	return true
 }
 
 func (s *APIStore) requireTemplateAccess(c *gin.Context, templateID api.TemplateID, teamID uuid.UUID) bool {

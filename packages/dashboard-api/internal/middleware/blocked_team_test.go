@@ -13,6 +13,4 @@ func TestBlockedTeamAllowlistKeepsTeamReadsReachable(t *testing.T) {
 	get := blockedTeamAllowlist[http.MethodGet]
 	assert.Contains(t, get, "/teams/:teamID/limits")
 	assert.Contains(t, get, "/teams/:teamID/status")
-	assert.Contains(t, get, "/teams/:teamID/members")
-	assert.Contains(t, get, "/teams/resolve")
 }

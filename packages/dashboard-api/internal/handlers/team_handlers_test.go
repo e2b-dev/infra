@@ -28,7 +28,7 @@ func TestRequireAuthedTeamMatchesPath_Success(t *testing.T) {
 	})
 
 	store := &APIStore{}
-	_, ok := store.requireAuthedTeamMatchesPath(ctx, teamID)
+	ok := store.requireAuthedTeamMatchesPath(ctx, teamID)
 	if !ok {
 		t.Fatalf("expected team parity check to pass")
 	}
@@ -45,7 +45,7 @@ func TestRequireAuthedTeamMatchesPath_Mismatch(t *testing.T) {
 	})
 
 	store := &APIStore{}
-	_, ok := store.requireAuthedTeamMatchesPath(ctx, uuid.New())
+	ok := store.requireAuthedTeamMatchesPath(ctx, uuid.New())
 	if ok {
 		t.Fatalf("expected team parity check to fail")
 	}

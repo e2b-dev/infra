@@ -18,7 +18,7 @@ func (s *APIStore) GetTeamsTeamIDLimits(c *gin.Context, teamID api.TeamID) {
 	telemetry.ReportEvent(ctx, "get team limits")
 
 	if _, ok := auth.GetTeamInfo(c); ok {
-		if _, ok := s.requireAuthedTeamMatchesPath(c, teamID); !ok {
+		if !s.requireAuthedTeamMatchesPath(c, teamID) {
 			return
 		}
 	}
