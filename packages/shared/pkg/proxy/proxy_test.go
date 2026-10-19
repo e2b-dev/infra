@@ -1566,3 +1566,40 @@ func TestConnectionLimitBlocksExcessConnections(t *testing.T) {
 	defer resp.Body.Close()
 	assertBackendOutput(t, backend, resp)
 }
+
+func TestProxyRejectsInvalidSandboxPort(t *testing.T) {
+	t.Parallel()
+
+	getTargetFromRequest := GetTargetFromRequest()
+	getDestination := func(r *http.Request) (*pool.Destination, error) {
+		if _, _, err := getTargetFromRequest(r); err != nil {
+			return nil, err
+		}
+
+		return nil, errors.New("request was routed")
+	}
+
+	proxy, port, err := newTestProxy(t, getDestination)
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		proxy.Close()
+	})
+
+	for _, sandboxPort := range []string{"abc", "0", "65536"} {
+		t.Run(sandboxPort, func(t *testing.T) {
+			t.Parallel()
+
+			resp, err := httpGetWithHeaders(t, fmt.Sprintf("http://127.0.0.1:%d/", port), http.Header{
+				headerSandboxID:   {"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: {sandboxPort},
+			})
+			require.NoError(t, err)
+			defer resp.Body.Close()
+
+			assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+			body, err := io.ReadAll(resp.Body)
+			require.NoError(t, err)
+			assert.Contains(t, string(body), "Invalid sandbox port")
+		})
+	}
+}

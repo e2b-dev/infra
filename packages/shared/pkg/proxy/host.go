@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -90,9 +91,9 @@ func parseHost(host string) (sandboxID string, port uint64, err error) {
 	sandboxPortString := hostParts[0]
 	sandboxID = hostParts[1]
 
-	sandboxPort, err := strconv.ParseUint(sandboxPortString, 10, 64)
+	sandboxPort, err := parsePort(sandboxPortString)
 	if err != nil {
-		return "", 0, InvalidSandboxPortError{sandboxPortString, err}
+		return "", 0, err
 	}
 
 	return sandboxID, sandboxPort, nil
@@ -127,10 +128,23 @@ func parseHeaders(h http.Header) (sandboxID string, port uint64, ok bool, err er
 		return "", 0, false, MissingHeaderError{Header: headerSandboxPort}
 	}
 
-	port, err = strconv.ParseUint(portString, 10, 64)
+	port, err = parsePort(portString)
 	if err != nil {
-		return "", 0, false, InvalidSandboxPortError{portString, err}
+		return "", 0, false, err
 	}
 
 	return sandboxID, port, true, nil
+}
+
+func parsePort(s string) (uint64, error) {
+	port, err := strconv.ParseUint(s, 10, 16)
+	if err != nil {
+		return 0, InvalidSandboxPortError{s, err}
+	}
+
+	if port == 0 {
+		return 0, InvalidSandboxPortError{s, errors.New("port must not be zero")}
+	}
+
+	return port, nil
 }

@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 
@@ -75,6 +76,40 @@ func TestGetTargetFromRequest(t *testing.T) {
 			host:      "abcd-isv6ril5xadwn1k9t2jye.e2b.app",
 			wantID:    "isv6ril5xadwn1k9t2jye",
 			wantPort:  49983,
+			wantErrAs: InvalidSandboxPortError{},
+		},
+		{
+			name:      "sandbox-host-with-zero-port",
+			host:      "0-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantErrAs: InvalidSandboxPortError{},
+		},
+		{
+			name:      "sandbox-host-with-port-above-max",
+			host:      "65536-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantErrAs: InvalidSandboxPortError{},
+		},
+		{
+			name:     "sandbox-host-with-max-port",
+			host:     "65535-isv6ril5xadwn1k9t2jye.e2b.app",
+			wantID:   "isv6ril5xadwn1k9t2jye",
+			wantPort: 65535,
+		},
+		{
+			name: "headers: zero port",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"0"},
+			},
+			wantErrAs: InvalidSandboxPortError{},
+		},
+		{
+			name: "headers: port above max",
+			host: "localhost:1234",
+			headers: http.Header{
+				headerSandboxID:   []string{"isv6ril5xadwn1k9t2jye"},
+				headerSandboxPort: []string{"70000"},
+			},
 			wantErrAs: InvalidSandboxPortError{},
 		},
 		{
@@ -235,7 +270,8 @@ func TestGetTargetFromRequest(t *testing.T) {
 			}
 
 			if tt.wantErrAs != nil {
-				require.ErrorAs(t, err, &tt.wantErrIs) //nolint:testifylint // doesn't need to
+				_, ok := errors.AsType[InvalidSandboxPortError](err)
+				require.True(t, ok, "error %v is not an InvalidSandboxPortError", err)
 
 				return // no further checks when an error was expected
 			}
