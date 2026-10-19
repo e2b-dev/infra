@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rs/zerolog"
 	"github.com/shirou/gopsutil/v4/net"
 )
 
@@ -73,7 +74,8 @@ func TestScannerSubscriber_Signal_DeliversToSlowReceiver(t *testing.T) {
 func TestScanner_Destroy_ExitsWithStalledSubscriber(t *testing.T) {
 	t.Parallel()
 
-	scanner := NewScanner(10 * time.Millisecond)
+	l := zerolog.Nop()
+	scanner := NewScanner(&l, 10*time.Millisecond)
 	scanner.AddSubscriber("stalled-sub", nil)
 
 	scanDone := make(chan struct{})

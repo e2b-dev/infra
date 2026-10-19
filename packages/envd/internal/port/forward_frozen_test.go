@@ -54,7 +54,7 @@ func TestStartForwarding_RetriesAPortSkippedWhileFrozen(t *testing.T) {
 	mgr.frozen.Store(true)
 
 	l := zerolog.Nop()
-	scanner := NewScanner(time.Hour)
+	scanner := NewScanner(&l, time.Hour)
 	f := &Forwarder{
 		logger:            &l,
 		ports:             make(map[string]*PortToForward),
