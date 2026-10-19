@@ -27,7 +27,7 @@ func TestTeamLimitsIsUnchangedWhileProjectLimitsIsEmpty(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { require.NoError(t, sqlDB.Close()) })
 
-	seedTeam(t, sqlDB, "no-addons")
+	teamWithoutAddons := seedTeam(t, sqlDB, "no-addons")
 	teamWithAddons := seedTeam(t, sqlDB, "with-addons")
 	seedAddon(t, sqlDB, teamWithAddons)
 
@@ -64,12 +64,14 @@ func TestTeamLimitsIsUnchangedWhileProjectLimitsIsEmpty(t *testing.T) {
 		       (tier.default_free_disk_size_mb + a.extra_disk_mb)::bigint,
 		       (tier.max_disk_size_mb + a.extra_max_disk_size_mb)::bigint,
 		       (tier.max_disk_size_mb + a.extra_max_disk_size_mb)::bigint)
-	`).Scan(&mismatches)
+		  AND tl.id IN ($1, $2)
+	`, teamWithoutAddons, teamWithAddons).Scan(&mismatches)
 	require.NoError(t, err)
 	require.Zero(t, mismatches, "team_limits diverged from the tier+addon arithmetic it replaced")
 
 	var rows int
-	require.NoError(t, sqlDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM public.project_limits`).Scan(&rows))
+	require.NoError(t, sqlDB.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM public.project_limits WHERE team_id IN ($1, $2)`, teamWithoutAddons, teamWithAddons).Scan(&rows))
 	require.Zero(t, rows, "the comparison above only means anything while no team is overridden")
 }
 

@@ -101,6 +101,10 @@ func TestAPIListRateMigrationRoundTrip(t *testing.T) {
 		return limits
 	}
 	before := resourceLimits()
+	// The Up re-adds api_team_rps_list as NOT NULL without a default, which
+	// only succeeds while project_limits is empty.
+	_, err = sqlDB.ExecContext(t.Context(), `DELETE FROM public.project_limits`)
+	require.NoError(t, err)
 	_, err = provider.DownTo(t.Context(), 20260826075153)
 	require.NoError(t, err)
 	assert.JSONEq(t, before, resourceLimits())

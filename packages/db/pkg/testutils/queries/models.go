@@ -86,6 +86,22 @@ type Cluster struct {
 	DeletionProtection bool
 }
 
+type DefaultLimit struct {
+	ID                       bool
+	MaxLengthHours           int64
+	ConcurrentSandboxes      int64
+	ConcurrentTemplateBuilds int64
+	MaxVcpu                  int64
+	MaxRamMb                 int64
+	DiskMb                   int64
+	EventsTtlDays            int64
+	DefaultFreeDiskSizeMb    int64
+	MaxDiskSizeMb            int64
+	ApiTeamRpsList           int64
+	ApiTeamRpsDelete         int64
+	MaxSecrets               int64
+}
+
 type Env struct {
 	ID         string
 	CreatedAt  time.Time
