@@ -85,10 +85,13 @@ func TestCreate_ReleasesTheIDWhenItFails(t *testing.T) {
 	t.Parallel()
 
 	s := duplicateCreateTestServer()
-	s.info.MaxSandboxes.Store(0) // every create fails right after reserving
+	// Take the only start slot so the create fails after reserving. A fresh
+	// create fails at once; a snapshot resume would wait acquireTimeout.
+	require.True(t, s.startingSandboxes.TryAcquire(1))
+	t.Cleanup(func() { s.startingSandboxes.Release(1) })
 
 	_, err := s.Create(t.Context(), &orchestrator.SandboxCreateRequest{
-		Sandbox: &orchestrator.SandboxConfig{SandboxId: "sandbox-1", Snapshot: true, Vcpu: 1},
+		Sandbox: &orchestrator.SandboxConfig{SandboxId: "sandbox-1", Vcpu: 1},
 	})
 	st, ok := status.FromError(err)
 	require.True(t, ok)
@@ -96,6 +99,32 @@ func TestCreate_ReleasesTheIDWhenItFails(t *testing.T) {
 
 	r, err := s.sandboxFactory.Sandboxes.Reserve("sandbox-1")
 	require.NoError(t, err, "a failed create must not keep the ID")
+	r.Release()
+}
+
+// An in-flight start fills a MaxSandboxes=1 node, so the next create is
+// refused before it touches the template cache (nil here, so it would panic).
+func TestCreate_CountsStartsInFlightAgainstTheNodeLimit(t *testing.T) {
+	t.Parallel()
+
+	s := duplicateCreateTestServer()
+	s.info.MaxSandboxes.Store(1)
+
+	inFlight, err := s.sandboxFactory.Sandboxes.Reserve("sandbox-in-flight")
+	require.NoError(t, err)
+
+	for _, snapshot := range []bool{false, true} {
+		_, err = s.Create(t.Context(), &orchestrator.SandboxCreateRequest{
+			Sandbox: &orchestrator.SandboxConfig{SandboxId: "sandbox-1", Snapshot: snapshot, Vcpu: 1},
+		})
+		require.Equal(t, codes.ResourceExhausted, status.Code(err), "snapshot=%t", snapshot)
+	}
+	assert.Zero(t, s.sandboxFactory.Sandboxes.Count(), "nothing was registered")
+
+	// The refused create left no hold behind.
+	inFlight.Release()
+	r, err := s.sandboxFactory.Sandboxes.ReserveWithin("sandbox-1", 1)
+	require.NoError(t, err)
 	r.Release()
 }
 

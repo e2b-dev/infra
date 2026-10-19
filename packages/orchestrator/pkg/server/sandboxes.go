@@ -280,7 +280,14 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		}
 	}
 
-	reservation, err := s.sandboxFactory.Sandboxes.Reserve(req.GetSandbox().GetSandboxId())
+	// Check the limit while taking the ID so in-flight starts count too.
+	maxRunningSandboxesPerNode := s.info.MaxSandboxes.Load()
+	reservation, err := s.sandboxFactory.Sandboxes.ReserveWithin(req.GetSandbox().GetSandboxId(), maxRunningSandboxesPerNode)
+	if errors.Is(err, sandbox.ErrNodeAtCapacity) {
+		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
+
+		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
+	}
 	if err != nil {
 		return nil, s.sandboxAlreadyRunning(ctx, req.GetSandbox().GetSandboxId(), req.GetSandbox().GetExecutionId(), err)
 	}
@@ -288,15 +295,6 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 	defer func() {
 		s.finishSandboxStart(ctx, reservation, rollback, createErr)
 	}()
-
-	maxRunningSandboxesPerNode := s.info.MaxSandboxes.Load()
-
-	runningSandboxes := int64(s.sandboxFactory.Sandboxes.Count())
-	if runningSandboxes >= maxRunningSandboxesPerNode {
-		telemetry.ReportEvent(ctx, "max number of running sandboxes reached")
-
-		return nil, status.Errorf(codes.ResourceExhausted, "max number of running sandboxes on node reached (%d), please retry", maxRunningSandboxesPerNode)
-	}
 
 	// Check if we've reached the max number of starting instances on this node
 	if req.GetSandbox().GetSnapshot() {

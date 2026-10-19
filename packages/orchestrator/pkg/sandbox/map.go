@@ -184,6 +184,9 @@ var ErrSandboxAlreadyRunning = errors.New("sandbox is already running on this no
 
 var ErrSandboxOperationInProgress = errors.New("sandbox operation already in progress")
 
+// ErrNodeAtCapacity is returned by ReserveWithin when the node is full.
+var ErrNodeAtCapacity = errors.New("node is at its sandbox limit")
+
 // Reservation prevents concurrent starts; a failed start retains it through its own cleanup.
 type Reservation struct {
 	m         *Map
@@ -193,6 +196,19 @@ type Reservation struct {
 // Reserve takes the sandbox ID for a create that is about to start a VM.
 // Refused with ErrSandboxAlreadyRunning while the ID is live or reserved.
 func (m *Map) Reserve(sandboxID string) (*Reservation, error) {
+	return m.reserve(sandboxID, 0, false)
+}
+
+// ReserveWithin is Reserve that also enforces a per-node limit. Every live or
+// reserved ID counts: in-flight starts, failed starts in cleanup, and
+// checkpoint holds. The check and the insert share one lock, so concurrent
+// creates cannot overshoot. Duplicates still fail with ErrSandboxAlreadyRunning
+// first, not as a capacity refusal.
+func (m *Map) ReserveWithin(sandboxID string, limit int64) (*Reservation, error) {
+	return m.reserve(sandboxID, limit, true)
+}
+
+func (m *Map) reserve(sandboxID string, limit int64, bounded bool) (*Reservation, error) {
 	m.registryMu.Lock()
 	defer m.registryMu.Unlock()
 
@@ -202,10 +218,28 @@ func (m *Map) Reserve(sandboxID string) (*Reservation, error) {
 	if _, ok := m.reservations[sandboxID]; ok {
 		return nil, fmt.Errorf("%w: another create is in flight", ErrSandboxAlreadyRunning)
 	}
+	if bounded {
+		if held := m.heldLocked(); held >= limit {
+			return nil, fmt.Errorf("%w: %d held, limit %d", ErrNodeAtCapacity, held, limit)
+		}
+	}
 	r := &Reservation{m: m, sandboxID: sandboxID}
 	m.reservations[sandboxID] = r
 
 	return r, nil
+}
+
+// heldLocked counts live IDs plus reserved IDs that are not live yet.
+// Caller must hold registryMu.
+func (m *Map) heldLocked() int64 {
+	held := int64(m.live.Count())
+	for id := range m.reservations {
+		if _, ok := m.live.Get(id); !ok {
+			held++
+		}
+	}
+
+	return held
 }
 
 // Release ends operation ownership; the live entry and physical lifecycles remain independent.
