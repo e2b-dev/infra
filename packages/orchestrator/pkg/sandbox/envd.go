@@ -925,6 +925,7 @@ func (s *Sandbox) initEnvd(ctx context.Context, startType StartType, recordMetri
 	if cpuErr != nil {
 		telemetry.ReportError(ctx, "envd CPU report anomaly", cpuErr,
 			telemetry.WithSandboxID(s.Runtime.SandboxID),
+			telemetry.WithTeamID(s.Runtime.TeamID),
 			telemetry.WithTemplateID(s.Runtime.TemplateID),
 			telemetry.WithBuildID(s.Runtime.BuildID),
 			telemetry.WithEnvdVersion(s.LiveEnvdVersion()),
@@ -1350,8 +1351,7 @@ func (eff EnvdEffectiveDefaults) effectiveWorkdirForDisplay() string {
 func (s *Sandbox) compareEnvdDefaults(ctx context.Context, header string) {
 	eff, err := decodeEnvdEffectiveDefaults(header)
 	if err != nil {
-		logger.L().Warn(ctx, "could not decode the envd effective-defaults header",
-			logger.WithSandboxID(s.Runtime.SandboxID),
+		s.log().Warn(ctx, "could not decode the envd effective-defaults header",
 			zap.Error(err),
 		)
 
@@ -1367,8 +1367,7 @@ func (s *Sandbox) compareEnvdDefaults(ctx context.Context, header string) {
 
 	for _, field := range envdDefaultsMismatches(eff, sentUser, sentWorkdir) {
 		envdDefaultsMismatch.Add(ctx, 1, metric.WithAttributes(attribute.String("field", field)))
-		logger.L().Error(ctx, "envd is serving different defaults than the ones sent",
-			logger.WithSandboxID(s.Runtime.SandboxID),
+		s.log().Error(ctx, "envd is serving different defaults than the ones sent",
 			logger.WithEnvdVersion(s.Config.Envd.Version),
 			zap.String("field", field),
 			zap.String("sent_user", sentUser),
@@ -1407,8 +1406,7 @@ func (s *Sandbox) compareEnvdDefaults(ctx context.Context, header string) {
 			attribute.Bool("sent", sentUser != ""),
 			attribute.String("sandbox_type", string(s.Runtime.SandboxType))))
 		if sentUser != "" {
-			logger.L().Error(ctx, "envd reports it was never told a default user, but one was sent",
-				logger.WithSandboxID(s.Runtime.SandboxID),
+			s.log().Error(ctx, "envd reports it was never told a default user, but one was sent",
 				logger.WithEnvdVersion(s.Config.Envd.Version),
 				zap.String("sent", sentUser),
 				zap.String("effective", eff.effectiveUserForDisplay()),
