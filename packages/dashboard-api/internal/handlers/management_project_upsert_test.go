@@ -57,31 +57,6 @@ func TestUpsertProjectIsIdempotent(t *testing.T) {
 	require.Equal(t, "Acme", teamColumn(t, db, project.id, "name"))
 }
 
-// A rename moves the slug and nothing else: template names embed the slug they
-// were built under, and rewriting them would break references users already
-// have.
-func TestUpsertProjectRenameLeavesTemplateNames(t *testing.T) {
-	t.Parallel()
-
-	db := testutils.SetupDatabase(t)
-	store, _ := newUpsertStore(db)
-	project := newProjectFixture()
-
-	require.Equal(t, http.StatusCreated, callUpsertProject(t, store, project.id, project.request()).Code)
-
-	templateID := testutils.CreateTestTemplate(t, db, project.id)
-	alias := testutils.CreateTestTemplateAliasWithNamespace(t, db, templateID, &project.slug)
-
-	moved := project.request()
-	moved.Slug += "-moved"
-
-	response := callUpsertProject(t, store, project.id, moved)
-	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-
-	require.Equal(t, moved.Slug, teamColumn(t, db, project.id, "slug"))
-	require.Equal(t, project.slug, aliasNamespace(t, db, alias))
-}
-
 // The slug is unique cluster-wide on the way in and on the way out, so a rename
 // can collide just as a create can.
 func TestUpsertProjectRenameRejectsATakenSlug(t *testing.T) {
@@ -247,25 +222,6 @@ func callUpsertProject(t *testing.T, store *APIStore, projectID uuid.UUID, reque
 	ginCtx.Writer.WriteHeaderNow()
 
 	return recorder
-}
-
-func aliasNamespace(t *testing.T, db *testutils.Database, alias string) string {
-	t.Helper()
-
-	var namespace *string
-	require.NoError(t, db.AuthDB.TestsRawSQLQuery(t.Context(),
-		"SELECT namespace FROM public.env_aliases WHERE alias = $1",
-		func(rows pgx.Rows) error {
-			rows.Next()
-
-			return rows.Scan(&namespace)
-		}, alias))
-
-	if namespace == nil {
-		return ""
-	}
-
-	return *namespace
 }
 
 func teamColumn(t *testing.T, db *testutils.Database, teamID uuid.UUID, column string) string {

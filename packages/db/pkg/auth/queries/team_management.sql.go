@@ -11,6 +11,75 @@ import (
 	"github.com/google/uuid"
 )
 
+const copyTeamAliasesToNamespace = `-- name: CopyTeamAliasesToNamespace :many
+WITH live_envs AS MATERIALIZED (
+    SELECT id
+    FROM public.envs
+    WHERE team_id = $2::uuid AND deleted_at IS NULL
+    FOR SHARE
+),
+candidates AS (
+    SELECT DISTINCT ON (ea.alias) ea.alias, ea.env_id, ea.is_renamable
+    FROM public.env_aliases ea
+    JOIN live_envs e ON e.id = ea.env_id
+    WHERE ea.namespace IS NOT NULL
+      AND ea.namespace <> $1::text
+    ORDER BY ea.alias, ea.namespace = $3::text DESC, ea.namespace
+),
+copied AS (
+    INSERT INTO public.env_aliases (alias, env_id, is_renamable, namespace)
+    SELECT alias, env_id, is_renamable, $1::text
+    FROM candidates
+    ON CONFLICT (alias, namespace) DO NOTHING
+)
+SELECT c.alias
+FROM candidates c
+JOIN public.env_aliases existing
+    ON existing.alias = c.alias
+   AND existing.namespace = $1::text
+   AND existing.env_id <> c.env_id
+`
+
+type CopyTeamAliasesToNamespaceParams struct {
+	Namespace         string
+	TeamID            uuid.UUID
+	PreviousNamespace string
+}
+
+// Follows a slug change: every alias the team holds under an earlier namespace
+// is also given under the new one, so a template stays reachable by the new
+// slug while the old names keep working. Aliases without a namespace are
+// global and stay out of it. Where two earlier namespaces hold the same alias,
+// the one under the slug being replaced wins.
+//
+// Only live templates are copied, and FOR SHARE serializes against a
+// concurrent template delete: the delete either waits and then releases the
+// copies too, or has committed and its template is skipped.
+//
+// An alias the new namespace already holds is left as it is rather than
+// failing the reconcile, which the caller would only retry. Returns the
+// aliases skipped because the new namespace gives them to another template;
+// the outer select reads the table as it was before the insert.
+func (q *Queries) CopyTeamAliasesToNamespace(ctx context.Context, arg CopyTeamAliasesToNamespaceParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, copyTeamAliasesToNamespace, arg.Namespace, arg.TeamID, arg.PreviousNamespace)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var alias string
+		if err := rows.Scan(&alias); err != nil {
+			return nil, err
+		}
+		items = append(items, alias)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const insertManagedTeam = `-- name: InsertManagedTeam :one
 INSERT INTO public.teams (id, name, slug, tier, email, is_blocked, cluster_id)
 VALUES (
@@ -69,7 +138,7 @@ func (q *Queries) InsertManagedTeam(ctx context.Context, arg InsertManagedTeamPa
 
 const lockManagedTeam = `-- name: LockManagedTeam :one
 
-SELECT id FROM public.teams
+SELECT slug FROM public.teams
 WHERE id = $1::uuid
 FOR UPDATE
 `
@@ -78,12 +147,13 @@ FOR UPDATE
 // supplies the id, so create and reconcile are one request and these are its
 // branches.
 // Taken first, so the branch is decided by whether the project exists rather
-// than by an insert failing.
-func (q *Queries) LockManagedTeam(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+// than by an insert failing. Returns the slug so a reconcile can tell whether
+// it moves.
+func (q *Queries) LockManagedTeam(ctx context.Context, id uuid.UUID) (string, error) {
 	row := q.db.QueryRow(ctx, lockManagedTeam, id)
-	var id_2 uuid.UUID
-	err := row.Scan(&id_2)
-	return id_2, err
+	var slug string
+	err := row.Scan(&slug)
+	return slug, err
 }
 
 const updateManagedTeam = `-- name: UpdateManagedTeam :one

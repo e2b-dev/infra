@@ -35,10 +35,10 @@ var (
 // them on every push, so a reconcile is a complete statement rather than a
 // patch.
 //
-// Slug moves like the others, and nothing follows it. Template names embed the
-// slug they were built under, so a renamed project keeps its existing template
-// names and only new ones carry the new slug. Rewriting them would break every
-// reference a user has already scripted, which is worse than the inconsistency.
+// Slug moves like the others, and the project's template aliases follow it in
+// the same transaction: each one held under an earlier slug is also given under
+// the new one. The old names stay, because rewriting them would break every
+// reference a user has already scripted.
 type Project struct {
 	ClusterID *uuid.UUID
 	ID        uuid.UUID
@@ -85,11 +85,11 @@ func (s *Service) writeProject(ctx context.Context, project Project) (stored Pro
 		_ = tx.Rollback(ctx)
 	}()
 
-	_, err = txDB.LockManagedTeam(ctx, project.ID)
+	currentSlug, err := txDB.LockManagedTeam(ctx, project.ID)
 
 	switch {
 	case err == nil:
-		stored, err = reconcileProject(ctx, txDB, project)
+		stored, err = reconcileProject(ctx, txDB, project, currentSlug)
 	case dberrors.IsNotFoundError(err):
 		stored, err = createProject(ctx, txDB, project)
 		created = true
@@ -132,7 +132,7 @@ func createProject(ctx context.Context, txDB *authqueries.Queries, project Proje
 	return Project{ClusterID: inserted.ClusterID, ID: project.ID, Name: inserted.Name, Slug: inserted.Slug, Email: inserted.Email}, nil
 }
 
-func reconcileProject(ctx context.Context, txDB *authqueries.Queries, project Project) (Project, error) {
+func reconcileProject(ctx context.Context, txDB *authqueries.Queries, project Project, currentSlug string) (Project, error) {
 	updated, err := txDB.UpdateManagedTeam(ctx, authqueries.UpdateManagedTeamParams{
 		ClusterID: project.ClusterID,
 		ID:        project.ID,
@@ -148,5 +148,29 @@ func reconcileProject(ctx context.Context, txDB *authqueries.Queries, project Pr
 		return Project{}, fmt.Errorf("reconcile project: %w", err)
 	}
 
+	if updated.Slug != currentSlug {
+		if err := copyAliasesToSlug(ctx, txDB, project.ID, currentSlug, updated.Slug); err != nil {
+			return Project{}, err
+		}
+	}
+
 	return Project{ClusterID: updated.ClusterID, ID: project.ID, Name: updated.Name, Slug: updated.Slug, Email: updated.Email}, nil
+}
+
+func copyAliasesToSlug(ctx context.Context, txDB *authqueries.Queries, projectID uuid.UUID, previousSlug, slug string) error {
+	skipped, err := txDB.CopyTeamAliasesToNamespace(ctx, authqueries.CopyTeamAliasesToNamespaceParams{
+		Namespace:         slug,
+		TeamID:            projectID,
+		PreviousNamespace: previousSlug,
+	})
+	if err != nil {
+		return fmt.Errorf("copy template aliases to the new slug: %w", err)
+	}
+
+	if len(skipped) > 0 {
+		logger.L().Warn(ctx, "template aliases not copied to the new slug, which gives them to another template",
+			logger.WithTeamID(projectID.String()), zap.String("slug", slug), zap.Strings("aliases", skipped))
+	}
+
+	return nil
 }
