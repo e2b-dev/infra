@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -1013,10 +1014,12 @@ func (s *Server) recordExecutionDuration(ctx context.Context, sbx *sandbox.Sandb
 // killed: both leave a nil wait error.
 func (s *Server) recordCrash(ctx context.Context, sbx *sandbox.Sandbox, waitErr error) {
 	exitInfo := sbx.FirecrackerExit()
-	cause := crashCause(exitInfo, sbx.MemoryHandlerErr())
+	memoryHandlerErr := sbx.MemoryHandlerErr()
+	cause := crashCause(exitInfo, memoryHandlerErr)
 
 	s.sandboxCrashedCounter.Add(ctx, 1, metric.WithAttributes(
 		attribute.String("cause", string(cause)),
+		attribute.String("uffd_copy_error", string(classifyUffdCopyError(errors.Join(waitErr, memoryHandlerErr)))),
 		telemetry.WithTeamID(sbx.Runtime.TeamID),
 	))
 
@@ -1046,6 +1049,30 @@ func crashCause(exit *fc.ExitInfo, memoryHandlerErr error) fc.CrashCause {
 	}
 
 	return cause
+}
+
+// uffdCopyError labels a crash whose memory handler could not install a
+// faulted page. A node with no free hugepage fails UFFDIO_COPY with ENOMEM,
+// and an alert on hugepage exhaustion needs to count those crashes alone:
+// the crash cause folds them in with every other handler failure.
+type uffdCopyError string
+
+const (
+	uffdCopyErrorNone   uffdCopyError = "none"
+	uffdCopyErrorENOMEM uffdCopyError = "enomem"
+	uffdCopyErrorOther  uffdCopyError = "other"
+)
+
+// classifyUffdCopyError reads the errors a crashed execution ended with.
+func classifyUffdCopyError(err error) uffdCopyError {
+	if !errors.Is(err, userfaultfd.ErrCopyFailed) {
+		return uffdCopyErrorNone
+	}
+	if errors.Is(err, syscall.ENOMEM) {
+		return uffdCopyErrorENOMEM
+	}
+
+	return uffdCopyErrorOther
 }
 
 // isCleanFirecrackerExit reports whether Firecracker exited 0 and nothing else

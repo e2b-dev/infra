@@ -4,6 +4,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"reflect"
 	"syscall"
@@ -21,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
@@ -333,6 +335,66 @@ func TestRecordCrashWithoutFirecrackerProcess(t *testing.T) {
 	}
 
 	assert.Equal(t, map[string]int64{string(fc.CrashCauseUnknown): 1}, got)
+}
+
+// A crash the memory handler caused by failing to install a page carries the
+// kernel's errno, so a hugepage-exhausted node's ENOMEM crashes can be counted
+// apart from every other handler failure. The chain is the one the handler
+// returns through the uffd serve loop.
+func TestRecordCrashLabelsUffdCopyError(t *testing.T) {
+	t.Parallel()
+
+	copyFailure := func(errno error) error {
+		return fmt.Errorf("failed handling uffd: %w",
+			fmt.Errorf("failed to handle uffd: %w",
+				fmt.Errorf("%w: %w", userfaultfd.ErrCopyFailed, errors.Join(errno, nil))))
+	}
+
+	for _, tc := range []struct {
+		name    string
+		waitErr error
+		want    string
+	}{
+		{"copy ENOMEM", copyFailure(syscall.ENOMEM), "enomem"},
+		{"copy with another errno", copyFailure(syscall.EFAULT), "other"},
+		{"ENOMEM outside the copy", fmt.Errorf("failed handling uffd: %w", syscall.ENOMEM), "none"},
+		{"no error", nil, "none"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			reader := sdkmetric.NewManualReader()
+			meter := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/server")
+			counter, err := telemetry.GetCounter(meter, telemetry.OrchestratorSandboxCrashedCounterName)
+			require.NoError(t, err)
+
+			s := &Server{sandboxCrashedCounter: counter}
+			s.recordCrash(t.Context(), &sandbox.Sandbox{Metadata: &sandbox.Metadata{}}, tc.waitErr)
+
+			var rm metricdata.ResourceMetrics
+			require.NoError(t, reader.Collect(t.Context(), &rm))
+
+			got := map[string]int64{}
+			for _, sm := range rm.ScopeMetrics {
+				for _, m := range sm.Metrics {
+					if m.Name != string(telemetry.OrchestratorSandboxCrashedCounterName) {
+						continue
+					}
+
+					sum, ok := m.Data.(metricdata.Sum[int64])
+					require.True(t, ok)
+
+					for _, dp := range sum.DataPoints {
+						v, ok := dp.Attributes.Value(attribute.Key("uffd_copy_error"))
+						require.True(t, ok)
+						got[v.AsString()] += dp.Value
+					}
+				}
+			}
+
+			assert.Equal(t, map[string]int64{tc.want: 1}, got)
+		})
+	}
 }
 
 func TestIsCleanFirecrackerExit(t *testing.T) {

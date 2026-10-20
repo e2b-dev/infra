@@ -79,6 +79,8 @@ const (
 	// a kill the orchestrator did not send, is the one to alert on.
 	// memory_handler_failed is a resumed sandbox whose memory could not be
 	// served, hugepage exhaustion included; fault is Firecracker faulting.
+	// uffd_copy_error=enomem picks out the crashes hugepage exhaustion
+	// caused: the handler found no free hugepage to install a faulted page.
 	// clean_exit is usually the guest shutting down, but also covers guest
 	// kernel panics, which the host cannot tell apart.
 	OrchestratorSandboxCrashedCounterName CounterType = "orchestrator.sandbox.crashed"
@@ -774,7 +776,7 @@ var counterDesc = map[CounterType]string{
 	EnvdCpuReport:                                "Successful /init responses for VMs with spare vCPUs, by sandbox_type, start_type, outcome, and init (why the /init was sent: first, reinit or repeat)",
 	EnvdCollapseChunks:                           "2 MiB chunks the pre-pause envd heap collapse attempted, by result",
 	OrchestratorSandboxKilledCounterName:         "Number of sandboxes killed, labeled by kill reason",
-	OrchestratorSandboxCrashedCounterName:        "Sandbox executions that ended without a recorded stop reason, labeled by cause (clean_exit/exit_error/external_signal/fault/memory_handler_failed/requested_signal/unknown)",
+	OrchestratorSandboxCrashedCounterName:        "Sandbox executions that ended without a recorded stop reason, labeled by cause (clean_exit/exit_error/external_signal/fault/memory_handler_failed/requested_signal/unknown) and by the memory handler's page-copy failure (uffd_copy_error=none/enomem/other)",
 	OrchestratorSandboxPauseAdmissionCounterName: "Snapshot-admission decisions, labeled by outcome (ready/ready_after_wait/refused/latched_error) and rpc (pause/checkpoint)",
 	OrchestratorSandboxCheckpointCounterName:     "Number of sandbox checkpoints taken, labeled by in_place, fs_only (filesystem-only, no memory export; always in place), route (in_place, or the gate condition that sent it resume-fresh: sync_wp_off, flag_off, fc_unsupported, balloon_reporting, balloon_unknown), balloon_mode, deferred (in-place memory export through the CoW window rather than the synchronous copy; always false on resume-fresh) and success",
 	OrchestratorFPRResumeCounterName:             "Free-page-reporting resumes after a CoW window, labeled by outcome (inline, retry, fenced, fc_exited, abandoned); produced only while in-place-checkpoint-reporting admits reporting balloons to the in-place path",

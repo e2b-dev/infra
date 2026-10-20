@@ -77,6 +77,14 @@ var ErrUnexpectedEventType = errors.New("unexpected event type")
 // teardown) and the requested operation was skipped.
 var ErrClosed = errors.New("userfaultfd is closed")
 
+// ErrCopyFailed marks a faulted page UFFDIO_COPY could not install, which
+// ends the handler. The kernel's errno stays in the chain.
+var ErrCopyFailed = errors.New("failed uffdio copy")
+
+// errZeroPageFailed is the same for UFFDIO_ZEROPAGE, kept apart because it
+// never allocates a hugepage.
+var errZeroPageFailed = errors.New("failed uffdio zeropage")
+
 func hasEvent(revents, event int16) bool {
 	return revents&event != 0
 }
@@ -959,6 +967,7 @@ func (u *Userfaultfd) faultPage(
 	}()
 
 	var writeErr error
+	failedOp := ErrCopyFailed
 
 	mode := u.defaultCopyMode
 	if accessType == block.Read {
@@ -972,6 +981,7 @@ func (u *Userfaultfd) faultPage(
 		// write that faulted lands immediately and the page is recorded
 		// Dirty.
 		writeErr = u.fd.zero(addr, u.pageSize, 0)
+		failedOp = errZeroPageFailed
 	case source == nil:
 		// Zero-fill via COPY of a zero buffer instead of UFFDIO_ZEROPAGE,
 		// so read faults get install+write-protect in ONE atomic ioctl
@@ -1095,7 +1105,7 @@ func (u *Userfaultfd) faultPage(
 		span.RecordError(joinedErr)
 		u.logger.Error(ctx, "UFFD serve uffdio copy error", zap.Error(joinedErr))
 
-		return faultDiscarded, fmt.Errorf("failed uffdio copy: %w", joinedErr)
+		return faultDiscarded, fmt.Errorf("%w: %w", failedOp, joinedErr)
 	}
 
 	return faultInstalled, nil
