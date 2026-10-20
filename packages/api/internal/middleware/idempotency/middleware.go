@@ -2,8 +2,6 @@ package idempotency
 
 import (
 	"fmt"
-	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/redis/go-redis/v9"
@@ -24,8 +22,8 @@ func Middleware(client redis.UniversalClient, flags *featureflags.Client) gin.Ha
 
 func middleware(store store, flags *featureflags.Client) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		values, present := c.Request.Header[headerName]
-		if !present {
+		values := c.Request.Header[headerName]
+		if len(values) == 0 {
 			return
 		}
 		ctx := c.Request.Context()
@@ -35,13 +33,6 @@ func middleware(store store, flags *featureflags.Client) gin.HandlerFunc {
 		}
 		routes := flags.JSONFlag(ctx, featureflags.APIIdempotencyRoutes)
 		if !routes.GetByKey(c.Request.Method + " " + c.FullPath()).BoolValue() {
-			return
-		}
-		if len(values) != 1 || len(values[0]) < 1 || len(values[0]) > 255 || strings.ContainsFunc(values[0], func(r rune) bool {
-			return (r < 'a' || r > 'z') && (r < '0' || r > '9')
-		}) {
-			reject(c, http.StatusBadRequest, "Idempotency-Key must contain one value of 1 to 255 lowercase ASCII letters or digits", apierrors.NoRetry)
-
 			return
 		}
 

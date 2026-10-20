@@ -2217,8 +2217,8 @@ type GetV2SandboxesParams struct {
 // PostV2SandboxesParams defines parameters for PostV2Sandboxes.
 type PostV2SandboxesParams struct {
 	// IdempotencyKey Optional team-scoped key for retrying sandbox creation. Use 1 to 255 lowercase ASCII
-	// letters or digits (a-z, 0-9). When idempotency is enabled, matching retries replay the original
-	// status and body, including errors, for the retention period.
+	// letters, digits, or hyphens (a-z, 0-9, -), such as a lowercase UUID. When idempotency is enabled,
+	// matching retries replay the original status and body, including errors, for the retention period.
 	// Different request parameters return 409 with error_code idempotency_request_mismatch.
 	// An in-progress request returns 409 with error_code idempotency_in_progress; an unknown
 	// outcome returns 422 with error_code idempotency_outcome_unknown. These retries do not execute the request again.

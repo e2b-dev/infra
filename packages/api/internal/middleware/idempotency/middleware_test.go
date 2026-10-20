@@ -160,9 +160,9 @@ func validatedRequest(t *testing.T, flags *featureflags.Client, body string) api
 
 func TestBypassAndKeyValidation(t *testing.T) {
 	t.Parallel()
-	// The schema catches most malformed keys before the middleware, so those
-	// 400s carry no hint; only the middleware's own rejection classifies. The
-	// 503s are reserve failures, a transient condition.
+	// The schema and the generated binding reject malformed or repeated keys,
+	// so those 400s carry no hint. The 503s are reserve failures, a transient
+	// condition.
 	for _, tc := range []struct {
 		name, path string
 		disabled   bool
@@ -180,16 +180,19 @@ func TestBypassAndKeyValidation(t *testing.T) {
 		{"disabled 255 characters", "/v2/sandboxes", true, []string{strings.Repeat("a", 255)}, 201, ""},
 		{"disabled unicode", "/v2/sandboxes", true, []string{"\u754c"}, 400, ""},
 		{"disabled uppercase", "/v2/sandboxes", true, []string{"ABC"}, 400, ""},
+		{"disabled uuid", "/v2/sandboxes", true, []string{uuid.NewString()}, 201, ""},
 		{"v1 valid", "/sandboxes", false, []string{"key"}, 201, ""},
 		{"v1 repeated", "/sandboxes", false, []string{"a", "b"}, 201, ""},
 		{"empty", "/v2/sandboxes", false, []string{""}, 400, ""},
-		{"repeated", "/v2/sandboxes", false, []string{"a", "a"}, 400, "false"},
+		{"repeated", "/v2/sandboxes", false, []string{"a", "a"}, 400, ""},
 		{"overlong", "/v2/sandboxes", false, []string{strings.Repeat("\u754c", 256)}, 400, ""},
 		{"invalid utf8", "/v2/sandboxes", false, []string{"\xff"}, 400, ""},
 		{"255 characters", "/v2/sandboxes", false, []string{strings.Repeat("a", 255)}, 503, "true"},
 		{"lowercase alphanumeric", "/v2/sandboxes", false, []string{"abc0123456789xyz"}, 503, "true"},
+		{"uuid", "/v2/sandboxes", false, []string{uuid.NewString()}, 503, "true"},
 		{"uppercase", "/v2/sandboxes", false, []string{"ABC"}, 400, ""},
-		{"punctuation", "/v2/sandboxes", false, []string{"abc-123"}, 400, ""},
+		{"uppercase uuid", "/v2/sandboxes", false, []string{strings.ToUpper(uuid.NewString())}, 400, ""},
+		{"punctuation", "/v2/sandboxes", false, []string{"abc_123"}, 400, ""},
 		{"whitespace", "/v2/sandboxes", false, []string{" abc "}, 400, ""},
 		{"unicode", "/v2/sandboxes", false, []string{"\u754c"}, 400, ""},
 		{"non BMP", "/v2/sandboxes", false, []string{strings.Repeat("😀", 128)}, 400, ""},
@@ -457,7 +460,7 @@ func TestRedisMiddleware(t *testing.T) {
 			{`{"templateID":"base","extra":[1,2]}`, `{"templateID":"base","extra":[2,1]}`},
 			{`{"templateID":"base","autoPause":false,"autoPauseMemory":true}`, validBody},
 		} {
-			key := []string{strings.ReplaceAll(uuid.NewString(), "-", "")}
+			key := []string{uuid.NewString()}
 			w := request(t.Context(), r, "/v2/sandboxes", pair.first, key)
 			require.Equal(t, 201, w.Code, "%s: %s", pair.first, w.Body.String())
 			w = request(t.Context(), r, "/v2/sandboxes", pair.second, key)
@@ -479,7 +482,7 @@ func TestRedisMiddleware(t *testing.T) {
 			{`{"templateID":"base","network":{"allowOut":["a","b"]}}`, `{"templateID":"base","network":{"allowOut":["b","a"]}}`},
 			{`{"templateID":"base","metadata":{"a":"one"}}`, `{"templateID":"base","metadata":{"a":"two"}}`},
 		} {
-			key := []string{strings.ReplaceAll(uuid.NewString(), "-", "")}
+			key := []string{uuid.NewString()}
 			w := request(t.Context(), r, "/v2/sandboxes", pair.first, key)
 			require.Equal(t, 201, w.Code, w.Body.String())
 			w = request(t.Context(), r, "/v2/sandboxes", pair.second, key)

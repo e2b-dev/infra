@@ -652,10 +652,12 @@ pattern. For sandbox creation:
 
 The flag defaults to null, which disables idempotency. The idempotency middleware bypasses requests
 without a key, an authenticated team, or an enabled route. Authentication, schema validation,
-rate limits, and blocked-team checks apply before the executor, including on retries. A key must
-contain one value of 1 to 255 lowercase ASCII letters or digits (`a-z`, `0-9`). The middleware
-validates keys on enabled routes; OpenAPI validation and parameter binding enforce the create
-endpoint's header contract regardless of the flag.
+rate limits, and blocked-team checks apply before the executor, including on retries. A key is
+1 to 255 lowercase ASCII letters, digits, or hyphens (`a-z`, `0-9`, `-`), so a lowercase UUID is
+valid as is. Only the route's OpenAPI schema defines that format, and it applies regardless of the
+flag, so a participating route must declare the header with the same schema. The validator checks
+only the first header value; the generated parameter binding rejects a repeated header before the
+handler runs.
 
 The request fingerprint hashes the HTTP method, concrete URI including query string, and
 handler-supplied JSON-serializable content with SHA-256. Handlers include behavior-affecting

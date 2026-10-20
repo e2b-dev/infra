@@ -167,20 +167,6 @@ func TestExecutorRouteEnablement(t *testing.T) {
 			w := request(t.Context(), r, "/widgets/one", "", []string{"key"})
 			require.Equal(t, tc.status, w.Code, w.Body.String())
 			require.Equal(t, tc.status == 204, calls == 1)
-			invalidKeys := [][]string{{""}, {"a", "b"}, {strings.Repeat("a", 256)}, {"\xff"}, {"ABC"}, {"abc-123"}, {" a"}, {"\u754c"}, {"😀"}}
-			for _, keys := range invalidKeys {
-				w := request(t.Context(), r, "/widgets/one", "", keys)
-				if tc.status == http.StatusServiceUnavailable {
-					require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
-				} else {
-					require.Equal(t, http.StatusNoContent, w.Code, w.Body.String())
-				}
-			}
-			wantCalls := 0
-			if tc.status == http.StatusNoContent {
-				wantCalls = 1 + len(invalidKeys)
-			}
-			require.Equal(t, wantCalls, calls)
 		})
 	}
 }
