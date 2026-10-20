@@ -384,6 +384,65 @@ func TestUpdate_SerializesUpdatesPerSandbox(t *testing.T) {
 	assert.True(t, newEnd.Equal(sbx.GetEndAt()))
 }
 
+// ReadCommitted counts accepted updates only, and reads the state an update
+// in progress commits.
+func TestUpdate_ReadCommittedCountsAcceptedUpdates(t *testing.T) {
+	t.Parallel()
+
+	slot, err := network.NewSlot("test", 1, network.Config{}, network.NoopEgressProxy{})
+	require.NoError(t, err)
+	sbx := &sandbox.Sandbox{
+		Metadata: &sandbox.Metadata{
+			Config:  sandbox.NewConfig(sandbox.Config{}),
+			Runtime: sandboxtypes.RuntimeMetadata{SandboxID: id.Generate()},
+		},
+		Resources: &sandbox.Resources{Slot: slot},
+	}
+	sbx.SetEndAt(time.Now().Add(time.Hour))
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.MarkRunning(t.Context(), sbx)
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+	}
+	committed := func() (uint64, time.Time) {
+		var updates uint64
+		var end time.Time
+		sbx.ReadCommitted(func(committedUpdates uint64) { updates, end = committedUpdates, sbx.GetEndAt() })
+
+		return updates, end
+	}
+
+	accepted := time.Now().Add(2 * time.Hour)
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{SandboxId: sbx.Runtime.SandboxID, EndTime: timestamppb.New(accepted)})
+	require.NoError(t, err)
+	updates, end := committed()
+	assert.Equal(t, uint64(1), updates)
+	assert.True(t, accepted.Equal(end))
+
+	// The egress step fails without a network namespace and rolls the end
+	// time back.
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		EndTime:   timestamppb.New(time.Now().Add(3 * time.Hour)),
+		Egress:    &orchestrator.SandboxNetworkEgressConfig{DeniedCidrs: []string{"0.0.0.0/0"}},
+	})
+	require.Error(t, err)
+	updates, end = committed()
+	assert.Equal(t, uint64(1), updates)
+	assert.True(t, accepted.Equal(end))
+
+	// A read that starts inside an update sees the state it commits.
+	read := make(chan uint64, 1)
+	require.NoError(t, sbx.RunUpdate(func() error {
+		go func() { updates, _ := committed(); read <- updates }()
+
+		return nil
+	}))
+	assert.Equal(t, uint64(2), <-read)
+}
+
 func TestMapSandboxUpdateError(t *testing.T) {
 	t.Parallel()
 

@@ -397,6 +397,9 @@ type Sandbox struct {
 
 	updateMu        sync.Mutex
 	updateAdmission updateAdmission
+	// committedUpdates counts the RunUpdate callbacks that succeeded in this
+	// lifecycle. Guarded by updateMu.
+	committedUpdates uint64
 
 	// fphMu serialises free-page-hinting runs (the pre-pause drain and the
 	// periodic hinter): FC accepts one hinting cycle at a time, and Pause takes
@@ -628,7 +631,24 @@ func (s *Sandbox) RunUpdate(update func() error) error {
 	// and its admission have both ended.
 	defer s.updateAdmission.complete(activeDone)
 
-	return update()
+	if err := update(); err != nil {
+		return err
+	}
+	s.committedUpdates++
+
+	return nil
+}
+
+// ReadCommitted calls read with the number of updates committed in this
+// lifecycle, holding the lock RunUpdate holds across its callback. What read
+// observes of the state updates change, the end time and the network egress,
+// is one committed state: never a step of an update in progress, nor one it
+// rolled back. read must not call RunUpdate or ReadCommitted.
+func (s *Sandbox) ReadCommitted(read func(committedUpdates uint64)) {
+	s.updateMu.Lock()
+	defer s.updateMu.Unlock()
+
+	read(s.committedUpdates)
 }
 
 // UseSyncWP reports whether this sandbox was resumed with synchronous
