@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.10.1 (2026-10-20)
+
+
+### Bug Fixes
+
+* **deps:** move the workspace to the Go 1.26.10 toolchain (229e936)
+* **envd:** correct tag-based process lookup early abort (7d78e2b)
+* **envd:** drop the nil wrapped error from the watch non-directory message (864edc8)
+* **envd:** fail init when a requested volume is not usable (3d4b04b)
+* **envd:** keep forwarded ports when a port scan fails (2185385)
+
 ## 0.10.0 (2026-10-12)
 
 
