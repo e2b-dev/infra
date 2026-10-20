@@ -2003,6 +2003,7 @@ func (f *Factory) ResumeSandbox(
 		fcUffdPath,
 		snapfile,
 		fcUffd.Ready(),
+		fcUffd.Exit(),
 		config.Envd.AccessToken,
 		cgroupHandle,
 		useMemfd,

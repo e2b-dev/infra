@@ -13,16 +13,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
+
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/block"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
-// A uffd handler that exits after Firecracker loaded the snapshot ends the
-// wait for it with its exit error as the cause, and the cause must reach the
-// caller: Create tells a node whose pool could not back the guest memory
-// (ENOMEM from the memfd mmap) from a failed create by it. The stub keeps the
-// ready channel open so the wait takes the context branch; in production the
-// handler closes the channel right after recording the exit, so this branch is
-// the rarer ordering and the cause otherwise arrives through the next
-// Firecracker call.
+// Cancellation while waiting for readiness preserves the handler's exit cause.
 func TestLoadSnapshotKeepsUffdExitCause(t *testing.T) {
 	t.Parallel()
 
@@ -53,6 +49,59 @@ func TestLoadSnapshotKeepsUffdExitCause(t *testing.T) {
 		cancel(fmt.Errorf("uffd process exited: failed to wrap memfd: mmap memfd: %w", unix.ENOMEM))
 	}()
 
-	err = newApiClient(socket).loadSnapshot(ctx, dir+"/uffd.sock", make(chan struct{}), stubSnapfile(dir+"/snapfile"), false, false, "", "team-1")
+	err = newApiClient(socket).loadSnapshot(ctx, dir+"/uffd.sock", make(chan struct{}), utils.NewErrorOnce(), stubSnapfile(dir+"/snapfile"), false, false, "", "team-1")
 	require.ErrorIs(t, err, unix.ENOMEM)
+}
+
+// The exit watcher may not have canceled the start context when Ready closes.
+func TestLoadSnapshotChecksUffdExitAfterReady(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range []struct {
+		name    string
+		exited  bool
+		exitErr error
+	}{
+		{name: "ready"},
+		{name: "failed", exited: true, exitErr: block.GuestMemoryError{Err: unix.ENOMEM}},
+		{name: "stopped", exited: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir, err := os.MkdirTemp("", "fc") //nolint:usetesting // unix socket path limit
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = os.RemoveAll(dir) })
+			socket := dir + "/fc.sock"
+			listener, err := new(net.ListenConfig).Listen(t.Context(), "unix", socket)
+			require.NoError(t, err)
+
+			exit := utils.NewErrorOnce()
+			ready := make(chan struct{})
+			mux := http.NewServeMux()
+			mux.HandleFunc("PUT /snapshot/load", func(w http.ResponseWriter, _ *http.Request) {
+				if tt.exited {
+					_ = exit.SetError(tt.exitErr)
+				}
+				close(ready)
+				w.WriteHeader(http.StatusNoContent)
+			})
+			server := &http.Server{Handler: mux} //nolint:gosec // private test socket
+			go func() { _ = server.Serve(listener) }()
+			t.Cleanup(func() { _ = server.Close() })
+
+			err = newApiClient(socket).loadSnapshot(t.Context(), dir+"/uffd.sock", ready, exit, stubSnapfile(dir+"/snapfile"), false, false, "", "team-1")
+			if !tt.exited {
+				require.NoError(t, err)
+
+				return
+			}
+			require.ErrorContains(t, err, "uffd exited while loading snapshot")
+			if tt.exitErr != nil {
+				require.ErrorIs(t, err, unix.ENOMEM)
+				var memoryErr block.GuestMemoryError
+				require.ErrorAs(t, err, &memoryErr)
+			}
+		})
+	}
 }

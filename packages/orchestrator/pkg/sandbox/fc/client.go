@@ -22,6 +22,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/fc/models"
 	"github.com/e2b-dev/infra/packages/shared/pkg/storage/header"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 const archARM64 = "arm64"
@@ -74,6 +75,7 @@ func (c *apiClient) loadSnapshot(
 	ctx context.Context,
 	uffdSocketPath string,
 	uffdReady chan struct{},
+	uffdExit *utils.ErrorOnce,
 	snapfile template.File,
 	useMemfd bool,
 	useSyncWP bool,
@@ -131,6 +133,13 @@ func (c *apiClient) loadSnapshot(
 		return fmt.Errorf("context canceled while waiting for uffd ready: %w", context.Cause(ctx))
 	case <-uffdReady:
 		// Wait for the uffd to be ready to serve requests
+	}
+
+	// Ready also closes on startup failure. The exit watcher may not have run.
+	select {
+	case <-uffdExit.Done():
+		return errors.Join(errors.New("uffd exited while loading snapshot"), uffdExit.Wait())
+	default:
 	}
 
 	telemetry.ReportEvent(ctx, "uffd ready")
