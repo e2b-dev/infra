@@ -31,6 +31,14 @@ type Memfd struct {
 	mmap []byte
 }
 
+// GuestMemoryError is the guest-memory mmap failing with ENOMEM: the hugepage
+// pool could not back the whole guest, because sandboxes still hold the pages
+// or the pool is smaller than the guest. It keeps the errno's text.
+type GuestMemoryError struct{ Err error }
+
+func (e GuestMemoryError) Error() string { return e.Err.Error() }
+func (e GuestMemoryError) Unwrap() error { return e.Err }
+
 func NewFromFd(fd int) (*Memfd, error) {
 	var st unix.Stat_t
 	if err := unix.Fstat(fd, &st); err != nil {
@@ -41,6 +49,9 @@ func NewFromFd(fd int) (*Memfd, error) {
 	b, err := unix.Mmap(fd, 0, int(st.Size), unix.PROT_READ, unix.MAP_SHARED)
 	if err != nil {
 		_ = unix.Close(fd)
+		if errors.Is(err, unix.ENOMEM) {
+			err = GuestMemoryError{Err: err}
+		}
 
 		return nil, fmt.Errorf("mmap memfd: %w", err)
 	}

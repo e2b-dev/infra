@@ -389,6 +389,10 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		}
 	}
 
+	// Read before the start too: a teardown that ends during it gave its pages
+	// back after the mmap failed, so a retry would find them.
+	stoppingBefore := s.sandboxFactory.Sandboxes.Stopping()
+
 	var sbx *sandbox.Sandbox
 	if filesystemBooted {
 		sbx, err = s.sandboxFactory.RebootSandbox(
@@ -439,6 +443,18 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		if refusal := volumeRefusal(ctx, err); refusal != nil {
 			// The user's volume is unusable; the orchestrator itself is fine.
 			telemetry.ReportError(ctx, "sandbox volume not usable", err, telemetry.WithSandboxID(req.GetSandbox().GetSandboxId()))
+
+			return nil, refusal
+		}
+		if refusal := s.memoryRefusal(ctx, err, req.GetSandbox().GetRamMb(), stoppingBefore, runtime); refusal != nil {
+			// Placement may retry this node with the same sandbox ID within a
+			// millisecond, and the ID stays reserved until the rollback has run
+			// (finishSandboxStart runs it on a goroutine), so run it now. It
+			// holds only the template pin here, normally a refcount drop.
+			if cleanupErr := rollback.Run(ctx); cleanupErr != nil {
+				telemetry.ReportCriticalError(ctx, "failed to clean up sandbox start", cleanupErr)
+			}
+			rollback = nil
 
 			return nil, refusal
 		}
@@ -3077,6 +3093,34 @@ func volumeRefusal(ctx context.Context, err error) error {
 	}
 
 	return createRefused(ctx, codes.FailedPrecondition, "%s", volumeErr.Error())
+}
+
+// memoryRefusal is the answer to a create whose guest memory the hugepage pool
+// could not back, or nil when err is not that failure or the flag is off, in
+// which case the create fails as any other. While a sandbox on this node is
+// tearing down, now or when the create began (the failed start's own teardown
+// runs before the error gets here), its pages are on their way back, so the
+// create is refused for placement to retry here; otherwise the pool is too
+// small or held by running sandboxes, and the create fails at once with that
+// said. Neither carries the for-good detail: another node may have a larger
+// pool. The chain is logged; the client's message leaves it out.
+func (s *Server) memoryRefusal(ctx context.Context, err error, ramMB int64, stoppingBefore int, runtime sandboxtypes.RuntimeMetadata) error {
+	if _, ok := errors.AsType[sandbox.GuestMemoryError](err); !ok || !s.featureFlags.BoolFlag(ctx, featureflags.CreateMemoryRefusalFlag) {
+		return nil
+	}
+	stopping := max(stoppingBefore, s.sandboxFactory.Sandboxes.Stopping())
+	telemetry.ReportError(ctx, "create refused: guest memory not mappable", err,
+		telemetry.WithSandboxID(runtime.SandboxID),
+		telemetry.WithBuildID(runtime.BuildID),
+		telemetry.WithTemplateID(runtime.TemplateID),
+		telemetry.WithTeamID(runtime.TeamID),
+		attribute.Int("stopping", stopping),
+		attribute.Int64("ram_mb", ramMB))
+	if stopping > 0 {
+		return status.Error(codes.ResourceExhausted, "not enough memory to map the guest memory while a sandbox is still stopping on this node, please retry")
+	}
+
+	return status.Errorf(codes.FailedPrecondition, "this node cannot map %d MiB of guest memory: its memory pool is too small or in use by running sandboxes", ramMB)
 }
 
 // filesystemOnlyDisabledStatus is the flag refusal with a typed detail, so the

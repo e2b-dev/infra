@@ -618,7 +618,17 @@ var (
 	// after, and the pause endpoint answers today's generic error rather than
 	// a 503 whose retry could not succeed. The fallback reads
 	// PAUSE_REFUSAL_RESTORE so a deployment without LaunchDarkly can turn it on.
-	PauseRefusalRestoreFlag       = NewBoolFlag("pause-refusal-restore", envBoolOr("PAUSE_REFUSAL_RESTORE", false))
+	PauseRefusalRestoreFlag = NewBoolFlag("pause-refusal-restore", envBoolOr("PAUSE_REFUSAL_RESTORE", false))
+	// CreateMemoryRefusalFlag changes what a create answers when the hugepage
+	// pool cannot back its guest memory. On, while a sandbox on the node is
+	// still tearing down, the create is refused with ResourceExhausted, so
+	// placement retries the node once the pages are back; with nothing tearing
+	// down it fails at once and says why. Off (default), such a create fails
+	// as an internal error and placement excludes the node, which on a
+	// one-node deployment turns a create sent right after a kill into a
+	// failure. The fallback reads CREATE_MEMORY_REFUSAL so a deployment
+	// without LaunchDarkly can turn it on.
+	CreateMemoryRefusalFlag       = NewBoolFlag("create-memory-refusal", envBoolOr("CREATE_MEMORY_REFUSAL", false))
 	MaxCacheWriterConcurrencyFlag = NewIntFlag("max-cache-writer-concurrency", 10)
 
 	// BuildCacheMaxUsagePercentage the maximum percentage of the cache disk storage

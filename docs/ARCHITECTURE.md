@@ -180,7 +180,13 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   of the node's pool ceiling (base pool plus overcommit allowance, reported by
   the orchestrator); within an API replica the check and the in-flight record
   are one step per node, and when the compatible nodes are all full placement
-  answers with a capacity error, not "no compatible node".
+  answers with a capacity error, not "no compatible node". With the
+  orchestrator's `create-memory-refusal` flag on (`CREATE_MEMORY_REFUSAL` for a
+  deployment without LaunchDarkly), a create whose guest memory the pool
+  cannot back while a sandbox on that node is still tearing down is refused
+  with `ResourceExhausted`, so placement retries the node once the pages are
+  back; with nothing tearing down it fails at once and says why. Off, it fails
+  as an internal error and the node is excluded.
 - **State**: writes sandbox records to Redis (source of truth for *running* sandboxes). It does
   not write routing: client-proxy reads the orchestrator-written `sandbox:routing:{id}` (see
   "Sandbox routing records"). Persistent entities (templates, builds, snapshots, teams) live in

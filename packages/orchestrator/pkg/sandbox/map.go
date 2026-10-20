@@ -103,6 +103,17 @@ func (m *Map) Count() int {
 	return m.live.Count()
 }
 
+// Stopping counts lifecycles that have left the live map but whose cleanup is
+// still outstanding: a kill or pause still releasing its resources, guest
+// memory included, or a checkpoint that holds its memory until it ends. live is
+// read first, so a start that is tracked but not yet live can count once too;
+// that costs the caller a spare retry, never a missed teardown.
+func (m *Map) Stopping() int {
+	live := m.live.Count()
+
+	return max(m.lifecycles.Count()-live, 0)
+}
+
 func (m *Map) Get(sandboxID string) (*Sandbox, bool) {
 	return m.live.Get(sandboxID)
 }

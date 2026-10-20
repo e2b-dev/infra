@@ -1470,6 +1470,10 @@ func WithInheritedEnvdVersion(v string) ResumeOption {
 // ErrVcpuExceedsSnapshot is fc.ErrVcpuExceedsSnapshot, so a refusal before and after the snapshot loads match.
 var ErrVcpuExceedsSnapshot = fc.ErrVcpuExceedsSnapshot
 
+// GuestMemoryError is block.GuestMemoryError: the hugepage pool could not back
+// the guest memory at the handshake mmap.
+type GuestMemoryError = block.GuestMemoryError
+
 // resumeVmVcpus uses recorded VM capacity, or infers it from the request for
 // legacy snapshots. It never trusts guest reports or scans host cgroups. A VM
 // smaller than the target is refused only when a VM size was given (the request's

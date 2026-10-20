@@ -303,6 +303,13 @@ services:
       # pause-admission-disk-headroom-mib flag, which has no LaunchDarkly to
       # come from here; orchestrator releases that predate the knob ignore it.
       PAUSE_ADMISSION_DISK_HEADROOM_MIB: "1024"
+      # A create that arrives while a killed sandbox is still returning its
+      # hugepages is refused for the api to retry on this host, instead of
+      # failing; with the pool sized for the sandboxes you run at once, that
+      # can be any create sent right after a kill. This is the orchestrator's
+      # create-memory-refusal flag, which has no LaunchDarkly to come from
+      # here; orchestrator releases that predate the knob ignore it.
+      CREATE_MEMORY_REFUSAL: "true"
       BUILD_CACHE_STORAGE_URL: file:///var/lib/e2b/storage/build-cache
       ARTIFACTS_REGISTRY_PROVIDER: Local
       LOCAL_UPLOAD_BASE_URL: http://127.0.0.1:5008

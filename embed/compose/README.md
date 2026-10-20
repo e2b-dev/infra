@@ -70,7 +70,11 @@ the hub is [`../README.md`](../README.md).
   process exited: failed to wrap memfd: mmap memfd: cannot allocate memory`.
   Set a
   larger `HUGEPAGES` in `.env` and run `up` again: `host-setup` re-applies
-  the sysctl on every start and the orchestrator needs no restart.
+  the sysctl on every start and the orchestrator needs no restart. A killed
+  sandbox gives its pages back a few hundred milliseconds after the kill
+  returns; a create sent in that window is retried on this host until they
+  are back (`CREATE_MEMORY_REFUSAL`, read by orchestrator releases that carry
+  it) instead of failing with that same 500.
 - Outbound HTTPS to Docker Hub, `us-docker.pkg.dev`, `storage.googleapis.com`,
   `github.com` and `raw.githubusercontent.com`. No account and no token:
   every image and binary the stack pulls is public.
