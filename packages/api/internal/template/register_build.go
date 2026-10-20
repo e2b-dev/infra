@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
@@ -225,6 +227,14 @@ func registerBuild(
 			return nil, &api.APIError{Code: http.StatusInternalServerError, ClientMsg: "Error when checking the previous template", Err: err}
 		}
 		data.Public = previous.Public
+	}
+
+	// When TEMPLATES_DEFAULT_PUBLIC=true, force every newly created or rebuilt
+	// template to be public, so templates created by any team are visible
+	// platform-wide. Applied after the rebuild-inheritance above so it overrides
+	// any inherited value; a value of false (or unset) keeps the prior behavior.
+	if templatesDefaultPublic() {
+		data.Public = true
 	}
 
 	var clusterID *uuid.UUID
@@ -486,4 +496,16 @@ func registerBuild(
 		Names:      names,
 		Tags:       tags,
 	}, nil
+}
+
+// templatesDefaultPublic reports whether newly created templates should be
+// forced public, controlled by the TEMPLATES_DEFAULT_PUBLIC environment
+// variable. Unset, empty, or unparseable values default to false, preserving
+// the original per-team-private behavior.
+func templatesDefaultPublic() bool {
+	v, err := strconv.ParseBool(os.Getenv("TEMPLATES_DEFAULT_PUBLIC"))
+	if err != nil {
+		return false
+	}
+	return v
 }
