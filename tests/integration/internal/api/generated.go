@@ -2572,6 +2572,13 @@ type ClientInterface interface {
 	// Corresponds with GET /admin/sandboxes/{sandboxID} (the `GetAdminSandboxesSandboxID` operationId).
 	GetAdminSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAdminTeamsTeamIDApiKeys List team API keys as admin
+	//
+	// Lists a team's API keys for internal service workflows. Unlike `GET /api-keys`, it does not resolve the team, so it also answers for a banned team.
+	//
+	// Corresponds with GET /admin/teams/{teamID}/api-keys (the `GetAdminTeamsTeamIDApiKeys` operationId).
+	GetAdminTeamsTeamIDApiKeys(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// PostAdminTeamsTeamIDApiKeysWithBody Create team API key as admin
 	//
 	// Creates a team API key for internal service workflows.
@@ -3398,6 +3405,23 @@ func (c *Client) GetAdminSandboxesRunningCounts(ctx context.Context, reqEditors 
 // Corresponds with GET /admin/sandboxes/{sandboxID} (the `GetAdminSandboxesSandboxID` operationId).
 func (c *Client) GetAdminSandboxesSandboxID(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAdminSandboxesSandboxIDRequest(c.Server, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetAdminTeamsTeamIDApiKeys List team API keys as admin
+//
+// Lists a team's API keys for internal service workflows. Unlike `GET /api-keys`, it does not resolve the team, so it also answers for a banned team.
+//
+// Corresponds with GET /admin/teams/{teamID}/api-keys (the `GetAdminTeamsTeamIDApiKeys` operationId).
+func (c *Client) GetAdminTeamsTeamIDApiKeys(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAdminTeamsTeamIDApiKeysRequest(c.Server, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -5239,6 +5263,40 @@ func NewGetAdminSandboxesSandboxIDRequest(server string, sandboxID SandboxID) (*
 	}
 
 	operationPath := fmt.Sprintf("/admin/sandboxes/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAdminTeamsTeamIDApiKeysRequest constructs an http.Request for the GetAdminTeamsTeamIDApiKeys method
+func NewGetAdminTeamsTeamIDApiKeysRequest(server string, teamID openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamID", teamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/admin/teams/%s/api-keys", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -9176,6 +9234,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /admin/sandboxes/{sandboxID} (the `GetAdminSandboxesSandboxID` operationId).
 	GetAdminSandboxesSandboxIDWithResponse(ctx context.Context, sandboxID SandboxID, reqEditors ...RequestEditorFn) (*GetAdminSandboxesSandboxIDResponse, error)
 
+	// GetAdminTeamsTeamIDApiKeysWithResponse List team API keys as admin
+	//
+	// Lists a team's API keys for internal service workflows. Unlike `GET /api-keys`, it does not resolve the team, so it also answers for a banned team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /admin/teams/{teamID}/api-keys (the `GetAdminTeamsTeamIDApiKeys` operationId).
+	GetAdminTeamsTeamIDApiKeysWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAdminTeamsTeamIDApiKeysResponse, error)
+
 	// PostAdminTeamsTeamIDApiKeysWithBodyWithResponse Create team API key as admin
 	//
 	// Creates a team API key for internal service workflows.
@@ -10217,6 +10284,68 @@ func (r GetAdminSandboxesSandboxIDResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetAdminSandboxesSandboxIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAdminTeamsTeamIDApiKeysResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]TeamAPIKey
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetAdminTeamsTeamIDApiKeysResponse) GetJSON200() *[]TeamAPIKey {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetAdminTeamsTeamIDApiKeysResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetAdminTeamsTeamIDApiKeysResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetAdminTeamsTeamIDApiKeysResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetAdminTeamsTeamIDApiKeysResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAdminTeamsTeamIDApiKeysResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAdminTeamsTeamIDApiKeysResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAdminTeamsTeamIDApiKeysResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -16114,6 +16243,21 @@ func (c *ClientWithResponses) GetAdminSandboxesSandboxIDWithResponse(ctx context
 	return ParseGetAdminSandboxesSandboxIDResponse(rsp)
 }
 
+// GetAdminTeamsTeamIDApiKeysWithResponse List team API keys as admin
+//
+// Lists a team's API keys for internal service workflows. Unlike `GET /api-keys`, it does not resolve the team, so it also answers for a banned team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /admin/teams/{teamID}/api-keys (the `GetAdminTeamsTeamIDApiKeys` operationId).
+func (c *ClientWithResponses) GetAdminTeamsTeamIDApiKeysWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAdminTeamsTeamIDApiKeysResponse, error) {
+	rsp, err := c.GetAdminTeamsTeamIDApiKeys(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAdminTeamsTeamIDApiKeysResponse(rsp)
+}
+
 // PostAdminTeamsTeamIDApiKeysWithBodyWithResponse Create team API key as admin
 //
 // Creates a team API key for internal service workflows.
@@ -17733,6 +17877,53 @@ func ParseGetAdminSandboxesSandboxIDResponse(rsp *http.Response) (*GetAdminSandb
 			headers.RetryAfter = &value
 		}
 		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetAdminTeamsTeamIDApiKeysResponse parses an HTTP response from a GetAdminTeamsTeamIDApiKeysWithResponse call
+func ParseGetAdminTeamsTeamIDApiKeysResponse(rsp *http.Response) (*GetAdminTeamsTeamIDApiKeysResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAdminTeamsTeamIDApiKeysResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []TeamAPIKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
 	}
 
 	return response, nil

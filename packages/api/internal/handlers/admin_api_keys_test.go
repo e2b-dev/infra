@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/api/internal/team"
 	sharedauth "github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	authtypes "github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
@@ -255,6 +256,44 @@ func TestDeleteAdminTeamsTeamIDApiKeysRejectsMissingKey(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, recorder.Code)
 	require.Contains(t, recorder.Header().Get("Content-Type"), "application/json")
 	require.JSONEq(t, `{"code":404,"message":"API key not found"}`, recorder.Body.String())
+}
+
+func TestGetAdminTeamsTeamIDApiKeysListsKeysOfBannedTeam(t *testing.T) {
+	t.Parallel()
+
+	testDB := testutils.SetupDatabase(t)
+	teamID := testutils.CreateTestTeam(t, testDB)
+	otherTeamID := testutils.CreateTestTeam(t, testDB)
+
+	created, err := team.CreateAPIKey(t.Context(), testDB.AuthDB, teamID, nil, "Admin integration")
+	require.NoError(t, err)
+	_, err = team.CreateAPIKey(t.Context(), testDB.AuthDB, otherTeamID, nil, "Other team")
+	require.NoError(t, err)
+
+	recorder := httptest.NewRecorder()
+	ginCtx, _ := gin.CreateTestContext(recorder)
+	ginCtx.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/admin/teams/"+teamID.String()+"/api-keys", nil)
+
+	store := &APIStore{
+		authDB:      testDB.AuthDB,
+		authService: fakeAPIKeyAuthService{err: &sharedauth.TeamForbiddenError{Message: "team is banned"}},
+	}
+	store.GetAdminTeamsTeamIDApiKeys(ginCtx, teamID)
+
+	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+
+	var body []api.TeamAPIKey
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	require.Len(t, body, 1)
+	require.Equal(t, created.ID, body[0].Id)
+	require.Equal(t, "Admin integration", body[0].Name)
+	require.Equal(t, api.IdentifierMaskingDetails{
+		Prefix:            created.ApiKeyPrefix,
+		ValueLength:       int(created.ApiKeyLength),
+		MaskedValuePrefix: created.ApiKeyMaskPrefix,
+		MaskedValueSuffix: created.ApiKeyMaskSuffix,
+	}, body[0].Mask)
+	require.Nil(t, body[0].CreatedBy)
 }
 
 type fakeAPIKeyAuthService struct {
