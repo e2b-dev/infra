@@ -672,7 +672,7 @@ const file_info_proto_rawDesc = "" +
 	"\fOrchestrator\x10\x012\x98\x01\n" +
 	"\vInfoService\x12;\n" +
 	"\vServiceInfo\x12\x16.google.protobuf.Empty\x1a\x14.ServiceInfoResponse\x12L\n" +
-	"\x15ServiceStatusOverride\x12\x1b.ServiceStatusChangeRequest\x1a\x16.google.protobuf.EmptyB/Z-https://github.com/e2b-dev/infra/orchestratorb\x06proto3"
+	"\x15ServiceStatusOverride\x12\x1b.ServiceStatusChangeRequest\x1a\x16.google.protobuf.EmptyBRZPgithub.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info;orchestratorb\x06proto3"
 
 var (
 	file_info_proto_rawDescOnce sync.Once

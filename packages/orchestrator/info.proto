@@ -3,7 +3,7 @@ syntax = "proto3";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
 
-option go_package = "https://github.com/e2b-dev/infra/orchestrator";
+option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info;orchestrator";
 
 // needs to be different from the enumeration in the template manager
 enum ServiceInfoStatus {

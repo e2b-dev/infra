@@ -1919,7 +1919,7 @@ const file_volume_proto_rawDesc = "" +
 	"DeletePath\x12\x12.DeletePathRequest\x1a\x13.DeletePathResponse\x12/\n" +
 	"\bStatPath\x12\x10.StatPathRequest\x1a\x11.StatPathResponse\x125\n" +
 	"\n" +
-	"UpdatePath\x12\x12.UpdatePathRequest\x1a\x13.UpdatePathResponseB/Z-https://github.com/e2b-dev/infra/orchestratorb\x06proto3"
+	"UpdatePath\x12\x12.UpdatePathRequest\x1a\x13.UpdatePathResponseB@Z>github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestratorb\x06proto3"
 
 var (
 	file_volume_proto_rawDescOnce sync.Once

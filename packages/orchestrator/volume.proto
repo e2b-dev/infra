@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-option go_package = "https://github.com/e2b-dev/infra/orchestrator";
+option go_package = "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator";
 
 message VolumeInfo {
   string volume_id = 1;
@@ -136,8 +136,7 @@ message VolumeFileCreateContent {
   bytes content = 1;
 }
 
-message VolumeFileCreateFinish {
-}
+message VolumeFileCreateFinish {}
 
 message CreateFileRequest {
   oneof message {

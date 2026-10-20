@@ -1529,7 +1529,7 @@ const file_template_manager_proto_rawDesc = "" +
 	"\x0eTemplateCreate\x12\x16.TemplateCreateRequest\x1a\x16.google.protobuf.Empty\x12K\n" +
 	"\x13TemplateBuildStatus\x12\x16.TemplateStatusRequest\x1a\x1c.TemplateBuildStatusResponse\x12J\n" +
 	"\x13TemplateBuildDelete\x12\x1b.TemplateBuildDeleteRequest\x1a\x16.google.protobuf.Empty\x12P\n" +
-	"\x13InitLayerFileUpload\x12\x1b.InitLayerFileUploadRequest\x1a\x1c.InitLayerFileUploadResponseB3Z1https://github.com/e2b-dev/infra/template-managerb\x06proto3"
+	"\x13InitLayerFileUpload\x12\x1b.InitLayerFileUploadRequest\x1a\x1c.InitLayerFileUploadResponseBUZSgithub.com/e2b-dev/infra/packages/shared/pkg/grpc/template-manager;template_managerb\x06proto3"
 
 var (
 	file_template_manager_proto_rawDescOnce sync.Once

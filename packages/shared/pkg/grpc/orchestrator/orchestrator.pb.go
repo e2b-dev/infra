@@ -2004,7 +2004,7 @@ const file_orchestrator_proto_rawDesc = "" +
 	"\x06Delete\x12\x15.SandboxDeleteRequest\x1a\x16.google.protobuf.Empty\x124\n" +
 	"\x05Pause\x12\x14.SandboxPauseRequest\x1a\x15.SandboxPauseResponse\x12C\n" +
 	"\n" +
-	"Checkpoint\x12\x19.SandboxCheckpointRequest\x1a\x1a.SandboxCheckpointResponseB/Z-https://github.com/e2b-dev/infra/orchestratorb\x06proto3"
+	"Checkpoint\x12\x19.SandboxCheckpointRequest\x1a\x1a.SandboxCheckpointResponseB@Z>github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestratorb\x06proto3"
 
 var (
 	file_orchestrator_proto_rawDescOnce sync.Once
