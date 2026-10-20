@@ -1301,6 +1301,90 @@ components:
           type: number
           description: The maximum value of the requested metric in the given interval
 
+    TeamStatusResponse:
+      required:
+        - isBanned
+        - isBlocked
+        - blockedReason
+      properties:
+        isBanned:
+          type: boolean
+          description: Whether the team is banned
+        isBlocked:
+          type: boolean
+          description: Whether the team is blocked
+        blockedReason:
+          type: string
+          nullable: true
+          description: Why the team is blocked, if a reason was recorded
+
+    TeamLimits:
+      description: The team's effective resource limits
+      required:
+        - maxLengthHours
+        - concurrentSandboxes
+        - concurrentTemplateBuilds
+        - maxVcpu
+        - maxRamMb
+        - diskMb
+        - eventsTtlDays
+        - defaultFreeDiskSizeMb
+        - maxFreeDiskSizeMb
+        - apiTeamRpsList
+        - apiTeamRpsDelete
+      properties:
+        maxLengthHours:
+          type: integer
+          format: int64
+          description: Maximum sandbox lifetime, in hours
+        concurrentSandboxes:
+          type: integer
+          format: int64
+          description: Maximum number of sandboxes running at once
+        concurrentTemplateBuilds:
+          type: integer
+          format: int64
+          description: Maximum number of template builds running at once
+        maxVcpu:
+          type: integer
+          format: int64
+          description: Maximum vCPUs per sandbox
+        maxRamMb:
+          type: integer
+          format: int64
+          description: Maximum memory per sandbox, in MiB
+        diskMb:
+          type: integer
+          format: int64
+          description: Disk size per sandbox, in MiB
+        eventsTtlDays:
+          type: integer
+          format: int64
+          description: Number of days sandbox events are kept
+        defaultFreeDiskSizeMb:
+          type: integer
+          format: int64
+          description: Free disk space a template build gets when it requests none, in MiB
+        maxFreeDiskSizeMb:
+          type: integer
+          format: int64
+          description: Maximum free disk space a template build may request, in MiB
+        apiTeamRpsList:
+          type: integer
+          format: int64
+          description: Requests per second the team may make to list endpoints
+        apiTeamRpsDelete:
+          type: integer
+          format: int64
+          description: Requests per second the team may make to delete endpoints
+
+    TeamLimitsResponse:
+      required:
+        - limits
+      properties:
+        limits:
+          $ref: "#/components/schemas/TeamLimits"
+
     AdminSandboxKillResult:
       required:
         - killedCount
@@ -2929,6 +3013,70 @@ paths:
           $ref: "#/components/responses/401"
         "403":
           $ref: "#/components/responses/403"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}/status:
+    get:
+      summary: Get team access status
+      description: Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+      tags: [auth]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned the team access status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamStatusResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /teams/{teamID}/limits:
+    get:
+      summary: Get team limits
+      description: Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+      tags: [auth]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned the team limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamLimitsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
         "429":
           $ref: "#/components/responses/429"
         "500":

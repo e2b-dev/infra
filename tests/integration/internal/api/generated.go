@@ -1442,6 +1442,48 @@ type TeamAPIKey struct {
 	Name string `json:"name"`
 }
 
+// TeamLimits The team's effective resource limits
+type TeamLimits struct {
+	// ApiTeamRpsDelete Requests per second the team may make to delete endpoints
+	ApiTeamRpsDelete int64 `json:"apiTeamRpsDelete"`
+
+	// ApiTeamRpsList Requests per second the team may make to list endpoints
+	ApiTeamRpsList int64 `json:"apiTeamRpsList"`
+
+	// ConcurrentSandboxes Maximum number of sandboxes running at once
+	ConcurrentSandboxes int64 `json:"concurrentSandboxes"`
+
+	// ConcurrentTemplateBuilds Maximum number of template builds running at once
+	ConcurrentTemplateBuilds int64 `json:"concurrentTemplateBuilds"`
+
+	// DefaultFreeDiskSizeMb Free disk space a template build gets when it requests none, in MiB
+	DefaultFreeDiskSizeMb int64 `json:"defaultFreeDiskSizeMb"`
+
+	// DiskMb Disk size per sandbox, in MiB
+	DiskMb int64 `json:"diskMb"`
+
+	// EventsTtlDays Number of days sandbox events are kept
+	EventsTtlDays int64 `json:"eventsTtlDays"`
+
+	// MaxFreeDiskSizeMb Maximum free disk space a template build may request, in MiB
+	MaxFreeDiskSizeMb int64 `json:"maxFreeDiskSizeMb"`
+
+	// MaxLengthHours Maximum sandbox lifetime, in hours
+	MaxLengthHours int64 `json:"maxLengthHours"`
+
+	// MaxRamMb Maximum memory per sandbox, in MiB
+	MaxRamMb int64 `json:"maxRamMb"`
+
+	// MaxVcpu Maximum vCPUs per sandbox
+	MaxVcpu int64 `json:"maxVcpu"`
+}
+
+// TeamLimitsResponse defines model for TeamLimitsResponse.
+type TeamLimitsResponse struct {
+	// Limits The team's effective resource limits
+	Limits TeamLimits `json:"limits"`
+}
+
 // TeamMetric Team metric with timestamp
 type TeamMetric struct {
 	// ConcurrentSandboxes The number of concurrent sandboxes for the team
@@ -1456,6 +1498,18 @@ type TeamMetric struct {
 
 	// TimestampUnix Timestamp of the metric entry in Unix time (seconds since epoch)
 	TimestampUnix int64 `json:"timestampUnix"`
+}
+
+// TeamStatusResponse defines model for TeamStatusResponse.
+type TeamStatusResponse struct {
+	// BlockedReason Why the team is blocked, if a reason was recorded
+	BlockedReason *string `json:"blockedReason"`
+
+	// IsBanned Whether the team is banned
+	IsBanned bool `json:"isBanned"`
+
+	// IsBlocked Whether the team is blocked
+	IsBlocked bool `json:"isBlocked"`
 }
 
 // TeamUser defines model for TeamUser.
@@ -3101,6 +3155,13 @@ type ClientInterface interface {
 	// Corresponds with GET /teams (the `GetTeams` operationId).
 	GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetTeamsTeamIDLimits Get team limits
+	//
+	// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+	//
+	// Corresponds with GET /teams/{teamID}/limits (the `GetTeamsTeamIDLimits` operationId).
+	GetTeamsTeamIDLimits(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetTeamsTeamIDMetrics Team metrics
 	//
 	// Get metrics for the team.
@@ -3114,6 +3175,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /teams/{teamID}/metrics/max (the `GetTeamsTeamIDMetricsMax` operationId).
 	GetTeamsTeamIDMetricsMax(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsMaxParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTeamsTeamIDStatus Get team access status
+	//
+	// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+	//
+	// Corresponds with GET /teams/{teamID}/status (the `GetTeamsTeamIDStatus` operationId).
+	GetTeamsTeamIDStatus(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetTemplates List templates
 	//
@@ -4606,6 +4674,23 @@ func (c *Client) GetTeams(ctx context.Context, reqEditors ...RequestEditorFn) (*
 	return c.Client.Do(req)
 }
 
+// GetTeamsTeamIDLimits Get team limits
+//
+// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+//
+// Corresponds with GET /teams/{teamID}/limits (the `GetTeamsTeamIDLimits` operationId).
+func (c *Client) GetTeamsTeamIDLimits(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTeamsTeamIDLimitsRequest(c.Server, teamID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 // GetTeamsTeamIDMetrics Team metrics
 //
 // Get metrics for the team.
@@ -4630,6 +4715,23 @@ func (c *Client) GetTeamsTeamIDMetrics(ctx context.Context, teamID TeamID, param
 // Corresponds with GET /teams/{teamID}/metrics/max (the `GetTeamsTeamIDMetricsMax` operationId).
 func (c *Client) GetTeamsTeamIDMetricsMax(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsMaxParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTeamsTeamIDMetricsMaxRequest(c.Server, teamID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTeamsTeamIDStatus Get team access status
+//
+// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+//
+// Corresponds with GET /teams/{teamID}/status (the `GetTeamsTeamIDStatus` operationId).
+func (c *Client) GetTeamsTeamIDStatus(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTeamsTeamIDStatusRequest(c.Server, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -7719,6 +7821,40 @@ func NewGetTeamsRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewGetTeamsTeamIDLimitsRequest constructs an http.Request for the GetTeamsTeamIDLimits method
+func NewGetTeamsTeamIDLimitsRequest(server string, teamID TeamID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamID", teamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/teams/%s/limits", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetTeamsTeamIDMetricsRequest constructs an http.Request for the GetTeamsTeamIDMetrics method
 func NewGetTeamsTeamIDMetricsRequest(server string, teamID TeamID, params *GetTeamsTeamIDMetricsParams) (*http.Request, error) {
 	var err error
@@ -7863,6 +7999,40 @@ func NewGetTeamsTeamIDMetricsMaxRequest(server string, teamID TeamID, params *Ge
 			rawQueryFragments = append(rawQueryFragments, encoded)
 		}
 		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTeamsTeamIDStatusRequest constructs an http.Request for the GetTeamsTeamIDStatus method
+func NewGetTeamsTeamIDStatusRequest(server string, teamID TeamID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamID", teamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/teams/%s/status", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
 	}
 
 	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
@@ -9829,6 +9999,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /teams (the `GetTeams` operationId).
 	GetTeamsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetTeamsResponse, error)
 
+	// GetTeamsTeamIDLimitsWithResponse Get team limits
+	//
+	// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /teams/{teamID}/limits (the `GetTeamsTeamIDLimits` operationId).
+	GetTeamsTeamIDLimitsWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDLimitsResponse, error)
+
 	// GetTeamsTeamIDMetricsWithResponse Team metrics
 	//
 	// Get metrics for the team.
@@ -9846,6 +10025,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /teams/{teamID}/metrics/max (the `GetTeamsTeamIDMetricsMax` operationId).
 	GetTeamsTeamIDMetricsMaxWithResponse(ctx context.Context, teamID TeamID, params *GetTeamsTeamIDMetricsMaxParams, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDMetricsMaxResponse, error)
+
+	// GetTeamsTeamIDStatusWithResponse Get team access status
+	//
+	// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /teams/{teamID}/status (the `GetTeamsTeamIDStatus` operationId).
+	GetTeamsTeamIDStatusWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDStatusResponse, error)
 
 	// GetTemplatesWithResponse List templates
 	//
@@ -14175,6 +14363,96 @@ func (r GetTeamsResponse) ContentType() string {
 	return ""
 }
 
+// GetTeamsTeamIDLimitsResponse429Headers the declared response headers of an HTTP 429 response for GetTeamsTeamIDLimits
+type GetTeamsTeamIDLimitsResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetTeamsTeamIDLimitsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TeamLimitsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetTeamsTeamIDLimitsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTeamsTeamIDLimitsResponse) GetJSON200() *TeamLimitsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTeamsTeamIDLimitsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetTeamsTeamIDLimitsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetTeamsTeamIDLimitsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTeamsTeamIDLimitsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetTeamsTeamIDLimitsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTeamsTeamIDLimitsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTeamsTeamIDLimitsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTeamsTeamIDLimitsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTeamsTeamIDLimitsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTeamsTeamIDLimitsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetTeamsTeamIDMetricsResponse429Headers the declared response headers of an HTTP 429 response for GetTeamsTeamIDMetrics
 type GetTeamsTeamIDMetricsResponse429Headers struct {
 	RetryAfter *int
@@ -14335,6 +14613,96 @@ func (r GetTeamsTeamIDMetricsMaxResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetTeamsTeamIDMetricsMaxResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetTeamsTeamIDStatusResponse429Headers the declared response headers of an HTTP 429 response for GetTeamsTeamIDStatus
+type GetTeamsTeamIDStatusResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetTeamsTeamIDStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TeamStatusResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetTeamsTeamIDStatusResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTeamsTeamIDStatusResponse) GetJSON200() *TeamStatusResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTeamsTeamIDStatusResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetTeamsTeamIDStatusResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetTeamsTeamIDStatusResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTeamsTeamIDStatusResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetTeamsTeamIDStatusResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTeamsTeamIDStatusResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTeamsTeamIDStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTeamsTeamIDStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTeamsTeamIDStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTeamsTeamIDStatusResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -17237,6 +17605,21 @@ func (c *ClientWithResponses) GetTeamsWithResponse(ctx context.Context, reqEdito
 	return ParseGetTeamsResponse(rsp)
 }
 
+// GetTeamsTeamIDLimitsWithResponse Get team limits
+//
+// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /teams/{teamID}/limits (the `GetTeamsTeamIDLimits` operationId).
+func (c *ClientWithResponses) GetTeamsTeamIDLimitsWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDLimitsResponse, error) {
+	rsp, err := c.GetTeamsTeamIDLimits(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTeamsTeamIDLimitsResponse(rsp)
+}
+
 // GetTeamsTeamIDMetricsWithResponse Team metrics
 //
 // Get metrics for the team.
@@ -17265,6 +17648,21 @@ func (c *ClientWithResponses) GetTeamsTeamIDMetricsMaxWithResponse(ctx context.C
 		return nil, err
 	}
 	return ParseGetTeamsTeamIDMetricsMaxResponse(rsp)
+}
+
+// GetTeamsTeamIDStatusWithResponse Get team access status
+//
+// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /teams/{teamID}/status (the `GetTeamsTeamIDStatus` operationId).
+func (c *ClientWithResponses) GetTeamsTeamIDStatusWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetTeamsTeamIDStatusResponse, error) {
+	rsp, err := c.GetTeamsTeamIDStatus(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTeamsTeamIDStatusResponse(rsp)
 }
 
 // GetTemplatesWithResponse List templates
@@ -21314,6 +21712,87 @@ func ParseGetTeamsResponse(rsp *http.Response) (*GetTeamsResponse, error) {
 	return response, nil
 }
 
+// ParseGetTeamsTeamIDLimitsResponse parses an HTTP response from a GetTeamsTeamIDLimitsWithResponse call
+func ParseGetTeamsTeamIDLimitsResponse(rsp *http.Response) (*GetTeamsTeamIDLimitsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTeamsTeamIDLimitsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TeamLimitsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetTeamsTeamIDLimitsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
 // ParseGetTeamsTeamIDMetricsResponse parses an HTTP response from a GetTeamsTeamIDMetricsWithResponse call
 func ParseGetTeamsTeamIDMetricsResponse(rsp *http.Response) (*GetTeamsTeamIDMetricsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -21449,6 +21928,87 @@ func ParseGetTeamsTeamIDMetricsMaxResponse(rsp *http.Response) (*GetTeamsTeamIDM
 	switch {
 	case rsp.StatusCode == 429:
 		var headers GetTeamsTeamIDMetricsMaxResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetTeamsTeamIDStatusResponse parses an HTTP response from a GetTeamsTeamIDStatusWithResponse call
+func ParseGetTeamsTeamIDStatusResponse(rsp *http.Response) (*GetTeamsTeamIDStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTeamsTeamIDStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TeamStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetTeamsTeamIDStatusResponse429Headers
 		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
 			var value int
 			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {

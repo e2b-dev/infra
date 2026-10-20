@@ -2,9 +2,17 @@ package middleware
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
+	"github.com/e2b-dev/infra/packages/auth/pkg/types"
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
 // A blocked team keeps read access to its own resources and loses mutations.
@@ -22,5 +30,30 @@ func TestBlockedTeamAllowlistKeepsSecretsReadsAndDeniesMutations(t *testing.T) {
 			assert.NotContains(t, []string{"/secrets", "/secrets/:secretID"}, route,
 				"secrets mutations must not be allowlisted for blocked teams")
 		}
+	}
+}
+
+func TestBlockedTeamStillReadsItsStatusAndLimits(t *testing.T) {
+	t.Parallel()
+
+	reason := "payment required"
+	blocked := &types.Team{Team: &authqueries.Team{ID: uuid.New(), IsBlocked: true, BlockedReason: &reason}}
+
+	for name, route := range map[string]string{
+		"status": "/teams/:teamID/status",
+		"limits": "/teams/:teamID/limits",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			r := gin.New()
+			r.Use(func(c *gin.Context) { auth.SetTeamInfoForTest(t, c, blocked) }, EnforceBlockedTeam())
+			r.GET(route, func(c *gin.Context) { c.Status(http.StatusOK) })
+
+			recorder := httptest.NewRecorder()
+			r.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/teams/"+blocked.TeamID()+"/"+name, nil))
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		})
 	}
 }
