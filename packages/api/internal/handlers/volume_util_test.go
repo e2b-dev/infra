@@ -19,6 +19,7 @@ import (
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/auth/pkg/types"
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
 func TestVolumeTokenAudience(t *testing.T) {
@@ -255,4 +256,49 @@ func TestExecuteOnNodes(t *testing.T) {
 			assert.Equal(t, tc.wantCalls, calls)
 		})
 	}
+}
+
+func TestConvertFromDBMountsToAPIMounts(t *testing.T) {
+	t.Parallel()
+
+	t.Run("converts valid mounts", func(t *testing.T) {
+		t.Parallel()
+
+		mounts := []*dbtypes.SandboxVolumeMountConfig{
+			{Name: "v1", Path: "/mnt/data1"},
+			{Name: "v2", Path: "/mnt/data2"},
+		}
+
+		res := convertFromDBMountsToAPIMounts(mounts)
+		require.NotNil(t, res)
+		assert.Len(t, *res, 2)
+		assert.Equal(t, "v1", (*res)[0].Name)
+		assert.Equal(t, "/mnt/data1", (*res)[0].Path)
+		assert.Equal(t, "v2", (*res)[1].Name)
+		assert.Equal(t, "/mnt/data2", (*res)[1].Path)
+	})
+
+	t.Run("skips nil items safely without panic", func(t *testing.T) {
+		t.Parallel()
+
+		mounts := []*dbtypes.SandboxVolumeMountConfig{
+			{Name: "v1", Path: "/mnt/data1"},
+			nil,
+			{Name: "v2", Path: "/mnt/data2"},
+		}
+
+		res := convertFromDBMountsToAPIMounts(mounts)
+		require.NotNil(t, res)
+		assert.Len(t, *res, 2)
+		assert.Equal(t, "v1", (*res)[0].Name)
+		assert.Equal(t, "v2", (*res)[1].Name)
+	})
+
+	t.Run("empty input returns non-nil pointer to empty slice", func(t *testing.T) {
+		t.Parallel()
+
+		res := convertFromDBMountsToAPIMounts(nil)
+		require.NotNil(t, res)
+		assert.Empty(t, *res)
+	})
 }
