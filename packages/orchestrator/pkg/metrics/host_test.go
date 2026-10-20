@@ -23,42 +23,44 @@ func fakeSysctls(values map[string]string) func(string) ([]byte, error) {
 	}
 }
 
-func TestReadHugePagesCapacityAddsTheOvercommitAllowance(t *testing.T) {
+func TestReadHugePagesPoolReportsTheBaseAndAddsTheOvercommitAllowance(t *testing.T) {
 	t.Parallel()
 
-	capacity, err := readHugePagesCapacity(fakeSysctls(map[string]string{
+	pool, err := readHugePagesPool(fakeSysctls(map[string]string{
 		nrHugePagesPath:           "1600\n",
 		nrOvercommitHugePagesPath: "400\n",
 	}))
 
 	require.NoError(t, err)
-	assert.Equal(t, uint64(2000), capacity)
+	assert.Equal(t, hugePagePool{Base: 1600, BaseRead: true, Capacity: 2000}, pool)
 }
 
-func TestReadHugePagesCapacityCountsAPoolThatIsAllOvercommit(t *testing.T) {
+func TestReadHugePagesPoolCountsAPoolThatIsAllOvercommit(t *testing.T) {
 	t.Parallel()
 
-	capacity, err := readHugePagesCapacity(fakeSysctls(map[string]string{
+	pool, err := readHugePagesPool(fakeSysctls(map[string]string{
 		nrHugePagesPath:           "0\n",
 		nrOvercommitHugePagesPath: "54097\n",
 	}))
 
 	require.NoError(t, err)
-	assert.Equal(t, uint64(54097), capacity)
+	assert.Equal(t, hugePagePool{Base: 0, BaseRead: true, Capacity: 54097}, pool)
 }
 
 // A missing sysctl means the kernel has no hugetlb; any other failure is
-// returned so the caller can warn that the node is left unlimited.
-func TestReadHugePagesCapacityIsUnknownWhenASysctlCannotBeRead(t *testing.T) {
+// returned so the caller can warn that the node is left unlimited. A base that
+// was read is kept even when the overcommit allowance cannot be: only the
+// ceiling is unknown then.
+func TestReadHugePagesPoolIsUnknownWhenASysctlCannotBeRead(t *testing.T) {
 	t.Parallel()
 
-	missing, missingErr := readHugePagesCapacity(fakeSysctls(map[string]string{nrHugePagesPath: "1600"}))
-	garbage, garbageErr := readHugePagesCapacity(fakeSysctls(map[string]string{nrHugePagesPath: "1600", nrOvercommitHugePagesPath: "lots"}))
-	failing, failingErr := readHugePagesCapacity(func(string) ([]byte, error) { return nil, errors.New("permission denied") })
+	missing, missingErr := readHugePagesPool(fakeSysctls(map[string]string{nrHugePagesPath: "1600"}))
+	garbage, garbageErr := readHugePagesPool(fakeSysctls(map[string]string{nrHugePagesPath: "1600", nrOvercommitHugePagesPath: "lots"}))
+	failing, failingErr := readHugePagesPool(func(string) ([]byte, error) { return nil, errors.New("permission denied") })
 
-	assert.Zero(t, missing)
+	assert.Equal(t, hugePagePool{Base: 1600, BaseRead: true}, missing)
 	require.ErrorIs(t, missingErr, fs.ErrNotExist)
-	assert.Zero(t, garbage)
+	assert.Equal(t, hugePagePool{Base: 1600, BaseRead: true}, garbage)
 	require.Error(t, garbageErr)
 	require.NotErrorIs(t, garbageErr, fs.ErrNotExist)
 	assert.Zero(t, failing)

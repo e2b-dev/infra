@@ -32,6 +32,8 @@ type Metrics struct {
 	HugePagesReserved uint64
 	HugePageSizeBytes uint64
 	HugePagesCapacity uint64 // pool ceiling, base pool plus overcommit allowance; 0 when not reported
+	HugePagesBase     uint64 // base pool, the pages allocated at boot
+	HugePagesBaseSet  bool   // the orchestrator reported HugePagesBase; 0 then is a pool that is all overcommit
 
 	// Detailed disk metrics
 	HostDisks []DiskMetrics
@@ -84,6 +86,8 @@ func (n *Node) updateMetrics(info *orchestratorinfo.ServiceInfoResponse) {
 	n.metrics.HugePagesReserved = info.GetMetricHugepagesReserved()
 	n.metrics.HugePageSizeBytes = info.GetMetricHugepageSizeBytes()
 	n.metrics.HugePagesCapacity = info.GetMetricHugepagesCapacity()
+	n.metrics.HugePagesBase = info.GetMetricHugepagesBase()
+	n.metrics.HugePagesBaseSet = info.MetricHugepagesBase != nil
 
 	// Update detailed disk metrics
 	disks := info.GetMetricDisks()
@@ -119,6 +123,8 @@ func (n *Node) Metrics() Metrics {
 		HugePagesReserved: n.metrics.HugePagesReserved,
 		HugePageSizeBytes: n.metrics.HugePageSizeBytes,
 		HugePagesCapacity: n.metrics.HugePagesCapacity,
+		HugePagesBase:     n.metrics.HugePagesBase,
+		HugePagesBaseSet:  n.metrics.HugePagesBaseSet,
 
 		HostDisks: make([]DiskMetrics, len(n.metrics.HostDisks)),
 	}

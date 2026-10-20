@@ -7,10 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/metrics"
 	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 )
 
@@ -127,4 +129,20 @@ func TestServiceInfoShutdownRacesWithOverrides(t *testing.T) {
 	close(start)
 	wg.Wait()
 	require.Equal(t, orchestratorinfo.ServiceInfoStatus_ShuttingDown, info.GetStatus().Status)
+}
+
+// The base pool travels only when it was read, so the API can tell an unknown
+// base from a pool that is all overcommit.
+func TestHugePagesBaseIsUnsetUnlessRead(t *testing.T) {
+	t.Parallel()
+
+	assert.Nil(t, hugePagesBase(&metrics.MemoryMetrics{HugePagesBase: 1600}))
+
+	base := hugePagesBase(&metrics.MemoryMetrics{HugePagesBase: 1600, HugePagesBaseRead: true})
+	require.NotNil(t, base)
+	assert.Equal(t, uint64(1600), *base)
+
+	zero := hugePagesBase(&metrics.MemoryMetrics{HugePagesBaseRead: true})
+	require.NotNil(t, zero)
+	assert.Zero(t, *zero)
 }

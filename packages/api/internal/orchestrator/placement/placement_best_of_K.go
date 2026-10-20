@@ -82,7 +82,7 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 // reporting no pool scores 0.5, so it does not look free next to a reporter.
 func memoryScore(metrics nodemanager.Metrics, resources nodemanager.SandboxResources, pendingMiB int64, config BestOfKConfig) float64 {
 	pageBytes := float64(metrics.HugePageSizeBytes)
-	poolBytes := float64(metrics.HugePagesTotal) * pageBytes
+	poolBytes := float64(scoredPoolPages(metrics)) * pageBytes
 	if poolBytes == 0 {
 		return 0.5
 	}
@@ -92,6 +92,26 @@ func memoryScore(metrics nodemanager.Metrics, resources nodemanager.SandboxResou
 	used := float64(metrics.HugePagesUsed) * pageBytes
 
 	return (requested + committed + config.Alpha*used) / poolBytes
+}
+
+// scoredPoolPages is the pool the memory score divides by: the base pool,
+// allocated at boot. HugePages_Total is the base pool plus the surplus pages
+// borrowed right now, so it grows with the load once a node passes its base
+// pool and every such node reads about full; a fixed base keeps the score
+// climbing past 1 as a node borrows. A pool reported as all overcommit (base
+// 0) is scored against its ceiling. An orchestrator that does not report the
+// base falls back to HugePages_Total, the old divisor, even when it reports
+// the ceiling: scoring it against the ceiling would make it look emptier than
+// its upgraded peers for the whole rollout.
+func scoredPoolPages(metrics nodemanager.Metrics) uint64 {
+	switch {
+	case metrics.HugePagesBaseSet && metrics.HugePagesBase > 0:
+		return metrics.HugePagesBase
+	case metrics.HugePagesBaseSet && metrics.HugePagesCapacity > 0:
+		return metrics.HugePagesCapacity
+	default:
+		return metrics.HugePagesTotal
+	}
 }
 
 // BestOfK implements the fit-score-place algorithm

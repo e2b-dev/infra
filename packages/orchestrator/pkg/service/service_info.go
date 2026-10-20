@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -108,6 +109,7 @@ func (s *Server) ServiceInfo(ctx context.Context, _ *emptypb.Empty) (*orchestrat
 		MetricHugepagesReserved: memoryMetrics.HugePagesReserved,
 		MetricHugepageSizeBytes: memoryMetrics.HugePageSizeBytes,
 		MetricHugepagesCapacity: memoryMetrics.HugePagesCapacity,
+		MetricHugepagesBase:     hugePagesBase(memoryMetrics),
 
 		// Detailed disk metrics
 		MetricDisks: convertDiskMetrics(diskMetrics),
@@ -153,4 +155,10 @@ func (s *Server) ServiceStatusOverride(ctx context.Context, req *orchestratorinf
 	}
 
 	return &emptypb.Empty{}, nil
+}
+
+// hugePagesBase leaves the field unset when the base pool could not be read,
+// so the API can tell it from a pool that is all overcommit.
+func hugePagesBase(m *metrics.MemoryMetrics) *uint64 {
+	return proto.ValueOrNil(m.HugePagesBaseRead, func() uint64 { return m.HugePagesBase })
 }

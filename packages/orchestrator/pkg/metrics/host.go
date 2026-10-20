@@ -48,6 +48,8 @@ type MemoryMetrics struct {
 	HugePagesReserved uint64 // HugePages_Rsvd: committed but not yet faulted
 	HugePageSizeBytes uint64 // Hugepagesize
 	HugePagesCapacity uint64 // nr_hugepages + nr_overcommit_hugepages; 0 when unknown
+	HugePagesBase     uint64 // nr_hugepages, the part allocated at boot
+	HugePagesBaseRead bool   // whether HugePagesBase was read; a pool that is all overcommit reads 0
 }
 
 type DiskInfo struct {
@@ -204,6 +206,8 @@ func readMemory(ctx context.Context) (*MemoryMetrics, error) {
 		hugePagesUsed = memInfo.HugePagesTotal - memInfo.HugePagesFree
 	}
 
+	pool := hugePagesPool(ctx)
+
 	return &MemoryMetrics{
 		UsedBytes:         memInfo.Used,
 		TotalBytes:        memInfo.Total,
@@ -211,19 +215,29 @@ func readMemory(ctx context.Context) (*MemoryMetrics, error) {
 		HugePagesUsed:     hugePagesUsed,
 		HugePagesReserved: memInfo.HugePagesRsvd,
 		HugePageSizeBytes: memInfo.HugePageSize,
-		HugePagesCapacity: hugePagesCapacity(ctx),
+		HugePagesCapacity: pool.Capacity,
+		HugePagesBase:     pool.Base,
+		HugePagesBaseRead: pool.BaseRead,
 	}, nil
 }
 
 var lastPoolWarning atomic.Int64
 
-// hugePagesCapacity reports an unreadable pool size as 0, which placement
-// treats as unknown, and warns at most once a minute so the node is not
-// silently left unlimited. A kernel without hugetlb has no such files.
-func hugePagesCapacity(ctx context.Context) uint64 {
-	capacity, err := readHugePagesCapacity(os.ReadFile)
+// hugePagePool is the pool's configured size, in pages.
+type hugePagePool struct {
+	Base     uint64 // nr_hugepages
+	BaseRead bool   // Base was read; false leaves it unknown
+	Capacity uint64 // nr_hugepages + nr_overcommit_hugepages; 0 when unknown
+}
+
+// hugePagesPool reports what it could read: a ceiling it cannot read is 0,
+// which placement treats as unknown, and it warns at most once a minute so the
+// node is not silently left unlimited. A kernel without hugetlb has no such
+// files.
+func hugePagesPool(ctx context.Context) hugePagePool {
+	pool, err := readHugePagesPool(os.ReadFile)
 	if err == nil || errors.Is(err, fs.ErrNotExist) {
-		return capacity
+		return pool
 	}
 
 	now := time.Now().Unix()
@@ -231,12 +245,14 @@ func hugePagesCapacity(ctx context.Context) uint64 {
 		logger.L().Warn(ctx, "Cannot read the hugepage pool size, reporting it as unknown", zap.Error(err))
 	}
 
-	return 0
+	return pool
 }
 
-func readHugePagesCapacity(readFile func(string) ([]byte, error)) (uint64, error) {
-	var capacity uint64
-	for _, path := range []string{nrHugePagesPath, nrOvercommitHugePagesPath} {
+// readHugePagesPool reads the pool size from the hugetlb sysctls. Base is valid
+// whenever BaseRead is true, even when err != nil: a base that was read is kept
+// when only the overcommit allowance cannot be, and Capacity is then 0.
+func readHugePagesPool(readFile func(string) ([]byte, error)) (hugePagePool, error) {
+	read := func(path string) (uint64, error) {
 		raw, err := readFile(path)
 		if err != nil {
 			return 0, err
@@ -247,10 +263,19 @@ func readHugePagesCapacity(readFile func(string) ([]byte, error)) (uint64, error
 			return 0, fmt.Errorf("parse %s: %w", path, err)
 		}
 
-		capacity += pages
+		return pages, nil
 	}
 
-	return capacity, nil
+	base, err := read(nrHugePagesPath)
+	if err != nil {
+		return hugePagePool{}, err
+	}
+	overcommit, err := read(nrOvercommitHugePagesPath)
+	if err != nil {
+		return hugePagePool{Base: base, BaseRead: true}, err
+	}
+
+	return hugePagePool{Base: base, BaseRead: true, Capacity: base + overcommit}, nil
 }
 
 func readDisk() ([]DiskInfo, error) {

@@ -322,8 +322,11 @@ type ServiceInfoResponse struct {
 	MetricHugepageSizeBytes uint64 `protobuf:"varint,117,opt,name=metric_hugepage_size_bytes,json=metricHugepageSizeBytes,proto3" json:"metric_hugepage_size_bytes,omitempty"`
 	// Pool ceiling: nr_hugepages + nr_overcommit_hugepages. 0 when unknown.
 	MetricHugepagesCapacity uint64 `protobuf:"varint,118,opt,name=metric_hugepages_capacity,json=metricHugepagesCapacity,proto3" json:"metric_hugepages_capacity,omitempty"`
-	unknownFields           protoimpl.UnknownFields
-	sizeCache               protoimpl.SizeCache
+	// Base pool: nr_hugepages, allocated at boot. Unset when unknown; 0 is a
+	// pool that is all overcommit.
+	MetricHugepagesBase *uint64 `protobuf:"varint,119,opt,name=metric_hugepages_base,json=metricHugepagesBase,proto3,oneof" json:"metric_hugepages_base,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *ServiceInfoResponse) Reset() {
@@ -562,6 +565,13 @@ func (x *ServiceInfoResponse) GetMetricHugepagesCapacity() uint64 {
 	return 0
 }
 
+func (x *ServiceInfoResponse) GetMetricHugepagesBase() uint64 {
+	if x != nil && x.MetricHugepagesBase != nil {
+		return *x.MetricHugepagesBase
+	}
+	return 0
+}
+
 type ServiceStatusChangeRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ServiceStatus ServiceInfoStatus      `protobuf:"varint,2,opt,name=service_status,json=serviceStatus,proto3,enum=ServiceInfoStatus" json:"service_status,omitempty"`
@@ -627,7 +637,7 @@ const file_info_proto_rawDesc = "" +
 	"cpu_family\x18\x02 \x01(\tR\tcpuFamily\x12\x1b\n" +
 	"\tcpu_model\x18\x03 \x01(\tR\bcpuModel\x12$\n" +
 	"\x0ecpu_model_name\x18\x04 \x01(\tR\fcpuModelName\x12\x1b\n" +
-	"\tcpu_flags\x18\x05 \x03(\tR\bcpuFlags\"\xdd\v\n" +
+	"\tcpu_flags\x18\x05 \x03(\tR\bcpuFlags\"\xb0\f\n" +
 	"\x13ServiceInfoResponse\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1d\n" +
 	"\n" +
@@ -658,7 +668,9 @@ const file_info_proto_rawDesc = "" +
 	"\x15metric_hugepages_used\x18s \x01(\x04R\x13metricHugepagesUsed\x12:\n" +
 	"\x19metric_hugepages_reserved\x18t \x01(\x04R\x17metricHugepagesReserved\x12;\n" +
 	"\x1ametric_hugepage_size_bytes\x18u \x01(\x04R\x17metricHugepageSizeBytes\x12:\n" +
-	"\x19metric_hugepages_capacity\x18v \x01(\x04R\x17metricHugepagesCapacity\"W\n" +
+	"\x19metric_hugepages_capacity\x18v \x01(\x04R\x17metricHugepagesCapacity\x127\n" +
+	"\x15metric_hugepages_base\x18w \x01(\x04H\x00R\x13metricHugepagesBase\x88\x01\x01B\x18\n" +
+	"\x16_metric_hugepages_base\"W\n" +
 	"\x1aServiceStatusChangeRequest\x129\n" +
 	"\x0eservice_status\x18\x02 \x01(\x0e2\x12.ServiceInfoStatusR\rserviceStatus*\\\n" +
 	"\x11ServiceInfoStatus\x12\v\n" +
@@ -722,6 +734,7 @@ func file_info_proto_init() {
 	if File_info_proto != nil {
 		return
 	}
+	file_info_proto_msgTypes[2].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

@@ -85,6 +85,9 @@ message ServiceInfoResponse {
   uint64 metric_hugepage_size_bytes = 117;
   // Pool ceiling: nr_hugepages + nr_overcommit_hugepages. 0 when unknown.
   uint64 metric_hugepages_capacity = 118;
+  // Base pool: nr_hugepages, allocated at boot. Unset when unknown; 0 is a
+  // pool that is all overcommit.
+  optional uint64 metric_hugepages_base = 119;
 }
 
 message ServiceStatusChangeRequest {

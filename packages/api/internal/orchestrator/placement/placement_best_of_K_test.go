@@ -169,6 +169,107 @@ func TestBestOfK_Score_HugePageMemoryDominates(t *testing.T) {
 	assert.Greater(t, tightScore, roomyScore)
 }
 
+// Surplus pages are borrowed only once the base pool runs out, so HugePages_Total
+// tracks commitment above the base pool. Scored against Total, a node deep in
+// surplus reads about full, no fuller than one just under its base pool, and the
+// Alpha term can even rank it lower. Scored against the base pool, it is fuller.
+func TestBestOfK_Score_NodeInSurplusScoresFuller(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	algo := NewBestOfK(config).(*BestOfK)
+
+	pageBytes := uint64(units.MBToBytes(2))
+	// Both: an 800-page base pool under a 1000-page ceiling, every committed page faulted in.
+	// nearBase: 790 committed, nothing borrowed, so Total reads the base pool.
+	nearBase := nodemanager.NewTestNode("near-base", api.NodeStatusReady, 0, 8,
+		nodemanager.WithHugePages(800, 790, 0, pageBytes),
+		nodemanager.WithHugePagesBase(800),
+		nodemanager.WithHugePagesCapacity(1000),
+	)
+	// inSurplus: 950 committed, 150 of them borrowed, so Total reads 950.
+	inSurplus := nodemanager.NewTestNode("in-surplus", api.NodeStatusReady, 0, 8,
+		nodemanager.WithHugePages(950, 950, 0, pageBytes),
+		nodemanager.WithHugePagesBase(800),
+		nodemanager.WithHugePagesCapacity(1000),
+	)
+
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512, HugePages: true}
+
+	// (256 requested + 790 committed + 0.5 * 790 used) / 800
+	assert.InDelta(t, 1441.0/800.0, algo.Score(nearBase, resources, config), 1e-9)
+	// (256 + 950 + 0.5 * 950) / 800; against Total it would be 1681/950, below nearBase.
+	assert.InDelta(t, 1681.0/800.0, algo.Score(inSurplus, resources, config), 1e-9)
+	assert.Greater(t, algo.Score(inSurplus, resources, config), algo.Score(nearBase, resources, config))
+}
+
+// Below its base pool a node scores as it always has: Total equals the base.
+// Guards the scale: dividing by the ceiling instead would fail it.
+func TestBestOfK_Score_BelowTheBasePoolTheScaleIsUnchanged(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	algo := NewBestOfK(config).(*BestOfK)
+
+	pageBytes := uint64(units.MBToBytes(2))
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512, HugePages: true}
+
+	reporting := nodemanager.NewTestNode("reporting", api.NodeStatusReady, 0, 8,
+		nodemanager.WithHugePages(800, 300, 100, pageBytes),
+		nodemanager.WithHugePagesBase(800),
+		nodemanager.WithHugePagesCapacity(1000),
+	)
+	legacy := nodemanager.NewTestNode("legacy", api.NodeStatusReady, 0, 8,
+		nodemanager.WithHugePages(800, 300, 100, pageBytes),
+	)
+
+	assert.InDelta(t, algo.Score(legacy, resources, config), algo.Score(reporting, resources, config), 1e-9)
+}
+
+// The pool scored against: a reported base pool; the ceiling for a pool
+// reported as all overcommit; HugePages_Total whenever the base is not reported.
+func TestScoredPoolPages(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name    string
+		metrics nodemanager.Metrics
+		want    uint64
+	}{
+		{"reported base", nodemanager.Metrics{HugePagesTotal: 950, HugePagesBase: 800, HugePagesBaseSet: true, HugePagesCapacity: 1000}, 800},
+		{"reported base, ceiling unknown", nodemanager.Metrics{HugePagesTotal: 950, HugePagesBase: 800, HugePagesBaseSet: true}, 800},
+		{"all overcommit", nodemanager.Metrics{HugePagesTotal: 300, HugePagesBaseSet: true, HugePagesCapacity: 54097}, 54097},
+		{"all overcommit, ceiling unknown", nodemanager.Metrics{HugePagesTotal: 300, HugePagesBaseSet: true}, 300},
+		{"ceiling only, from a build that predates the base", nodemanager.Metrics{HugePagesTotal: 800, HugePagesCapacity: 1000}, 800},
+		{"nothing reported", nodemanager.Metrics{HugePagesTotal: 950}, 950},
+		{"no pool", nodemanager.Metrics{}, 0},
+	} {
+		assert.Equal(t, tc.want, scoredPoolPages(tc.metrics), tc.name)
+	}
+}
+
+// During a rollout, a node on the build before this one reports the ceiling
+// but not the base. It must score like an upgraded peer with the same load, not
+// look emptier because it was divided by the ceiling.
+func TestBestOfK_Score_NodeWithoutTheBaseIsNotScoredAgainstTheCeiling(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	algo := NewBestOfK(config).(*BestOfK)
+
+	pageBytes := uint64(units.MBToBytes(2))
+	resources := nodemanager.SandboxResources{CPUs: 1, MiBMemory: 512, HugePages: true}
+
+	upgraded := nodemanager.NewTestNode("upgraded", api.NodeStatusReady, 0, 8,
+		nodemanager.WithHugePages(800, 790, 0, pageBytes),
+		nodemanager.WithHugePagesBase(800),
+		nodemanager.WithHugePagesCapacity(1000),
+	)
+	previous := nodemanager.NewTestNode("previous", api.NodeStatusReady, 0, 8,
+		nodemanager.WithHugePages(800, 790, 0, pageBytes),
+		nodemanager.WithHugePagesCapacity(1000),
+	)
+
+	assert.InDelta(t, algo.Score(upgraded, resources, config), algo.Score(previous, resources, config), 1e-9)
+}
+
 // Memory of an in-flight placement is committed before the node reports it.
 func TestBestOfK_Score_PendingMemoryCounts(t *testing.T) {
 	t.Parallel()

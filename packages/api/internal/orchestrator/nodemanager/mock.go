@@ -235,6 +235,14 @@ func WithHugePagesCapacity(capacity uint64) TestOptions {
 	}
 }
 
+// WithHugePagesBase sets the reported base pool, the pages allocated at boot.
+func WithHugePagesBase(base uint64) TestOptions {
+	return func(node *TestNode) {
+		node.metrics.HugePagesBase = base
+		node.metrics.HugePagesBaseSet = true
+	}
+}
+
 // MockSandboxClientCustom allows custom error logic per call
 type MockSandboxClientCustom struct {
 	orchestrator.SandboxServiceClient

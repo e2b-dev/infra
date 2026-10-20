@@ -83,6 +83,27 @@ func TestMetricsOutstandingWorkConcurrentAccess(t *testing.T) {
 	}
 }
 
+// An unset base is unknown; a base reported as 0 is a pool that is all
+// overcommit. Placement treats the two differently, so the presence must survive.
+func TestMetricsHugePagesBaseComesFromServiceInfo(t *testing.T) {
+	t.Parallel()
+
+	base := uint64(1600)
+	zero := uint64(0)
+	n := &Node{}
+
+	n.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{MetricHugepagesBase: &base})
+	require.Equal(t, uint64(1600), n.Metrics().HugePagesBase)
+	require.True(t, n.Metrics().HugePagesBaseSet)
+
+	n.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{MetricHugepagesBase: &zero})
+	require.Zero(t, n.Metrics().HugePagesBase)
+	require.True(t, n.Metrics().HugePagesBaseSet, "a pool that is all overcommit reports 0, not unknown")
+
+	n.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{MetricHugepagesTotal: 1600})
+	require.False(t, n.Metrics().HugePagesBaseSet, "an orchestrator that does not report it leaves it unknown")
+}
+
 func TestMetricsHugePagesCapacityComesFromServiceInfo(t *testing.T) {
 	t.Parallel()
 

@@ -168,7 +168,11 @@ The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, p
   exhausted nodes. A node that refuses a create (`ResourceExhausted`) stays
   eligible, and each refusal waits a full-jitter backoff that doubles up to a
   cap, so a placement that finds every node busy does not re-send creates as
-  fast as they are refused. A node that reports no pool scores 0.5. Hugepage scoring
+  fast as they are refused. The hugepage-pool load is measured against the node's
+  base pool (`nr_hugepages`, allocated at boot), so a node that has borrowed surplus
+  pages scores above 1 instead of reading as just full; a pool that is all overcommit
+  is measured against its ceiling, and an orchestrator that does not report the base
+  pool against `HugePages_Total` as before. A node that reports no pool scores 0.5. Hugepage scoring
   is on by default (`BEST_OF_K_HUGEPAGE_MEMORY`); set it false to rank on
   CPU alone. K, overcommit ratio, and alpha are tunable live via feature
   flags. With `placement-hugepage-limit-percent` above 0, a hugepage sandbox
