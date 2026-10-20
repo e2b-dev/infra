@@ -65,16 +65,15 @@ the hub is [`../README.md`](../README.md).
   pages for a 512 MiB `base` sandbox, about 90 while idle), so the default
   carries eight sandboxes at full memory or about twenty idle ones. Past
   that the stack stays healthy and each create fails with `500: Failed to
-  place sandbox` (the same 500 an exhausted NBD pool gives; the orchestrator
-  log tells them apart) while `docker compose logs orchestrator` shows `uffd
-  process exited: failed to wrap memfd: mmap memfd: cannot allocate memory`.
-  Set a
-  larger `HUGEPAGES` in `.env` and run `up` again: `host-setup` re-applies
-  the sysctl on every start and the orchestrator needs no restart. A killed
-  sandbox gives its pages back a few hundred milliseconds after the kill
-  returns; a create sent in that window is retried on this host until they
-  are back (`CREATE_MEMORY_REFUSAL`, read by orchestrator releases that carry
-  it) instead of failing with that same 500.
+  place sandbox: this node cannot map 512 MiB of guest memory: its memory
+  pool is too small or in use by running sandboxes`, with the sandbox's own
+  size in the message, while `docker compose logs orchestrator` shows
+  `create refused: guest memory not mappable`. Set a larger `HUGEPAGES` in
+  `.env` and run `up` again: `host-setup` re-applies the sysctl on every
+  start and the orchestrator needs no restart. A killed sandbox gives its
+  pages back a few hundred milliseconds after the kill returns; a create
+  sent in that window is retried on this host until they are back
+  (`CREATE_MEMORY_REFUSAL`) instead of failing.
 - Outbound HTTPS to Docker Hub, `us-docker.pkg.dev`, `storage.googleapis.com`,
   `github.com` and `raw.githubusercontent.com`. No account and no token:
   every image and binary the stack pulls is public.

@@ -52,6 +52,23 @@ setup() {
   fi
 }
 
+# A create sent while a killed sandbox still holds its pages is refused and
+# retried on this host only once the orchestrator reads CREATE_MEMORY_REFUSAL,
+# which compose.yaml sets; that shipped in the orchestrator build of
+# 2026-10-20. Older pins ignore the variable and the create fails, so the pin
+# must not slide back below that build.
+@test "orchestrator pin is at least the build that reads CREATE_MEMORY_REFUSAL" {
+  grep -q 'CREATE_MEMORY_REFUSAL: "true"' compose/compose.yaml
+  orch_tag="$(sed -n 's/^E2B_ORCHESTRATOR_VERSION=\(v[^ #]*\).*/\1/p' compose/.env)"
+  [ -n "$orch_tag" ]
+  min=v0.16.202610201713
+  lowest="$(printf '%s\n%s\n' "$min" "$orch_tag" | sort -V | head -1)"
+  if [ "$lowest" != "$min" ]; then
+    echo "E2B_ORCHESTRATOR_VERSION is $orch_tag; CREATE_MEMORY_REFUSAL is read from orchestrator build $min on" >&2
+    return 1
+  fi
+}
+
 # The whole tag, not the SemVer prefix: an auto-deploy tag carries the commit
 # after a hyphen, and two images from different commits must not compare equal.
 @test "api and db-migrator pins move together" {
