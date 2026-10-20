@@ -163,6 +163,19 @@ func envIntOr(key string, fallback int) int {
 	return parsed
 }
 
+// envPositiveIntOr is envIntOr for limits that must stay positive: a zero or
+// negative value keeps the fallback, so a typo cannot silently stop a node
+// from accepting sandboxes. max-sandboxes-per-node's fallback is sized for
+// cloud node types rather than for the host it runs on, which is why the
+// per-node limits read their fallback from the environment.
+func envPositiveIntOr(key string, fallback int) int {
+	if v := envIntOr(key, fallback); v > 0 {
+		return v
+	}
+
+	return fallback
+}
+
 func NewBoolFlag(name string, fallback bool) BoolFlag {
 	flag := BoolFlag{name: name, fallback: fallback}
 	builder := launchDarklyOfflineStore.Flag(flag.name).VariationForAll(fallback)
@@ -568,7 +581,7 @@ var (
 	// future retirements.
 	EgressRetirementTimeoutMsFlag = NewIntFlag("egress-retirement-timeout-ms", 60000)
 
-	MaxSandboxesPerNode      = NewIntFlag("max-sandboxes-per-node", 200)
+	MaxSandboxesPerNode      = NewIntFlag("max-sandboxes-per-node", envPositiveIntOr("MAX_SANDBOXES_PER_NODE", 200))
 	APIIdempotencyRoutes     = NewJSONFlag("api-idempotency-routes", ldvalue.Null())
 	APIIdempotencyTTLSeconds = NewIntFlag("api-idempotency-ttl-seconds", 86400)
 	// The LD keys keep the legacy "gcloud-" prefix, but the limits apply to uploads on all storage providers.
@@ -761,7 +774,7 @@ var (
 
 	// MaxStartingInstancesPerNode limits concurrent sandbox start/resume operations on a single orchestrator node.
 	// Must be > 0.
-	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", 3)
+	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", envPositiveIntOr("MAX_STARTING_INSTANCES_PER_NODE", 3))
 
 	// MaxConcurrentEvictions caps the number of sandbox evictions that can run
 	// in parallel per API instance. Excess items remain expired in the store
