@@ -153,7 +153,7 @@ Client → Client-Proxy → API (REST) ⟷ PostgreSQL
 
 ### Key Technologies
 
-- **go 1.26.8** with workspaces (`go.work`)
+- **go 1.26.10** with workspaces (`go.work`)
 - **Firecracker** for microVM virtualization
 - **PostgreSQL** for primary data (sqlc for queries)
 - **ClickHouse** for analytics
