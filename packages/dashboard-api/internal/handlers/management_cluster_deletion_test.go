@@ -202,3 +202,31 @@ func TestAnAssignmentWaitsForADeletionRequestInFlight(t *testing.T) {
 	require.NoError(t, conn.QueryRow(ctx, `SELECT cluster_id FROM public.teams WHERE id = $1`, team).Scan(&assigned))
 	require.Nil(t, assigned)
 }
+
+func TestATeamDeletedBeforeDeletionClearedItsClusterNeitherListsNorBlocks(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
+	ctx := t.Context()
+	clusterID := uuid.New()
+	require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, store, clusterID, managementClusterRegistration()).Code)
+	deleted := testutils.CreateTestTeam(t, db)
+	require.Equal(t, http.StatusNoContent, callManagementAssignProjectCluster(t, store, deleted, clusterID).Code)
+	conn, err := pgx.Connect(ctx, db.ConnStr())
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close(ctx) })
+	_, err = conn.Exec(ctx, `UPDATE public.teams SET deleted_at = now(), is_blocked = true, blocked_reason = 'Project deletion' WHERE id = $1`, deleted)
+	require.NoError(t, err)
+
+	listed := callManagementClusterHandler(t, http.MethodGet, "/v1/management/clusters/"+clusterID.String()+"/projects", nil,
+		func(c *gin.Context) { store.ManagementListClusterProjects(c, clusterID) })
+	var projects api.ManagementClusterProjects
+	require.NoError(t, json.Unmarshal(listed.Body.Bytes(), &projects))
+	require.Empty(t, projects.ProjectIds)
+
+	require.Equal(t, http.StatusNoContent, callManagementDeleteCluster(t, store, clusterID).Code)
+	var cluster *uuid.UUID
+	require.NoError(t, conn.QueryRow(ctx, `SELECT cluster_id FROM public.teams WHERE id = $1`, deleted).Scan(&cluster))
+	require.Nil(t, cluster)
+}

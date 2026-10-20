@@ -525,7 +525,7 @@ other way starts protected, a later registration never changes it, and deleting 
 or checking its destroy readiness returns a conflict.
 A caller that deletes a cluster's projects before the cluster first lists them with
 `GET /v1/management/clusters/{clusterID}/projects`, which returns every project whose team is
-assigned to the cluster however it was assigned, and records the deletion with
+assigned to the cluster however it was assigned, leaving out deleted teams, and records the deletion with
 `PUT /v1/management/clusters/{clusterID}/deletion` before deleting any of them. That request
 locks the cluster row, returns a conflict while deletion protection is on, and sets
 `clusters.deletion_requested_at`; it succeeds for an absent cluster and on repeat. From then on a
@@ -534,7 +534,7 @@ team to the cluster (`cluster_assignment_cluster_deleting` from the assignment r
 from an upsert carrying the cluster ID). The trigger takes a key-share lock on the cluster row
 before it checks, so an assignment either commits before the deletion is recorded, where the
 caller's next listing finds it, or is refused. Deleting each project clears its team's cluster,
-and the cluster delete then succeeds.
+the cluster delete clears it from any team deleted earlier, and then succeeds.
 The shared error response supports an optional `error_code`, defined by the dashboard OpenAPI
 `ErrorCode` schema. Registration and assignment rejections currently populate it; other errors
 may omit it. Callers use that stable code rather than the human-readable message, and treat

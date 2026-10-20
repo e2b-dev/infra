@@ -77,10 +77,10 @@ SET deletion_requested_at = COALESCE(deletion_requested_at, now())
 WHERE id = sqlc.arg(cluster_id)::uuid;
 
 -- name: ListClusterTeamIDs :many
--- Deleting a project clears its team's cluster, so only live teams are listed.
 SELECT id
 FROM public.teams
 WHERE cluster_id = sqlc.arg(cluster_id)::uuid
+  AND deleted_at IS NULL
 ORDER BY id;
 
 -- name: ClusterDeletionProtected :one
@@ -123,6 +123,14 @@ WHERE template_id = ANY(sqlc.arg(env_ids)::text[]);
 
 -- name: DetachDeletedTemplatesFromCluster :exec
 UPDATE public.envs
+SET cluster_id = NULL
+WHERE cluster_id = sqlc.arg(cluster_id)::uuid
+  AND deleted_at IS NOT NULL;
+
+-- name: DetachDeletedTeamsFromCluster :exec
+-- Deleting a project clears its team's cluster, but a team deleted before that
+-- still holds it and would block the cluster delete.
+UPDATE public.teams
 SET cluster_id = NULL
 WHERE cluster_id = sqlc.arg(cluster_id)::uuid
   AND deleted_at IS NOT NULL;

@@ -171,6 +171,20 @@ func (q *Queries) DeleteEnvironmentsActiveBuilds(ctx context.Context, envIds []s
 	return err
 }
 
+const detachDeletedTeamsFromCluster = `-- name: DetachDeletedTeamsFromCluster :exec
+UPDATE public.teams
+SET cluster_id = NULL
+WHERE cluster_id = $1::uuid
+  AND deleted_at IS NOT NULL
+`
+
+// Deleting a project clears its team's cluster, but a team deleted before that
+// still holds it and would block the cluster delete.
+func (q *Queries) DetachDeletedTeamsFromCluster(ctx context.Context, clusterID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, detachDeletedTeamsFromCluster, clusterID)
+	return err
+}
+
 const detachDeletedTemplatesFromCluster = `-- name: DetachDeletedTemplatesFromCluster :exec
 UPDATE public.envs
 SET cluster_id = NULL
@@ -224,10 +238,10 @@ const listClusterTeamIDs = `-- name: ListClusterTeamIDs :many
 SELECT id
 FROM public.teams
 WHERE cluster_id = $1::uuid
+  AND deleted_at IS NULL
 ORDER BY id
 `
 
-// Deleting a project clears its team's cluster, so only live teams are listed.
 func (q *Queries) ListClusterTeamIDs(ctx context.Context, clusterID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, listClusterTeamIDs, clusterID)
 	if err != nil {

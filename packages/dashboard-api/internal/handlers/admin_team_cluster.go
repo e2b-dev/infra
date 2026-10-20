@@ -203,6 +203,9 @@ func (s *APIStore) deleteCluster(ctx context.Context, clusterID uuid.UUID) error
 	if err := db.Dashboard.DetachDeletedTemplatesFromCluster(ctx, clusterID); err != nil {
 		return fmt.Errorf("detach deleted templates: %w", err)
 	}
+	if err := db.Dashboard.DetachDeletedTeamsFromCluster(ctx, clusterID); err != nil {
+		return fmt.Errorf("detach deleted teams: %w", err)
+	}
 	if _, err := db.Dashboard.DeleteCluster(ctx, clusterID); err != nil {
 		return fmt.Errorf("delete cluster: %w", err)
 	}
