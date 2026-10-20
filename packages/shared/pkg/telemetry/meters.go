@@ -560,6 +560,12 @@ const (
 	UffdStartupSourcePagesHistogramName HistogramType = "orchestrator.sandbox.uffd.startup.source_pages"
 	UffdStartupBytesHistogramName       HistogramType = "orchestrator.sandbox.uffd.startup.bytes"
 
+	// Demand faults a guest needed after its start, per window since envd init.
+	UffdPostStartPagesHistogramName           HistogramType = "orchestrator.sandbox.uffd.post_start.pages"
+	UffdPostStartSourcePagesHistogramName     HistogramType = "orchestrator.sandbox.uffd.post_start.source_pages"
+	UffdPostStartServeTimeHistogramName       HistogramType = "orchestrator.sandbox.uffd.post_start.serve_time"
+	UffdPostStartSourceServeTimeHistogramName HistogramType = "orchestrator.sandbox.uffd.post_start.source_serve_time"
+
 	// TCP Firewall histograms
 	TCPFirewallConnectionDurationHistogramName    HistogramType = "orchestrator.tcpfirewall.connection.duration"
 	TCPFirewallConnectionsPerSandboxHistogramName HistogramType = "orchestrator.tcpfirewall.connections.per_sandbox"
@@ -1163,6 +1169,11 @@ var histogramDesc = map[HistogramType]string{
 	UffdStartupSourcePagesHistogramName: "Subset of startup demand-fault pages pulled from the source (e.g. GCS), per start",
 	UffdStartupBytesHistogramName:       "Bytes faulted into a guest to reach a successful envd init, per start",
 
+	UffdPostStartPagesHistogramName:           "Demand-fault pages a guest needed after a successful envd init, per start and window (time since that init)",
+	UffdPostStartSourcePagesHistogramName:     "Subset of post-start demand-fault pages pulled from the source (e.g. GCS), per start and window",
+	UffdPostStartServeTimeHistogramName:       "Time spent serving the guest's demand faults after a successful envd init, summed over faults (concurrent faults overlap, so it can exceed the window). Excludes time a fault waits in the deferred queue after EAGAIN, so it understates the guest's wait during balloon drains and REMOVE batches. Per start and window",
+	UffdPostStartSourceServeTimeHistogramName: "Subset of post-start demand-fault serve time spent on pages pulled from the source, per start and window",
+
 	TCPFirewallConnectionDurationHistogramName:    "Duration of TCP firewall proxied connections",
 	TCPFirewallConnectionsPerSandboxHistogramName: "Number of active TCP firewall connections per sandbox",
 
@@ -1247,6 +1258,10 @@ var histogramUnits = map[HistogramType]string{
 	UffdStartupPagesHistogramName:                     "{page}",
 	UffdStartupSourcePagesHistogramName:               "{page}",
 	UffdStartupBytesHistogramName:                     "{By}",
+	UffdPostStartPagesHistogramName:                   "{page}",
+	UffdPostStartSourcePagesHistogramName:             "{page}",
+	UffdPostStartServeTimeHistogramName:               "ms",
+	UffdPostStartSourceServeTimeHistogramName:         "ms",
 	TCPFirewallConnectionDurationHistogramName:        "ms",
 	TCPFirewallConnectionsPerSandboxHistogramName:     "{connection}",
 

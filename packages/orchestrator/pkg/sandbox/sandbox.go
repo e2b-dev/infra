@@ -4587,6 +4587,14 @@ func (s *Sandbox) WaitForEnvd(
 			uffdStartupPagesHistogram.Record(ctx, stats.Pages, startupAttrs)
 			uffdStartupSourcePagesHistogram.Record(ctx, stats.SourcePages, startupAttrs)
 			uffdStartupBytesHistogram.Record(ctx, stats.Bytes, startupAttrs)
+
+			// The post-start windows start here: the guest is usable from now on,
+			// and what it faults in after this is what its own processes wait on.
+			// Started now rather than with the checks, which on a resume wait for
+			// any envd upgrade and would shift every window by its duration.
+			if e == nil && s.recordsPostStartFaultIn(startType) {
+				go s.recordPostStartFaultIn(context.WithoutCancel(ctx), &postStartBase{at: time.Now(), stats: stats, startType: startType})
+			}
 		}
 
 		if e != nil {

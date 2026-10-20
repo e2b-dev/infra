@@ -4,6 +4,7 @@ package userfaultfd
 
 import (
 	"context"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -386,6 +387,28 @@ type ServeSnapshot struct {
 	// install. WPDeferred is the same for write-protect resolves.
 	Deferred   int64
 	WPDeferred int64
+	// ServeTime is the time spent serving the resolved faults in Pages,
+	// summed over faults. Faults are served concurrently, so it can exceed
+	// the wall time it covers. It is a lower bound on the guest's wait: a
+	// fault deferred on EAGAIN is timed only for the attempt that resolves
+	// it, so its time in the deferred queue is not included. SourceServeTime
+	// is the subset spent on SourcePages, the pages that had to be fetched.
+	ServeTime       time.Duration
+	SourceServeTime time.Duration
+}
+
+// Sub returns the faults served between an earlier snapshot and this one.
+func (s ServeSnapshot) Sub(earlier ServeSnapshot) ServeSnapshot {
+	return ServeSnapshot{
+		Pages:           s.Pages - earlier.Pages,
+		SourcePages:     s.SourcePages - earlier.SourcePages,
+		Bytes:           s.Bytes - earlier.Bytes,
+		WPFaults:        s.WPFaults - earlier.WPFaults,
+		Deferred:        s.Deferred - earlier.Deferred,
+		WPDeferred:      s.WPDeferred - earlier.WPDeferred,
+		ServeTime:       s.ServeTime - earlier.ServeTime,
+		SourceServeTime: s.SourceServeTime - earlier.SourceServeTime,
+	}
 }
 
 // ServeStats returns a cumulative snapshot of the demand faults served so far.
@@ -397,21 +420,27 @@ func (u *Userfaultfd) ServeStats() ServeSnapshot {
 		WPFaults:    u.wpFaultsResolved.Load(),
 		Deferred:    u.servedDeferred.Load(),
 		WPDeferred:  u.wpDeferred.Load(),
+
+		ServeTime:       time.Duration(u.servedNanos.Load()),
+		SourceServeTime: time.Duration(u.servedSourceNanos.Load()),
 	}
 }
 
-// recordServeStats folds one finished serve attempt into the cumulative
-// counters read by ServeStats. Only resolved faults (installed or already
-// present) count as a needed page; deferred faults are re-served and counted
-// when they finally resolve, so they are not double counted here.
-func (u *Userfaultfd) recordServeStats(pclass pageClass, result faultResult, servedBytes int64) {
+// recordServeStats folds one finished serve attempt, and how long it took, into
+// the cumulative counters read by ServeStats. Only resolved faults (installed or
+// already present) count as a needed page and as serve time; deferred faults
+// are re-served and counted when they finally resolve, so they are not double
+// counted here.
+func (u *Userfaultfd) recordServeStats(pclass pageClass, result faultResult, servedBytes int64, took time.Duration) {
 	switch result {
 	case faultResultInstalled, faultResultPresent:
 		u.servedPages.Add(1)
+		u.servedNanos.Add(int64(took))
 		if servedBytes > 0 {
 			u.servedBytes.Add(servedBytes)
 			if pclass == pageClassNew {
 				u.servedSourcePages.Add(1)
+				u.servedSourceNanos.Add(int64(took))
 			}
 		}
 	case faultResultDeferred:

@@ -4,6 +4,7 @@ package userfaultfd
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -157,9 +158,11 @@ func TestServeStats(t *testing.T) {
 	pageSize := int64(header.PageSize)
 
 	var u Userfaultfd
+	// Each attempt takes 1ms more than the class index, so the serve-time sums
+	// show which attempts were counted.
 	fold := func(class pageClass, result faultResult, bytes int64, n int) {
 		for range n {
-			u.recordServeStats(class, result, bytes)
+			u.recordServeStats(class, result, bytes, time.Duration(class+1)*time.Millisecond)
 		}
 	}
 	fold(pageClassNew, faultResultInstalled, pageSize, 3)  // +3 pages, +3 source, +3 pages of bytes
@@ -173,6 +176,31 @@ func TestServeStats(t *testing.T) {
 	assert.Equal(t, int64(7), stats.Pages, "resolved demand faults (installed+present)")
 	assert.Equal(t, int64(3), stats.SourcePages, "subset installed from the source")
 	assert.Equal(t, 4*pageSize, stats.Bytes, "bytes installed (new+zero), present/deferred/error contribute none")
+	// new 1ms x4 (3 installed + 1 present), zero 2ms x1, resident 3ms x2; deferred and error add none.
+	assert.Equal(t, 12*time.Millisecond, stats.ServeTime, "serve time of resolved faults only")
+	assert.Equal(t, 3*time.Millisecond, stats.SourceServeTime, "serve time of the faults installed from the source")
+}
+
+// Sub gives what was served between two snapshots, field by field.
+func TestServeSnapshotSub(t *testing.T) {
+	t.Parallel()
+
+	var u Userfaultfd
+	u.recordServeStats(pageClassNew, faultResultInstalled, 4096, 5*time.Millisecond)
+	before := u.ServeStats()
+	u.recordServeStats(pageClassNew, faultResultInstalled, 4096, 7*time.Millisecond)
+	u.recordServeStats(pageClassZero, faultResultInstalled, 4096, 2*time.Millisecond)
+	u.recordServeStats(pageClassNew, faultResultDeferred, 0, time.Millisecond)
+
+	d := u.ServeStats().Sub(before)
+	assert.Equal(t, ServeSnapshot{
+		Pages:           2,
+		SourcePages:     1,
+		Bytes:           8192,
+		Deferred:        1,
+		ServeTime:       9 * time.Millisecond,
+		SourceServeTime: 7 * time.Millisecond,
+	}, d)
 }
 
 // bucketForGeneration pins the log-scale bucket edges: 0 is its own bucket

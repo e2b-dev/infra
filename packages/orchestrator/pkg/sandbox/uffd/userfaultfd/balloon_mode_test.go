@@ -2,6 +2,7 @@ package userfaultfd
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -24,8 +25,8 @@ func TestServeStats_ModeAndDeferred(t *testing.T) {
 	u.SetBalloonMode(BalloonModeHinting)
 	assert.Equal(t, BalloonModeHinting, u.balloonMode())
 
-	u.recordServeStats(pageClassNew, faultResultDeferred, 0)
-	u.recordServeStats(pageClassNew, faultResultInstalled, 4096)
+	u.recordServeStats(pageClassNew, faultResultDeferred, 0, time.Millisecond)
+	u.recordServeStats(pageClassNew, faultResultInstalled, 4096, time.Millisecond)
 	st := u.ServeStats()
 	assert.Equal(t, int64(1), st.Deferred)
 	assert.Equal(t, int64(1), st.Pages)

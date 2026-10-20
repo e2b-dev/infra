@@ -163,6 +163,8 @@ type Userfaultfd struct {
 	servedSourcePages atomic.Int64 // subset installed from the source (page_class=new)
 	servedBytes       atomic.Int64 // bytes installed into the guest (new + zero)
 	servedDeferred    atomic.Int64 // serve attempts deferred on EAGAIN
+	servedNanos       atomic.Int64 // time spent serving resolved faults
+	servedSourceNanos atomic.Int64 // subset spent on faults installed from the source
 	wpDeferred        atomic.Int64 // write-protect resolves deferred on EAGAIN
 
 	// mode is the BalloonMode the serve metrics carry; unknown until set.
@@ -590,12 +592,16 @@ func (u *Userfaultfd) Serve(
 				// including the deferred-queue wait — can exceed any single
 				// recorded serve.
 				sw := serveTimer.Begin()
+				begun := time.Now()
 				pclass := pageClassUnknown
 				result := faultResultInstalled
 				var servedBytes int64
 				defer func() {
+					// Taken before RecordRaw, which can wait on the metric's
+					// aggregation lock after the guest was already woken.
+					took := time.Since(begun)
 					sw.RecordRaw(ctx, servedBytes, serveAttrs[u.balloonMode()][u.genBucket][pclass][result])
-					u.recordServeStats(pclass, result, servedBytes)
+					u.recordServeStats(pclass, result, servedBytes, took)
 				}()
 
 				if h := u.testFaultHook.Load(); h != nil {
