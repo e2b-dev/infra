@@ -45,7 +45,7 @@ func TestManagementClusterLifecycleReplaysAndEndsAbsent(t *testing.T) {
 	require.False(t, exists)
 }
 
-func TestManagementRegisterClusterRejectsDescriptorChange(t *testing.T) {
+func TestManagementRegisterClusterRejectsIdentityChange(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -56,12 +56,8 @@ func TestManagementRegisterClusterRejectsDescriptorChange(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, store, clusterID, registration).Code)
 	for name, change := range map[string]func(*api.ManagementClusterRegistrationRequest){
 		"name":                      func(r *api.ManagementClusterRegistrationRequest) { r.Name = "different cluster" },
-		"endpoint":                  func(r *api.ManagementClusterRegistrationRequest) { r.Endpoint = "changed.example.test:443" },
-		"TLS":                       func(r *api.ManagementClusterRegistrationRequest) { r.EndpointTls = !r.EndpointTls },
-		"proxy":                     func(r *api.ManagementClusterRegistrationRequest) { r.SandboxProxyDomain = new("changed.example.test") },
 		"auth organization":         func(r *api.ManagementClusterRegistrationRequest) { r.AuthOrgId = new("changed-org") },
 		"missing auth organization": func(r *api.ManagementClusterRegistrationRequest) { r.AuthOrgId = nil },
-		"missing proxy":             func(r *api.ManagementClusterRegistrationRequest) { r.SandboxProxyDomain = nil },
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -74,6 +70,43 @@ func TestManagementRegisterClusterRejectsDescriptorChange(t *testing.T) {
 			requireClusterErrorCode(t, response, api.ClusterRegistrationConflict)
 		})
 	}
+}
+
+// A cluster that moves to a new domain registers its new endpoint and sandbox
+// domain under the same identity; its assignments and protection stay.
+func TestManagementRegisterClusterMovesConnectionDetails(t *testing.T) {
+	t.Parallel()
+	db := testutils.SetupDatabase(t)
+	projectID := testutils.CreateTestTeam(t, db)
+	clusterID := uuid.New()
+	store := &APIStore{db: db.SqlcClient, authService: &recordingCacheAuthService{}}
+	registration := managementClusterRegistration()
+	require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, store, clusterID, registration).Code)
+	require.Equal(t, http.StatusNoContent, callManagementAssignProjectCluster(t, store, projectID, clusterID).Code)
+	require.NoError(t, db.SqlcClient.TestsRawSQL(t.Context(), `UPDATE public.clusters SET deletion_protection=true WHERE id=$1`, clusterID))
+	registration.Endpoint = "api.moved.example.test:443"
+	registration.SandboxProxyDomain = new("moved.example.test")
+	registration.EndpointTls = !registration.EndpointTls
+	for range 2 {
+		require.Equal(t, http.StatusNoContent, callManagementRegisterCluster(t, store, clusterID, registration).Code)
+	}
+	require.NoError(t, db.SqlcClient.TestsRawSQLQuery(t.Context(),
+		`SELECT c.endpoint,c.endpoint_tls,c.sandbox_proxy_domain,c.token,c.deletion_protection,t.cluster_id FROM public.clusters c JOIN public.teams t ON t.cluster_id=c.id WHERE c.id=$1 AND t.id=$2`,
+		func(rows pgx.Rows) error {
+			require.True(t, rows.Next())
+			var endpoint, proxy, token string
+			var tls, protected bool
+			var assigned uuid.UUID
+			err := rows.Scan(&endpoint, &tls, &proxy, &token, &protected, &assigned)
+			require.Equal(t, registration.Endpoint, endpoint)
+			require.Equal(t, registration.EndpointTls, tls)
+			require.Equal(t, *registration.SandboxProxyDomain, proxy)
+			require.Equal(t, registration.Token, token)
+			require.True(t, protected)
+			require.Equal(t, clusterID, assigned)
+
+			return err
+		}, clusterID, projectID))
 }
 
 func TestManagementRegisterClusterRefreshesOnlyToken(t *testing.T) {

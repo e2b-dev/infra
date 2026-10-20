@@ -32,8 +32,10 @@ WHERE clusters.name = EXCLUDED.name
 RETURNING id;
 
 -- name: RegisterManagedCluster :one
--- Management registration refreshes only the credential of an unchanged
--- cluster descriptor. Assignments and stored deletion protection survive.
+-- Management registration of an existing cluster with the same name and auth
+-- organization updates its connection details and credential, so a cluster
+-- that moves to a new domain keeps its identity. Assignments and stored
+-- deletion protection survive.
 INSERT INTO public.clusters (
     id,
     name,
@@ -55,11 +57,11 @@ VALUES (
     sqlc.arg(deletion_protection)::boolean
 )
 ON CONFLICT (id) DO UPDATE
-SET token = EXCLUDED.token
+SET token = EXCLUDED.token,
+    endpoint = EXCLUDED.endpoint,
+    endpoint_tls = EXCLUDED.endpoint_tls,
+    sandbox_proxy_domain = EXCLUDED.sandbox_proxy_domain
 WHERE clusters.name = EXCLUDED.name
-  AND clusters.endpoint = EXCLUDED.endpoint
-  AND clusters.endpoint_tls = EXCLUDED.endpoint_tls
-  AND clusters.sandbox_proxy_domain IS NOT DISTINCT FROM EXCLUDED.sandbox_proxy_domain
   AND clusters.auth_org_id IS NOT DISTINCT FROM EXCLUDED.auth_org_id
 RETURNING id;
 

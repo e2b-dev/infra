@@ -2091,7 +2091,7 @@ paths:
     put:
       operationId: managementRegisterCluster
       summary: Register a cluster (v1).
-      description: A cluster registered here for the first time starts with deletion protection turned off. Registering an existing cluster again keeps its stored deletion protection.
+      description: A cluster registered here for the first time starts with deletion protection turned off. Registering an existing cluster again with the same name and auth organization updates its endpoint, TLS setting, sandbox proxy domain and token and keeps its stored deletion protection; a different name or auth organization returns a conflict.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []

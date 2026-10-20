@@ -517,10 +517,13 @@ in `dashboard-api.management.origin_unknown` instead, never as zero lag. Dropped
 refused and failed deliveries record nothing.
 
 The management surface also owns a replay-safe cluster lifecycle. A caller registers a stable
-cluster UUID with immutable connection details, assigns it only to the named project, detaches that
-exact assignment before provider cleanup, and deletes the cluster only after no project references
-it. Replaying the same registration or assignment succeeds, while a changed descriptor, a different
-assignment, an inexact detach, or deletion of a referenced cluster returns a conflict. The
+cluster UUID, assigns it only to the named project, detaches that exact assignment before provider
+cleanup, and deletes the cluster only after no project references it. Replaying the same
+registration or assignment succeeds. Registering the cluster again with the same name and auth
+organization may change its endpoint, TLS setting, sandbox proxy domain and token, for example when
+the cluster moves to a new domain; the API rebuilds that cluster's clients on its next sync and gives
+sandboxes the new domain. A changed name or auth organization, a different assignment, an inexact
+detach, or deletion of a referenced cluster returns a conflict. The
 assignment does not check the project's tier; the caller decides which projects may use a cluster.
 A cluster first registered through this surface starts without deletion protection; one created any
 other way starts protected, a later registration never changes it, and deleting a protected cluster

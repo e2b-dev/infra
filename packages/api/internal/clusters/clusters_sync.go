@@ -199,8 +199,14 @@ func (d clustersSyncStore) SourceExists(_ context.Context, s []queries.Cluster, 
 	for _, item := range s {
 		if item.ID == p.ID {
 			// A replacement deployment keeps its cluster ID but rotates the edge
-			// credential. Retire its old clients so the next sync recreates them.
-			return item.ID == consts.LocalClusterID || item.Token == p.edgeToken
+			// credential, and a cluster that moves domain changes its endpoint
+			// and sandbox domain. Retire its old clients so the next sync
+			// recreates them.
+			sameDomain := (item.SandboxProxyDomain == nil) == (p.SandboxDomain == nil) &&
+				(item.SandboxProxyDomain == nil || *item.SandboxProxyDomain == *p.SandboxDomain)
+
+			return item.ID == consts.LocalClusterID || (item.Token == p.edgeToken && item.Endpoint == p.endpoint &&
+				item.EndpointTls == p.endpointTLS && sameDomain)
 		}
 	}
 
@@ -349,6 +355,37 @@ func (p *Pool) finishStartup(lifecycleCtx context.Context) {
 
 func (d clustersSyncStore) PoolUpdate(_ context.Context, _ *Cluster) {
 	// Clusters pool currently does not do something special during synchronization
+}
+
+// PoolReplace swaps a cluster whose endpoint, TLS setting, sandbox domain or
+// credential changed for one built from its current row, and only then closes
+// the old clients, so GetClusterById finds the cluster throughout the move.
+func (d clustersSyncStore) PoolReplace(ctx context.Context, rows []queries.Cluster, old *Cluster) bool {
+	for _, row := range rows {
+		if row.ID != old.ID {
+			continue
+		}
+
+		replacement, err := d.newCluster(row)
+		if err != nil {
+			logger.L().Error(ctx, "Initializing changed cluster failed", zap.Error(err), logger.WithClusterID(row.ID))
+
+			return false
+		}
+		if err := d.activateCluster(replacement, syncImmediately); err != nil {
+			logger.L().Info(ctx, "Skipped changed cluster replacement during shutdown", zap.Error(err), logger.WithClusterID(row.ID))
+
+			return false
+		}
+		if err := old.Close(ctx); err != nil {
+			logger.L().Error(ctx, "Error closing replaced cluster", zap.Error(err), logger.WithClusterID(row.ID))
+		}
+		logger.L().Info(ctx, "Replaced changed cluster", logger.WithClusterID(row.ID))
+
+		return true
+	}
+
+	return false
 }
 
 func (d clustersSyncStore) PoolRemove(ctx context.Context, cluster *Cluster) {

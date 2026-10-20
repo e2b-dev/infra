@@ -117,7 +117,16 @@ func (a *APIStore) connectSandbox(c *gin.Context, sandboxID api.SandboxID, timeo
 	for attempt := range maxConnectRetries {
 		sbx, apiErr := a.connectBackend().KeepAliveFor(ctx, teamID, sandboxID, timeout, false)
 		if apiErr == nil {
-			c.JSON(http.StatusOK, sbx.ToAPISandbox())
+			apiSbx := sbx.ToAPISandbox()
+			// A cluster can move to a new domain while its sandboxes keep
+			// running. Answer with the cluster's current domain, as sandbox get
+			// does, not the one recorded when the sandbox was created.
+			if teamInfo.Team.ClusterID != nil {
+				if cluster, ok := a.clusters.GetClusterById(*teamInfo.Team.ClusterID); ok {
+					apiSbx.Domain = cluster.SandboxDomain
+				}
+			}
+			c.JSON(http.StatusOK, apiSbx)
 
 			return
 		}

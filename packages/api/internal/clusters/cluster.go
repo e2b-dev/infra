@@ -42,6 +42,8 @@ type Cluster struct {
 	SandboxDomain *string
 	AuthOrgID     string
 	edgeToken     string
+	endpoint      string
+	endpointTLS   bool
 
 	instances       *smap.Map[*Instance]
 	synchronization *synchronization.Synchronize[servicediscovery.Instance, *Instance]
@@ -165,7 +167,7 @@ func newRemoteCluster(
 		synchronization.NewSynchronize("cluster-instances", "Cluster instances", store),
 		newRemoteClusterResourceProvider(clusterID, instances, httpClient),
 	)
-	c.edgeToken = secret
+	c.edgeToken, c.endpoint, c.endpointTLS = secret, endpoint, endpointTLS
 
 	return c, nil
 }

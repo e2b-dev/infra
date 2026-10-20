@@ -300,11 +300,11 @@ VALUES (
     $8::boolean
 )
 ON CONFLICT (id) DO UPDATE
-SET token = EXCLUDED.token
+SET token = EXCLUDED.token,
+    endpoint = EXCLUDED.endpoint,
+    endpoint_tls = EXCLUDED.endpoint_tls,
+    sandbox_proxy_domain = EXCLUDED.sandbox_proxy_domain
 WHERE clusters.name = EXCLUDED.name
-  AND clusters.endpoint = EXCLUDED.endpoint
-  AND clusters.endpoint_tls = EXCLUDED.endpoint_tls
-  AND clusters.sandbox_proxy_domain IS NOT DISTINCT FROM EXCLUDED.sandbox_proxy_domain
   AND clusters.auth_org_id IS NOT DISTINCT FROM EXCLUDED.auth_org_id
 RETURNING id
 `
@@ -320,8 +320,10 @@ type RegisterManagedClusterParams struct {
 	DeletionProtection bool
 }
 
-// Management registration refreshes only the credential of an unchanged
-// cluster descriptor. Assignments and stored deletion protection survive.
+// Management registration of an existing cluster with the same name and auth
+// organization updates its connection details and credential, so a cluster
+// that moves to a new domain keeps its identity. Assignments and stored
+// deletion protection survive.
 func (q *Queries) RegisterManagedCluster(ctx context.Context, arg RegisterManagedClusterParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, registerManagedCluster,
 		arg.ClusterID,
