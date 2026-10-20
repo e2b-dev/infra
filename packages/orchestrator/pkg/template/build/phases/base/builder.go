@@ -251,6 +251,7 @@ func (bb *BaseBuilder) buildLayerFromOCI(
 		layer.WithRootfsCachePath(rootfsPath),
 	}
 	sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, bb.featureFlags, bb.Config.RootfsBlockSize())...)
+	sandboxOptions = append(sandboxOptions, layer.BootDiagnosticsOptions(ctx, bb.featureFlags)...)
 
 	sandboxCreator := layer.NewCreateSandbox(
 		baseSbxConfig,

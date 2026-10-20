@@ -200,6 +200,7 @@ func (ppb *PostProcessingBuilder) Build(
 	if sourceLayer.Cached {
 		sandboxOptions = append(sandboxOptions, layer.ReservedBlocksOptions(ctx, ppb.featureFlags, ppb.Config.RootfsBlockSize())...)
 	}
+	sandboxOptions = append(sandboxOptions, layer.BootDiagnosticsOptions(ctx, ppb.featureFlags)...)
 
 	// Always restart the sandbox for the final layer to properly wire the rootfs path for the final template
 	sandboxCreator := layer.NewCreateSandbox(

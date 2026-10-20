@@ -193,7 +193,10 @@ func (sb *StepBuilder) Build(
 			sbxConfig,
 			sb.sandboxFactory,
 			layerTimeout,
-			layer.ReservedBlocksOptions(ctx, sb.featureFlags, sb.Config.RootfsBlockSize())...,
+			append(
+				layer.ReservedBlocksOptions(ctx, sb.featureFlags, sb.Config.RootfsBlockSize()),
+				layer.BootDiagnosticsOptions(ctx, sb.featureFlags)...,
+			)...,
 		)
 	} else {
 		sandboxCreator = layer.NewResumeSandbox(sbxConfig, sb.sandboxFactory, layerTimeout)

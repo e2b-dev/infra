@@ -755,6 +755,10 @@ var (
 	// Reserved blocks are only usable by root (uid 0), protecting the guest OS from disk-full conditions.
 	BuildReservedDiskSpaceMB = NewIntFlag("build-reserved-disk-space-mb", 256)
 
+	// BuildBootDiagnosticsFlag inspects the rootfs before each build cold boot and annotates
+	// an envd timeout with what it found. Off means no inspection.
+	BuildBootDiagnosticsFlag = NewBoolFlag("build-boot-diagnostics", false)
+
 	// MaxStartingInstancesPerNode limits concurrent sandbox start/resume operations on a single orchestrator node.
 	// Must be > 0.
 	MaxStartingInstancesPerNode = NewIntFlag("max-starting-instances-per-node", 3)
