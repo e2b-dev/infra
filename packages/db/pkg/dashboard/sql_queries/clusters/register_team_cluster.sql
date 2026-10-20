@@ -76,6 +76,13 @@ UPDATE public.clusters
 SET deletion_requested_at = COALESCE(deletion_requested_at, now())
 WHERE id = sqlc.arg(cluster_id)::uuid;
 
+-- name: ListClusterTeamIDs :many
+-- Deleting a project clears its team's cluster, so only live teams are listed.
+SELECT id
+FROM public.teams
+WHERE cluster_id = sqlc.arg(cluster_id)::uuid
+ORDER BY id;
+
 -- name: ClusterDeletionProtected :one
 SELECT EXISTS (
     SELECT FROM public.clusters

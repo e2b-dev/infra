@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
@@ -57,6 +58,20 @@ func (s *APIStore) ManagementDetachProjectCluster(c *gin.Context, projectID api.
 
 func (s *APIStore) ManagementDeleteCluster(c *gin.Context, clusterID api.ClusterID) {
 	s.DeleteAdminClustersClusterID(c, clusterID)
+}
+
+func (s *APIStore) ManagementListClusterProjects(c *gin.Context, clusterID api.ClusterID) {
+	projectIDs, err := s.db.Dashboard.ListClusterTeamIDs(c.Request.Context(), clusterID)
+	if err != nil {
+		s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to list cluster projects")
+
+		return
+	}
+	if projectIDs == nil {
+		projectIDs = []uuid.UUID{}
+	}
+
+	c.JSON(http.StatusOK, api.ManagementClusterProjects{ProjectIds: projectIDs})
 }
 
 func (s *APIStore) ManagementRequestClusterDeletion(c *gin.Context, clusterID api.ClusterID) {

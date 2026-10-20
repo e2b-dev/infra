@@ -331,6 +331,7 @@ components:
         - cluster_assignment_project_not_found
         - cluster_assignment_cluster_not_found
         - cluster_assignment_already_assigned
+        - cluster_assignment_cluster_deleting
 
     AdminAuthProviderProfile:
       type: object
@@ -1093,6 +1094,16 @@ components:
               type: string
               format: uuid
 
+    ManagementClusterProjects:
+      type: object
+      required: [project_ids]
+      properties:
+        project_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+
     ManagementClusterRegistrationRequest:
       type: object
       required:
@@ -1490,11 +1501,35 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /v1/management/clusters/{clusterID}/projects:
+    get:
+      operationId: managementListClusterProjects
+      summary: List the projects assigned to a cluster (v1).
+      description: Returns the ID of every project whose team is assigned to the cluster, whichever way it was assigned. A deleted project is never assigned. An absent cluster has no projects.
+      tags: [control-plane-management]
+      security:
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/clusterID"
+      responses:
+        "200":
+          description: The projects assigned to the cluster.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ManagementClusterProjects"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "500":
+          $ref: "#/components/responses/500"
+
   /v1/management/clusters/{clusterID}/deletion:
     put:
       operationId: managementRequestClusterDeletion
       summary: Record that a cluster is being deleted (v1).
-      description: Records that the caller is deleting the cluster, for a caller that deletes the cluster's teams before the cluster itself. Refused while the cluster has deletion protection turned on; a protection change in flight commits before or after the check, never between. Once recorded, deletion protection cannot be turned on, so the cluster delete that follows is not refused for protection. Succeeds when the cluster is absent. Repeating the request succeeds. The local cluster's nil ID is rejected.
+      description: Records that the caller is deleting the cluster, for a caller that deletes the cluster's teams before the cluster itself. Refused while the cluster has deletion protection turned on; a protection change in flight commits before or after the check, never between. Once recorded, deletion protection cannot be turned on, so the cluster delete that follows is not refused for protection, and no team can be newly assigned to the cluster. An assignment either commits before the deletion is recorded, where the caller's next project listing finds it, or is refused with cluster_assignment_cluster_deleting. Succeeds when the cluster is absent. Repeating the request succeeds. The local cluster's nil ID is rejected.
       tags: [control-plane-management]
       security:
         - AdminJWTAuth: []

@@ -131,6 +131,10 @@ func (s *APIStore) DeleteAdminClustersClusterID(c *gin.Context, clusterID api.Cl
 // requestClusterDeletion records, under the cluster row's lock, that the
 // cluster is being deleted. A protection change in flight commits first and is
 // seen here; once recorded, a check constraint refuses turning protection on.
+// clusterDeletingConstraint is raised by the teams trigger that refuses a new
+// assignment to a cluster whose deletion is recorded.
+const clusterDeletingConstraint = "teams_cluster_not_deleting"
+
 func (s *APIStore) requestClusterDeletion(ctx context.Context, clusterID uuid.UUID) error {
 	if clusterID == consts.LocalClusterID {
 		return errLocalClusterDeletion
@@ -253,9 +257,12 @@ func (s *APIStore) assignTeamCluster(c *gin.Context, teamID, clusterID uuid.UUID
 		return
 	}
 	if err != nil {
-		if dberrors.IsForeignKeyViolation(err) {
+		switch {
+		case dberrors.IsForeignKeyViolation(err):
 			apierrors.SendAPIError(c, &apierrors.APIError{Code: http.StatusNotFound, ErrorCode: string(api.ClusterAssignmentClusterNotFound), ClientMsg: "Cluster not found"})
-		} else {
+		case dberrors.ConstraintName(err) == clusterDeletingConstraint:
+			apierrors.SendAPIError(c, &apierrors.APIError{Code: http.StatusConflict, ErrorCode: string(api.ClusterAssignmentClusterDeleting), ClientMsg: "Cluster is being deleted"})
+		default:
 			s.sendAPIStoreError(c, http.StatusInternalServerError, "Failed to assign cluster to team")
 		}
 

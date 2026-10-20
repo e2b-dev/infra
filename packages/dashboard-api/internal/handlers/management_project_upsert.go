@@ -10,6 +10,7 @@ import (
 
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/management"
+	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -74,6 +75,8 @@ func projectConflictMessage(err error) string {
 		return "Slug is already taken on this control plane"
 	case errors.Is(err, management.ErrProjectRaced):
 		return "Project was created concurrently, retry"
+	case dberrors.ConstraintName(err) == clusterDeletingConstraint:
+		return "Cluster is being deleted"
 	}
 
 	return ""

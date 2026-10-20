@@ -220,6 +220,34 @@ func (q *Queries) DetachTeamCluster(ctx context.Context, arg DetachTeamClusterPa
 	return i, err
 }
 
+const listClusterTeamIDs = `-- name: ListClusterTeamIDs :many
+SELECT id
+FROM public.teams
+WHERE cluster_id = $1::uuid
+ORDER BY id
+`
+
+// Deleting a project clears its team's cluster, so only live teams are listed.
+func (q *Queries) ListClusterTeamIDs(ctx context.Context, clusterID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listClusterTeamIDs, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockClusterDeletionProtection = `-- name: LockClusterDeletionProtection :one
 SELECT deletion_protection
 FROM public.clusters
