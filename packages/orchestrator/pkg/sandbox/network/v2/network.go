@@ -244,7 +244,7 @@ func createNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	nsConn.CloseLasting()
 
 	// --- Initialize in-namespace firewall (reuse v1 Firewall) ---
-	if err := slot.InitializeFirewall(); err != nil {
+	if err := slot.InitializeFirewall(ctx); err != nil {
 		return fmt.Errorf("error initializing slot firewall: %w", err)
 	}
 
@@ -301,7 +301,7 @@ func RemoveNetworkV2(ctx context.Context, slot *network.Slot, slotV2 *SlotV2,
 	var errs []error
 
 	// Close in-namespace firewall
-	if err := slot.CloseFirewall(); err != nil {
+	if err := slot.CloseFirewall(ctx); err != nil {
 		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
 	}
 

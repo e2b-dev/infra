@@ -3,6 +3,7 @@ package featureflags
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/launchdarkly/go-sdk-common/v3/ldcontext"
 	"github.com/launchdarkly/go-sdk-common/v3/ldvalue"
@@ -163,6 +164,36 @@ func TestAllContextsIncludesRegisteredProviders(t *testing.T) {
 	}
 
 	require.Equal(t, "node-1", seen["node"])
+}
+
+// A watch delivers on a change of its flag and on none of another's, and
+// its channel closes once the watch is stopped.
+func TestWatchFlag_DeliversChangesOfTheFlagOnly(t *testing.T) {
+	t.Parallel()
+
+	source := ldtestdata.DataSource()
+	client, err := NewClientWithDatasource(source)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, client.Close(context.WithoutCancel(t.Context()))) })
+
+	changes, stop := client.WatchFlag("watched")
+
+	source.Update(source.Flag("other").ValueForAll(ldvalue.String("a")))
+	source.Update(source.Flag("watched").ValueForAll(ldvalue.String("a")))
+	select {
+	case _, ok := <-changes:
+		require.True(t, ok, "the change of the watched flag must be delivered")
+	case <-time.After(5 * time.Second):
+		t.Fatal("the change of the watched flag was not delivered")
+	}
+
+	// Every event is handled in order, so these are seen before the stop
+	// closes the channel: a delivery for them would arrive before the close.
+	source.Update(source.Flag("other").ValueForAll(ldvalue.String("b")))
+	source.Update(source.Flag("other").ValueForAll(ldvalue.String("c")))
+	stop()
+	_, ok := <-changes
+	require.False(t, ok, "a change of another flag must not be delivered, and the stop closes the channel")
 }
 
 func TestClickhouseAsyncOfflineFallback(t *testing.T) {

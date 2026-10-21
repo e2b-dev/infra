@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"net"
+	"os"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -52,8 +53,15 @@ func (r *poolWaitReleaseRecorder) OnNetworkRelease(_ context.Context, sbx *Sandb
 
 // This is the native CreateSandbox slot-acquisition gate: Factory.CreateSandbox
 // starts getNetworkSlot before rootfs work and waits on its Promise. The fixture
-// stops at that gate; it does not create a namespace or start Firecracker.
-func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { //nolint:paralleltest // controls process environment and a live producer
+// stops at that gate; it does not start Firecracker. The donor carries a real
+// network, because the pool recycles only a slot whose firewall it can reset
+// and hands out only one it can configure; it is built outside the bubble and
+// torn down after it.
+func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { //nolint:paralleltest // controls process environment, a live producer and netns state
+	if os.Geteuid() != 0 {
+		t.Skip("requires root for netns + nftables")
+	}
+
 	t.Setenv("NETWORK_VERSION", "1")
 	t.Setenv("SANDBOX_EGRESS_DSCP", "0")
 	t.Setenv("BUILD_SANDBOX_EGRESS_DSCP", "")
@@ -63,6 +71,12 @@ func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { /
 	require.Equal(t, 1, config.NetworkVersion)
 	require.Zero(t, config.SandboxEgressDSCP)
 	require.Nil(t, config.BuildSandboxEgressDSCP)
+
+	const donorIndex = 29999
+	donor, err := network.NewSlot("pool-wait-donor", donorIndex, config, network.NewNoopEgressProxy())
+	require.NoError(t, err)
+	require.NoError(t, donor.CreateNetwork(t.Context()))
+	t.Cleanup(func() { _ = donor.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	synctest.Test(t, func(t *testing.T) {
 		storage := &blockedNetworkSlotStorage{started: make(chan struct{})}
@@ -87,9 +101,6 @@ func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { /
 		releaseEvents := &poolWaitReleaseRecorder{released: make(chan *Sandbox, 1)}
 		sandboxes.Subscribe(releaseEvents)
 
-		const donorIndex = 29999
-		donor, err := network.NewSlot("pool-wait-donor", donorIndex, config, network.NewNoopEgressProxy())
-		require.NoError(t, err)
 		donorSandbox := &Sandbox{
 			Resources:   &Resources{Slot: donor},
 			Metadata:    &Metadata{Runtime: sandboxtypes.RuntimeMetadata{SandboxID: "pool-wait-donor", ExecutionID: "pool-wait-execution"}},
@@ -113,6 +124,7 @@ func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { /
 			&orchestrator.SandboxNetworkConfig{},
 			sandboxes.NetworkRelease("pool-wait-replacement", "replacement-lifecycle"),
 			sandboxtypes.EgressClassSandbox,
+			"pool-wait-replacement",
 		)
 		synctest.Wait()
 		select {
@@ -173,8 +185,8 @@ func TestGetNetworkSlotUsesReturnedSlotBeforeProducerPublishes(t *testing.T) { /
 			}
 		}
 
-		// The donor is a metadata-only fixture. No netns was created, so the
-		// test stops at the acquisition gate and has no OS resource to tear down.
+		// The test stops at the acquisition gate; the donor's network is torn
+		// down by the cleanup registered outside the bubble.
 		cancelGet()
 		cancelProducer()
 		synctest.Wait()

@@ -4477,7 +4477,7 @@ func (f *Factory) getNetworkSlot(
 	runtime sandboxtypes.RuntimeMetadata,
 	lifecycleID string,
 ) *utils.Promise[*network.Slot] {
-	return getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkRelease(runtime.SandboxID, lifecycleID), runtime.SandboxType.EgressClass())
+	return getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkRelease(runtime.SandboxID, lifecycleID), runtime.SandboxType.EgressClass(), runtime.SandboxID)
 }
 
 func getNetworkSlot(
@@ -4487,6 +4487,7 @@ func getNetworkSlot(
 	networkConfig *orchestrator.SandboxNetworkConfig,
 	networkReleased network.ReleaseNotify,
 	egressClass sandboxtypes.EgressClass,
+	sandboxID string,
 ) *utils.Promise[*network.Slot] {
 	return utils.NewPromise(func() (*network.Slot, error) {
 		ctx, span := tracer.Start(ctx, "get network-slot")
@@ -4496,6 +4497,7 @@ func getNetworkSlot(
 		if err != nil {
 			return nil, fmt.Errorf("failed to get network slot: %w", err)
 		}
+		slot.AssignSandbox(sandboxID)
 
 		cleanup.Add(ctx, func(ctx context.Context) error {
 			// Async so sandbox cleanup doesn't block on the return delay or

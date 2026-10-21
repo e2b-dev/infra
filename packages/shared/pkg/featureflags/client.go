@@ -259,6 +259,36 @@ func (c *Client) WatchJSONFlag(ctx context.Context, flag JSONFlag, contexts ...l
 	}
 }
 
+// WatchFlag delivers on every change to the flag's configuration, whatever
+// value any one context evaluates to, so a caller whose evaluations differ by
+// context re-evaluates each of them on a change; changes that arrive while
+// one is pending fold into it. The returned function ends the delivery and
+// closes the channel.
+func (c *Client) WatchFlag(key string) (<-chan struct{}, func()) {
+	changes := make(chan struct{}, 1)
+	if c.ld == nil {
+		close(changes)
+
+		return changes, func() {}
+	}
+
+	events := c.ld.GetFlagTracker().AddFlagChangeListener()
+	go func() {
+		defer close(changes)
+		for event := range events {
+			if event.Key != key {
+				continue
+			}
+			select {
+			case changes <- struct{}{}:
+			default:
+			}
+		}
+	}()
+
+	return changes, func() { c.ld.GetFlagTracker().RemoveFlagChangeListener(events) }
+}
+
 func (c *Client) IntFlag(ctx context.Context, flag IntFlag, contexts ...ldcontext.Context) int {
 	return getFlag(ctx, c.ld, c.ld.IntVariationCtx, flag, c.allContexts(ctx, contexts))
 }

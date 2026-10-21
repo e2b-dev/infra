@@ -597,6 +597,10 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		return nil, status.Error(codes.NotFound, "sandbox not found")
 	}
 
+	// Every flag the update and its rollback evaluate, the firewall's
+	// non-DNS UDP mode included, sees the sandbox and its team.
+	ctx = featureflags.AddToContext(ctx, sandboxFlagContexts(sbx)...)
+
 	childSpan.SetAttributes(
 		telemetry.WithTeamID(sbx.Runtime.TeamID),
 		telemetry.WithTemplateID(sbx.Runtime.TemplateID),
@@ -610,11 +614,6 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 	// Mirror the Create-side BYOP gates; defense-in-depth for direct gRPC
 	// callers.
 	if req.GetEgress().GetEgressProxyAddress() != "" {
-		ctx = featureflags.AddToContext(ctx,
-			ldcontext.NewBuilder(sbx.Runtime.TeamID).
-				Kind(featureflags.TeamKind).
-				Build(),
-		)
 		if !s.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
 			telemetry.ReportEvent(ctx, "egressProxy update rejected by BYOPProxyEnabledFlag")
 

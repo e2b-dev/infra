@@ -455,6 +455,11 @@ var (
 
 	BYOPProxyEnabledFlag = NewBoolFlag("byop-proxy-enabled", true)
 
+	// SandboxFirewallNonDNSUDPFlag selects what the slot firewall does with
+	// guest UDP to ports other than 53: "off" leaves it alone, "count" counts
+	// it, "drop" counts and drops it. Read at every chain build.
+	SandboxFirewallNonDNSUDPFlag = NewStringFlag("sandbox-firewall-non-dns-udp", "off")
+
 	// EgressProxyInterceptTracingFlag turns on connection, request and upstream
 	// spans for a sandbox's TLS-intercepted egress. Target the sandbox or team
 	// context; the fallback keeps interception at its existing transform span.

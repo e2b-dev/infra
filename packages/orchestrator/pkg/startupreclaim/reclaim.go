@@ -127,8 +127,8 @@ func Run(ctx context.Context, config Config) Summary {
 			return reclaimFirecrackers(ctx, config.ProcDir)
 		}},
 		{resourceNBD, nbd.ReclaimLeaked},
-		{resourceNetwork, func(context.Context) (int, []error) {
-			return network.ReclaimLeakedSlots(config.NetnsDir, config.NetworkConfig, config.EgressProxy)
+		{resourceNetwork, func(ctx context.Context) (int, []error) {
+			return network.ReclaimLeakedSlots(ctx, config.NetnsDir, config.NetworkConfig, config.EgressProxy)
 		}},
 		{resourceCgroup, func(ctx context.Context) (int, []error) {
 			return cgroup.ReclaimLeaked(ctx, config.CgroupManager, config.CgroupRoot)

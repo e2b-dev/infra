@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"os"
 	"runtime"
 	"testing"
@@ -39,7 +40,7 @@ func TestDenyEgress_InstallsAllProtocolDrop(t *testing.T) { //nolint:paralleltes
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	// Baseline: the default ruleset must NOT unconditionally drop guest egress
 	// (internet is allowed by default and TCP is handed to the proxy).
@@ -90,12 +91,12 @@ func TestHeadFilterRules_LeadEveryPolicy(t *testing.T) { //nolint:paralleltest /
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	require.True(t, summarizeFilterChain(t, slot.NamespaceID()).plainAcceptFirst, "the head rule leads the initial rules")
 
-	require.NoError(t, slot.Firewall.ApplyRules(t.Context(), true, []string{"192.0.2.0/24"}, []string{"0.0.0.0/0"}))
-	require.True(t, summarizeFilterChain(t, slot.NamespaceID()).plainAcceptFirst, "the head rule leads a replaced policy")
+	require.NoError(t, slot.Firewall.ApplyRules(t.Context(), true, NonDNSUDPModeCount, []string{"192.0.2.0/24"}, []string{"0.0.0.0/0"}))
+	require.True(t, summarizeFilterChain(t, slot.NamespaceID()).plainAcceptFirst, "the head rule leads a replaced policy, the non-DNS UDP rule included")
 
 	require.NoError(t, slot.DenyEgress(t.Context()))
 	require.False(t, summarizeFilterChain(t, slot.NamespaceID()).hasPlainAccept, "DenyEgress installs no head rule")
@@ -137,9 +138,9 @@ type filterChainSummary struct {
 	hasPlainAccept, plainAcceptFirst bool
 }
 
-// summarizeFilterChain enters the slot's network namespace and classifies the
-// rules in the firewall filter chain.
-func summarizeFilterChain(t *testing.T, nsName string) filterChainSummary {
+// filterChainRules enters the slot's network namespace and lists the rules in
+// the firewall filter chain.
+func filterChainRules(t *testing.T, nsName string) []*nftables.Rule {
 	t.Helper()
 
 	runtime.LockOSThread()
@@ -165,6 +166,15 @@ func summarizeFilterChain(t *testing.T, nsName string) filterChainSummary {
 	rules, err := conn.GetRules(table, chain)
 	require.NoError(t, err)
 	require.NotEmpty(t, rules, "filter chain should have rules")
+
+	return rules
+}
+
+// summarizeFilterChain classifies the rules in the slot firewall's filter chain.
+func summarizeFilterChain(t *testing.T, nsName string) filterChainSummary {
+	t.Helper()
+
+	rules := filterChainRules(t, nsName)
 
 	var s filterChainSummary
 	for i, r := range rules {

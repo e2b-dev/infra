@@ -19,6 +19,19 @@ func AddToContext(ctx context.Context, contexts ...ldcontext.Context) context.Co
 	return ctx
 }
 
+// DetachContext returns a context that carries the flag contexts attached to
+// ctx and nothing else of it: no deadline, cancellation or other value. A
+// holder that evaluates flags with a request's targeting after the request
+// has ended keeps this rather than the request context.
+func DetachContext(ctx context.Context) context.Context {
+	embedded, ok := getContext(ctx)
+	if !ok {
+		return context.Background()
+	}
+
+	return context.WithValue(context.Background(), ctxKey{}, embedded)
+}
+
 func getContext(ctx context.Context) (ldcontext.Context, bool) {
 	if val, ok := ctx.Value(ctxKey{}).(ldcontext.Context); ok {
 		return val, true

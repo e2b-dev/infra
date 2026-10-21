@@ -96,7 +96,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		if retErr != nil && cleanupNeeded {
 			if restoreErr != nil {
 				retErr = errors.Join(retErr, fmt.Errorf("error resetting network namespace back to the host namespace before cleanup: %w", restoreErr))
-			} else if cleanupErr := s.RemoveNetwork(); cleanupErr != nil {
+			} else if cleanupErr := s.RemoveNetwork(ctx); cleanupErr != nil {
 				retErr = errors.Join(retErr, fmt.Errorf("error cleaning up partially created network: %w", cleanupErr))
 			}
 		}
@@ -117,7 +117,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		return fmt.Errorf("cannot check for stale namespace: %w", err)
 	}
 	if !available {
-		if err = s.RemoveNetwork(); err != nil {
+		if err = s.RemoveNetwork(ctx); err != nil {
 			return fmt.Errorf("cannot reclaim stale network slot: %w", err)
 		}
 	}
@@ -284,7 +284,7 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 	}
 	s.egressDSCP.Store(uint32(dscp))
 
-	err = s.InitializeFirewall()
+	err = s.InitializeFirewall(ctx)
 	if err != nil {
 		return fmt.Errorf("error initializing slot firewall: %w", err)
 	}
@@ -360,10 +360,10 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 	return nil
 }
 
-func (s *Slot) RemoveNetwork() error {
+func (s *Slot) RemoveNetwork(ctx context.Context) error {
 	var errs []error
 
-	err := s.CloseFirewall()
+	err := s.CloseFirewall(ctx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error closing firewall: %w", err))
 	}

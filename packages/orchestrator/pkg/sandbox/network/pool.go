@@ -16,6 +16,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
@@ -199,6 +200,17 @@ type Pool struct {
 	returnsWG sync.WaitGroup
 
 	slotStorage Storage
+
+	modeFollower *NonDNSUDPModeFollower
+}
+
+type PoolOption func(*Pool)
+
+// WithNonDNSUDPFlag has every slot build its chain in the mode the flag
+// serves and the pool follow the flag for the slots it has handed out.
+// Without it every slot builds in off mode.
+func WithNonDNSUDPFlag(flags *featureflags.Client) PoolOption {
+	return func(pool *Pool) { pool.modeFollower = NewNonDNSUDPModeFollower(flags) }
 }
 
 var ErrClosed = errors.New("cannot read from a closed pool")
@@ -207,17 +219,23 @@ var ErrClosed = errors.New("cannot read from a closed pool")
 // notification failed. It stays out of reuse until the orchestrator restarts.
 var ErrSlotRetained = errors.New("network slot retained after failed release")
 
-func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, slotStorage Storage, config Config) *Pool {
+func NewPool(newSlotsPoolSize, reusedSlotsPoolSize int, slotStorage Storage, config Config, options ...PoolOption) *Pool {
 	newSlots := make(chan *Slot, newSlotsPoolSize-1)
 	reusedSlots := make(chan *Slot, reusedSlotsPoolSize)
 
-	return &Pool{
-		config:      config,
-		done:        make(chan struct{}),
-		newSlots:    newSlots,
-		reusedSlots: reusedSlots,
-		slotStorage: slotStorage,
+	pool := &Pool{
+		config:       config,
+		done:         make(chan struct{}),
+		newSlots:     newSlots,
+		reusedSlots:  reusedSlots,
+		slotStorage:  slotStorage,
+		modeFollower: NewNonDNSUDPModeFollower(nil),
 	}
+	for _, option := range options {
+		option(pool)
+	}
+
+	return pool
 }
 
 func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
@@ -225,6 +243,7 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to acquire network slot: %w", err)
 	}
+	ips.UseNonDNSUDPMode(p.modeFollower.Provider())
 
 	err = ips.CreateNetwork(ctx)
 	if err != nil {
@@ -239,6 +258,9 @@ func (p *Pool) createNetworkSlot(ctx context.Context) (*Slot, error) {
 
 func (p *Pool) Populate(ctx context.Context) {
 	defer close(p.newSlots)
+
+	stopFollowing := p.modeFollower.Start(ctx)
+	defer stopFollowing()
 
 	for {
 		select {
@@ -317,6 +339,8 @@ func (p *Pool) Get(ctx context.Context, network *orchestrator.SandboxNetworkConf
 	if err := p.claimSlot(ctx, slot); err != nil {
 		return nil, err
 	}
+
+	p.modeFollower.HandOut(slot)
 
 	poolName := "new"
 	event := "new network slot"
@@ -462,6 +486,8 @@ func (p *Pool) tryTrackReturn() bool {
 // returning them. Close waits for all in-flight returns before draining the
 // pool. If the pool is already closed the slot is cleaned up synchronously.
 func (p *Pool) ReturnAsync(ctx context.Context, slot *Slot, releasedFn ReleaseNotify, returnDelay time.Duration) error {
+	p.modeFollower.TakeBack(slot)
+
 	if !p.tryTrackReturn() {
 		return p.returnSlot(ctx, slot, releasedFn, returnDelay)
 	}
@@ -545,7 +571,7 @@ func (p *Pool) cleanupWith(ctx context.Context, slot *Slot, cause error) error {
 func (p *Pool) cleanup(ctx context.Context, slot *Slot) error {
 	var errs []error
 
-	err := slot.RemoveNetwork()
+	err := slot.RemoveNetwork(ctx)
 	if err != nil {
 		errs = append(errs, fmt.Errorf("cannot remove network when releasing slot '%d': %w", slot.Idx, err))
 	}

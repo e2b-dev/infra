@@ -960,7 +960,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 			logger.L().Fatal(ctx, "failed to create v2 veth observer", zap.Error(obsErr))
 		}
 
-		v2Pool := networkv2.NewV2Pool(slotStorage, config.NetworkConfig, hostFw, observer, networkv2.WithPoolMetrics(v2Metrics))
+		v2Pool := networkv2.NewV2Pool(slotStorage, config.NetworkConfig, hostFw, observer, networkv2.WithPoolMetrics(v2Metrics), networkv2.WithNonDNSUDPFlag(featureFlags))
 		startService("network pool", func() error {
 			v2Pool.Populate(ctx)
 
@@ -974,7 +974,7 @@ func run(config cfg.Config, opts Options) (success bool) {
 				logger.L().Fatal(ctx, "refusing to start v1: stale v2 host firewall table could hijack v1 sandbox egress", zap.Error(err))
 			}
 		}
-		v1Pool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig)
+		v1Pool := network.NewPool(network.NewSlotsPoolSize, network.ReusedSlotsPoolSize, slotStorage, config.NetworkConfig, network.WithNonDNSUDPFlag(featureFlags))
 		startService("network pool", func() error {
 			v1Pool.Populate(ctx)
 

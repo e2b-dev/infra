@@ -3,6 +3,7 @@
 package network
 
 import (
+	"context"
 	"net/netip"
 	"os"
 	"strings"
@@ -61,7 +62,7 @@ func TestApplyRules_MaxBoundaryCIDRs(t *testing.T) { //nolint:paralleltest // mu
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	// Boundary cases that regressed, then passing neighbours as controls.
 	cidrs := []string{
@@ -72,11 +73,11 @@ func TestApplyRules_MaxBoundaryCIDRs(t *testing.T) { //nolint:paralleltest // mu
 
 	for _, cidr := range cidrs {
 		t.Run("deny/"+cidr, func(t *testing.T) {
-			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, nil, []string{cidr}),
+			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, NonDNSUDPModeOff, nil, []string{cidr}),
 				"denyOut %s must apply without error", cidr)
 		})
 		t.Run("allow/"+cidr, func(t *testing.T) {
-			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, []string{cidr}, nil),
+			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, NonDNSUDPModeOff, []string{cidr}, nil),
 				"allowOut %s must apply without error", cidr)
 		})
 	}
@@ -95,11 +96,11 @@ func TestApplyRules_MaxBoundaryCIDRs(t *testing.T) { //nolint:paralleltest // mu
 	}
 	for _, b := range batches {
 		t.Run("deny-batch/"+strings.Join(b, ","), func(t *testing.T) {
-			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, nil, b),
+			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, NonDNSUDPModeOff, nil, b),
 				"denyOut %v must apply without error", b)
 		})
 		t.Run("allow-batch/"+strings.Join(b, ","), func(t *testing.T) {
-			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, b, nil),
+			require.NoErrorf(t, slot.Firewall.ApplyRules(t.Context(), false, NonDNSUDPModeOff, b, nil),
 				"allowOut %v must apply without error", b)
 		})
 	}
@@ -132,13 +133,13 @@ func TestApplyRules_MaxBoundaryCIDRs(t *testing.T) { //nolint:paralleltest // mu
 	for _, tc := range overlaps { //nolint:paralleltest // shares the test's single netns/nftables slot, cannot run in parallel
 		name := strings.Join(tc.cidrs, ",")
 		t.Run("deny-overlap/"+name, func(t *testing.T) {
-			require.NoError(t, slot.Firewall.ApplyRules(t.Context(), false, nil, tc.cidrs))
+			require.NoError(t, slot.Firewall.ApplyRules(t.Context(), false, NonDNSUDPModeOff, nil, tc.cidrs))
 			elements, err := slot.Firewall.conn.GetSetElements(slot.Firewall.userDenySet.Set())
 			require.NoError(t, err)
 			assertIPv4SetMembership(t, elements, tc.probes)
 		})
 		t.Run("allow-overlap/"+name, func(t *testing.T) {
-			require.NoError(t, slot.Firewall.ApplyRules(t.Context(), false, tc.cidrs, nil))
+			require.NoError(t, slot.Firewall.ApplyRules(t.Context(), false, NonDNSUDPModeOff, tc.cidrs, nil))
 			elements, err := slot.Firewall.conn.GetSetElements(slot.Firewall.userAllowSet.Set())
 			require.NoError(t, err)
 			assertIPv4SetMembership(t, elements, tc.probes)

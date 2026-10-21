@@ -18,6 +18,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
@@ -78,6 +79,13 @@ func WithPopulateRetryDelay(delay time.Duration) V2PoolOption {
 	return func(pool *V2Pool) { pool.populateRetryDelay = delay }
 }
 
+// WithNonDNSUDPFlag has every slot build its chain in the mode the flag
+// serves and the pool follow the flag for the slots it has handed out.
+// Without it every slot builds in off mode.
+func WithNonDNSUDPFlag(flags *featureflags.Client) V2PoolOption {
+	return func(pool *V2Pool) { pool.modeFollower = network.NewNonDNSUDPModeFollower(flags) }
+}
+
 // V2Pool implements network.PoolInterface using the v2 nftables datapath.
 type V2Pool struct {
 	config      network.Config
@@ -105,6 +113,7 @@ type V2Pool struct {
 
 	metrics            *Metrics
 	populateRetryDelay time.Duration
+	modeFollower       *network.NonDNSUDPModeFollower
 }
 
 // Compile-time check that V2Pool satisfies network.PoolInterface.
@@ -156,6 +165,7 @@ func NewV2Pool(storage network.Storage, config network.Config, hostFw *HostFirew
 		reusedSlots:        make(chan *network.Slot, network.ReusedSlotsPoolSize),
 		done:               make(chan struct{}),
 		populateRetryDelay: defaultPopulateRetryDelay,
+		modeFollower:       network.NewNonDNSUDPModeFollower(nil),
 	}
 	for _, option := range options {
 		option(pool)
@@ -173,6 +183,7 @@ func (p *V2Pool) createNetworkSlot(ctx context.Context) (*network.Slot, error) {
 		return nil, &slotCreationError{stage: slotCreationStageAcquire, err: fmt.Errorf("failed to acquire network slot: %w", err)}
 	}
 
+	slot.UseNonDNSUDPMode(p.modeFollower.Provider())
 	slotV2 := NewSlotV2(slot)
 	p.registry.Store(slotV2)
 
@@ -188,6 +199,9 @@ func (p *V2Pool) createNetworkSlot(ctx context.Context) (*network.Slot, error) {
 
 func (p *V2Pool) Populate(ctx context.Context) {
 	defer close(p.newSlots)
+
+	stopFollowing := p.modeFollower.Start(ctx)
+	defer stopFollowing()
 
 	for {
 		select {
@@ -260,6 +274,7 @@ func (p *V2Pool) Get(ctx context.Context, netConfig *orchestrator.SandboxNetwork
 		return nil, err
 	}
 
+	p.modeFollower.HandOut(slot)
 	if err := p.configureSlot(ctx, slot, netConfig, class); err != nil {
 		// Never handed out, so nobody listens for the release notification.
 		if rerr := p.ReturnAsync(context.WithoutCancel(ctx), slot, func(context.Context, string) error { return nil }, 0); rerr != nil {
@@ -388,6 +403,8 @@ func (p *V2Pool) tryTrackReturn() bool {
 // returning them. Close waits for all in-flight returns before draining the
 // pool. If the pool is already closed the slot is cleaned up synchronously.
 func (p *V2Pool) ReturnAsync(ctx context.Context, slot *network.Slot, releasedFn network.ReleaseNotify, returnDelay time.Duration) error {
+	p.modeFollower.TakeBack(slot)
+
 	if !p.tryTrackReturn() {
 		return p.returnSlot(ctx, slot, releasedFn, returnDelay)
 	}
@@ -510,7 +527,7 @@ func (p *V2Pool) cleanup(ctx context.Context, slot *network.Slot) error {
 		p.registry.Delete(slot.Idx)
 	} else {
 		// Fallback: try basic cleanup even without v2 metadata
-		if err := slot.RemoveNetwork(); err != nil {
+		if err := slot.RemoveNetwork(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("cannot remove network for slot '%d': %w", slot.Idx, err))
 		}
 	}

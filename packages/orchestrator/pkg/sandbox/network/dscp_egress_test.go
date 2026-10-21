@@ -299,7 +299,7 @@ func TestCreateNetwork_TagsEgressWithDSCP(t *testing.T) { //nolint:paralleltest 
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	rules := dscpMangleRules(t, slot.NamespaceID())
 
@@ -324,7 +324,7 @@ func TestApplyEgressDSCP_RestampsSlotRule(t *testing.T) { //nolint:paralleltest 
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	requireSingleDSCPRule(t, slot, "0x08") // CreateNetwork seeds the sandbox class
 
@@ -361,7 +361,7 @@ func TestApplyEgressDSCP_FailedRestampKeepsOldClass(t *testing.T) { //nolint:par
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	requireSingleDSCPRule(t, slot, "0x08")
 
@@ -473,7 +473,7 @@ func TestPool_GetFailureReturnsSlotWithSandboxDSCP(t *testing.T) { //nolint:para
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	pool := NewPool(2, 1, &fakeStorage{}, config)
 	t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })
@@ -514,7 +514,7 @@ func TestPool_RecycleRestoresSandboxDSCP(t *testing.T) { //nolint:paralleltest /
 	require.NoError(t, err)
 
 	require.NoError(t, slot.CreateNetwork(t.Context()))
-	t.Cleanup(func() { _ = slot.RemoveNetwork() })
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	pool := NewPool(2, 1, &fakeStorage{}, config)
 	t.Cleanup(func() { _ = pool.Close(context.WithoutCancel(t.Context())) })

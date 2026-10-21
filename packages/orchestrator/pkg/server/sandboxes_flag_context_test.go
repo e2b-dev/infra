@@ -4,6 +4,7 @@ package server
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -14,8 +15,11 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	internalevents "github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/fc"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
+	"github.com/e2b-dev/infra/packages/orchestrator/pkg/service"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/sandboxtypes"
@@ -161,4 +165,57 @@ func TestCheckpoint_EvaluatesFlagsWithTeamContext(t *testing.T) {
 
 	_, live := s.sandboxFactory.Sandboxes.Get("sbx-team-ctx-ckpt")
 	assert.True(t, live, "a refused checkpoint must leave the sandbox live")
+}
+
+// An egress update rebuilds the slot's firewall chain, and the chain's
+// non-DNS UDP mode is a flag the slot evaluates with the update's context:
+// a drop targeted at the sandbox's team must survive the update, which it
+// only does when Update attaches the sandbox's flag contexts.
+func TestUpdate_EvaluatesNonDNSUDPModeWithSandboxContexts(t *testing.T) {
+	t.Parallel()
+
+	if os.Geteuid() != 0 {
+		t.Skip("requires root for netns + nftables")
+	}
+
+	const teamID = "4d3a3e2e-6c6e-4c1e-9d1e-1f2e3d4c5b6a"
+	td := ldtestdata.DataSource()
+	td.Update(td.Flag(featureflags.SandboxFirewallNonDNSUDPFlag.Key()).
+		Variations(ldvalue.String("off"), ldvalue.String("drop")).
+		FallthroughVariationIndex(0).
+		VariationIndexForKey(featureflags.TeamKind, teamID, 1))
+	ff, err := featureflags.NewClientWithDatasource(td)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = ff.Close(context.WithoutCancel(t.Context())) })
+
+	config, err := network.ParseConfig()
+	require.NoError(t, err)
+	slot, err := network.NewSlot("update-flag-context", 29990, config, network.NewNoopEgressProxy())
+	require.NoError(t, err)
+	slot.UseNonDNSUDPMode(func(ctx context.Context) string {
+		return ff.StringFlag(ctx, featureflags.SandboxFirewallNonDNSUDPFlag)
+	})
+	require.NoError(t, slot.CreateNetwork(t.Context()))
+	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
+	require.Equal(t, network.NonDNSUDPModeOff, slot.Firewall.NonDNSUDPMode(), "built without a team context, the slot is off")
+
+	sbx := flagContextSandbox("sbx-update-flag-context", teamID)
+	sbx.Resources = &sandbox.Resources{Slot: slot}
+	sandboxMap := sandbox.NewSandboxesMap()
+	sandboxMap.AssignNetwork(t.Context(), sbx)
+	sandboxMap.MarkRunning(t.Context(), sbx)
+
+	s := &Server{
+		sandboxFactory:   &sandbox.Factory{Sandboxes: sandboxMap},
+		info:             &service.ServiceInfo{},
+		sbxEventsService: internalevents.NewEventsService(nil),
+		featureFlags:     ff,
+	}
+
+	_, err = s.Update(t.Context(), &orchestrator.SandboxUpdateRequest{
+		SandboxId: sbx.Runtime.SandboxID,
+		Egress:    &orchestrator.SandboxNetworkEgressConfig{DeniedCidrs: []string{"10.0.0.0/8"}},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, network.NonDNSUDPModeDrop, slot.Firewall.NonDNSUDPMode(), "the team-targeted drop survives the egress update")
 }

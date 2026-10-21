@@ -42,6 +42,10 @@ func (f *fakeStorage) Release(s *Slot) error {
 // using — e.g. the smoketest package creating ns-2, ns-3, …
 const testSlotIdxOffset = 1 << 30
 
+// newTestSlot is a slot without a network: the pool refuses to hand it out
+// or reuse it, so a return of it always takes the cleanup path. A test whose
+// return must reach the reuse queue, or whose Get must succeed, builds a real
+// slot with newFirewallTestSlot.
 func newTestSlot(idx int) *Slot {
 	return &Slot{Idx: idx + testSlotIdxOffset, egressProxy: NoopEgressProxy{}}
 }
@@ -112,17 +116,16 @@ func TestClose_Idempotent(t *testing.T) {
 	require.NoError(t, pool.Close(t.Context()))
 }
 
-func TestReturn_AfterCloseCleansUpLocally(t *testing.T) {
-	t.Parallel()
-
+func TestReturn_AfterCloseCleansUpLocally(t *testing.T) { //nolint:paralleltest // mutates the caller's netns via LockOSThread + netns.Set; cannot run in parallel
+	slot := newFirewallTestSlot(t, "pool-return-after-close")
 	storage := &fakeStorage{}
-	pool := NewPool(2, 4, storage, Config{})
+	pool := NewPool(2, 4, storage, slot.config)
 	close(pool.newSlots)
 
 	require.NoError(t, pool.Close(t.Context()))
 
 	before := storage.released.Load()
-	err := pool.returnSlot(t.Context(), newTestSlot(1), noopRelease, 0)
+	err := pool.returnSlot(t.Context(), slot, noopRelease, 0)
 	after := storage.released.Load()
 
 	assert.Equal(t, int64(1), after-before, "Return after Close must invoke Storage.Release via cleanup")
@@ -193,17 +196,16 @@ func TestReturnAsync_AfterCloseCleansUpSynchronously(t *testing.T) {
 	assert.Equal(t, int64(1), storage.released.Load(), "ReturnAsync after Close must release the slot before returning")
 }
 
-func TestReturn_AfterClose_CleanupFailure_PreservesErrClosed(t *testing.T) {
-	t.Parallel()
-
+func TestReturn_AfterClose_CleanupFailure_PreservesErrClosed(t *testing.T) { //nolint:paralleltest // mutates the caller's netns via LockOSThread + netns.Set; cannot run in parallel
+	slot := newFirewallTestSlot(t, "pool-return-cleanup-failure")
 	boom := errors.New("boom")
 	storage := &fakeStorage{releaseFn: func(_ *Slot) error { return boom }}
-	pool := NewPool(2, 4, storage, Config{})
+	pool := NewPool(2, 4, storage, slot.config)
 	close(pool.newSlots)
 
 	require.NoError(t, pool.Close(t.Context()))
 
-	err := pool.returnSlot(t.Context(), newTestSlot(1), noopRelease, 0)
+	err := pool.returnSlot(t.Context(), slot, noopRelease, 0)
 	require.ErrorIs(t, err, ErrClosed)
 	require.ErrorIs(t, err, boom)
 }
@@ -241,12 +243,10 @@ type poolGetResult struct {
 	err  error
 }
 
-func TestPool_GetPrefersInitiallyReusedSlot(t *testing.T) {
-	t.Parallel()
-
-	pool := NewPool(NewSlotsPoolSize, ReusedSlotsPoolSize, &fakeStorage{}, Config{NetworkVersion: 1})
-	reused := newTestSlot(51)
-	newSlot := newTestSlot(52)
+func TestPool_GetPrefersInitiallyReusedSlot(t *testing.T) { //nolint:paralleltest // mutates the caller's netns via LockOSThread + netns.Set; cannot run in parallel
+	reused := newFirewallTestSlot(t, "pool-get-reused")
+	newSlot := newFirewallTestSlot(t, "pool-get-new")
+	pool := NewPool(NewSlotsPoolSize, ReusedSlotsPoolSize, &fakeStorage{}, reused.config)
 	pool.reusedSlots <- reused
 	reusableSlotsAvailableCounter.Add(t.Context(), 1)
 	pool.newSlots <- newSlot
@@ -259,11 +259,9 @@ func TestPool_GetPrefersInitiallyReusedSlot(t *testing.T) {
 	assert.Len(t, pool.newSlots, 1)
 }
 
-func TestPool_GetMakesProgressWithOnlyNewSlot(t *testing.T) {
-	t.Parallel()
-
-	pool := NewPool(NewSlotsPoolSize, ReusedSlotsPoolSize, &fakeStorage{}, Config{NetworkVersion: 1})
-	newSlot := newTestSlot(61)
+func TestPool_GetMakesProgressWithOnlyNewSlot(t *testing.T) { //nolint:paralleltest // mutates the caller's netns via LockOSThread + netns.Set; cannot run in parallel
+	newSlot := newFirewallTestSlot(t, "pool-get-only-new")
+	pool := NewPool(NewSlotsPoolSize, ReusedSlotsPoolSize, &fakeStorage{}, newSlot.config)
 	pool.newSlots <- newSlot
 	newSlotsAvailableCounter.Add(t.Context(), 1)
 
