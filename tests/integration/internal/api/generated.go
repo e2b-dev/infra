@@ -346,6 +346,30 @@ func (e WebhookDeliveryStatus) Valid() bool {
 	}
 }
 
+// Defines values for TagGroupsSort.
+const (
+	TagGroupsSortLatestAsc  TagGroupsSort = "latest_asc"
+	TagGroupsSortLatestDesc TagGroupsSort = "latest_desc"
+	TagGroupsSortNameAsc    TagGroupsSort = "name_asc"
+	TagGroupsSortNameDesc   TagGroupsSort = "name_desc"
+)
+
+// Valid indicates whether the value is a known member of the TagGroupsSort enum.
+func (e TagGroupsSort) Valid() bool {
+	switch e {
+	case TagGroupsSortLatestAsc:
+		return true
+	case TagGroupsSortLatestDesc:
+		return true
+	case TagGroupsSortNameAsc:
+		return true
+	case TagGroupsSortNameDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetEventsWebhooksWebhookIDDeliveriesParamsDeliveryStatus.
 const (
 	GetEventsWebhooksWebhookIDDeliveriesParamsDeliveryStatusFailed  GetEventsWebhooksWebhookIDDeliveriesParamsDeliveryStatus = "failed"
@@ -376,6 +400,30 @@ func (e GetTeamsTeamIDMetricsMaxParamsMetric) Valid() bool {
 	case ConcurrentSandboxes:
 		return true
 	case SandboxStartRate:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetTemplatesTemplateIDTagsGroupsParamsSort.
+const (
+	GetTemplatesTemplateIDTagsGroupsParamsSortLatestAsc  GetTemplatesTemplateIDTagsGroupsParamsSort = "latest_asc"
+	GetTemplatesTemplateIDTagsGroupsParamsSortLatestDesc GetTemplatesTemplateIDTagsGroupsParamsSort = "latest_desc"
+	GetTemplatesTemplateIDTagsGroupsParamsSortNameAsc    GetTemplatesTemplateIDTagsGroupsParamsSort = "name_asc"
+	GetTemplatesTemplateIDTagsGroupsParamsSortNameDesc   GetTemplatesTemplateIDTagsGroupsParamsSort = "name_desc"
+)
+
+// Valid indicates whether the value is a known member of the GetTemplatesTemplateIDTagsGroupsParamsSort enum.
+func (e GetTemplatesTemplateIDTagsGroupsParamsSort) Valid() bool {
+	switch e {
+	case GetTemplatesTemplateIDTagsGroupsParamsSortLatestAsc:
+		return true
+	case GetTemplatesTemplateIDTagsGroupsParamsSortLatestDesc:
+		return true
+	case GetTemplatesTemplateIDTagsGroupsParamsSortNameAsc:
+		return true
+	case GetTemplatesTemplateIDTagsGroupsParamsSortNameDesc:
 		return true
 	default:
 		return false
@@ -1860,6 +1908,67 @@ type TemplateTag struct {
 	Tag string `json:"tag"`
 }
 
+// TemplateTagAssignment defines model for TemplateTagAssignment.
+type TemplateTagAssignment struct {
+	// AssignedAt Time when the tag was assigned to the build.
+	AssignedAt time.Time `json:"assignedAt"`
+
+	// AssignmentId Identifier of the tag assignment event.
+	AssignmentId openapi_types.UUID `json:"assignmentId"`
+
+	// BuildCreatedAt Time when the assigned build was created.
+	BuildCreatedAt time.Time `json:"buildCreatedAt"`
+
+	// BuildFinishedAt Time when the assigned build finished.
+	BuildFinishedAt *time.Time `json:"buildFinishedAt"`
+
+	// BuildId Identifier of the assigned build.
+	BuildId openapi_types.UUID `json:"buildId"`
+}
+
+// TemplateTagAssignmentsResponse defines model for TemplateTagAssignmentsResponse.
+type TemplateTagAssignmentsResponse struct {
+	// Data Ready assignment events for the tag, sorted latest first.
+	Data []TemplateTagAssignment `json:"data"`
+
+	// NextCursor Cursor to pass to the next list request, or `null` if there is no next page.
+	NextCursor *string `json:"nextCursor"`
+}
+
+// TemplateTagExistsResponse defines model for TemplateTagExistsResponse.
+type TemplateTagExistsResponse struct {
+	// Exists Whether the template tag has at least one ready assignment.
+	Exists bool `json:"exists"`
+
+	// NormalizedTag Normalized template tag name.
+	NormalizedTag string `json:"normalizedTag"`
+}
+
+// TemplateTagGroup defines model for TemplateTagGroup.
+type TemplateTagGroup struct {
+	// Assignments Ready assignment events for this tag, sorted latest first.
+	Assignments []TemplateTagAssignment `json:"assignments"`
+
+	// HasMore Whether more ready assignment events exist beyond the requested assignment limit.
+	HasMore bool `json:"hasMore"`
+
+	// Tag Template tag name.
+	Tag string `json:"tag"`
+}
+
+// TemplateTagGroupsResponse defines model for TemplateTagGroupsResponse.
+type TemplateTagGroupsResponse struct {
+	// NextCursor Cursor to pass as `tagsCursor` for the next page, or `null` if there is no next page.
+	NextCursor *string            `json:"nextCursor"`
+	Tags       []TemplateTagGroup `json:"tags"`
+}
+
+// TemplateTagsCountResponse defines model for TemplateTagsCountResponse.
+type TemplateTagsCountResponse struct {
+	// Total Total distinct ready tags for the template.
+	Total int64 `json:"total"`
+}
+
 // TemplateUpdateRequest defines model for TemplateUpdateRequest.
 type TemplateUpdateRequest struct {
 	// Public Whether the template is public or only accessible by the team
@@ -2125,6 +2234,33 @@ type SandboxID = string
 // SecretID Identifier of the secret (sec_ prefixed), or its canonical lower-case name
 type SecretID = string
 
+// Tag Tag name
+type Tag = string
+
+// TagAssignmentLimit defines model for tagAssignmentLimit.
+type TagAssignmentLimit = int32
+
+// TagAssignmentsCursor defines model for tagAssignmentsCursor.
+type TagAssignmentsCursor = string
+
+// TagAssignmentsLimit defines model for tagAssignmentsLimit.
+type TagAssignmentsLimit = int32
+
+// TagGroupsCursor defines model for tagGroupsCursor.
+type TagGroupsCursor = string
+
+// TagGroupsLimit defines model for tagGroupsLimit.
+type TagGroupsLimit = int32
+
+// TagGroupsSearch defines model for tagGroupsSearch.
+type TagGroupsSearch = string
+
+// TagGroupsSort defines model for tagGroupsSort.
+type TagGroupsSort string
+
+// TagQuery defines model for tagQuery.
+type TagQuery = string
+
 // TeamID defines model for teamID.
 type TeamID = string
 
@@ -2353,6 +2489,42 @@ type GetTemplatesTemplateIDBuildsBuildIDStatusParams struct {
 	// Limit Maximum number of logs that should be returned
 	Limit *int32    `form:"limit,omitempty" json:"limit,omitempty"`
 	Level *LogLevel `form:"level,omitempty" json:"level,omitempty"`
+}
+
+// GetTemplatesTemplateIDTagsExistsParams defines parameters for GetTemplatesTemplateIDTagsExists.
+type GetTemplatesTemplateIDTagsExistsParams struct {
+	// Tag Template tag name to check.
+	Tag TagQuery `form:"tag" json:"tag"`
+}
+
+// GetTemplatesTemplateIDTagsGroupsParams defines parameters for GetTemplatesTemplateIDTagsGroups.
+type GetTemplatesTemplateIDTagsGroupsParams struct {
+	// AssignmentLimit Maximum number of ready assignment rows to return per tag.
+	AssignmentLimit *TagAssignmentLimit `form:"assignmentLimit,omitempty" json:"assignmentLimit,omitempty"`
+
+	// TagsLimit Maximum number of distinct tags to return per page.
+	TagsLimit *TagGroupsLimit `form:"tagsLimit,omitempty" json:"tagsLimit,omitempty"`
+
+	// TagsCursor Cursor returned by the previous list response in `{sort}|{latest_assigned_at}|{tag}` format (sort-tagged, RFC3339Nano).
+	TagsCursor *TagGroupsCursor `form:"tagsCursor,omitempty" json:"tagsCursor,omitempty"`
+
+	// Search Substring filter on tag name. Allowed characters are `a-z`, `0-9`, `.`, `_`, `-`.
+	Search *TagGroupsSearch `form:"search,omitempty" json:"search,omitempty"`
+
+	// Sort Sort order for the returned tag groups.
+	Sort *GetTemplatesTemplateIDTagsGroupsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+}
+
+// GetTemplatesTemplateIDTagsGroupsParamsSort defines parameters for GetTemplatesTemplateIDTagsGroups.
+type GetTemplatesTemplateIDTagsGroupsParamsSort string
+
+// GetTemplatesTemplateIDTagsTagAssignmentsParams defines parameters for GetTemplatesTemplateIDTagsTagAssignments.
+type GetTemplatesTemplateIDTagsTagAssignmentsParams struct {
+	// Cursor Cursor returned by the previous list response in `assigned_at|assignment_id` format.
+	Cursor *TagAssignmentsCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit Maximum number of assignment rows to return per page.
+	Limit *TagAssignmentsLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // GetV2SandboxesParams defines parameters for GetV2Sandboxes.
@@ -3462,6 +3634,34 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /templates/{templateID}/tags (the `GetTemplatesTemplateIDTags` operationId).
 	GetTemplatesTemplateIDTags(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplatesTemplateIDTagsCount Count template tags
+	//
+	// Returns the number of distinct tags of the template that have at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Corresponds with GET /templates/{templateID}/tags/count (the `GetTemplatesTemplateIDTagsCount` operationId).
+	GetTemplatesTemplateIDTagsCount(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplatesTemplateIDTagsExists Check template tag
+	//
+	// Checks whether a tag of the template has at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Corresponds with GET /templates/{templateID}/tags/exists (the `GetTemplatesTemplateIDTagsExists` operationId).
+	GetTemplatesTemplateIDTagsExists(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsExistsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplatesTemplateIDTagsGroups List template tag groups
+	//
+	// Lists the template's tags that have at least one ready build, each with its most recent ready assignments, paginated over tags with a keyset cursor. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Corresponds with GET /templates/{templateID}/tags/groups (the `GetTemplatesTemplateIDTagsGroups` operationId).
+	GetTemplatesTemplateIDTagsGroups(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsGroupsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetTemplatesTemplateIDTagsTagAssignments List template tag assignments
+	//
+	// Lists the ready assignments of one tag of the template, newest first, with keyset cursor pagination. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
+	GetTemplatesTemplateIDTagsTagAssignments(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV2Sandboxes List sandboxes (v2)
 	//
@@ -5250,6 +5450,74 @@ func (c *Client) GetTemplatesTemplateIDFilesHash(ctx context.Context, templateID
 // Corresponds with GET /templates/{templateID}/tags (the `GetTemplatesTemplateIDTags` operationId).
 func (c *Client) GetTemplatesTemplateIDTags(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTemplatesTemplateIDTagsRequest(c.Server, templateID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTemplatesTemplateIDTagsCount Count template tags
+//
+// Returns the number of distinct tags of the template that have at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+//
+// Corresponds with GET /templates/{templateID}/tags/count (the `GetTemplatesTemplateIDTagsCount` operationId).
+func (c *Client) GetTemplatesTemplateIDTagsCount(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDTagsCountRequest(c.Server, templateID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTemplatesTemplateIDTagsExists Check template tag
+//
+// Checks whether a tag of the template has at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+//
+// Corresponds with GET /templates/{templateID}/tags/exists (the `GetTemplatesTemplateIDTagsExists` operationId).
+func (c *Client) GetTemplatesTemplateIDTagsExists(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsExistsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDTagsExistsRequest(c.Server, templateID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTemplatesTemplateIDTagsGroups List template tag groups
+//
+// Lists the template's tags that have at least one ready build, each with its most recent ready assignments, paginated over tags with a keyset cursor. Returns 404 when the template does not exist or belongs to another team.
+//
+// Corresponds with GET /templates/{templateID}/tags/groups (the `GetTemplatesTemplateIDTagsGroups` operationId).
+func (c *Client) GetTemplatesTemplateIDTagsGroups(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsGroupsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDTagsGroupsRequest(c.Server, templateID, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetTemplatesTemplateIDTagsTagAssignments List template tag assignments
+//
+// Lists the ready assignments of one tag of the template, newest first, with keyset cursor pagination. Returns 404 when the template does not exist or belongs to another team.
+//
+// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
+func (c *Client) GetTemplatesTemplateIDTagsTagAssignments(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetTemplatesTemplateIDTagsTagAssignmentsRequest(c.Server, templateID, tag, params)
 	if err != nil {
 		return nil, err
 	}
@@ -9038,6 +9306,286 @@ func NewGetTemplatesTemplateIDTagsRequest(server string, templateID TemplateID) 
 	return req, nil
 }
 
+// NewGetTemplatesTemplateIDTagsCountRequest constructs an http.Request for the GetTemplatesTemplateIDTagsCount method
+func NewGetTemplatesTemplateIDTagsCountRequest(server string, templateID TemplateID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "templateID", templateID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s/tags/count", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTemplatesTemplateIDTagsExistsRequest constructs an http.Request for the GetTemplatesTemplateIDTagsExists method
+func NewGetTemplatesTemplateIDTagsExistsRequest(server string, templateID TemplateID, params *GetTemplatesTemplateIDTagsExistsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "templateID", templateID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s/tags/exists", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tag", params.Tag, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+			return nil, err
+		} else {
+			for _, qp := range strings.Split(queryFrag, "&") {
+				rawQueryFragments = append(rawQueryFragments, qp)
+			}
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTemplatesTemplateIDTagsGroupsRequest constructs an http.Request for the GetTemplatesTemplateIDTagsGroups method
+func NewGetTemplatesTemplateIDTagsGroupsRequest(server string, templateID TemplateID, params *GetTemplatesTemplateIDTagsGroupsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "templateID", templateID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s/tags/groups", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.AssignmentLimit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "assignmentLimit", *params.AssignmentLimit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TagsLimit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tagsLimit", *params.TagsLimit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.TagsCursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "tagsCursor", *params.TagsCursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "search", *params.Search, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetTemplatesTemplateIDTagsTagAssignmentsRequest constructs an http.Request for the GetTemplatesTemplateIDTagsTagAssignments method
+func NewGetTemplatesTemplateIDTagsTagAssignmentsRequest(server string, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "templateID", templateID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithOptions("simple", false, "tag", tag, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/templates/%s/tags/%s/assignments", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetV2SandboxesRequest constructs an http.Request for the GetV2Sandboxes method
 func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*http.Request, error) {
 	var err error
@@ -10605,6 +11153,42 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /templates/{templateID}/tags (the `GetTemplatesTemplateIDTags` operationId).
 	GetTemplatesTemplateIDTagsWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsResponse, error)
+
+	// GetTemplatesTemplateIDTagsCountWithResponse Count template tags
+	//
+	// Returns the number of distinct tags of the template that have at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /templates/{templateID}/tags/count (the `GetTemplatesTemplateIDTagsCount` operationId).
+	GetTemplatesTemplateIDTagsCountWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsCountResponse, error)
+
+	// GetTemplatesTemplateIDTagsExistsWithResponse Check template tag
+	//
+	// Checks whether a tag of the template has at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /templates/{templateID}/tags/exists (the `GetTemplatesTemplateIDTagsExists` operationId).
+	GetTemplatesTemplateIDTagsExistsWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsExistsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsExistsResponse, error)
+
+	// GetTemplatesTemplateIDTagsGroupsWithResponse List template tag groups
+	//
+	// Lists the template's tags that have at least one ready build, each with its most recent ready assignments, paginated over tags with a keyset cursor. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /templates/{templateID}/tags/groups (the `GetTemplatesTemplateIDTagsGroups` operationId).
+	GetTemplatesTemplateIDTagsGroupsWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsGroupsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsGroupsResponse, error)
+
+	// GetTemplatesTemplateIDTagsTagAssignmentsWithResponse List template tag assignments
+	//
+	// Lists the ready assignments of one tag of the template, newest first, with keyset cursor pagination. Returns 404 when the template does not exist or belongs to another team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
+	GetTemplatesTemplateIDTagsTagAssignmentsWithResponse(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsTagAssignmentsResponse, error)
 
 	// GetV2SandboxesWithResponse List sandboxes (v2)
 	//
@@ -16230,6 +16814,359 @@ func (r GetTemplatesTemplateIDTagsResponse) ContentType() string {
 	return ""
 }
 
+// GetTemplatesTemplateIDTagsCountResponse429Headers the declared response headers of an HTTP 429 response for GetTemplatesTemplateIDTagsCount
+type GetTemplatesTemplateIDTagsCountResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetTemplatesTemplateIDTagsCountResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TemplateTagsCountResponse
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetTemplatesTemplateIDTagsCountResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTemplatesTemplateIDTagsCountResponse) GetJSON200() *TemplateTagsCountResponse {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetTemplatesTemplateIDTagsCountResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetTemplatesTemplateIDTagsCountResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTemplatesTemplateIDTagsCountResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetTemplatesTemplateIDTagsCountResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTemplatesTemplateIDTagsCountResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTemplatesTemplateIDTagsCountResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDTagsCountResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDTagsCountResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTemplatesTemplateIDTagsCountResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetTemplatesTemplateIDTagsExistsResponse429Headers the declared response headers of an HTTP 429 response for GetTemplatesTemplateIDTagsExists
+type GetTemplatesTemplateIDTagsExistsResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetTemplatesTemplateIDTagsExistsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TemplateTagExistsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetTemplatesTemplateIDTagsExistsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetJSON200() *TemplateTagExistsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTemplatesTemplateIDTagsExistsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDTagsExistsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDTagsExistsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTemplatesTemplateIDTagsExistsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetTemplatesTemplateIDTagsGroupsResponse429Headers the declared response headers of an HTTP 429 response for GetTemplatesTemplateIDTagsGroups
+type GetTemplatesTemplateIDTagsGroupsResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetTemplatesTemplateIDTagsGroupsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TemplateTagGroupsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetTemplatesTemplateIDTagsGroupsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetJSON200() *TemplateTagGroupsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTemplatesTemplateIDTagsGroupsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDTagsGroupsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDTagsGroupsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTemplatesTemplateIDTagsGroupsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetTemplatesTemplateIDTagsTagAssignmentsResponse429Headers the declared response headers of an HTTP 429 response for GetTemplatesTemplateIDTagsTagAssignments
+type GetTemplatesTemplateIDTagsTagAssignmentsResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetTemplatesTemplateIDTagsTagAssignmentsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TemplateTagAssignmentsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetTemplatesTemplateIDTagsTagAssignmentsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetJSON200() *TemplateTagAssignmentsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetV2SandboxesResponse200Headers the declared response headers of an HTTP 200 response for GetV2Sandboxes
 type GetV2SandboxesResponse200Headers struct {
 	XNextToken    *string
@@ -18642,6 +19579,66 @@ func (c *ClientWithResponses) GetTemplatesTemplateIDTagsWithResponse(ctx context
 		return nil, err
 	}
 	return ParseGetTemplatesTemplateIDTagsResponse(rsp)
+}
+
+// GetTemplatesTemplateIDTagsCountWithResponse Count template tags
+//
+// Returns the number of distinct tags of the template that have at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /templates/{templateID}/tags/count (the `GetTemplatesTemplateIDTagsCount` operationId).
+func (c *ClientWithResponses) GetTemplatesTemplateIDTagsCountWithResponse(ctx context.Context, templateID TemplateID, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsCountResponse, error) {
+	rsp, err := c.GetTemplatesTemplateIDTagsCount(ctx, templateID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDTagsCountResponse(rsp)
+}
+
+// GetTemplatesTemplateIDTagsExistsWithResponse Check template tag
+//
+// Checks whether a tag of the template has at least one ready build. Returns 404 when the template does not exist or belongs to another team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /templates/{templateID}/tags/exists (the `GetTemplatesTemplateIDTagsExists` operationId).
+func (c *ClientWithResponses) GetTemplatesTemplateIDTagsExistsWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsExistsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsExistsResponse, error) {
+	rsp, err := c.GetTemplatesTemplateIDTagsExists(ctx, templateID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDTagsExistsResponse(rsp)
+}
+
+// GetTemplatesTemplateIDTagsGroupsWithResponse List template tag groups
+//
+// Lists the template's tags that have at least one ready build, each with its most recent ready assignments, paginated over tags with a keyset cursor. Returns 404 when the template does not exist or belongs to another team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /templates/{templateID}/tags/groups (the `GetTemplatesTemplateIDTagsGroups` operationId).
+func (c *ClientWithResponses) GetTemplatesTemplateIDTagsGroupsWithResponse(ctx context.Context, templateID TemplateID, params *GetTemplatesTemplateIDTagsGroupsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsGroupsResponse, error) {
+	rsp, err := c.GetTemplatesTemplateIDTagsGroups(ctx, templateID, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDTagsGroupsResponse(rsp)
+}
+
+// GetTemplatesTemplateIDTagsTagAssignmentsWithResponse List template tag assignments
+//
+// Lists the ready assignments of one tag of the template, newest first, with keyset cursor pagination. Returns 404 when the template does not exist or belongs to another team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
+func (c *ClientWithResponses) GetTemplatesTemplateIDTagsTagAssignmentsWithResponse(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsTagAssignmentsResponse, error) {
+	rsp, err := c.GetTemplatesTemplateIDTagsTagAssignments(ctx, templateID, tag, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetTemplatesTemplateIDTagsTagAssignmentsResponse(rsp)
 }
 
 // GetV2SandboxesWithResponse List sandboxes (v2)
@@ -23741,6 +24738,323 @@ func ParseGetTemplatesTemplateIDTagsResponse(rsp *http.Response) (*GetTemplatesT
 	switch {
 	case rsp.StatusCode == 429:
 		var headers GetTemplatesTemplateIDTagsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesTemplateIDTagsCountResponse parses an HTTP response from a GetTemplatesTemplateIDTagsCountWithResponse call
+func ParseGetTemplatesTemplateIDTagsCountResponse(rsp *http.Response) (*GetTemplatesTemplateIDTagsCountResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDTagsCountResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateTagsCountResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetTemplatesTemplateIDTagsCountResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesTemplateIDTagsExistsResponse parses an HTTP response from a GetTemplatesTemplateIDTagsExistsWithResponse call
+func ParseGetTemplatesTemplateIDTagsExistsResponse(rsp *http.Response) (*GetTemplatesTemplateIDTagsExistsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDTagsExistsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateTagExistsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetTemplatesTemplateIDTagsExistsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesTemplateIDTagsGroupsResponse parses an HTTP response from a GetTemplatesTemplateIDTagsGroupsWithResponse call
+func ParseGetTemplatesTemplateIDTagsGroupsResponse(rsp *http.Response) (*GetTemplatesTemplateIDTagsGroupsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDTagsGroupsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateTagGroupsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetTemplatesTemplateIDTagsGroupsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetTemplatesTemplateIDTagsTagAssignmentsResponse parses an HTTP response from a GetTemplatesTemplateIDTagsTagAssignmentsWithResponse call
+func ParseGetTemplatesTemplateIDTagsTagAssignmentsResponse(rsp *http.Response) (*GetTemplatesTemplateIDTagsTagAssignmentsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetTemplatesTemplateIDTagsTagAssignmentsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateTagAssignmentsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetTemplatesTemplateIDTagsTagAssignmentsResponse429Headers
 		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
 			var value int
 			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {

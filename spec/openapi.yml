@@ -104,6 +104,79 @@ components:
       schema:
         type: string
         description: Tag name
+    tagQuery:
+      name: tag
+      in: query
+      required: true
+      description: Template tag name to check.
+      schema:
+        type: string
+        minLength: 1
+    tagAssignmentLimit:
+      name: assignmentLimit
+      in: query
+      required: false
+      description: Maximum number of ready assignment rows to return per tag.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 25
+        default: 6
+    tagGroupsLimit:
+      name: tagsLimit
+      in: query
+      required: false
+      description: Maximum number of distinct tags to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 25
+    tagGroupsCursor:
+      name: tagsCursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `{sort}|{latest_assigned_at}|{tag}` format (sort-tagged, RFC3339Nano).
+      schema:
+        type: string
+    tagGroupsSearch:
+      name: search
+      in: query
+      required: false
+      description: Substring filter on tag name. Allowed characters are `a-z`, `0-9`, `.`, `_`, `-`.
+      schema:
+        type: string
+        maxLength: 64
+        pattern: "^[a-z0-9._-]*$"
+    tagGroupsSort:
+      name: sort
+      in: query
+      required: false
+      description: Sort order for the returned tag groups.
+      schema:
+        type: string
+        enum: [latest_desc, latest_asc, name_asc, name_desc]
+        default: latest_desc
+    tagAssignmentsLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of assignment rows to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 50
+    tagAssignmentsCursor:
+      name: cursor
+      in: query
+      required: false
+      description: Cursor returned by the previous list response in `assigned_at|assignment_id` format.
+      schema:
+        type: string
     paginationLimit:
       name: limit
       in: query
@@ -2509,6 +2582,110 @@ components:
           format: date-time
           description: Time when the tag was assigned
 
+    TemplateTagAssignment:
+      type: object
+      required:
+        - assignmentId
+        - buildId
+        - assignedAt
+        - buildCreatedAt
+        - buildFinishedAt
+      properties:
+        assignmentId:
+          type: string
+          format: uuid
+          description: Identifier of the tag assignment event.
+        buildId:
+          type: string
+          format: uuid
+          description: Identifier of the assigned build.
+        assignedAt:
+          type: string
+          format: date-time
+          description: Time when the tag was assigned to the build.
+        buildCreatedAt:
+          type: string
+          format: date-time
+          description: Time when the assigned build was created.
+        buildFinishedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Time when the assigned build finished.
+
+    TemplateTagGroup:
+      type: object
+      required:
+        - tag
+        - assignments
+        - hasMore
+      properties:
+        tag:
+          type: string
+          description: Template tag name.
+        assignments:
+          type: array
+          description: Ready assignment events for this tag, sorted latest first.
+          items:
+            $ref: "#/components/schemas/TemplateTagAssignment"
+        hasMore:
+          type: boolean
+          description: Whether more ready assignment events exist beyond the requested assignment limit.
+
+    TemplateTagGroupsResponse:
+      type: object
+      required:
+        - tags
+        - nextCursor
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/TemplateTagGroup"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass as `tagsCursor` for the next page, or `null` if there is no next page.
+
+    TemplateTagsCountResponse:
+      type: object
+      required:
+        - total
+      properties:
+        total:
+          type: integer
+          format: int64
+          description: Total distinct ready tags for the template.
+
+    TemplateTagExistsResponse:
+      type: object
+      required:
+        - exists
+        - normalizedTag
+      properties:
+        exists:
+          type: boolean
+          description: Whether the template tag has at least one ready assignment.
+        normalizedTag:
+          type: string
+          description: Normalized template tag name.
+
+    TemplateTagAssignmentsResponse:
+      type: object
+      required:
+        - data
+        - nextCursor
+      properties:
+        data:
+          type: array
+          description: Ready assignment events for the tag, sorted latest first.
+          items:
+            $ref: "#/components/schemas/TemplateTagAssignment"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor to pass to the next list request, or `null` if there is no next page.
+
     AssignTemplateTagsRequest:
       required:
         - target
@@ -4748,6 +4925,162 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/TemplateTag"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/groups:
+    get:
+      summary: List template tag groups
+      description: >
+        Lists the template's tags that have at least one ready build, each with its most recent
+        ready assignments, paginated over tags with a keyset cursor. Returns 404 when the template
+        does not exist or belongs to another team.
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tagAssignmentLimit"
+        - $ref: "#/components/parameters/tagGroupsLimit"
+        - $ref: "#/components/parameters/tagGroupsCursor"
+        - $ref: "#/components/parameters/tagGroupsSearch"
+        - $ref: "#/components/parameters/tagGroupsSort"
+      responses:
+        "200":
+          description: Successfully returned template tag groups
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagGroupsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/count:
+    get:
+      summary: Count template tags
+      description: >
+        Returns the number of distinct tags of the template that have at least one ready build.
+        Returns 404 when the template does not exist or belongs to another team.
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+      responses:
+        "200":
+          description: Successfully returned the tag count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagsCountResponse"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/exists:
+    get:
+      summary: Check template tag
+      description: >
+        Checks whether a tag of the template has at least one ready build. Returns 404 when the
+        template does not exist or belongs to another team.
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tagQuery"
+      responses:
+        "200":
+          description: Successfully checked the tag
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagExistsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /templates/{templateID}/tags/{tag}/assignments:
+    get:
+      summary: List template tag assignments
+      description: >
+        Lists the ready assignments of one tag of the template, newest first, with keyset cursor
+        pagination. Returns 404 when the template does not exist or belongs to another team.
+      tags: [tags]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templateID"
+        - $ref: "#/components/parameters/tag"
+        - $ref: "#/components/parameters/tagAssignmentsCursor"
+        - $ref: "#/components/parameters/tagAssignmentsLimit"
+      responses:
+        "200":
+          description: Successfully returned the tag assignments
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateTagAssignmentsResponse"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "403":

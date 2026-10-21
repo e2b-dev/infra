@@ -246,6 +246,59 @@ func TestAdminTeamAuthSchemeOrder(t *testing.T) {
 	require.Equal(t, []string{"AdminJWTAuth", "AdminTeamAuth"}, adminSchemeOrder)
 }
 
+// Dashboards call the template tag reads with a team API key, so each must
+// accept ApiKeyAuth, and the static segments (groups, count, exists) must not
+// be routed to the {tag} path beside them.
+func TestTemplateTagReadRoutesAcceptAPIKeys(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSpec()
+	require.NoError(t, err)
+	swagger.Servers = nil
+
+	var matched []string
+	authFn := func(_ context.Context, input *openapi3filter.AuthenticationInput) error {
+		if input.SecuritySchemeName != "ApiKeyAuth" || input.RequestValidationInput.Request.Header.Get(auth.HeaderAPIKey) == "" {
+			return http.ErrNoCookie
+		}
+		matched = append(matched, input.RequestValidationInput.Route.Path)
+
+		return nil
+	}
+
+	r := gin.New()
+	r.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: authFn,
+			MultiError:         true,
+		},
+		SilenceServersWarning: true,
+	}))
+	r.Any("/*any", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	for _, tc := range []struct {
+		path string
+		want string
+	}{
+		{path: "/templates/tpl/tags/groups", want: "/templates/{templateID}/tags/groups"},
+		{path: "/templates/tpl/tags/count", want: "/templates/{templateID}/tags/count"},
+		{path: "/templates/tpl/tags/exists?tag=prod", want: "/templates/{templateID}/tags/exists"},
+		{path: "/templates/tpl/tags/prod/assignments", want: "/templates/{templateID}/tags/{tag}/assignments"},
+	} {
+		matched = nil
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, tc.path, nil)
+		req.Header.Set(auth.HeaderAPIKey, "e2b_key")
+
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, req)
+
+		require.Equal(t, http.StatusOK, rr.Code, "%s: %s", tc.path, rr.Body.String())
+		require.Equal(t, []string{tc.want}, matched, tc.path)
+	}
+}
+
 func TestTemplateBuildMinimumFreeDiskContract(t *testing.T) {
 	t.Parallel()
 
