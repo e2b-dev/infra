@@ -89,7 +89,7 @@ func (c *keepAliveNodeClient) Update(_ context.Context, req *orchestrator.Sandbo
 func newKeepAliveReplica(t *testing.T, rc redis.UniversalClient, discovery servicediscovery.Discoverer) *Orchestrator {
 	t.Helper()
 
-	storage, err := sandboxredis.NewStorage(rc, noop.NewMeterProvider(), nil)
+	storage, err := sandboxredis.NewStorage(rc, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })

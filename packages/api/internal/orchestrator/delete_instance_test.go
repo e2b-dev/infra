@@ -157,7 +157,7 @@ func newRefusalFixture(t *testing.T, restoreFlag bool, clusterID uuid.UUID, paus
 		redisClient.AddHook(hook)
 	}
 
-	storage, err := sandboxredis.NewStorage(redisClient, noop.NewMeterProvider(), nil)
+	storage, err := sandboxredis.NewStorage(redisClient, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })

@@ -78,7 +78,7 @@ func newKindFixture(t *testing.T, checkpointErr error) kindFixture {
 	db := testutils.SetupDatabase(t)
 	redisClient := redis_utils.SetupInstance(t)
 
-	storage, err := sandboxredis.NewStorage(redisClient, noop.NewMeterProvider(), nil)
+	storage, err := sandboxredis.NewStorage(redisClient, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })

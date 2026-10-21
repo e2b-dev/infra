@@ -290,7 +290,7 @@ func TestExpiredItems_DefersSandboxInTransition(t *testing.T) {
 	reader := sdkmetric.NewManualReader()
 	provider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
 	t.Cleanup(func() { require.NoError(t, provider.Shutdown(context.WithoutCancel(t.Context()))) })
-	storage, err := NewStorage(client, provider, nil)
+	storage, err := NewStorage(client, provider)
 	require.NoError(t, err)
 
 	teamID := uuid.New()

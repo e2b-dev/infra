@@ -485,7 +485,7 @@ func newListFixtureWithFlag(t *testing.T, value ldvalue.Value) *listFixture {
 	redisClient.AddHook(sweepCountHook{teamID: f.teamID.String(), sweeps: &f.sweeps})
 	f.redis = redisClient
 
-	storage, err := sandboxredis.NewStorage(redisClient, noop.NewMeterProvider(), nil)
+	storage, err := sandboxredis.NewStorage(redisClient, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })

@@ -514,13 +514,6 @@ var (
 	// re-pulling the snapshot onto yet another node.
 	ResumeOriginNodeRemapFlag = NewBoolFlag("resume-origin-node-remap", false)
 
-	// ExpirationIndexHealerFlag enables the API's Redis expiration index healer
-	// loop, which re-adds sandboxes missing from the global expiration ZSET
-	// (a missing member is never seen by the evictor and would live forever).
-	// Checked on every heal tick, so it can be toggled without a redeploy.
-	// On by default; acts as a kill switch if a heal pass misbehaves.
-	ExpirationIndexHealerFlag = NewBoolFlag("expiration-index-healer", true)
-
 	// BuildEnsureFreeDiskSpace grows the rootfs after build steps and before finalize.
 	BuildEnsureFreeDiskSpace = NewBoolFlag("build-ensure-free-disk-space", false)
 )

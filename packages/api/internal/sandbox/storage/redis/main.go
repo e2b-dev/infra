@@ -11,7 +11,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
@@ -39,11 +38,10 @@ const (
 var _ sandboxtypes.Storage = (*Storage)(nil)
 
 type Storage struct {
-	redisClient  redis.UniversalClient
-	locker       *storageLocker
-	subManager   *subscriptionManager
-	publisher    *publisher
-	featureFlags *featureflags.Client
+	redisClient redis.UniversalClient
+	locker      *storageLocker
+	subManager  *subscriptionManager
+	publisher   *publisher
 
 	metrics expirationIndexMetrics
 }
@@ -100,7 +98,6 @@ const meterScope = "github.com/e2b-dev/infra/packages/api/internal/sandbox/stora
 func NewStorage(
 	redisClient redis.UniversalClient,
 	meterProvider metric.MeterProvider,
-	featureFlags *featureflags.Client,
 ) (*Storage, error) {
 	meter := meterProvider.Meter(meterScope)
 
@@ -116,12 +113,11 @@ func NewStorage(
 	}
 
 	return &Storage{
-		redisClient:  redisClient,
-		locker:       newStorageLocker(redisClient, subManager, pub),
-		subManager:   subManager,
-		publisher:    pub,
-		featureFlags: featureFlags,
-		metrics:      metrics,
+		redisClient: redisClient,
+		locker:      newStorageLocker(redisClient, subManager, pub),
+		subManager:  subManager,
+		publisher:   pub,
+		metrics:     metrics,
 	}, nil
 }
 

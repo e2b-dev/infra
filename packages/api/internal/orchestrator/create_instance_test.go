@@ -81,7 +81,7 @@ func newCreateSandboxTestOrchestratorWithFlags(t *testing.T, flagSource *ldtestd
 func newCreateSandboxTestOrchestratorOnRedis(t *testing.T, client redis.UniversalClient, flagSource *ldtestdata.TestDataSource, nodeOpts ...nodemanager.TestOptions) *Orchestrator {
 	t.Helper()
 
-	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider(), nil)
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })

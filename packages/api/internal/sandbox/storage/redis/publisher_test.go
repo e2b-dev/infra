@@ -31,7 +31,7 @@ func newTestPublisher(t *testing.T, client goredis.UniversalClient) *publisher {
 // newTestStorage wraps NewStorage with a noop meter provider for tests.
 func newTestStorage(t *testing.T, client goredis.UniversalClient) *Storage {
 	t.Helper()
-	s, err := NewStorage(client, noop.NewMeterProvider(), nil)
+	s, err := NewStorage(client, noop.NewMeterProvider())
 	require.NoError(t, err)
 
 	return s

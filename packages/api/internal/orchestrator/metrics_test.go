@@ -47,7 +47,7 @@ func emptySandboxStore(t *testing.T) *sandbox.Store {
 	t.Helper()
 
 	client := redis_utils.SetupInstance(t)
-	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider(), nil)
+	storage, err := sandboxredis.NewStorage(client, noop.NewMeterProvider())
 	require.NoError(t, err)
 	go storage.Start(t.Context())
 	t.Cleanup(func() { storage.Close(context.WithoutCancel(t.Context())) })

@@ -9,7 +9,6 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
-	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -48,26 +47,11 @@ func (s *Storage) startHealer(ctx context.Context) {
 	}
 }
 
-// healerEnabled reports whether the heal pass should run. A nil feature flag
-// client (tests) falls back to the flag's default.
-func (s *Storage) healerEnabled(ctx context.Context) bool {
-	if s.featureFlags == nil {
-		return featureflags.ExpirationIndexHealerFlag.Fallback()
-	}
-
-	return s.featureFlags.BoolFlag(ctx, featureflags.ExpirationIndexHealerFlag)
-}
-
 // healExpirationIndex scans all stored sandboxes and re-adds expiration index
 // members missing for live sandbox keys. Returns the number of healed members.
 // Per-team failures are isolated by the shared scanner; other teams still get
 // healed.
 func (s *Storage) healExpirationIndex(ctx context.Context) (int, error) {
-	// Re-evaluated every tick: acts as a kill switch without redeploy.
-	if !s.healerEnabled(ctx) {
-		return 0, nil
-	}
-
 	healed := 0
 	err := s.forEachSandboxBatch(ctx, func(_ string, batch []sandboxtypes.Sandbox) error {
 		n, err := s.healSandboxBatch(ctx, batch)
