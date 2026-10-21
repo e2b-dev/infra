@@ -1783,6 +1783,15 @@ components:
           $ref: "#/components/schemas/EnvdVersion"
         buildStatus:
           $ref: "#/components/schemas/TemplateBuildStatus"
+        isDefault:
+          type: boolean
+          description: >
+            Whether the template is one of the platform's default templates. A default template
+            owned by another team carries zero or null usage fields (`spawnCount`, `buildCount`,
+            `lastSpawnedAt`, `createdBy`).
+        description:
+          type: string
+          description: Description of the template
 
     TemplateRequestResponseV3:
       required:
@@ -4543,6 +4552,39 @@ paths:
       responses:
         "200":
           description: Successfully returned all templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+        "401":
+          $ref: "#/components/responses/401"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /default-templates:
+    get:
+      summary: List default templates
+      description: >
+        Lists the platform's default templates, ordered by template ID. Deleted templates are left
+        out. Templates that are not public are listed only to their own team and to admin callers.
+        The build, resources and envd version are those of the newest ready build tagged
+        `default`, the one a sandbox started from the template runs, and are zero or empty when
+        there is none; `buildStatus` describes the newest build tagged `default` in any state.
+        Usage fields (`spawnCount`, `buildCount`, `lastSpawnedAt`, `createdBy`) are
+        reported only for the caller's own templates and to admin callers.
+      tags: [templates]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      responses:
+        "200":
+          description: Successfully returned the default templates
           content:
             application/json:
               schema:

@@ -299,6 +299,72 @@ func TestTemplateTagReadRoutesAcceptAPIKeys(t *testing.T) {
 	}
 }
 
+// The defaults list recognises an admin caller by the absence of a team and a
+// user on the request, which holds only while its security list admits
+// exactly these four schemes. The static path must also win over
+// /templates/{templateID}.
+// The default templates list has a path of its own, so that no template
+// name is shadowed: /templates/defaults stays a template named "defaults"
+// for every method.
+func TestDefaultTemplatesRoute(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSpec()
+	require.NoError(t, err)
+	swagger.Servers = nil
+
+	pathItem := swagger.Paths.Value("/default-templates")
+	require.NotNil(t, pathItem)
+	require.NotNil(t, pathItem.Get)
+	require.NotNil(t, pathItem.Get.Security)
+
+	var requirements [][]string
+	for _, requirement := range *pathItem.Get.Security {
+		schemes := make([]string, 0, len(requirement))
+		for scheme := range requirement {
+			schemes = append(schemes, scheme)
+		}
+		requirements = append(requirements, schemes)
+	}
+	require.ElementsMatch(t, [][]string{{"ApiKeyAuth"}, {"AuthProviderBearerAuth"}, {"AdminApiKeyAuth"}, {"AdminJWTAuth"}}, requirements)
+
+	var matched []string
+	r := gin.New()
+	r.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: func(_ context.Context, input *openapi3filter.AuthenticationInput) error {
+				matched = append(matched, input.RequestValidationInput.Route.Path)
+
+				return nil
+			},
+			MultiError: true,
+		},
+		SilenceServersWarning: true,
+	}))
+	r.Any("/*any", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
+	for _, tc := range []struct {
+		method string
+		path   string
+		want   string
+	}{
+		{method: http.MethodGet, path: "/default-templates", want: "/default-templates"},
+		{method: http.MethodGet, path: "/templates/defaults", want: "/templates/{templateID}"},
+		{method: http.MethodDelete, path: "/templates/defaults", want: "/templates/{templateID}"},
+		{method: http.MethodGet, path: "/templates/tpl", want: "/templates/{templateID}"},
+	} {
+		matched = nil
+		rr := httptest.NewRecorder()
+		r.ServeHTTP(rr, httptest.NewRequestWithContext(t.Context(), tc.method, tc.path, nil))
+
+		require.Equal(t, http.StatusOK, rr.Code, "%s %s: %s", tc.method, tc.path, rr.Body.String())
+		require.NotEmpty(t, matched, tc.path)
+		require.Equal(t, tc.want, matched[0], "%s %s", tc.method, tc.path)
+	}
+}
+
 func TestTemplateBuildMinimumFreeDiskContract(t *testing.T) {
 	t.Parallel()
 

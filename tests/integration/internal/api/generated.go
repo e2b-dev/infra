@@ -1703,11 +1703,17 @@ type Template struct {
 	CreatedAt time.Time `json:"createdAt"`
 	CreatedBy *TeamUser `json:"createdBy"`
 
+	// Description Description of the template
+	Description *string `json:"description,omitempty"`
+
 	// DiskSizeMB Disk size for the sandbox in MiB
 	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
 
 	// EnvdVersion Version of the envd running in the sandbox
 	EnvdVersion EnvdVersion `json:"envdVersion"`
+
+	// IsDefault Whether the template is one of the platform's default templates. A default template owned by another team carries zero or null usage fields (`spawnCount`, `buildCount`, `lastSpawnedAt`, `createdBy`).
+	IsDefault *bool `json:"isDefault,omitempty"`
 
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
@@ -3108,6 +3114,13 @@ type ClientInterface interface {
 	// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/instances (the `GetClustersClusterIDRigsRigIDInstances` operationId).
 	GetClustersClusterIDRigsRigIDInstances(ctx context.Context, clusterID ClusterID, rigID RigID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetDefaultTemplates List default templates
+	//
+	// Lists the platform's default templates, ordered by template ID. Deleted templates are left out. Templates that are not public are listed only to their own team and to admin callers. The build, resources and envd version are those of the newest ready build tagged `default`, the one a sandbox started from the template runs, and are zero or empty when there is none; `buildStatus` describes the newest build tagged `default` in any state. Usage fields (`spawnCount`, `buildCount`, `lastSpawnedAt`, `createdBy`) are reported only for the caller's own templates and to admin callers.
+	//
+	// Corresponds with GET /default-templates (the `GetDefaultTemplates` operationId).
+	GetDefaultTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetEventsSandboxes performs a GET /events/sandboxes (the `GetEventsSandboxes` operationId) request.
 	//
 	// Get all sandbox events for the team associated with the API key.
@@ -4264,6 +4277,23 @@ func (c *Client) GetClustersClusterIDRigsRigIDErrors(ctx context.Context, cluste
 // Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/instances (the `GetClustersClusterIDRigsRigIDInstances` operationId).
 func (c *Client) GetClustersClusterIDRigsRigIDInstances(ctx context.Context, clusterID ClusterID, rigID RigID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetClustersClusterIDRigsRigIDInstancesRequest(c.Server, clusterID, rigID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetDefaultTemplates List default templates
+//
+// Lists the platform's default templates, ordered by template ID. Deleted templates are left out. Templates that are not public are listed only to their own team and to admin callers. The build, resources and envd version are those of the newest ready build tagged `default`, the one a sandbox started from the template runs, and are zero or empty when there is none; `buildStatus` describes the newest build tagged `default` in any state. Usage fields (`spawnCount`, `buildCount`, `lastSpawnedAt`, `createdBy`) are reported only for the caller's own templates and to admin callers.
+//
+// Corresponds with GET /default-templates (the `GetDefaultTemplates` operationId).
+func (c *Client) GetDefaultTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetDefaultTemplatesRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -6622,6 +6652,33 @@ func NewGetClustersClusterIDRigsRigIDInstancesRequest(server string, clusterID C
 	}
 
 	operationPath := fmt.Sprintf("/clusters/%s/rigs/%s/instances", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetDefaultTemplatesRequest constructs an http.Request for the GetDefaultTemplates method
+func NewGetDefaultTemplatesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/default-templates")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -10557,6 +10614,15 @@ type ClientWithResponsesInterface interface {
 	// Corresponds with GET /clusters/{clusterID}/rigs/{rigID}/instances (the `GetClustersClusterIDRigsRigIDInstances` operationId).
 	GetClustersClusterIDRigsRigIDInstancesWithResponse(ctx context.Context, clusterID ClusterID, rigID RigID, reqEditors ...RequestEditorFn) (*GetClustersClusterIDRigsRigIDInstancesResponse, error)
 
+	// GetDefaultTemplatesWithResponse List default templates
+	//
+	// Lists the platform's default templates, ordered by template ID. Deleted templates are left out. Templates that are not public are listed only to their own team and to admin callers. The build, resources and envd version are those of the newest ready build tagged `default`, the one a sandbox started from the template runs, and are zero or empty when there is none; `buildStatus` describes the newest build tagged `default` in any state. Usage fields (`spawnCount`, `buildCount`, `lastSpawnedAt`, `createdBy`) are reported only for the caller's own templates and to admin callers.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /default-templates (the `GetDefaultTemplates` operationId).
+	GetDefaultTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDefaultTemplatesResponse, error)
+
 	// GetEventsSandboxesWithResponse performs a GET /events/sandboxes (the `GetEventsSandboxes` operationId) request.
 	//
 	// Get all sandbox events for the team associated with the API key.
@@ -12840,6 +12906,75 @@ func (r GetClustersClusterIDRigsRigIDInstancesResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetClustersClusterIDRigsRigIDInstancesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetDefaultTemplatesResponse429Headers the declared response headers of an HTTP 429 response for GetDefaultTemplates
+type GetDefaultTemplatesResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetDefaultTemplatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *[]Template
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetDefaultTemplatesResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetDefaultTemplatesResponse) GetJSON200() *[]Template {
+	return r.JSON200
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetDefaultTemplatesResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetDefaultTemplatesResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetDefaultTemplatesResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetDefaultTemplatesResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetDefaultTemplatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetDefaultTemplatesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetDefaultTemplatesResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -18586,6 +18721,21 @@ func (c *ClientWithResponses) GetClustersClusterIDRigsRigIDInstancesWithResponse
 	return ParseGetClustersClusterIDRigsRigIDInstancesResponse(rsp)
 }
 
+// GetDefaultTemplatesWithResponse List default templates
+//
+// Lists the platform's default templates, ordered by template ID. Deleted templates are left out. Templates that are not public are listed only to their own team and to admin callers. The build, resources and envd version are those of the newest ready build tagged `default`, the one a sandbox started from the template runs, and are zero or empty when there is none; `buildStatus` describes the newest build tagged `default` in any state. Usage fields (`spawnCount`, `buildCount`, `lastSpawnedAt`, `createdBy`) are reported only for the caller's own templates and to admin callers.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /default-templates (the `GetDefaultTemplates` operationId).
+func (c *ClientWithResponses) GetDefaultTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetDefaultTemplatesResponse, error) {
+	rsp, err := c.GetDefaultTemplates(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetDefaultTemplatesResponse(rsp)
+}
+
 // GetEventsSandboxesWithResponse performs a GET /events/sandboxes (the `GetEventsSandboxes` operationId) request.
 //
 // Get all sandbox events for the team associated with the API key.
@@ -21229,6 +21379,66 @@ func ParseGetClustersClusterIDRigsRigIDInstancesResponse(rsp *http.Response) (*G
 	switch {
 	case rsp.StatusCode == 429:
 		var headers GetClustersClusterIDRigsRigIDInstancesResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetDefaultTemplatesResponse parses an HTTP response from a GetDefaultTemplatesWithResponse call
+func ParseGetDefaultTemplatesResponse(rsp *http.Response) (*GetDefaultTemplatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetDefaultTemplatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []Template
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetDefaultTemplatesResponse429Headers
 		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
 			var value int
 			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
