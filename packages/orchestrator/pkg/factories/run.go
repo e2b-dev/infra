@@ -1243,7 +1243,16 @@ func run(config cfg.Config, opts Options) (success bool) {
 	// depend on. The forced-stop path skips this and tears sandboxes down later.
 	if !config.ForceStop {
 		logger.L().Info(ctx, "Starting sandbox drain phase", zap.Int("sandbox_count", sandboxes.Count()))
-		if err := orchestratorService.DrainSandboxes(closeCtx); err != nil {
+		// Bound the drain when configured, so a long-lived sandbox cannot block
+		// shutdown indefinitely until an external SIGKILL hard-cuts everything.
+		// Zero keeps the historical unbounded wait.
+		drainCtx := closeCtx
+		if config.SandboxDrainTimeout > 0 {
+			var cancelDrain context.CancelFunc
+			drainCtx, cancelDrain = context.WithTimeout(closeCtx, config.SandboxDrainTimeout)
+			defer cancelDrain()
+		}
+		if err := orchestratorService.DrainSandboxes(drainCtx); err != nil {
 			logger.L().Error(ctx, "error while draining sandboxes", zap.Error(err))
 			success = false
 		}

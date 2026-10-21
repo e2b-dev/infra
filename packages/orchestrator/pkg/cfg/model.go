@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 	"github.com/willscott/go-nfs"
@@ -109,6 +110,14 @@ type Config struct {
 	NBDPoolSize                 int               `env:"NBD_POOL_SIZE"                 envDefault:"64"`
 	Services                    []string          `env:"ORCHESTRATOR_SERVICES"         envDefault:"orchestrator"`
 	PersistentVolumeMounts      map[string]string `env:"PERSISTENT_VOLUME_MOUNTS"`
+
+	// SandboxDrainTimeout bounds the graceful sandbox drain on shutdown.
+	// Zero (the default) keeps the historical unbounded wait, where the node
+	// drains until every sandbox exits on its own and is otherwise only stopped
+	// by the deploy system's SIGKILL. A positive value makes the drain
+	// deterministic: after it elapses the node proceeds to close its services
+	// gracefully instead of waiting for an external hard kill.
+	SandboxDrainTimeout time.Duration `env:"SANDBOX_DRAIN_TIMEOUT"`
 
 	// TLS is the mutual TLS settings of the shared port and the peer hop.
 	TLS TLSConfig
