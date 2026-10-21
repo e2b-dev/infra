@@ -33,8 +33,17 @@ const (
 	// This timeout should be > 600 (GCP LB upstream idle timeout) to prevent race condition
 	// Also it's a good practice to set it to higher values as you progress in the stack
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
-	idleTimeout     = 620 * time.Second
-	shutdownTimeout = 30 * time.Second
+	idleTimeout = 620 * time.Second
+
+	// drainGrace is added on top of idleTimeout to derive the graceful
+	// shutdown budget: during a node drain the proxy must let in-flight
+	// sandbox connections (long-running command streams, upgraded H2C) finish
+	// rather than cut them. A connection can stay open up to idleTimeout, so a
+	// fixed 30s budget hard-closed anything still streaming past 30s. The grace
+	// covers the final idle round-trip before a hard close. The forced-stop
+	// path (ctx already cancelled) still closes immediately.
+	drainGrace        = 30 * time.Second
+	proxyDrainTimeout = idleTimeout + drainGrace
 
 	trafficAccessTokenHeader = "e2b-traffic-access-token"
 )
@@ -227,7 +236,7 @@ func (p *SandboxProxy) Close(ctx context.Context) error {
 	var err error
 	forced := ctx.Err() != nil
 	if !forced {
-		shutdownCtx, cancel := context.WithTimeout(ctx, shutdownTimeout)
+		shutdownCtx, cancel := context.WithTimeout(ctx, proxyDrainTimeout)
 		defer cancel()
 
 		err = p.proxy.Shutdown(shutdownCtx)
