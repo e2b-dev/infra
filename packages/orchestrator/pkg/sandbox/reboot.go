@@ -325,14 +325,12 @@ func (f *Factory) RebootSandbox(
 		preBoot,
 		WithDeferredMarkRunning(),
 		withNetworkAssignReason(NetworkAssignReasonReboot),
+		withEndAt(endAt),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("create sandbox from rootfs: %w", err)
 	}
 
-	// CreateSandbox anchors the lifetime to now; honor the caller's absolute end
-	// time so queue delay can't extend the TTL.
-	sbx.SetEndAt(endAt)
 	if offlineEnvdVersion != "" {
 		sbx.offlineEnvdVersion.Store(&offlineEnvdVersion)
 	}

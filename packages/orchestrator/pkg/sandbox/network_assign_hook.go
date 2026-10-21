@@ -66,6 +66,12 @@ func (r NetworkAssignReason) String() string {
 // reported by Create.
 type NetworkAssignHook interface {
 	OnNetworkAssign(ctx context.Context, sbx *Sandbox, reason NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error)
+	// OnNetworkUpdate runs after a placed sandbox's update commits and releases
+	// its lock and update admission. Calls can overlap, arrive out of commit
+	// order, and race with Close. The hook must safely notify its worker to read
+	// the latest committed state, tolerate teardown, and not wait on remote calls.
+	// It must not panic: the update has already committed and cannot be rolled back.
+	OnNetworkUpdate(ctx context.Context, sbx *Sandbox)
 }
 
 // NoopNetworkAssignHook is a no-op NetworkAssignHook, used when no
@@ -77,6 +83,8 @@ var _ NetworkAssignHook = NoopNetworkAssignHook{}
 func (NoopNetworkAssignHook) OnNetworkAssign(context.Context, *Sandbox, NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
 	return nil, nil
 }
+
+func (NoopNetworkAssignHook) OnNetworkUpdate(context.Context, *Sandbox) {}
 
 // OptionalNetworkAssignError marks a NetworkAssignHook error the start can
 // go on without: the factory logs it instead of failing the start.

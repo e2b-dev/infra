@@ -2,7 +2,9 @@ package redis
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -14,6 +16,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
@@ -1328,6 +1331,50 @@ func TestRestoreRunning_ReinstatesClampedExpiry(t *testing.T) {
 	callback(ctx, errors.New("refused"))
 }
 
+// A checkpoint's restore writes the placement it reports with Running, an
+// absent one included, keeps the expiry, and refuses a record another
+// execution took over.
+func TestRestoreCheckpointed(t *testing.T) {
+	t.Parallel()
+
+	storage, _ := setupTestStorage(t)
+	ctx := t.Context()
+
+	sbx := createTestSandbox("restore-checkpointed")
+	sbx.NetworkPlacement = &orchestrator.SandboxNetworkPlacement{ExecutionId: sbx.ExecutionID, NetworkMode: "egress-router"}
+	require.NoError(t, storage.Add(ctx, sbx))
+	checkpoint := func() (sandboxtypes.StateTransition, func(context.Context, error)) {
+		t.Helper()
+		transition, _, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionSnapshot})
+		require.NoError(t, err)
+
+		return transition, callback
+	}
+
+	transition, callback := checkpoint()
+	restored, err := storage.RestoreCheckpointed(ctx, transition, nil)
+	require.NoError(t, err)
+	callback(ctx, errors.New("restored"))
+	stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+	require.NoError(t, err)
+	assert.Equal(t, restored, stored)
+	assert.Equal(t, sandboxtypes.StateRunning, stored.State)
+	assert.Nil(t, stored.NetworkPlacement, "an absent placement clears the recorded one")
+	assert.WithinDuration(t, sbx.EndTime, stored.EndTime, time.Millisecond)
+
+	transition, callback = checkpoint()
+	resumed := sbx
+	resumed.ExecutionID = uuid.NewString()
+	require.NoError(t, storage.Add(ctx, resumed))
+	_, err = storage.RestoreCheckpointed(ctx, transition, nil)
+	require.ErrorIs(t, err, sandboxtypes.ErrExecutionMismatch)
+	callback(ctx, errors.New("superseded"))
+	stored, err = storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+	require.NoError(t, err)
+	assert.Equal(t, resumed.ExecutionID, stored.ExecutionID)
+	assert.Equal(t, resumed.NetworkPlacement.GetExecutionId(), stored.NetworkPlacement.GetExecutionId(), "the successor is untouched")
+}
+
 func TestRestoreRunning_RefusesOtherStates(t *testing.T) {
 	t.Parallel()
 
@@ -1407,7 +1454,8 @@ func TestStorage_RecordWithoutNetworkPlacement(t *testing.T) {
 	assert.Nil(t, got.NetworkPlacement)
 }
 
-// Add bypasses the storage lock and can replace the record before the CAS.
+// Add bypasses the storage lock and can replace the record before the CAS:
+// the restore reads again and finds the successor, which it leaves alone.
 func TestRestoreRunning_RefusesWhenTheRecordChangesUnderIt(t *testing.T) {
 	t.Parallel()
 
@@ -1447,7 +1495,7 @@ func TestRestoreRunning_RefusesWhenTheRecordChangesUnderIt(t *testing.T) {
 	callback(ctx, nil)
 
 	_, err = storage.RestoreRunning(ctx, transition, 10*time.Second)
-	require.ErrorIs(t, err, sandboxtypes.ErrRestoreConflict)
+	require.ErrorIs(t, err, sandboxtypes.ErrExecutionMismatch)
 
 	stored, err := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
 	require.NoError(t, err)
@@ -1457,6 +1505,76 @@ func TestRestoreRunning_RefusesWhenTheRecordChangesUnderIt(t *testing.T) {
 	after, err := client.Get(ctx, getSandboxKey(sbx.TeamID.String(), sbx.SandboxID)).Bytes()
 	require.NoError(t, err)
 	assert.Equal(t, successorData, after)
+}
+
+// A rewrite of the same execution's record under the CAS, which no writer
+// does today, is not a successor: the restore reads again and restores what
+// was written. One that keeps changing is reported as a conflict.
+func TestRestoreRunning_RetriesOnceWhenTheSameExecutionIsRewritten(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		rewrites int
+		err      error
+	}{
+		{name: "rewritten once", rewrites: 1},
+		{name: "rewritten under every compare", rewrites: 2, err: sandboxtypes.ErrRestoreConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := t.Context()
+			sbx := createTestSandbox("restore-cas-rewrite")
+			key := getSandboxKey(sbx.TeamID.String(), sbx.SandboxID)
+			client := redis_utils.SetupInstance(t)
+			var rewrites atomic.Int32
+			client.AddHook(restoreCommandHook(func(ctx context.Context, cmd redis.Cmder, next redis.ProcessHook) error {
+				if cmd.Name() == "evalsha" && cmd.Args()[1] == restoreSandboxScript.Hash() && int(rewrites.Add(1)) <= tc.rewrites {
+					data, err := client.Get(ctx, key).Bytes()
+					if err != nil {
+						return err
+					}
+					var current sandboxtypes.Sandbox
+					if err := json.Unmarshal(data, &current); err != nil {
+						return err
+					}
+					current.Metadata = map[string]string{"rewrite": strconv.Itoa(int(rewrites.Load()))}
+					rewritten, err := json.Marshal(current)
+					if err != nil {
+						return err
+					}
+					if err := client.Set(ctx, key, rewritten, redis.KeepTTL).Err(); err != nil {
+						return err
+					}
+				}
+
+				return next(ctx, cmd)
+			}))
+			storage := newTestStorage(t, client)
+			go storage.Start(ctx)
+			t.Cleanup(func() { storage.Close(context.WithoutCancel(ctx)) })
+
+			require.NoError(t, storage.Add(ctx, sbx))
+			transition, _, callback, err := storage.StartRemoving(ctx, sbx.TeamID, sbx.SandboxID, sandboxtypes.RemoveOpts{Action: sandboxtypes.StateActionSnapshot})
+			require.NoError(t, err)
+			defer callback(ctx, sandboxtypes.ErrSkipRestore)
+
+			restored, err := storage.RestoreCheckpointed(ctx, transition, nil)
+			stored, getErr := storage.Get(ctx, sbx.TeamID, sbx.SandboxID)
+			require.NoError(t, getErr)
+			if tc.err != nil {
+				require.ErrorIs(t, err, tc.err)
+				assert.Equal(t, sandboxtypes.StateSnapshotting, stored.State)
+
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, restored, stored)
+			assert.Equal(t, sandboxtypes.StateRunning, stored.State)
+			assert.Equal(t, map[string]string{"rewrite": "1"}, stored.Metadata, "the restore kept the rewrite it read again")
+		})
+	}
 }
 
 // A pause transition finished with ErrTransitionRestored reaches its waiters

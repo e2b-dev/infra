@@ -187,12 +187,23 @@ func startedDevicePool(t *testing.T) *nbd.DevicePool {
 	return devices
 }
 
+type rebootHookTemplate struct {
+	bootTemplate
+
+	buildID string
+}
+
+func (t rebootHookTemplate) Files() storage.CachePaths {
+	return storage.CachePaths{Paths: storage.Paths{BuildID: t.buildID}}
+}
+
 // The actual constructors run the network-assign hook with the start's
 // reason after the sandbox is assigned its network and before Firecracker
 // starts: an error fails the start there, an optional one lets it go on to
-// Firecracker, and the slot is returned either way. A throwaway resume
-// denies its slot's egress before the hook, which this fixture's slot
-// cannot, so it is not started here.
+// Firecracker, and the slot is returned either way. A reboot shows the hook
+// its absolute end time, not one counted from the create. A throwaway
+// resume denies its slot's egress before the hook,
+// which this fixture's slot cannot, so it is not started here.
 func TestFactoryConstructorsRunTheNetworkAssignHook(t *testing.T) {
 	t.Parallel()
 	builder := cfg.BuilderConfig{
@@ -209,17 +220,29 @@ func TestFactoryConstructorsRunTheNetworkAssignHook(t *testing.T) {
 	t.Cleanup(func() { _ = flags.Close(context.WithoutCancel(t.Context())) })
 	hookFailure := errors.New("the network could not be completed")
 	devices := startedDevicePool(t)
+	rebootEnd := time.Now().Add(42 * time.Minute)
 
 	for _, tc := range []struct {
 		name  string
 		start func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error)
-		// devices is set for a resume, whose rootfs needs NBD devices.
+		// devices is set when the constructor's rootfs needs NBD devices.
 		devices  bool
 		reason   NetworkAssignReason
 		optional bool
+		// endAt is the end the hook must see, zero for one counted from the
+		// create.
+		endAt time.Time
 	}{
 		{name: "create", reason: NetworkAssignReasonCreate, start: func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error) {
 			return f.CreateSandbox(ctx, config, runtime, template, time.Minute, filepath.Join(filepath.Dir(template.snapfile), "rootfs"), fc.ProcessOptions{}, nil, nil)
+		}},
+		{name: "reboot", devices: true, reason: NetworkAssignReasonReboot, endAt: rebootEnd, start: func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error) {
+			config.RamMB = 1
+			config.Envd.Version = "0.9.0"
+			template.meta.FilesystemOnly = true
+
+			return f.RebootSandbox(ctx, rebootHookTemplate{bootTemplate: template, buildID: uuid.NewString()}, config, runtime,
+				rebootEnd, nil, false, false, nil)
 		}},
 		{name: "resume", devices: true, reason: NetworkAssignReasonResume, start: func(ctx context.Context, f *Factory, runtime sandboxtypes.RuntimeMetadata, config *Config, template bootTemplate) (*Sandbox, error) {
 			return f.ResumeSandbox(ctx, template, config, runtime, time.Time{}, time.Time{}, nil)
@@ -237,6 +260,9 @@ func TestFactoryConstructorsRunTheNetworkAssignHook(t *testing.T) {
 			asked := make(chan NetworkAssignReason, 1)
 			hook := networkAssignHookFunc(func(_ context.Context, sbx *Sandbox, reason NetworkAssignReason) (*orchestrator.SandboxNetworkPlacement, error) {
 				assert.Same(t, pool.slot, sbx.Slot, "the hook sees the slot the start took")
+				if !tc.endAt.IsZero() {
+					assert.True(t, sbx.GetEndAt().Equal(tc.endAt), "the hook sees the absolute end time the start was given")
+				}
 				asked <- reason
 				if tc.optional {
 					return nil, OptionalNetworkAssignError(hookFailure)

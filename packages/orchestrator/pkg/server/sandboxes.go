@@ -658,7 +658,9 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 		})
 	}
 
-	err := sbx.RunUpdate(func() error {
+	// The factory refuses an egress proxy to a sandbox on a placed network
+	// before anything commits, and tells that network a committed update.
+	err := s.sandboxFactory.RunUpdate(ctx, sbx, req.GetEgress(), func() error {
 		if err := utils.ApplyAllOrNone(ctx, updates); err != nil {
 			telemetry.ReportCriticalError(ctx, "failed to update sandbox", err)
 
@@ -711,6 +713,9 @@ func (s *Server) Update(ctx context.Context, req *orchestrator.SandboxUpdateRequ
 func mapSandboxUpdateError(err error) error {
 	if errors.Is(err, sandbox.ErrSandboxUpdateClosed) {
 		return status.Error(codes.NotFound, "sandbox is closing or closed")
+	}
+	if errors.Is(err, sandbox.ErrEgressProxyUnsupported) {
+		return status.Error(codes.FailedPrecondition, err.Error())
 	}
 
 	return err
@@ -1789,6 +1794,7 @@ func (s *Server) checkpointInPlace(ctx context.Context, sbx *sandbox.Sandbox, in
 
 	return &orchestrator.SandboxCheckpointResponse{
 		SchedulingMetadata: res.schedulingMetadata,
+		Network:            &orchestrator.SandboxCheckpointNetwork{Placement: sbx.NetworkPlacement()},
 	}, deferred, nil
 }
 
@@ -2028,8 +2034,10 @@ func (s *Server) checkpointResumeFreshWith(callerCtx context.Context, steps resu
 
 	telemetry.ReportEvent(ctx, "Checkpoint completed")
 
+	// The resumed VM was placed again, possibly on another network.
 	return &orchestrator.SandboxCheckpointResponse{
 		SchedulingMetadata: res.schedulingMetadata,
+		Network:            &orchestrator.SandboxCheckpointNetwork{Placement: resumedSbx.NetworkPlacement()},
 	}, nil
 }
 

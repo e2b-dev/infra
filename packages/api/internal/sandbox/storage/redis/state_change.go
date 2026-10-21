@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/middleware/otel/joined"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -178,15 +179,20 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 }
 
 // createCallback returns a callback function for completing a transition.
-// For transient actions, it first restores the sandbox state to Running.
-// On success, the callback deletes the transition key and sets empty result.
-// On error, the callback deletes the transition key and sets error message in result.
+// A successful transient action restores Running unless the caller passes
+// ErrSkipRestore. Completing a transient action with an error also skips
+// restoration and lets waiters proceed. Waiters must read the resulting state.
+// Automatic restore failures and non-transient errors are published to waiters.
 func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, resultKey, transitionID string, stateAction sandboxtypes.StateAction) func(context.Context, error) {
 	return func(cbCtx context.Context, cbErr error) {
+		skipRestore := errors.Is(cbErr, sandboxtypes.ErrSkipRestore)
+		if skipRestore {
+			cbErr = nil
+		}
 		logger.L().Debug(cbCtx, "Transition complete", logger.WithSandboxID(sandboxID), zap.String("state", string(stateAction.TargetState)), zap.String("transitionID", transitionID), zap.Error(cbErr))
 
 		var restoreErr error
-		if stateAction.Effect == sandboxtypes.TransitionTransient && cbErr == nil {
+		if stateAction.Effect == sandboxtypes.TransitionTransient && cbErr == nil && !skipRestore {
 			restoreErr = s.restoreToRunning(cbCtx, teamID, sandboxID, stateAction.TargetState)
 		}
 
@@ -234,12 +240,52 @@ func (s *Storage) restoreToRunning(ctx context.Context, teamID uuid.UUID, sandbo
 }
 
 func (s *Storage) RestoreRunning(ctx context.Context, transition sandboxtypes.StateTransition, retryAfter time.Duration) (sandboxtypes.Sandbox, error) {
+	restored, err := s.restoreRunning(ctx, transition, func(restored *sandboxtypes.Sandbox) {
+		if retryAfter > 0 {
+			now := time.Now()
+			restored.RefusedSince = restored.RefusalEpisodeStart(now)
+			restored.RefusedUntil = now.Add(retryAfter)
+		}
+	})
+	if err != nil {
+		return sandboxtypes.Sandbox{}, err
+	}
+
+	// The retry window only ever moves a member forward: an expired sandbox
+	// leaves the sweep's window until the retry, a live one keeps its expiry.
+	if !restored.RefusedUntil.After(restored.EndTime) {
+		return restored, nil
+	}
+
+	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
+		Score:  float64(restored.RefusedUntil.UnixMilli()),
+		Member: sandboxExpirationMember(restored),
+	}).Err(); err != nil {
+		// RefusedUntil on the committed record still holds eviction until the retry.
+		logger.L().Warn(ctx, "Failed to index restored sandbox retry window", zap.Error(err), logger.WithSandboxID(restored.SandboxID))
+	}
+
+	return restored, nil
+}
+
+func (s *Storage) RestoreCheckpointed(ctx context.Context, transition sandboxtypes.StateTransition, placement *orchestrator.SandboxNetworkPlacement) (sandboxtypes.Sandbox, error) {
+	return s.restoreRunning(ctx, transition, func(restored *sandboxtypes.Sandbox) {
+		restored.NetworkPlacement = placement
+	})
+}
+
+// restoreRunning puts the transition's record back to Running with its
+// pre-clamp expiry and change applied, if the record is still the
+// transition's execution in the transition's state. The write compares the
+// whole record read under the lock, since Add bypasses that lock. A record
+// rewritten under the compare is read again once, so a successor that landed
+// meanwhile is reported as such, and ErrRestoreConflict only when the record
+// keeps changing.
+func (s *Storage) restoreRunning(ctx context.Context, transition sandboxtypes.StateTransition, change func(*sandboxtypes.Sandbox)) (sandboxtypes.Sandbox, error) {
 	if transition.OriginalEndTime == nil {
 		return sandboxtypes.Sandbox{}, errors.New("transition has no rollback expiry")
 	}
-	sbx := transition.Sandbox
-	teamID, sandboxID := sbx.TeamID, sbx.SandboxID
-	key := getSandboxKey(teamID.String(), sandboxID)
+	key := getSandboxKey(transition.Sandbox.TeamID.String(), transition.Sandbox.SandboxID)
 	lock, err := s.locker.Obtain(ctx, redis_utils.GetLockKey(key), lockTimeout)
 	if err != nil {
 		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to obtain restore lock: %w", err)
@@ -250,6 +296,17 @@ func (s *Storage) RestoreRunning(ctx context.Context, transition sandboxtypes.St
 		}
 	}()
 
+	restored, err := s.compareAndRestore(ctx, key, transition, change)
+	if errors.Is(err, sandboxtypes.ErrRestoreConflict) {
+		restored, err = s.compareAndRestore(ctx, key, transition, change)
+	}
+
+	return restored, err
+}
+
+// compareAndRestore is one read and compare-and-set of restoreRunning.
+func (s *Storage) compareAndRestore(ctx context.Context, key string, transition sandboxtypes.StateTransition, change func(*sandboxtypes.Sandbox)) (sandboxtypes.Sandbox, error) {
+	sbx := transition.Sandbox
 	data, err := s.redisClient.Get(ctx, key).Bytes()
 	if errors.Is(err, redis.Nil) {
 		return sandboxtypes.Sandbox{}, sandboxtypes.ErrNotFound
@@ -265,16 +322,15 @@ func (s *Storage) RestoreRunning(ctx context.Context, transition sandboxtypes.St
 		return sandboxtypes.Sandbox{}, sandboxtypes.ErrExecutionMismatch
 	}
 	if restored.State != sbx.State {
-		return sandboxtypes.Sandbox{}, fmt.Errorf("sandbox is in state %q, not %q", restored.State, sbx.State)
+		return sandboxtypes.Sandbox{}, &sandboxtypes.InvalidStateTransitionError{
+			CurrentState: restored.State,
+			TargetState:  sandboxtypes.StateRunning,
+		}
 	}
 
 	restored.State = sandboxtypes.StateRunning
 	restored.EndTime = *transition.OriginalEndTime
-	if retryAfter > 0 {
-		now := time.Now()
-		restored.RefusedSince = restored.RefusalEpisodeStart(now)
-		restored.RefusedUntil = now.Add(retryAfter)
-	}
+	change(&restored)
 	updated, err := json.Marshal(restored)
 	if err != nil {
 		return sandboxtypes.Sandbox{}, err
@@ -285,20 +341,6 @@ func (s *Storage) RestoreRunning(ctx context.Context, transition sandboxtypes.St
 	}
 	if written == 0 {
 		return sandboxtypes.Sandbox{}, sandboxtypes.ErrRestoreConflict
-	}
-
-	// The retry window only ever moves a member forward: an expired sandbox
-	// leaves the sweep's window until the retry, a live one keeps its expiry.
-	if !restored.RefusedUntil.After(restored.EndTime) {
-		return restored, nil
-	}
-
-	if err := s.redisClient.ZAdd(ctx, globalExpirationSet, redis.Z{
-		Score:  float64(restored.RefusedUntil.UnixMilli()),
-		Member: sandboxExpirationMember(restored),
-	}).Err(); err != nil {
-		// RefusedUntil on the committed record still holds eviction until the retry.
-		logger.L().Warn(ctx, "Failed to index restored sandbox retry window", zap.Error(err), logger.WithSandboxID(sandboxID))
 	}
 
 	return restored, nil

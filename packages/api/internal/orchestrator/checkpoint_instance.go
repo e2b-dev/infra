@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -84,7 +85,7 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 	// orchestrator stops the old sandbox itself on error; RemoveSandbox is
 	// still needed to clean up API-side state (store, routing, analytics).
 	client, childCtx := node.GetSandboxClient(ctx, sbx.TeamID.String())
-	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
+	checkpointed, err := client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId: sbx.SandboxID,
 		BuildId:   upsertResult.BuildID.String(),
 		Metadata:  map[string]string{storageopts.ObjectMetadataTemplateID: upsertResult.TemplateID},
@@ -142,12 +143,50 @@ func (o *Orchestrator) CheckpointSandbox(ctx context.Context, teamID uuid.UUID, 
 	}
 
 	if err := o.finishSnapshotBuildWithKind(ctx, upsertResult.BuildID, sandboxID, currentKind, false, types.BuildStatusSuccess); err != nil {
-		return fmt.Errorf("error updating build status: %w", err)
+		return errors.Join(fmt.Errorf("error updating build status: %w", err), o.restoreCheckpointed(ctx, transition, checkpointed.GetNetwork(), finish))
 	}
 
 	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
+	if err := o.restoreCheckpointed(ctx, transition, checkpointed.GetNetwork(), finish); err != nil {
+		return err
+	}
 
 	telemetry.ReportEvent(ctx, "Checkpointed sandbox")
 
 	return nil
+}
+
+// restoreCheckpointed ends the transition of a checkpoint the node completed.
+// The record goes back to Running together with the network the node
+// reported for the execution it left running, an absent placement included,
+// in one write that refuses a record another execution replaced or that left
+// Snapshotting. A node that predates the report, or reports another
+// execution's placement, leaves the recorded placement. A superseded record
+// is left as it is. A record whose write fails stays Snapshotting, as a
+// failed restore leaves it, instead of serving with a placement its VM no
+// longer has, and the error is returned. The healthy VM keeps running.
+func (o *Orchestrator) restoreCheckpointed(ctx context.Context, transition sandbox.StateTransition, network *orchestrator.SandboxCheckpointNetwork, finish func(error)) error {
+	ctx = context.WithoutCancel(ctx)
+	defer finish(sandbox.ErrSkipRestore)
+	sbx := transition.Sandbox
+	var err error
+	if placement := network.GetPlacement(); network != nil && (placement == nil || placement.GetExecutionId() == sbx.ExecutionID) {
+		_, err = o.sandboxStore.RestoreCheckpointed(ctx, transition, placement)
+	} else {
+		if network != nil {
+			logger.L().Warn(ctx, "Checkpoint reported another execution's network placement", logger.WithSandboxID(sbx.SandboxID))
+		}
+		_, err = o.sandboxStore.RestoreRunning(ctx, transition, 0)
+	}
+	var stateChanged *sandbox.InvalidStateTransitionError
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, sandbox.ErrExecutionMismatch), errors.As(err, &stateChanged), errors.Is(err, sandbox.ErrNotFound):
+		logger.L().Warn(ctx, "Checkpointed sandbox record was superseded", zap.Error(err), logger.WithSandboxID(sbx.SandboxID))
+
+		return nil
+	default:
+		return fmt.Errorf("restore the checkpointed sandbox: %w", err)
+	}
 }

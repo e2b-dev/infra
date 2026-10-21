@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	sbxlogger "github.com/e2b-dev/infra/packages/shared/pkg/logger/sandbox"
 )
@@ -131,6 +132,10 @@ func (s *Store) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID s
 
 func (s *Store) RestoreRunning(ctx context.Context, transition StateTransition, retryAfter time.Duration) (Sandbox, error) {
 	return s.storage.RestoreRunning(ctx, transition, retryAfter)
+}
+
+func (s *Store) RestoreCheckpointed(ctx context.Context, transition StateTransition, placement *orchestrator.SandboxNetworkPlacement) (Sandbox, error) {
+	return s.storage.RestoreCheckpointed(ctx, transition, placement)
 }
 
 func (s *Store) WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error {

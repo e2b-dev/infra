@@ -52,6 +52,13 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		// Checked against the record being written, under its lock: a config
 		// the node cannot apply would otherwise be stored, and read back, as
 		// if it were in effect.
+		if sbx.NetworkPlacement != nil && egress.GetEgressProxyAddress() != "" {
+			return sbx, &api.APIError{
+				Code:      http.StatusBadRequest,
+				ClientMsg: "Egress proxy is not supported on this sandbox's network",
+				Err:       errors.New("egress proxy is not supported on a placed network"),
+			}
+		}
 		if apiErr := o.checkNodeSupportsEgress(sbx, features); apiErr != nil {
 			return sbx, apiErr
 		}

@@ -1026,6 +1026,29 @@ func (f *Factory) runNetworkAssignHook(ctx context.Context, sbx *Sandbox, reason
 	return placement, nil
 }
 
+// ErrEgressProxyUnsupported refuses an egress proxy to a sandbox whose
+// network the network-assign hook placed: only the worker's own network
+// carries one.
+var ErrEgressProxyUnsupported = errors.New("egress proxy is not supported on this sandbox's network")
+
+// RunUpdate runs update as one update of sbx, as Sandbox.RunUpdate does.
+// For a sandbox the network-assign hook gave a placement, it refuses an
+// egress proxy in egress before anything commits, and tells the hook once
+// an update committed and released the sandbox.
+func (f *Factory) RunUpdate(ctx context.Context, sbx *Sandbox, egress *orchestrator.SandboxNetworkEgressConfig, update func() error) error {
+	if sbx.networkPlacement != nil && egress.GetEgressProxyAddress() != "" {
+		return ErrEgressProxyUnsupported
+	}
+	if err := sbx.RunUpdate(update); err != nil {
+		return err
+	}
+	if sbx.networkPlacement != nil {
+		f.networkAssignHook.OnNetworkUpdate(ctx, sbx)
+	}
+
+	return nil
+}
+
 func (f *Factory) EgressProxy() network.EgressProxy {
 	return f.egressProxy
 }
@@ -1044,6 +1067,9 @@ type PreBootFn func(ctx context.Context, rootfsPath string) error
 type createOptions struct {
 	deferMarkRunning    bool
 	networkAssignReason NetworkAssignReason
+	// endAt, when set, is the sandbox's end time instead of the timeout
+	// counted from the create.
+	endAt time.Time
 }
 
 type CreateOption func(*createOptions)
@@ -1058,6 +1084,14 @@ func WithDeferredMarkRunning() CreateOption {
 
 func withNetworkAssignReason(reason NetworkAssignReason) CreateOption {
 	return func(o *createOptions) { o.networkAssignReason = reason }
+}
+
+// withEndAt ends the sandbox at the caller's absolute end time instead of
+// the timeout counted from the create, so the network-assign hook publishes
+// the end the guest will have, and queue delay before the create cannot
+// extend it.
+func withEndAt(endAt time.Time) CreateOption {
+	return func(o *createOptions) { o.endAt = endAt }
 }
 
 type rootfsLifecycle interface {
@@ -1227,6 +1261,10 @@ func (f *Factory) CreateSandbox(
 		memory: uffd.NewNoopMemory(memfileSize, fcPageSize),
 	}
 
+	endAt := createOpts.endAt
+	if endAt.IsZero() {
+		endAt = time.Now().Add(sandboxTimeout)
+	}
 	metadata := &Metadata{
 		internalConfig: internalConfig{
 			EnvdInitRequestTimeout: f.GetEnvdInitRequestTimeout(ctx),
@@ -1236,7 +1274,7 @@ func (f *Factory) CreateSandbox(
 		Runtime: runtime,
 
 		startedAt: time.Now(),
-		endAt:     time.Now().Add(sandboxTimeout),
+		endAt:     endAt,
 	}
 
 	sbx := &Sandbox{

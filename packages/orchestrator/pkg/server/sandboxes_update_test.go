@@ -451,6 +451,8 @@ func TestMapSandboxUpdateError(t *testing.T) {
 	assert.Equal(t, codes.NotFound, status.Code(closedErr))
 	assert.Equal(t, "sandbox is closing or closed", status.Convert(closedErr).Message())
 
+	assert.Equal(t, codes.FailedPrecondition, status.Code(mapSandboxUpdateError(sandbox.ErrEgressProxyUnsupported)), "a placed network refuses an egress proxy")
+
 	unrelatedPrecondition := status.Error(codes.FailedPrecondition, "callback precondition")
 	assert.Same(t, unrelatedPrecondition, mapSandboxUpdateError(unrelatedPrecondition))
 

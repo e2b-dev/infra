@@ -46,6 +46,12 @@ var ErrEvictionNotNeeded = errors.New("sandbox eviction not needed")
 // the state changed, but not to the one they waited for.
 var ErrTransitionRestored = errors.New("pause refused and sandbox restored to running")
 
+// ErrSkipRestore completes a transition without automatically restoring Running.
+// The caller owns the restore attempt and reports any failure separately.
+// Waiters are released to retry their operation, even if the record is still
+// Snapshotting. Completion does not assert that the sandbox is Running.
+var ErrSkipRestore = errors.New("complete transition without restoring the sandbox")
+
 // ErrDraining is this replica's refusal to start work that would outlive its
 // shutdown; the sandbox keeps running and another replica can take it.
 var ErrDraining = errors.New("api is draining")

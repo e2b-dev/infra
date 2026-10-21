@@ -1,16 +1,23 @@
 package orchestrator
 
 import (
+	"context"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
+	"github.com/e2b-dev/infra/packages/db/pkg/types"
+	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
 )
 
@@ -55,6 +62,30 @@ func tlsProxy() *sandbox_network.EgressProxyConfig {
 		Address: "proxy.example.com:1080",
 		TLS:     &sandbox_network.EgressProxyTLSConfig{Enabled: true},
 	}
+}
+
+func TestUpdateSandboxNetworkConfig_PlacedNetworkRefusesProxyBeforeStore(t *testing.T) {
+	t.Parallel()
+	o := newCreateSandboxTestOrchestrator(t, nodemanager.WithOrchestratorVersion(buildWithEgressProxyTLS))
+	sbx := addRunningSandbox(t, o)
+	_, err := o.sandboxStore.Update(t.Context(), sbx.TeamID, sbx.SandboxID, func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
+		sbx.NetworkPlacement = &orchestratorgrpc.SandboxNetworkPlacement{NetworkMode: "egress-router"}
+		sbx.Network = &types.SandboxNetworkConfig{Egress: &types.SandboxNetworkEgressConfig{AllowedAddresses: []string{"example.com"}}}
+
+		return sbx, nil
+	})
+	require.NoError(t, err)
+
+	apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, tlsProxy())
+	require.NotNil(t, apiErr)
+	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
+	stored, err := o.sandboxStore.Get(t.Context(), sbx.TeamID, sbx.SandboxID)
+	require.NoError(t, err)
+	assert.Equal(t, &types.SandboxNetworkEgressConfig{AllowedAddresses: []string{"example.com"}}, stored.Network.Egress,
+		"a rejected proxy must not replace the API's committed configuration")
+
+	require.Nil(t, o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil),
+		"removing the proxy is still accepted on a routed execution")
 }
 
 // A live network update never goes through placement, so the node the sandbox
@@ -143,4 +174,203 @@ func TestUpdateSandboxNetworkConfig_EgressProxyTLSGate(t *testing.T) {
 		require.NotNil(t, apiErr)
 		assert.Equal(t, http.StatusNotFound, apiErr.Code)
 	})
+}
+
+// A checkpoint records the network of the execution it left running, as
+// the node reports it, in the write that puts the record back to Running,
+// so the proxy check follows the VM that runs. A sandbox the Router served,
+// resumed in a new VM on the worker's network, takes a proxy afterwards.
+// One placed on the Router again still refuses a proxy before anything is
+// stored, and still takes its removal. A node that predates the report and
+// a placement of another execution leave the recorded placement, and a
+// refused checkpoint records nothing.
+func TestCheckpointRecordsTheRunningNetwork(t *testing.T) {
+	t.Parallel()
+
+	proxy := &sandbox_network.EgressProxyConfig{Address: "proxy.example.com:1080"}
+	for name, c := range checkpointCallers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			f, client := checkpointFixture(t, func(context.Context) error { return nil })
+			placed := routedPlacement(f.sbx.ExecutionID)
+			setPlacement(t, f, placed)
+			checkpoint := func(response *orchestratorgrpc.SandboxCheckpointResponse) {
+				t.Helper()
+				client.response = response
+				require.NoError(t, c.call(t.Context(), f.o, f.sbx.TeamID, f.sbx.SandboxID))
+			}
+
+			checkpoint(&orchestratorgrpc.SandboxCheckpointResponse{})
+			assert.True(t, proto.Equal(placed, runningPlacement(t, f)), "a node that predates the report leaves the placement")
+			checkpoint(reportedNetwork(routedPlacement(uuid.NewString())))
+			assert.True(t, proto.Equal(placed, runningPlacement(t, f)), "a placement of another execution is refused")
+
+			checkpoint(reportedNetwork(nil))
+			require.Nil(t, runningPlacement(t, f), "the replacement runs on the worker's network")
+			require.Nil(t, f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil, proxy),
+				"the replacement takes a proxy")
+
+			setPlacement(t, f, nil)
+			checkpoint(reportedNetwork(placed))
+			assert.True(t, proto.Equal(placed, runningPlacement(t, f)), "a replacement placed on the Router again is recorded")
+			apiErr := f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, []string{"example.com"}, nil, nil, nil, proxy)
+			require.NotNil(t, apiErr)
+			assert.Equal(t, http.StatusBadRequest, apiErr.Code, "and refuses a proxy before anything is stored")
+			stored, err := f.o.sandboxStore.Get(t.Context(), f.sbx.TeamID, f.sbx.SandboxID)
+			require.NoError(t, err)
+			assert.Equal(t, proxy.Address, stored.Network.Egress.EgressProxyAddress, "the stored configuration is the earlier one")
+			require.Nil(t, f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil, nil), "and takes the proxy's removal")
+
+			client.checkpoint = func(context.Context) error {
+				return status.Error(codes.FailedPrecondition, "envd too old")
+			}
+			client.response = reportedNetwork(nil)
+			require.Error(t, c.call(t.Context(), f.o, f.sbx.TeamID, f.sbx.SandboxID))
+			assert.True(t, proto.Equal(placed, runningPlacement(t, f)), "a refused checkpoint records nothing")
+		})
+	}
+}
+
+// A completed checkpoint whose record cannot be written back leaves it
+// Snapshotting with its old placement, instead of Running on a network its
+// VM left, and says so: a proxy update is refused as a state change, not
+// against the stale placement, and the sandbox is not killed. A successor
+// that replaces the record just before the write keeps its record as it
+// wrote it, and the completion changes nothing of it.
+func TestCheckpointNeverServesAStalePlacement(t *testing.T) {
+	t.Parallel()
+
+	for name, c := range checkpointCallers {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			hook := &checkpointRestoreHook{}
+			f, client := checkpointFixture(t, func(context.Context) error { return nil }, hook)
+			placed := routedPlacement(f.sbx.ExecutionID)
+			setPlacement(t, f, placed)
+			client.response = reportedNetwork(nil)
+
+			hook.fail = true
+			hook.armed.Store(true)
+			err := c.call(t.Context(), f.o, f.sbx.TeamID, f.sbx.SandboxID)
+			require.ErrorContains(t, err, "the record store is unavailable")
+			stored, err := f.o.sandboxStore.Get(t.Context(), f.sbx.TeamID, f.sbx.SandboxID)
+			require.NoError(t, err)
+			assert.Equal(t, sandbox.StateSnapshotting, stored.State)
+			assert.True(t, proto.Equal(placed, stored.NetworkPlacement))
+			assert.Zero(t, client.deletes.Load(), "the healthy VM is not killed")
+			apiErr := f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil,
+				&sandbox_network.EgressProxyConfig{Address: "proxy.example.com:1080"})
+			require.NotNil(t, apiErr)
+			assert.Equal(t, http.StatusConflict, apiErr.Code)
+			require.NoError(t, f.o.sandboxStore.WaitForStateChange(t.Context(), f.sbx.TeamID, f.sbx.SandboxID), "the transition ended")
+
+			// The record goes back to Running for the next case, and a
+			// successor replaces it just before the checkpoint's write.
+			_, err = f.o.sandboxStore.Update(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
+				sbx.State = sandbox.StateRunning
+
+				return sbx, nil
+			})
+			require.NoError(t, err)
+			successor := successorOf(f.sbx)
+			successor.NetworkPlacement = routedPlacement(successor.ExecutionID)
+			var written sandbox.Sandbox
+			hook.fail = false
+			hook.before = func(ctx context.Context) error {
+				if err := f.o.sandboxStore.Add(ctx, successor, nil); err != nil {
+					return err
+				}
+				var err error
+				written, err = f.o.sandboxStore.Get(ctx, f.sbx.TeamID, f.sbx.SandboxID)
+
+				return err
+			}
+			hook.armed.Store(true)
+			require.NoError(t, c.call(t.Context(), f.o, f.sbx.TeamID, f.sbx.SandboxID))
+			require.NoError(t, f.o.sandboxStore.WaitForStateChange(t.Context(), f.sbx.TeamID, f.sbx.SandboxID))
+			after, err := f.o.sandboxStore.Get(t.Context(), f.sbx.TeamID, f.sbx.SandboxID)
+			require.NoError(t, err)
+			assert.Equal(t, successor.ExecutionID, after.ExecutionID)
+			assert.Equal(t, written, after, "the successor's record is as it wrote it")
+		})
+	}
+}
+
+func TestCheckpointRestoreConflictAndStateChange(t *testing.T) {
+	t.Parallel()
+
+	for caller, c := range checkpointCallers {
+		for _, state := range []sandbox.State{sandbox.StateSnapshotting, sandbox.StateKilling} {
+			t.Run(caller+"/"+string(state), func(t *testing.T) {
+				t.Parallel()
+
+				hook := &checkpointRestoreHook{}
+				f, client := checkpointFixture(t, func(context.Context) error { return nil }, hook)
+				setPlacement(t, f, routedPlacement(f.sbx.ExecutionID))
+				client.response = reportedNetwork(nil)
+				var written sandbox.Sandbox
+				rewrites := 0
+				hook.before = func(ctx context.Context) error {
+					var err error
+					written, err = f.o.sandboxStore.Get(ctx, f.sbx.TeamID, f.sbx.SandboxID)
+					if err != nil {
+						return err
+					}
+					rewrites++
+					written.State = state
+					written.Metadata = map[string]string{"rewrite": strconv.Itoa(rewrites)}
+					// Keep rewriting Snapshotting under both compares. Killing
+					// models another operation taking over before restoration.
+					hook.armed.Store(state == sandbox.StateSnapshotting)
+
+					return f.o.sandboxStore.Add(ctx, written, nil)
+				}
+				hook.armed.Store(true)
+
+				err := c.call(t.Context(), f.o, f.sbx.TeamID, f.sbx.SandboxID)
+				if state == sandbox.StateSnapshotting {
+					require.ErrorIs(t, err, sandbox.ErrRestoreConflict, "a failed restore must not report checkpoint success")
+					assert.GreaterOrEqual(t, rewrites, 2, "both compare attempts failed")
+				} else {
+					require.NoError(t, err, "a completed checkpoint yields to the operation that took over")
+				}
+				stored, err := f.o.sandboxStore.Get(t.Context(), f.sbx.TeamID, f.sbx.SandboxID)
+				require.NoError(t, err)
+				assert.Equal(t, written, stored, "neither restoration nor completion overwrites the record")
+				assert.Zero(t, client.deletes.Load(), "restoration never kills the VM")
+				require.NoError(t, f.o.sandboxStore.WaitForStateChange(t.Context(), f.sbx.TeamID, f.sbx.SandboxID))
+			})
+		}
+	}
+}
+
+func routedPlacement(execution string) *orchestratorgrpc.SandboxNetworkPlacement {
+	return &orchestratorgrpc.SandboxNetworkPlacement{ExecutionId: execution, NetworkMode: "egress-router", RouterId: "router"}
+}
+
+func reportedNetwork(placement *orchestratorgrpc.SandboxNetworkPlacement) *orchestratorgrpc.SandboxCheckpointResponse {
+	return &orchestratorgrpc.SandboxCheckpointResponse{Network: &orchestratorgrpc.SandboxCheckpointNetwork{Placement: placement}}
+}
+
+func setPlacement(t *testing.T, f refusalFixture, placement *orchestratorgrpc.SandboxNetworkPlacement) {
+	t.Helper()
+	_, err := f.o.sandboxStore.Update(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, func(sbx sandbox.Sandbox) (sandbox.Sandbox, error) {
+		sbx.NetworkPlacement = placement
+
+		return sbx, nil
+	})
+	require.NoError(t, err)
+}
+
+// runningPlacement returns the placement of the fixture's record, which must
+// be Running.
+func runningPlacement(t *testing.T, f refusalFixture) *orchestratorgrpc.SandboxNetworkPlacement {
+	t.Helper()
+	stored, err := f.o.sandboxStore.Get(t.Context(), f.sbx.TeamID, f.sbx.SandboxID)
+	require.NoError(t, err)
+	require.Equal(t, sandbox.StateRunning, stored.State)
+
+	return stored.NetworkPlacement
 }

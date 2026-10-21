@@ -262,6 +262,20 @@ message SandboxCheckpointRequest {
 
 message SandboxCheckpointResponse {
   SchedulingMetadata scheduling_metadata = 1;
+
+  // The network of the execution the checkpoint left running. A checkpoint
+  // that resumes the sandbox in a new VM places that VM again, so its
+  // placement can differ from the one Create returned. Absent from
+  // orchestrators that predate the field: callers then keep the placement
+  // they recorded.
+  optional SandboxCheckpointNetwork network = 2;
+}
+
+// The network placement of a checkpoint's running execution.
+message SandboxCheckpointNetwork {
+  // Absent when the execution uses the worker's own network, as an absent
+  // network_placement in SandboxCreateResponse means.
+  optional SandboxNetworkPlacement placement = 1;
 }
 
 message RunningSandbox {

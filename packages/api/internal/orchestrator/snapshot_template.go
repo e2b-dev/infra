@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -104,7 +105,7 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	// kills the sandbox itself; RemoveSandbox is still needed to clean up
 	// API-side state (store, routing, analytics).
 	client, childCtx := node.GetSandboxClient(ctx, sbx.TeamID.String())
-	_, err = client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
+	checkpointed, err := client.Sandbox.Checkpoint(childCtx, &orchestrator.SandboxCheckpointRequest{
 		SandboxId:      sbx.SandboxID,
 		BuildId:        upsertResult.BuildID.String(),
 		Metadata:       map[string]string{storageopts.ObjectMetadataTemplateID: snapshotTemplateEnvID},
@@ -168,10 +169,13 @@ func (o *Orchestrator) CreateSnapshotTemplate(ctx context.Context, teamID uuid.U
 	}
 
 	if err := o.finishSnapshotBuildWithKind(ctx, upsertResult.BuildID, sandboxID, currentKind, opts.FilesystemOnly, types.BuildStatusUploaded); err != nil {
-		return SnapshotTemplateResult{}, fmt.Errorf("error updating build status: %w", err)
+		return SnapshotTemplateResult{}, errors.Join(fmt.Errorf("error updating build status: %w", err), o.restoreCheckpointed(ctx, transition, checkpointed.GetNetwork(), finish))
 	}
 
 	o.snapshotCache.Invalidate(context.WithoutCancel(ctx), sandboxID)
+	if err := o.restoreCheckpointed(ctx, transition, checkpointed.GetNetwork(), finish); err != nil {
+		return SnapshotTemplateResult{}, err
+	}
 
 	telemetry.ReportEvent(ctx, "Snapshot template completed")
 

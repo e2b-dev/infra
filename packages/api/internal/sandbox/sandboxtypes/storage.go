@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 )
 
 const (
@@ -27,10 +29,16 @@ type Storage interface {
 }
 
 // StateTransitions is the removal state machine: start a transition, undo one
-// the node refused, or wait one out.
+// the node refused, end a checkpoint with the network it left running, or
+// wait one out.
 type StateTransitions interface {
 	StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID string, opts RemoveOpts) (StateTransition, bool, func(context.Context, error), error)
 	RestoreRunning(ctx context.Context, transition StateTransition, retryAfter time.Duration) (Sandbox, error)
+	// RestoreCheckpointed puts the record of a checkpoint's transition back
+	// to Running with placement, nil for the worker's own network, as
+	// RestoreRunning does without a retry window. It refuses a record that
+	// is another execution, left the transition's state or changed under it.
+	RestoreCheckpointed(ctx context.Context, transition StateTransition, placement *orchestrator.SandboxNetworkPlacement) (Sandbox, error)
 	WaitForStateChange(ctx context.Context, teamID uuid.UUID, sandboxID string) error
 }
 

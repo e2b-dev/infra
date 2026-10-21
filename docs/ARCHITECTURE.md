@@ -848,8 +848,11 @@ placement yet.
 
 The API keeps the placement returned by the winning orchestrator create on its own sandbox record
 in Redis (`networkPlacement`), and callers that join the same start get the same placement. A new
-execution carries only its own create's placement. Nothing routes on it yet: client-proxy and the
-API still send traffic to the worker.
+execution carries only its own create's placement. On a completed checkpoint response, the API
+records the resulting VM's placement together with the return to Running. If the caller abandons
+the checkpoint, the node can finish without returning its placement to the API, which can retain
+the old placement. Recovery of that outcome is not implemented. Nothing routes on this placement
+yet: client-proxy and the API still send traffic to the worker.
 
 ### Volume content
 
