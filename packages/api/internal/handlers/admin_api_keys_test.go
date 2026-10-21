@@ -301,6 +301,8 @@ type fakeAPIKeyAuthService struct {
 	err  error
 
 	invalidatedAPIKeyHashes *[]string
+	invalidatedTeamIDs      *[]uuid.UUID
+	invalidateTeamErr       error
 }
 
 func (f fakeAPIKeyAuthService) ValidateAPIKey(context.Context, *gin.Context, string) (*authtypes.Team, *sharedauth.APIError) {
@@ -331,8 +333,12 @@ func (f fakeAPIKeyAuthService) InvalidateAPIKeyCache(_ context.Context, hashedKe
 	}
 }
 
-func (f fakeAPIKeyAuthService) InvalidateTeamCache(context.Context, uuid.UUID) error {
-	return nil
+func (f fakeAPIKeyAuthService) InvalidateTeamCache(_ context.Context, teamID uuid.UUID) error {
+	if f.invalidatedTeamIDs != nil {
+		*f.invalidatedTeamIDs = append(*f.invalidatedTeamIDs, teamID)
+	}
+
+	return f.invalidateTeamErr
 }
 
 func (f fakeAPIKeyAuthService) Close(context.Context) error {

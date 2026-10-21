@@ -1449,6 +1449,185 @@ components:
           type: integer
           description: Number of builds that failed to cancel
 
+    AdminTeamListRequest:
+      type: object
+      properties:
+        projectIds:
+          type: array
+          description: Only list these teams. An empty list matches no team; omit it to list every team.
+          items:
+            type: string
+            format: uuid
+        search:
+          type: string
+          description: A team ID, as a UUID or public project ID, matches that team exactly. Any other text matches a substring of the email, name or slug, ignoring case.
+        hideBanned:
+          type: boolean
+          default: false
+          description: Leave out banned teams
+        hideBlocked:
+          type: boolean
+          default: false
+          description: Leave out blocked teams
+        createdAfter:
+          type: string
+          format: date-time
+          description: Only list teams created at or after this time
+        createdBefore:
+          type: string
+          format: date-time
+          description: Only list teams created at or before this time
+        sortBy:
+          $ref: "#/components/schemas/AdminTeamListSortField"
+        sortOrder:
+          allOf:
+            - $ref: "#/components/schemas/OrderDirection"
+          description: Ignored when `sortBy` is omitted.
+        limit:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 100
+          default: 50
+          description: Maximum number of teams to return
+        offset:
+          type: integer
+          format: int32
+          minimum: 0
+          default: 0
+          description: Number of matching teams to skip
+
+    AdminTeamListSortField:
+      type: string
+      description: |
+        Column to order by, with newer teams first among equal values. Omit it
+        to list enterprise tiers first, then pro tiers, then the rest, each
+        newest first.
+      enum:
+        - name
+        - email
+        - createdAt
+        - runningSandboxes
+      x-enum-varnames:
+        - AdminTeamListSortFieldName
+        - AdminTeamListSortFieldEmail
+        - AdminTeamListSortFieldCreatedAt
+        - AdminTeamListSortFieldRunningSandboxes
+
+    AdminTeamList:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminTeamListItem"
+        total:
+          type: integer
+          format: int64
+          description: Number of teams matching the filters, ignoring limit and offset
+
+    AdminTeamListItem:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - tier
+        - isBanned
+        - isBlocked
+        - createdAt
+        - memberCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        tier:
+          type: string
+        isBanned:
+          type: boolean
+        isBlocked:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        memberCount:
+          type: integer
+          format: int64
+          description: Number of users in the team
+        runningSandboxCount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Running sandboxes from the same cached snapshot as `GET /admin/sandboxes/running-counts`. Present only when the list is sorted by `runningSandboxes`.
+
+    AdminTeam:
+      type: object
+      required:
+        - id
+        - email
+        - name
+        - slug
+        - tier
+        - createdAt
+        - isBlocked
+        - isBanned
+        - sandboxSchedulingLabels
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        name:
+          type: string
+        slug:
+          type: string
+        tier:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        isBlocked:
+          type: boolean
+        isBanned:
+          type: boolean
+        blockedReason:
+          type: string
+          nullable: true
+        sandboxSchedulingLabels:
+          type: array
+          items:
+            type: string
+        clusterId:
+          type: string
+          format: uuid
+          nullable: true
+        clusterName:
+          type: string
+          nullable: true
+
+    AdminTeamSchedulingLabels:
+      type: object
+      required:
+        - labels
+      properties:
+        labels:
+          type: array
+          maxItems: 20
+          description: The team's full set of labels. A request's labels replace the current ones.
+          items:
+            type: string
+            minLength: 1
+            maxLength: 63
+            pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+
     VolumeToken:
       type: object
       properties:
@@ -4921,6 +5100,116 @@ paths:
       responses:
         "204":
           description: Team API key deleted successfully
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/query:
+    post:
+      summary: List teams as admin
+      description: |
+        Lists teams matching the filters in the request body, with each team's
+        member count, and its running sandbox count when sorted by running
+        sandboxes. A read despite the POST: the body carries a project ID list
+        too long for a query string.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamListRequest"
+      responses:
+        "200":
+          description: The page of matching teams and the number of all matching teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamList"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}:
+    get:
+      summary: Get a team as admin
+      description: Returns a team with its sandbox scheduling labels and cluster. It also answers for a banned or blocked team.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      responses:
+        "200":
+          description: The team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeam"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /admin/teams/{teamID}/scheduling-labels:
+    put:
+      summary: Replace a team's sandbox scheduling labels
+      description: |
+        Replaces the labels that place the team's new sandboxes on matching
+        nodes. Labels are deduplicated, keeping the first occurrence of each.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamSchedulingLabels"
+      responses:
+        "200":
+          description: The labels as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamSchedulingLabels"
         "400":
           $ref: "#/components/responses/400"
         "401":

@@ -313,3 +313,46 @@ func TestTemplateBuildMinimumFreeDiskContract(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminTeamSchedulingLabelsRejectsMalformedLabels(t *testing.T) {
+	t.Parallel()
+
+	tooMany := make([]any, 21)
+	for i := range tooMany {
+		tooMany[i] = "label"
+	}
+
+	tests := map[string]struct {
+		labels []any
+		valid  bool
+	}{
+		"lowercase labels with inner hyphens are accepted": {labels: []any{"high-memory", "gpu2"}, valid: true},
+		"no labels are accepted":                           {labels: []any{}, valid: true},
+		"twenty labels are accepted":                       {labels: tooMany[:20], valid: true},
+		"twenty one labels are refused":                    {labels: tooMany},
+		"an uppercase label is refused":                    {labels: []any{"GPU"}},
+		"a label starting with a hyphen is refused":        {labels: []any{"-gpu"}},
+		"a label ending with a hyphen is refused":          {labels: []any{"gpu-"}},
+		"an empty label is refused":                        {labels: []any{""}},
+		"a label longer than 63 characters is refused":     {labels: []any{strings.Repeat("a", 64)}},
+	}
+
+	spec, err := GetSpec()
+	require.NoError(t, err)
+	schema := spec.Components.Schemas["AdminTeamSchedulingLabels"].Value
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := schema.VisitJSON(map[string]any{"labels": tc.labels})
+			if tc.valid {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.Error(t, err)
+		})
+	}
+}
