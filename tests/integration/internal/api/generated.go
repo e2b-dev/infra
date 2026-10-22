@@ -17391,6 +17391,16 @@ type PostV2SandboxesResponse400Headers struct {
 	ShouldRetry *bool
 }
 
+// PostV2SandboxesResponse403Headers the declared response headers of an HTTP 403 response for PostV2Sandboxes
+type PostV2SandboxesResponse403Headers struct {
+	ShouldRetry *bool
+}
+
+// PostV2SandboxesResponse404Headers the declared response headers of an HTTP 404 response for PostV2Sandboxes
+type PostV2SandboxesResponse404Headers struct {
+	ShouldRetry *bool
+}
+
 // PostV2SandboxesResponse409Headers the declared response headers of an HTTP 409 response for PostV2Sandboxes
 type PostV2SandboxesResponse409Headers struct {
 	ShouldRetry *bool
@@ -17431,6 +17441,10 @@ type PostV2SandboxesResponse struct {
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *Error
 	// JSON422 the response for an HTTP 422 `application/json` response
@@ -17445,6 +17459,10 @@ type PostV2SandboxesResponse struct {
 	JSON504 *Error
 	// Headers400 the parsed response headers for an HTTP 400 response
 	Headers400 *PostV2SandboxesResponse400Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *PostV2SandboxesResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *PostV2SandboxesResponse404Headers
 	// Headers409 the parsed response headers for an HTTP 409 response
 	Headers409 *PostV2SandboxesResponse409Headers
 	// Headers422 the parsed response headers for an HTTP 422 response
@@ -17472,6 +17490,16 @@ func (r PostV2SandboxesResponse) GetJSON400() *Error {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostV2SandboxesResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PostV2SandboxesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostV2SandboxesResponse) GetJSON404() *Error {
+	return r.JSON404
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
@@ -25397,6 +25425,20 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -25452,6 +25494,26 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 			headers.ShouldRetry = &value
 		}
 		response.Headers400 = &headers
+	case rsp.StatusCode == 403:
+		var headers PostV2SandboxesResponse403Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers PostV2SandboxesResponse404Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers404 = &headers
 	case rsp.StatusCode == 409:
 		var headers PostV2SandboxesResponse409Headers
 		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {

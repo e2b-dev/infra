@@ -17396,6 +17396,16 @@ type PostV2SandboxesResponse400Headers struct {
 	ShouldRetry *bool
 }
 
+// PostV2SandboxesResponse403Headers the declared response headers of an HTTP 403 response for PostV2Sandboxes
+type PostV2SandboxesResponse403Headers struct {
+	ShouldRetry *bool
+}
+
+// PostV2SandboxesResponse404Headers the declared response headers of an HTTP 404 response for PostV2Sandboxes
+type PostV2SandboxesResponse404Headers struct {
+	ShouldRetry *bool
+}
+
 // PostV2SandboxesResponse409Headers the declared response headers of an HTTP 409 response for PostV2Sandboxes
 type PostV2SandboxesResponse409Headers struct {
 	ShouldRetry *bool
@@ -17436,6 +17446,10 @@ type PostV2SandboxesResponse struct {
 	JSON400 *Error
 	// JSON401 the response for an HTTP 401 `application/json` response
 	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *Error
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *Error
 	// JSON409 the response for an HTTP 409 `application/json` response
 	JSON409 *Error
 	// JSON422 the response for an HTTP 422 `application/json` response
@@ -17450,6 +17464,10 @@ type PostV2SandboxesResponse struct {
 	JSON504 *Error
 	// Headers400 the parsed response headers for an HTTP 400 response
 	Headers400 *PostV2SandboxesResponse400Headers
+	// Headers403 the parsed response headers for an HTTP 403 response
+	Headers403 *PostV2SandboxesResponse403Headers
+	// Headers404 the parsed response headers for an HTTP 404 response
+	Headers404 *PostV2SandboxesResponse404Headers
 	// Headers409 the parsed response headers for an HTTP 409 response
 	Headers409 *PostV2SandboxesResponse409Headers
 	// Headers422 the parsed response headers for an HTTP 422 response
@@ -17477,6 +17495,16 @@ func (r PostV2SandboxesResponse) GetJSON400() *Error {
 // GetJSON401 returns the response for an HTTP 401 `application/json` response
 func (r PostV2SandboxesResponse) GetJSON401() *N401 {
 	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r PostV2SandboxesResponse) GetJSON403() *Error {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PostV2SandboxesResponse) GetJSON404() *Error {
+	return r.JSON404
 }
 
 // GetJSON409 returns the response for an HTTP 409 `application/json` response
@@ -25402,6 +25430,20 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -25457,6 +25499,26 @@ func ParsePostV2SandboxesResponse(rsp *http.Response) (*PostV2SandboxesResponse,
 			headers.ShouldRetry = &value
 		}
 		response.Headers400 = &headers
+	case rsp.StatusCode == 403:
+		var headers PostV2SandboxesResponse403Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers403 = &headers
+	case rsp.StatusCode == 404:
+		var headers PostV2SandboxesResponse404Headers
+		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
+			var value bool
+			if err := runtime.BindStyledParameterWithOptions("simple", "Should-Retry", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.ShouldRetry = &value
+		}
+		response.Headers404 = &headers
 	case rsp.StatusCode == 409:
 		var headers PostV2SandboxesResponse409Headers
 		if values := rsp.Header.Values("Should-Retry"); len(values) > 0 {
@@ -29663,23 +29725,24 @@ var swaggerSpec = []string{
 	"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",
-	"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",
+	"X4R7RZXba1lOa52nlzTkE6pfuAfoF7gBuLZYdWfatrbpt2+Xe1Pe7DbfSHXC85yJa93k05tf+HtpyFiW",
+	"mC7u+hb+680vHLB8iXWEQmJBkZ83WP3Dngz9EV5uNg2du5HC9ePHAqujkGBigHdMXlXHWLgKU9wuhAu0",
+	"R7CLua2HE9qdc5HLc/Jw9ZXw6IV9tvipz6mO2Xhuefd1nuH29u2c4SXAi6BNAjRnNC+4sAbhOdXaZkHj",
+	"2l+n5GG/W/M7wPs2aEZKMqNi4be19AbC5WzYF29D1EWxba6YZsIMl/xnfBFsI8k55aBSGUvFKjkzroU9",
+	"GPqihoPnT7Zql32nB/fVwPvsNu66A6bAkogYdo2o8Wzrye2snWeMlIKeUV6AOH6tW3h6G6IGFnKMakhf",
+	"z/J/6Jr5Tg5sf/A2NLy10vmZFIJlHaXzvWnIT5QzQ3mhR2RvvPy2nVPQ4eIzAWvoY0iILmeQh/Lw8C00",
+	"wUST9r2Bv0aPE3joYRP3ssVHkpxxY1g4cpJHasgnW1ueMa18Tody97tuv3ev3L1bWe3BcaOVqfo/MGhh",
+	"bY/KK7WG3+up4/Dpbua7uRPVr570afvk36HSrKWnK3PIlaHofoK2GPQUG7pU3HnEg+5jyVcGFK6KKNxa",
+	"d83BMNUHsi1LvpZY9CVQ2k3AagjGO7o866USIwK90Vvj3D53bAOqGGEXoFFth+21xbbvUg2FvoXmWM1H",
+	"lydWbWcfhkQKXLkrw038hZJelbauYq0axF9uN8WnI2cA8u/bl/O9qDGP+8Cu27gYDiKQ97gV0qmk108c",
+	"/fv2j5E6+iezMF93kuprTL51X8bhzqbQXuYLvfJon223+Hzi67pK+bV2gq+IdfzcKb5uZBHt1/J9DrE7",
+	"m0OsgwC7aa2RZ6ZdtXVg/dumXamHk6RXSy5zW2llbphkcTcIkb627u10Uj5cMNpnnIfdPQHdjlhrsbme",
+	"tWAVFT2pi7crnKDA4aP9pgJqeRLLuDeOru6C+f3JGgh7ratwC/B3jF9IG1FYDSZ2uVUd5jo+999bh/kj",
+	"G2Oiy+tJJ9nJopyxntWuiW+delOGTzf/kLJzrf2MKtDDt7mbe0Z/xZdKDTM8pvlfLuvmajl8GDrN5COk",
+	"uxGfO49pt+twZ2fdEXn0Ru+KfHdOd02Y3Ys7t8pyY2RtkEHMbje/2j/611NopwPbyFHC727YtV8Cfj09",
+	"iynU8M8XUqBN3LvXIN9W1YVu3Bt2JTYNXVuzmt4kdm19L7bpCwDfI+53K/rdxS1xV+DkZjGsVMXg+WBq",
+	"zFw/39ykcz5i2ycjOp8jTrn+X5cD2DTqNdyPlUUl+hErdcb/nvMNiE6Pf3N53cK/K8GxGptlihk9+Pb5",
+	"2/8/AA==",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
