@@ -18,7 +18,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 )
 
-func TestGetTeamsTeamIDStatusReportsABannedAndBlockedTeamToAnAdmin(t *testing.T) {
+func TestGetUnstableTeamsTeamIDStatusReportsABannedAndBlockedTeamToAnAdmin(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -28,7 +28,7 @@ func TestGetTeamsTeamIDStatusReportsABannedAndBlockedTeamToAnAdmin(t *testing.T)
 		teamID,
 	))
 
-	recorder := callTeamRead(t, &APIStore{authDB: db.AuthDB}, (*APIStore).GetTeamsTeamIDStatus, teamID.String(), nil)
+	recorder := callTeamRead(t, &APIStore{authDB: db.AuthDB}, (*APIStore).GetUnstableTeamsTeamIDStatus, teamID.String(), nil)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 
 	var body api.TeamStatusResponse
@@ -37,13 +37,13 @@ func TestGetTeamsTeamIDStatusReportsABannedAndBlockedTeamToAnAdmin(t *testing.T)
 	require.Equal(t, api.TeamStatusResponse{IsBanned: true, IsBlocked: true, BlockedReason: &reason}, body)
 }
 
-func TestGetTeamsTeamIDStatusReportsNoReasonForAnUnblockedTeam(t *testing.T) {
+func TestGetUnstableTeamsTeamIDStatusReportsNoReasonForAnUnblockedTeam(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
 	teamID := testutils.CreateTestTeam(t, db)
 
-	recorder := callTeamRead(t, &APIStore{authDB: db.AuthDB}, (*APIStore).GetTeamsTeamIDStatus, teamID.String(), &teamID)
+	recorder := callTeamRead(t, &APIStore{authDB: db.AuthDB}, (*APIStore).GetUnstableTeamsTeamIDStatus, teamID.String(), &teamID)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 	require.JSONEq(t, `{"isBanned":false,"isBlocked":false,"blockedReason":null}`, recorder.Body.String())
 }
@@ -71,8 +71,8 @@ func TestTeamStatusAndLimitsAnswerOnlyForTheTeamTheRequestMayRead(t *testing.T) 
 			t.Parallel()
 
 			for endpoint, handler := range map[string]func(*APIStore, *gin.Context, api.TeamID){
-				"status": (*APIStore).GetTeamsTeamIDStatus,
-				"limits": (*APIStore).GetTeamsTeamIDLimits,
+				"status": (*APIStore).GetUnstableTeamsTeamIDStatus,
+				"limits": (*APIStore).GetUnstableTeamsTeamIDLimits,
 			} {
 				t.Run(endpoint, func(t *testing.T) {
 					t.Parallel()
@@ -92,7 +92,7 @@ func callTeamRead(t *testing.T, store *APIStore, handler func(*APIStore, *gin.Co
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/teams/"+pathID, nil)
+	c.Request = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/unstable/teams/"+pathID, nil)
 	if authedTeamID != nil {
 		auth.SetTeamInfoForTest(t, c, &types.Team{Team: &authqueries.Team{ID: *authedTeamID}})
 	}

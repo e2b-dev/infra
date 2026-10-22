@@ -3,6 +3,7 @@ package middleware
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -40,8 +41,10 @@ func TestBlockedTeamStillReadsItsStatusAndLimits(t *testing.T) {
 	blocked := &types.Team{Team: &authqueries.Team{ID: uuid.New(), IsBlocked: true, BlockedReason: &reason}}
 
 	for name, route := range map[string]string{
-		"status": "/teams/:teamID/status",
-		"limits": "/teams/:teamID/limits",
+		"status":          "/teams/:teamID/status",
+		"limits":          "/teams/:teamID/limits",
+		"unstable status": "/unstable/teams/:teamID/status",
+		"unstable limits": "/unstable/teams/:teamID/limits",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
@@ -51,7 +54,7 @@ func TestBlockedTeamStillReadsItsStatusAndLimits(t *testing.T) {
 			r.GET(route, func(c *gin.Context) { c.Status(http.StatusOK) })
 
 			recorder := httptest.NewRecorder()
-			r.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/teams/"+blocked.TeamID()+"/"+name, nil))
+			r.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, strings.Replace(route, ":teamID", blocked.TeamID(), 1), nil))
 
 			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 		})

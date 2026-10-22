@@ -11,7 +11,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 )
 
-func TestGetTeamsTeamIDLimitsReturnsTheTeamsPushedLimits(t *testing.T) {
+func TestGetUnstableTeamsTeamIDLimitsReturnsTheTeamsPushedLimits(t *testing.T) {
 	t.Parallel()
 
 	db := testutils.SetupDatabase(t)
@@ -24,7 +24,7 @@ INSERT INTO public.project_limits (
 ) VALUES ($1, 24, 500, 22, 16, 16384, 20480, 30, 10240, 51200, 40, 50, 10)
 `, teamID))
 
-	recorder := callTeamRead(t, &APIStore{authDB: db.AuthDB}, (*APIStore).GetTeamsTeamIDLimits, teamID.String(), &teamID)
+	recorder := callTeamRead(t, &APIStore{authDB: db.AuthDB}, (*APIStore).GetUnstableTeamsTeamIDLimits, teamID.String(), &teamID)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
 
 	var body api.TeamLimitsResponse

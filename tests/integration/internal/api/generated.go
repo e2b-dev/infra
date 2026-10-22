@@ -2801,6 +2801,12 @@ type PostTemplatesTagsJSONRequestBody = AssignTemplateTagsRequest
 // Deprecated: this type has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 type PatchTemplatesTemplateIDJSONRequestBody = TemplateUpdateRequest
 
+// PostUnstableAdminTeamsQueryJSONRequestBody defines body for PostUnstableAdminTeamsQuery for application/json ContentType.
+type PostUnstableAdminTeamsQueryJSONRequestBody = AdminTeamListRequest
+
+// PutUnstableAdminTeamsTeamIDSchedulingLabelsJSONRequestBody defines body for PutUnstableAdminTeamsTeamIDSchedulingLabels for application/json ContentType.
+type PutUnstableAdminTeamsTeamIDSchedulingLabelsJSONRequestBody = AdminTeamSchedulingLabels
+
 // PostV2SandboxesJSONRequestBody defines body for PostV2Sandboxes for application/json ContentType.
 type PostV2SandboxesJSONRequestBody = NewSandboxV2
 
@@ -3801,6 +3807,71 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
 	GetTemplatesTemplateIDTagsTagAssignments(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostUnstableAdminTeamsQueryWithBody List teams as admin
+	//
+	// Lists teams matching the filters in the request body, with each team's
+	// member count, and its running sandbox count when sorted by running
+	// sandboxes. A read despite the POST: the body carries a project ID list
+	// too long for a query string.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+	PostUnstableAdminTeamsQueryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostUnstableAdminTeamsQuery List teams as admin
+	//
+	// Lists teams matching the filters in the request body, with each team's
+	// member count, and its running sandbox count when sorted by running
+	// sandboxes. A read despite the POST: the body carries a project ID list
+	// too long for a query string.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+	PostUnstableAdminTeamsQuery(ctx context.Context, body PostUnstableAdminTeamsQueryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUnstableAdminTeamsTeamID Team as admin
+	//
+	// Returns a team with its sandbox scheduling labels and cluster. It also answers for a banned or blocked team.
+	//
+	// Corresponds with GET /unstable/admin/teams/{teamID} (the `GetUnstableAdminTeamsTeamID` operationId).
+	GetUnstableAdminTeamsTeamID(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBody Replace a team's sandbox scheduling labels
+	//
+	// Replaces the labels that place the team's new sandboxes on matching
+	// nodes. Labels are deduplicated, keeping the first occurrence of each.
+	//
+	// Takes any type of body and a specified content type.
+	//
+	// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+	PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBody(ctx context.Context, teamID openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutUnstableAdminTeamsTeamIDSchedulingLabels Replace a team's sandbox scheduling labels
+	//
+	// Replaces the labels that place the team's new sandboxes on matching
+	// nodes. Labels are deduplicated, keeping the first occurrence of each.
+	//
+	// Takes a body of the `application/json` content type.
+	//
+	// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+	PutUnstableAdminTeamsTeamIDSchedulingLabels(ctx context.Context, teamID openapi_types.UUID, body PutUnstableAdminTeamsTeamIDSchedulingLabelsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUnstableTeamsTeamIDLimits Team limits
+	//
+	// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+	//
+	// Corresponds with GET /unstable/teams/{teamID}/limits (the `GetUnstableTeamsTeamIDLimits` operationId).
+	GetUnstableTeamsTeamIDLimits(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUnstableTeamsTeamIDStatus Team access status
+	//
+	// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+	//
+	// Corresponds with GET /unstable/teams/{teamID}/status (the `GetUnstableTeamsTeamIDStatus` operationId).
+	GetUnstableTeamsTeamIDStatus(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetUnstableTemplatesSearch Search templates
 	//
@@ -5681,6 +5752,141 @@ func (c *Client) GetTemplatesTemplateIDTagsGroups(ctx context.Context, templateI
 // Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
 func (c *Client) GetTemplatesTemplateIDTagsTagAssignments(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTemplatesTemplateIDTagsTagAssignmentsRequest(c.Server, templateID, tag, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostUnstableAdminTeamsQueryWithBody List teams as admin
+//
+// Lists teams matching the filters in the request body, with each team's
+// member count, and its running sandbox count when sorted by running
+// sandboxes. A read despite the POST: the body carries a project ID list
+// too long for a query string.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+func (c *Client) PostUnstableAdminTeamsQueryWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostUnstableAdminTeamsQueryRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PostUnstableAdminTeamsQuery List teams as admin
+//
+// Lists teams matching the filters in the request body, with each team's
+// member count, and its running sandbox count when sorted by running
+// sandboxes. A read despite the POST: the body carries a project ID list
+// too long for a query string.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+func (c *Client) PostUnstableAdminTeamsQuery(ctx context.Context, body PostUnstableAdminTeamsQueryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostUnstableAdminTeamsQueryRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetUnstableAdminTeamsTeamID Team as admin
+//
+// Returns a team with its sandbox scheduling labels and cluster. It also answers for a banned or blocked team.
+//
+// Corresponds with GET /unstable/admin/teams/{teamID} (the `GetUnstableAdminTeamsTeamID` operationId).
+func (c *Client) GetUnstableAdminTeamsTeamID(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUnstableAdminTeamsTeamIDRequest(c.Server, teamID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBody Replace a team's sandbox scheduling labels
+//
+// Replaces the labels that place the team's new sandboxes on matching
+// nodes. Labels are deduplicated, keeping the first occurrence of each.
+//
+// Takes any type of body and a specified content type.
+//
+// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+func (c *Client) PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBody(ctx context.Context, teamID openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutUnstableAdminTeamsTeamIDSchedulingLabelsRequestWithBody(c.Server, teamID, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// PutUnstableAdminTeamsTeamIDSchedulingLabels Replace a team's sandbox scheduling labels
+//
+// Replaces the labels that place the team's new sandboxes on matching
+// nodes. Labels are deduplicated, keeping the first occurrence of each.
+//
+// Takes a body of the `application/json` content type.
+//
+// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+func (c *Client) PutUnstableAdminTeamsTeamIDSchedulingLabels(ctx context.Context, teamID openapi_types.UUID, body PutUnstableAdminTeamsTeamIDSchedulingLabelsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutUnstableAdminTeamsTeamIDSchedulingLabelsRequest(c.Server, teamID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetUnstableTeamsTeamIDLimits Team limits
+//
+// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+//
+// Corresponds with GET /unstable/teams/{teamID}/limits (the `GetUnstableTeamsTeamIDLimits` operationId).
+func (c *Client) GetUnstableTeamsTeamIDLimits(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUnstableTeamsTeamIDLimitsRequest(c.Server, teamID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetUnstableTeamsTeamIDStatus Team access status
+//
+// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+//
+// Corresponds with GET /unstable/teams/{teamID}/status (the `GetUnstableTeamsTeamIDStatus` operationId).
+func (c *Client) GetUnstableTeamsTeamIDStatus(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUnstableTeamsTeamIDStatusRequest(c.Server, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -9793,6 +9999,195 @@ func NewGetTemplatesTemplateIDTagsTagAssignmentsRequest(server string, templateI
 	return req, nil
 }
 
+// NewPostUnstableAdminTeamsQueryRequest calls the generic PostUnstableAdminTeamsQuery builder with application/json body
+func NewPostUnstableAdminTeamsQueryRequest(server string, body PostUnstableAdminTeamsQueryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostUnstableAdminTeamsQueryRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostUnstableAdminTeamsQueryRequestWithBody constructs an http.Request for the PostUnstableAdminTeamsQuery method, with any body, and a specified content type
+func NewPostUnstableAdminTeamsQueryRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unstable/admin/teams/query")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetUnstableAdminTeamsTeamIDRequest constructs an http.Request for the GetUnstableAdminTeamsTeamID method
+func NewGetUnstableAdminTeamsTeamIDRequest(server string, teamID openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamID", teamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unstable/admin/teams/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutUnstableAdminTeamsTeamIDSchedulingLabelsRequest calls the generic PutUnstableAdminTeamsTeamIDSchedulingLabels builder with application/json body
+func NewPutUnstableAdminTeamsTeamIDSchedulingLabelsRequest(server string, teamID openapi_types.UUID, body PutUnstableAdminTeamsTeamIDSchedulingLabelsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutUnstableAdminTeamsTeamIDSchedulingLabelsRequestWithBody(server, teamID, "application/json", bodyReader)
+}
+
+// NewPutUnstableAdminTeamsTeamIDSchedulingLabelsRequestWithBody constructs an http.Request for the PutUnstableAdminTeamsTeamIDSchedulingLabels method, with any body, and a specified content type
+func NewPutUnstableAdminTeamsTeamIDSchedulingLabelsRequestWithBody(server string, teamID openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamID", teamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unstable/admin/teams/%s/scheduling-labels", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetUnstableTeamsTeamIDLimitsRequest constructs an http.Request for the GetUnstableTeamsTeamIDLimits method
+func NewGetUnstableTeamsTeamIDLimitsRequest(server string, teamID TeamID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamID", teamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unstable/teams/%s/limits", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetUnstableTeamsTeamIDStatusRequest constructs an http.Request for the GetUnstableTeamsTeamIDStatus method
+func NewGetUnstableTeamsTeamIDStatusRequest(server string, teamID TeamID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "teamID", teamID, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unstable/teams/%s/status", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetUnstableTemplatesSearchRequest constructs an http.Request for the GetUnstableTemplatesSearch method
 func NewGetUnstableTemplatesSearchRequest(server string, params *GetUnstableTemplatesSearchParams) (*http.Request, error) {
 	var err error
@@ -11507,6 +11902,77 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
 	GetTemplatesTemplateIDTagsTagAssignmentsWithResponse(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsTagAssignmentsResponse, error)
+
+	// PostUnstableAdminTeamsQueryWithBodyWithResponse List teams as admin
+	//
+	// Lists teams matching the filters in the request body, with each team's
+	// member count, and its running sandbox count when sorted by running
+	// sandboxes. A read despite the POST: the body carries a project ID list
+	// too long for a query string.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+	PostUnstableAdminTeamsQueryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostUnstableAdminTeamsQueryResponse, error)
+
+	// PostUnstableAdminTeamsQueryWithResponse List teams as admin
+	//
+	// Lists teams matching the filters in the request body, with each team's
+	// member count, and its running sandbox count when sorted by running
+	// sandboxes. A read despite the POST: the body carries a project ID list
+	// too long for a query string.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+	PostUnstableAdminTeamsQueryWithResponse(ctx context.Context, body PostUnstableAdminTeamsQueryJSONRequestBody, reqEditors ...RequestEditorFn) (*PostUnstableAdminTeamsQueryResponse, error)
+
+	// GetUnstableAdminTeamsTeamIDWithResponse Team as admin
+	//
+	// Returns a team with its sandbox scheduling labels and cluster. It also answers for a banned or blocked team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /unstable/admin/teams/{teamID} (the `GetUnstableAdminTeamsTeamID` operationId).
+	GetUnstableAdminTeamsTeamIDWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetUnstableAdminTeamsTeamIDResponse, error)
+
+	// PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBodyWithResponse Replace a team's sandbox scheduling labels
+	//
+	// Replaces the labels that place the team's new sandboxes on matching
+	// nodes. Labels are deduplicated, keeping the first occurrence of each.
+	//
+	// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+	PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBodyWithResponse(ctx context.Context, teamID openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse, error)
+
+	// PutUnstableAdminTeamsTeamIDSchedulingLabelsWithResponse Replace a team's sandbox scheduling labels
+	//
+	// Replaces the labels that place the team's new sandboxes on matching
+	// nodes. Labels are deduplicated, keeping the first occurrence of each.
+	//
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+	PutUnstableAdminTeamsTeamIDSchedulingLabelsWithResponse(ctx context.Context, teamID openapi_types.UUID, body PutUnstableAdminTeamsTeamIDSchedulingLabelsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse, error)
+
+	// GetUnstableTeamsTeamIDLimitsWithResponse Team limits
+	//
+	// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /unstable/teams/{teamID}/limits (the `GetUnstableTeamsTeamIDLimits` operationId).
+	GetUnstableTeamsTeamIDLimitsWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetUnstableTeamsTeamIDLimitsResponse, error)
+
+	// GetUnstableTeamsTeamIDStatusWithResponse Team access status
+	//
+	// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /unstable/teams/{teamID}/status (the `GetUnstableTeamsTeamIDStatus` operationId).
+	GetUnstableTeamsTeamIDStatusWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetUnstableTeamsTeamIDStatusResponse, error)
 
 	// GetUnstableTemplatesSearchWithResponse Search templates
 	//
@@ -17563,6 +18029,428 @@ func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) ContentType() string {
 	return ""
 }
 
+// PostUnstableAdminTeamsQueryResponse429Headers the declared response headers of an HTTP 429 response for PostUnstableAdminTeamsQuery
+type PostUnstableAdminTeamsQueryResponse429Headers struct {
+	RetryAfter *int
+}
+
+type PostUnstableAdminTeamsQueryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminTeamList
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *PostUnstableAdminTeamsQueryResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PostUnstableAdminTeamsQueryResponse) GetJSON200() *AdminTeamList {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PostUnstableAdminTeamsQueryResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PostUnstableAdminTeamsQueryResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r PostUnstableAdminTeamsQueryResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PostUnstableAdminTeamsQueryResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r PostUnstableAdminTeamsQueryResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PostUnstableAdminTeamsQueryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostUnstableAdminTeamsQueryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PostUnstableAdminTeamsQueryResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetUnstableAdminTeamsTeamIDResponse429Headers the declared response headers of an HTTP 429 response for GetUnstableAdminTeamsTeamID
+type GetUnstableAdminTeamsTeamIDResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetUnstableAdminTeamsTeamIDResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminTeam
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetUnstableAdminTeamsTeamIDResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUnstableAdminTeamsTeamIDResponse) GetJSON200() *AdminTeam {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetUnstableAdminTeamsTeamIDResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetUnstableAdminTeamsTeamIDResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetUnstableAdminTeamsTeamIDResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetUnstableAdminTeamsTeamIDResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetUnstableAdminTeamsTeamIDResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUnstableAdminTeamsTeamIDResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUnstableAdminTeamsTeamIDResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUnstableAdminTeamsTeamIDResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUnstableAdminTeamsTeamIDResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse429Headers the declared response headers of an HTTP 429 response for PutUnstableAdminTeamsTeamIDSchedulingLabels
+type PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse429Headers struct {
+	RetryAfter *int
+}
+
+type PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *AdminTeamSchedulingLabels
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) GetJSON200() *AdminTeamSchedulingLabels {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetUnstableTeamsTeamIDLimitsResponse429Headers the declared response headers of an HTTP 429 response for GetUnstableTeamsTeamIDLimits
+type GetUnstableTeamsTeamIDLimitsResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetUnstableTeamsTeamIDLimitsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TeamLimitsResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetUnstableTeamsTeamIDLimitsResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetJSON200() *TeamLimitsResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUnstableTeamsTeamIDLimitsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUnstableTeamsTeamIDLimitsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUnstableTeamsTeamIDLimitsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUnstableTeamsTeamIDLimitsResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+// GetUnstableTeamsTeamIDStatusResponse429Headers the declared response headers of an HTTP 429 response for GetUnstableTeamsTeamIDStatus
+type GetUnstableTeamsTeamIDStatusResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetUnstableTeamsTeamIDStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TeamStatusResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON403 the response for an HTTP 403 `application/json` response
+	JSON403 *N403
+	// JSON404 the response for an HTTP 404 `application/json` response
+	JSON404 *N404
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetUnstableTeamsTeamIDStatusResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUnstableTeamsTeamIDStatusResponse) GetJSON200() *TeamStatusResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetUnstableTeamsTeamIDStatusResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetUnstableTeamsTeamIDStatusResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON403 returns the response for an HTTP 403 `application/json` response
+func (r GetUnstableTeamsTeamIDStatusResponse) GetJSON403() *N403 {
+	return r.JSON403
+}
+
+// GetJSON404 returns the response for an HTTP 404 `application/json` response
+func (r GetUnstableTeamsTeamIDStatusResponse) GetJSON404() *N404 {
+	return r.JSON404
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetUnstableTeamsTeamIDStatusResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetUnstableTeamsTeamIDStatusResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUnstableTeamsTeamIDStatusResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUnstableTeamsTeamIDStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUnstableTeamsTeamIDStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUnstableTeamsTeamIDStatusResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetUnstableTemplatesSearchResponse429Headers the declared response headers of an HTTP 429 response for GetUnstableTemplatesSearch
 type GetUnstableTemplatesSearchResponse429Headers struct {
 	RetryAfter *int
@@ -20154,6 +21042,119 @@ func (c *ClientWithResponses) GetTemplatesTemplateIDTagsTagAssignmentsWithRespon
 		return nil, err
 	}
 	return ParseGetTemplatesTemplateIDTagsTagAssignmentsResponse(rsp)
+}
+
+// PostUnstableAdminTeamsQueryWithBodyWithResponse List teams as admin
+//
+// Lists teams matching the filters in the request body, with each team's
+// member count, and its running sandbox count when sorted by running
+// sandboxes. A read despite the POST: the body carries a project ID list
+// too long for a query string.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+func (c *ClientWithResponses) PostUnstableAdminTeamsQueryWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostUnstableAdminTeamsQueryResponse, error) {
+	rsp, err := c.PostUnstableAdminTeamsQueryWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostUnstableAdminTeamsQueryResponse(rsp)
+}
+
+// PostUnstableAdminTeamsQueryWithResponse List teams as admin
+//
+// Lists teams matching the filters in the request body, with each team's
+// member count, and its running sandbox count when sorted by running
+// sandboxes. A read despite the POST: the body carries a project ID list
+// too long for a query string.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with POST /unstable/admin/teams/query (the `PostUnstableAdminTeamsQuery` operationId).
+func (c *ClientWithResponses) PostUnstableAdminTeamsQueryWithResponse(ctx context.Context, body PostUnstableAdminTeamsQueryJSONRequestBody, reqEditors ...RequestEditorFn) (*PostUnstableAdminTeamsQueryResponse, error) {
+	rsp, err := c.PostUnstableAdminTeamsQuery(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostUnstableAdminTeamsQueryResponse(rsp)
+}
+
+// GetUnstableAdminTeamsTeamIDWithResponse Team as admin
+//
+// Returns a team with its sandbox scheduling labels and cluster. It also answers for a banned or blocked team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /unstable/admin/teams/{teamID} (the `GetUnstableAdminTeamsTeamID` operationId).
+func (c *ClientWithResponses) GetUnstableAdminTeamsTeamIDWithResponse(ctx context.Context, teamID openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetUnstableAdminTeamsTeamIDResponse, error) {
+	rsp, err := c.GetUnstableAdminTeamsTeamID(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUnstableAdminTeamsTeamIDResponse(rsp)
+}
+
+// PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBodyWithResponse Replace a team's sandbox scheduling labels
+//
+// Replaces the labels that place the team's new sandboxes on matching
+// nodes. Labels are deduplicated, keeping the first occurrence of each.
+//
+// Takes any type of body and a specified content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+func (c *ClientWithResponses) PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBodyWithResponse(ctx context.Context, teamID openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse, error) {
+	rsp, err := c.PutUnstableAdminTeamsTeamIDSchedulingLabelsWithBody(ctx, teamID, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutUnstableAdminTeamsTeamIDSchedulingLabelsResponse(rsp)
+}
+
+// PutUnstableAdminTeamsTeamIDSchedulingLabelsWithResponse Replace a team's sandbox scheduling labels
+//
+// Replaces the labels that place the team's new sandboxes on matching
+// nodes. Labels are deduplicated, keeping the first occurrence of each.
+//
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+//
+// Corresponds with PUT /unstable/admin/teams/{teamID}/scheduling-labels (the `PutUnstableAdminTeamsTeamIDSchedulingLabels` operationId).
+func (c *ClientWithResponses) PutUnstableAdminTeamsTeamIDSchedulingLabelsWithResponse(ctx context.Context, teamID openapi_types.UUID, body PutUnstableAdminTeamsTeamIDSchedulingLabelsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse, error) {
+	rsp, err := c.PutUnstableAdminTeamsTeamIDSchedulingLabels(ctx, teamID, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutUnstableAdminTeamsTeamIDSchedulingLabelsResponse(rsp)
+}
+
+// GetUnstableTeamsTeamIDLimitsWithResponse Team limits
+//
+// Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /unstable/teams/{teamID}/limits (the `GetUnstableTeamsTeamIDLimits` operationId).
+func (c *ClientWithResponses) GetUnstableTeamsTeamIDLimitsWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetUnstableTeamsTeamIDLimitsResponse, error) {
+	rsp, err := c.GetUnstableTeamsTeamIDLimits(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUnstableTeamsTeamIDLimitsResponse(rsp)
+}
+
+// GetUnstableTeamsTeamIDStatusWithResponse Team access status
+//
+// Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /unstable/teams/{teamID}/status (the `GetUnstableTeamsTeamIDStatus` operationId).
+func (c *ClientWithResponses) GetUnstableTeamsTeamIDStatusWithResponse(ctx context.Context, teamID TeamID, reqEditors ...RequestEditorFn) (*GetUnstableTeamsTeamIDStatusResponse, error) {
+	rsp, err := c.GetUnstableTeamsTeamIDStatus(ctx, teamID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUnstableTeamsTeamIDStatusResponse(rsp)
 }
 
 // GetUnstableTemplatesSearchWithResponse Search templates
@@ -25645,6 +26646,383 @@ func ParseGetTemplatesTemplateIDTagsTagAssignmentsResponse(rsp *http.Response) (
 	switch {
 	case rsp.StatusCode == 429:
 		var headers GetTemplatesTemplateIDTagsTagAssignmentsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePostUnstableAdminTeamsQueryResponse parses an HTTP response from a PostUnstableAdminTeamsQueryWithResponse call
+func ParsePostUnstableAdminTeamsQueryResponse(rsp *http.Response) (*PostUnstableAdminTeamsQueryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostUnstableAdminTeamsQueryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminTeamList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers PostUnstableAdminTeamsQueryResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetUnstableAdminTeamsTeamIDResponse parses an HTTP response from a GetUnstableAdminTeamsTeamIDWithResponse call
+func ParseGetUnstableAdminTeamsTeamIDResponse(rsp *http.Response) (*GetUnstableAdminTeamsTeamIDResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUnstableAdminTeamsTeamIDResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminTeam
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetUnstableAdminTeamsTeamIDResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParsePutUnstableAdminTeamsTeamIDSchedulingLabelsResponse parses an HTTP response from a PutUnstableAdminTeamsTeamIDSchedulingLabelsWithResponse call
+func ParsePutUnstableAdminTeamsTeamIDSchedulingLabelsResponse(rsp *http.Response) (*PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AdminTeamSchedulingLabels
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers PutUnstableAdminTeamsTeamIDSchedulingLabelsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetUnstableTeamsTeamIDLimitsResponse parses an HTTP response from a GetUnstableTeamsTeamIDLimitsWithResponse call
+func ParseGetUnstableTeamsTeamIDLimitsResponse(rsp *http.Response) (*GetUnstableTeamsTeamIDLimitsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUnstableTeamsTeamIDLimitsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TeamLimitsResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetUnstableTeamsTeamIDLimitsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetUnstableTeamsTeamIDStatusResponse parses an HTTP response from a GetUnstableTeamsTeamIDStatusWithResponse call
+func ParseGetUnstableTeamsTeamIDStatusResponse(rsp *http.Response) (*GetUnstableTeamsTeamIDStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUnstableTeamsTeamIDStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TeamStatusResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest N403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest N404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetUnstableTeamsTeamIDStatusResponse429Headers
 		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
 			var value int
 			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {

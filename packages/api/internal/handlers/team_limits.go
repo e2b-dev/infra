@@ -9,6 +9,10 @@ import (
 )
 
 func (a *APIStore) GetTeamsTeamIDLimits(c *gin.Context, teamID api.TeamID) {
+	a.GetUnstableTeamsTeamIDLimits(c, teamID)
+}
+
+func (a *APIStore) GetUnstableTeamsTeamIDLimits(c *gin.Context, teamID api.TeamID) {
 	row, ok := a.getPathTeam(c, teamID)
 	if !ok {
 		return

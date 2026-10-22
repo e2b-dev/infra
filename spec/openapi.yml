@@ -3446,9 +3446,73 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /unstable/teams/{teamID}/status:
+    get:
+      summary: Team access status
+      description: Returns whether the team is banned or blocked, and why it is blocked. A team-authenticated request may read only its own team.
+      tags: [auth]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned the team access status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamStatusResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
   /teams/{teamID}/limits:
     get:
       summary: Get team limits
+      description: Returns the team's effective resource limits. A team-authenticated request may read only its own team.
+      tags: [auth]
+      security:
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - $ref: "#/components/parameters/teamID"
+      responses:
+        "200":
+          description: Successfully returned the team limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TeamLimitsResponse"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "403":
+          $ref: "#/components/responses/403"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /unstable/teams/{teamID}/limits:
+    get:
+      summary: Team limits
       description: Returns the team's effective resource limits. A team-authenticated request may read only its own team.
       tags: [auth]
       security:
@@ -5611,6 +5675,40 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /unstable/admin/teams/query:
+    post:
+      summary: List teams as admin
+      description: |
+        Lists teams matching the filters in the request body, with each team's
+        member count, and its running sandbox count when sorted by running
+        sandboxes. A read despite the POST: the body carries a project ID list
+        too long for a query string.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamListRequest"
+      responses:
+        "200":
+          description: The page of matching teams and the number of all matching teams
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamList"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
   /admin/teams/{teamID}:
     get:
       summary: Get a team as admin
@@ -5645,7 +5743,83 @@ paths:
         "500":
           $ref: "#/components/responses/500"
 
+  /unstable/admin/teams/{teamID}:
+    get:
+      summary: Team as admin
+      description: Returns a team with its sandbox scheduling labels and cluster. It also answers for a banned or blocked team.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      responses:
+        "200":
+          description: The team
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeam"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
   /admin/teams/{teamID}/scheduling-labels:
+    put:
+      summary: Replace a team's sandbox scheduling labels
+      description: |
+        Replaces the labels that place the team's new sandboxes on matching
+        nodes. Labels are deduplicated, keeping the first occurrence of each.
+      tags: [admin]
+      security:
+        - AdminApiKeyAuth: []
+        - AdminJWTAuth: []
+      parameters:
+        - name: teamID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Team ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AdminTeamSchedulingLabels"
+      responses:
+        "200":
+          description: The labels as written
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminTeamSchedulingLabels"
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /unstable/admin/teams/{teamID}/scheduling-labels:
     put:
       summary: Replace a team's sandbox scheduling labels
       description: |
