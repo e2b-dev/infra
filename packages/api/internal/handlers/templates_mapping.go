@@ -54,3 +54,41 @@ func templateToAPI(ctx context.Context, row templateRow, withUsage bool) api.Tem
 
 	return template
 }
+
+// templateWithBuildsToAPI maps a template the way the template lists do, with
+// its builds.
+func templateWithBuildsToAPI(ctx context.Context, row templateRow, builds []queries.EnvBuild) api.TemplateWithBuilds {
+	apiBuilds := make([]api.TemplateBuild, 0, len(builds))
+	for _, build := range builds {
+		apiBuilds = append(apiBuilds, templateBuildToAPI(ctx, build))
+	}
+
+	return templateWithBuilds(templateToAPI(ctx, row, true), apiBuilds)
+}
+
+// templateWithBuilds is a template list item with builds. TemplateWithBuilds
+// has every field of Template; TestTemplateWithBuildsCopiesEveryTemplateField
+// fails when one is not copied.
+func templateWithBuilds(template api.Template, builds []api.TemplateBuild) api.TemplateWithBuilds {
+	return api.TemplateWithBuilds{
+		TemplateID:    template.TemplateID,
+		BuildID:       template.BuildID,
+		CpuCount:      template.CpuCount,
+		MemoryMB:      template.MemoryMB,
+		DiskSizeMB:    template.DiskSizeMB,
+		Public:        template.Public,
+		Aliases:       template.Aliases,
+		Names:         template.Names,
+		CreatedAt:     template.CreatedAt,
+		UpdatedAt:     template.UpdatedAt,
+		CreatedBy:     template.CreatedBy,
+		LastSpawnedAt: template.LastSpawnedAt,
+		SpawnCount:    template.SpawnCount,
+		BuildCount:    template.BuildCount,
+		EnvdVersion:   template.EnvdVersion,
+		BuildStatus:   template.BuildStatus,
+		IsDefault:     template.IsDefault,
+		Description:   template.Description,
+		Builds:        builds,
+	}
+}

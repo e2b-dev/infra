@@ -1865,56 +1865,17 @@ components:
           $ref: "#/components/schemas/EnvdVersion"
 
     TemplateWithBuilds:
-      required:
-        - templateID
-        - public
-        - aliases
-        - names
-        - createdAt
-        - updatedAt
-        - lastSpawnedAt
-        - spawnCount
-        - builds
-      properties:
-        templateID:
-          type: string
-          description: Identifier of the template
-        public:
-          type: boolean
-          description: Whether the template is public or only accessible by the team
-        aliases:
-          type: array
-          description: Aliases of the template
-          deprecated: true
-          items:
-            type: string
-        names:
-          type: array
-          description: Names of the template (namespace/alias format when namespaced)
-          items:
-            type: string
-        createdAt:
-          type: string
-          format: date-time
-          description: Time when the template was created
-        updatedAt:
-          type: string
-          format: date-time
-          description: Time when the template was last updated
-        lastSpawnedAt:
-          type: string
-          nullable: true
-          format: date-time
-          description: Time when the template was last used
-        spawnCount:
-          type: integer
-          format: int64
-          description: Number of times the template was used
-        builds:
-          type: array
-          description: List of builds for the template
-          items:
-            $ref: "#/components/schemas/TemplateBuild"
+      allOf:
+        - $ref: "#/components/schemas/Template"
+        - type: object
+          required:
+            - builds
+          properties:
+            builds:
+              type: array
+              description: List of builds for the template
+              items:
+                $ref: "#/components/schemas/TemplateBuild"
 
     TemplateAliasResponse:
       required:

@@ -1993,14 +1993,42 @@ type TemplateWithBuilds struct {
 	// Deprecated: this property has been marked as deprecated upstream, but no `x-deprecated-reason` was set
 	Aliases []string `json:"aliases"`
 
+	// BuildCount Number of times the template was built
+	BuildCount int32 `json:"buildCount"`
+
+	// BuildID Identifier of the last successful build for given template
+	BuildID string `json:"buildID"`
+
+	// BuildStatus Status of the template build
+	BuildStatus TemplateBuildStatus `json:"buildStatus"`
+
 	// Builds List of builds for the template
 	Builds []TemplateBuild `json:"builds"`
 
+	// CpuCount CPU cores for the sandbox
+	CpuCount CPUCount `json:"cpuCount"`
+
 	// CreatedAt Time when the template was created
 	CreatedAt time.Time `json:"createdAt"`
+	CreatedBy *TeamUser `json:"createdBy"`
+
+	// Description Description of the template
+	Description *string `json:"description,omitempty"`
+
+	// DiskSizeMB Disk size for the sandbox in MiB
+	DiskSizeMB DiskSizeMB `json:"diskSizeMB"`
+
+	// EnvdVersion Version of the envd running in the sandbox
+	EnvdVersion EnvdVersion `json:"envdVersion"`
+
+	// IsDefault Whether the template is one of the platform's default templates. A default template owned by another team carries zero or null usage fields (`spawnCount`, `buildCount`, `lastSpawnedAt`, `createdBy`).
+	IsDefault *bool `json:"isDefault,omitempty"`
 
 	// LastSpawnedAt Time when the template was last used
 	LastSpawnedAt *time.Time `json:"lastSpawnedAt"`
+
+	// MemoryMB Memory for the sandbox in MiB
+	MemoryMB MemoryMB `json:"memoryMB"`
 
 	// Names Names of the template (namespace/alias format when namespaced)
 	Names []string `json:"names"`
