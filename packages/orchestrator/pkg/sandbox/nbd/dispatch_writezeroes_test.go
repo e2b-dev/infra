@@ -195,3 +195,108 @@ func TestDispatchWriteZeroesReadLoopStall(t *testing.T) {
 		})
 	}
 }
+
+// chunkedConn is a fake NBD socket that serves a fixed script of bytes. Each
+// Read copies as much of the remaining script as fits in p (exactly how a
+// socket with data already buffered in the kernel behaves), then returns io.EOF.
+// It counts the Reads that returned payload bytes, so a test can measure how
+// many Read syscalls the dispatch loop needs for one request.
+type chunkedConn struct {
+	data  []byte
+	pos   int
+	reads int
+}
+
+func (c *chunkedConn) Read(p []byte) (int, error) {
+	if c.pos >= len(c.data) {
+		return 0, io.EOF
+	}
+	n := copy(p, c.data[c.pos:])
+	c.pos += n
+	c.reads++
+
+	return n, nil
+}
+
+func (c *chunkedConn) Write(p []byte) (int, error) { return len(p), nil }
+
+// measureProv is a no-op Provider that records the bytes/offset of the WriteAt.
+type measureProv struct {
+	mu   sync.Mutex
+	data []byte
+	off  int64
+	done chan struct{}
+}
+
+func (m *measureProv) ReadAt(_ context.Context, p []byte, _ int64) (int, error) { return len(p), nil }
+func (m *measureProv) Size(_ context.Context) (int64, error)                    { return 1 << 40, nil }
+func (m *measureProv) WriteZeroesAt(_, l int64) (int, error)                    { return int(l), nil }
+func (m *measureProv) WriteAt(p []byte, off int64) (int, error) {
+	m.mu.Lock()
+	m.data = append([]byte(nil), p...)
+	m.off = off
+	m.mu.Unlock()
+	close(m.done)
+
+	return len(p), nil
+}
+
+// TestDispatchMaxSizeWriteSingleRead measures that a maximum-typical write
+// (4 MiB payload + its 28-byte header) is taken from the socket in ONE Read.
+// Before dispatchBufferSize was widened by nbdRequestHeaderSize the 28 trailing
+// payload bytes spilled past the 4 MiB buffer and forced a second Read; this
+// test pins the coalesced single-read behaviour and verifies data integrity.
+func TestDispatchMaxSizeWriteSingleRead(t *testing.T) {
+	t.Parallel()
+
+	const payloadSize = 4 * 1024 * 1024 // the maximum typical NBD data payload
+
+	payload := make([]byte, payloadSize)
+	for i := range payload {
+		payload[i] = byte(i * 7)
+	}
+
+	const offset = uint64(0x40000)
+	script := append(nbdRequest(NBDCmdWrite, 42, offset, uint32(payloadSize)), payload...)
+
+	// Sanity: the whole wire message is header + payload and fits the buffer.
+	if len(script) != payloadSize+nbdRequestHeaderSize {
+		t.Fatalf("script size %d, want %d", len(script), payloadSize+nbdRequestHeaderSize)
+	}
+	if len(script) > dispatchBufferSize {
+		t.Fatalf("message %d exceeds dispatch buffer %d; cannot be one Read", len(script), dispatchBufferSize)
+	}
+
+	conn := &chunkedConn{data: script}
+	prov := &measureProv{done: make(chan struct{})}
+	d := NewDispatch(conn, prov, false, logger.L())
+
+	_ = d.Handle(t.Context()) // returns io.EOF once the script is drained
+
+	// The payload-bearing Read count: exactly one with the widened buffer.
+	if conn.reads != 1 {
+		t.Fatalf("max-size write took %d Reads, want 1 (header+payload must coalesce)", conn.reads)
+	}
+
+	// WriteAt runs in the command's async goroutine; wait for it to land.
+	select {
+	case <-prov.done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("WriteAt was never called for the max-size write")
+	}
+
+	prov.mu.Lock()
+	gotData, gotOff := prov.data, prov.off
+	prov.mu.Unlock()
+	if gotOff != int64(offset) {
+		t.Fatalf("WriteAt offset = %d, want %d", gotOff, offset)
+	}
+	if len(gotData) != payloadSize {
+		t.Fatalf("WriteAt payload = %d bytes, want %d", len(gotData), payloadSize)
+	}
+	for i := range gotData {
+		if gotData[i] != byte(i*7) {
+			t.Fatalf("payload corrupted at byte %d: got %d want %d", i, gotData[i], byte(i*7))
+		}
+	}
+}
