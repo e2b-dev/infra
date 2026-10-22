@@ -18,10 +18,19 @@ func NewMockWebhookManagementServiceClient(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockWebhookManagementServiceClient {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockWebhookManagementServiceClient{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -82,9 +91,9 @@ type MockWebhookManagementServiceClient_CreateWebhook_Call struct {
 //   - ctx context.Context
 //   - in *management.CreateWebhookRequest
 //   - opts ...grpc.CallOption
-func (_e *MockWebhookManagementServiceClient_Expecter) CreateWebhook(ctx interface{}, in interface{}, opts ...interface{}) *MockWebhookManagementServiceClient_CreateWebhook_Call {
+func (_e *MockWebhookManagementServiceClient_Expecter) CreateWebhook(ctx any, in any, opts ...any) *MockWebhookManagementServiceClient_CreateWebhook_Call {
 	return &MockWebhookManagementServiceClient_CreateWebhook_Call{Call: _e.mock.On("CreateWebhook",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockWebhookManagementServiceClient_CreateWebhook_Call) Run(run func(ctx context.Context, in *management.CreateWebhookRequest, opts ...grpc.CallOption)) *MockWebhookManagementServiceClient_CreateWebhook_Call {
@@ -165,9 +174,9 @@ type MockWebhookManagementServiceClient_DeleteWebhook_Call struct {
 //   - ctx context.Context
 //   - in *management.DeleteWebhookRequest
 //   - opts ...grpc.CallOption
-func (_e *MockWebhookManagementServiceClient_Expecter) DeleteWebhook(ctx interface{}, in interface{}, opts ...interface{}) *MockWebhookManagementServiceClient_DeleteWebhook_Call {
+func (_e *MockWebhookManagementServiceClient_Expecter) DeleteWebhook(ctx any, in any, opts ...any) *MockWebhookManagementServiceClient_DeleteWebhook_Call {
 	return &MockWebhookManagementServiceClient_DeleteWebhook_Call{Call: _e.mock.On("DeleteWebhook",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockWebhookManagementServiceClient_DeleteWebhook_Call) Run(run func(ctx context.Context, in *management.DeleteWebhookRequest, opts ...grpc.CallOption)) *MockWebhookManagementServiceClient_DeleteWebhook_Call {
@@ -248,9 +257,9 @@ type MockWebhookManagementServiceClient_GetWebhook_Call struct {
 //   - ctx context.Context
 //   - in *management.GetWebhookRequest
 //   - opts ...grpc.CallOption
-func (_e *MockWebhookManagementServiceClient_Expecter) GetWebhook(ctx interface{}, in interface{}, opts ...interface{}) *MockWebhookManagementServiceClient_GetWebhook_Call {
+func (_e *MockWebhookManagementServiceClient_Expecter) GetWebhook(ctx any, in any, opts ...any) *MockWebhookManagementServiceClient_GetWebhook_Call {
 	return &MockWebhookManagementServiceClient_GetWebhook_Call{Call: _e.mock.On("GetWebhook",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockWebhookManagementServiceClient_GetWebhook_Call) Run(run func(ctx context.Context, in *management.GetWebhookRequest, opts ...grpc.CallOption)) *MockWebhookManagementServiceClient_GetWebhook_Call {
@@ -331,9 +340,9 @@ type MockWebhookManagementServiceClient_GetWebhookDeliveryStats_Call struct {
 //   - ctx context.Context
 //   - in *management.GetWebhookDeliveryStatsRequest
 //   - opts ...grpc.CallOption
-func (_e *MockWebhookManagementServiceClient_Expecter) GetWebhookDeliveryStats(ctx interface{}, in interface{}, opts ...interface{}) *MockWebhookManagementServiceClient_GetWebhookDeliveryStats_Call {
+func (_e *MockWebhookManagementServiceClient_Expecter) GetWebhookDeliveryStats(ctx any, in any, opts ...any) *MockWebhookManagementServiceClient_GetWebhookDeliveryStats_Call {
 	return &MockWebhookManagementServiceClient_GetWebhookDeliveryStats_Call{Call: _e.mock.On("GetWebhookDeliveryStats",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockWebhookManagementServiceClient_GetWebhookDeliveryStats_Call) Run(run func(ctx context.Context, in *management.GetWebhookDeliveryStatsRequest, opts ...grpc.CallOption)) *MockWebhookManagementServiceClient_GetWebhookDeliveryStats_Call {
@@ -414,9 +423,9 @@ type MockWebhookManagementServiceClient_ListWebhookDeliveries_Call struct {
 //   - ctx context.Context
 //   - in *management.ListWebhookDeliveriesRequest
 //   - opts ...grpc.CallOption
-func (_e *MockWebhookManagementServiceClient_Expecter) ListWebhookDeliveries(ctx interface{}, in interface{}, opts ...interface{}) *MockWebhookManagementServiceClient_ListWebhookDeliveries_Call {
+func (_e *MockWebhookManagementServiceClient_Expecter) ListWebhookDeliveries(ctx any, in any, opts ...any) *MockWebhookManagementServiceClient_ListWebhookDeliveries_Call {
 	return &MockWebhookManagementServiceClient_ListWebhookDeliveries_Call{Call: _e.mock.On("ListWebhookDeliveries",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockWebhookManagementServiceClient_ListWebhookDeliveries_Call) Run(run func(ctx context.Context, in *management.ListWebhookDeliveriesRequest, opts ...grpc.CallOption)) *MockWebhookManagementServiceClient_ListWebhookDeliveries_Call {
@@ -497,9 +506,9 @@ type MockWebhookManagementServiceClient_ListWebhooks_Call struct {
 //   - ctx context.Context
 //   - in *management.ListWebhooksRequest
 //   - opts ...grpc.CallOption
-func (_e *MockWebhookManagementServiceClient_Expecter) ListWebhooks(ctx interface{}, in interface{}, opts ...interface{}) *MockWebhookManagementServiceClient_ListWebhooks_Call {
+func (_e *MockWebhookManagementServiceClient_Expecter) ListWebhooks(ctx any, in any, opts ...any) *MockWebhookManagementServiceClient_ListWebhooks_Call {
 	return &MockWebhookManagementServiceClient_ListWebhooks_Call{Call: _e.mock.On("ListWebhooks",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockWebhookManagementServiceClient_ListWebhooks_Call) Run(run func(ctx context.Context, in *management.ListWebhooksRequest, opts ...grpc.CallOption)) *MockWebhookManagementServiceClient_ListWebhooks_Call {
@@ -580,9 +589,9 @@ type MockWebhookManagementServiceClient_UpdateWebhook_Call struct {
 //   - ctx context.Context
 //   - in *management.UpdateWebhookRequest
 //   - opts ...grpc.CallOption
-func (_e *MockWebhookManagementServiceClient_Expecter) UpdateWebhook(ctx interface{}, in interface{}, opts ...interface{}) *MockWebhookManagementServiceClient_UpdateWebhook_Call {
+func (_e *MockWebhookManagementServiceClient_Expecter) UpdateWebhook(ctx any, in any, opts ...any) *MockWebhookManagementServiceClient_UpdateWebhook_Call {
 	return &MockWebhookManagementServiceClient_UpdateWebhook_Call{Call: _e.mock.On("UpdateWebhook",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockWebhookManagementServiceClient_UpdateWebhook_Call) Run(run func(ctx context.Context, in *management.UpdateWebhookRequest, opts ...grpc.CallOption)) *MockWebhookManagementServiceClient_UpdateWebhook_Call {

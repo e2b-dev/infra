@@ -18,10 +18,19 @@ func NewMockSecretManagementServiceClient(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockSecretManagementServiceClient {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockSecretManagementServiceClient{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -82,9 +91,9 @@ type MockSecretManagementServiceClient_CreateSecret_Call struct {
 //   - ctx context.Context
 //   - in *management.CreateSecretRequest
 //   - opts ...grpc.CallOption
-func (_e *MockSecretManagementServiceClient_Expecter) CreateSecret(ctx interface{}, in interface{}, opts ...interface{}) *MockSecretManagementServiceClient_CreateSecret_Call {
+func (_e *MockSecretManagementServiceClient_Expecter) CreateSecret(ctx any, in any, opts ...any) *MockSecretManagementServiceClient_CreateSecret_Call {
 	return &MockSecretManagementServiceClient_CreateSecret_Call{Call: _e.mock.On("CreateSecret",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockSecretManagementServiceClient_CreateSecret_Call) Run(run func(ctx context.Context, in *management.CreateSecretRequest, opts ...grpc.CallOption)) *MockSecretManagementServiceClient_CreateSecret_Call {
@@ -165,9 +174,9 @@ type MockSecretManagementServiceClient_DeleteSecret_Call struct {
 //   - ctx context.Context
 //   - in *management.DeleteSecretRequest
 //   - opts ...grpc.CallOption
-func (_e *MockSecretManagementServiceClient_Expecter) DeleteSecret(ctx interface{}, in interface{}, opts ...interface{}) *MockSecretManagementServiceClient_DeleteSecret_Call {
+func (_e *MockSecretManagementServiceClient_Expecter) DeleteSecret(ctx any, in any, opts ...any) *MockSecretManagementServiceClient_DeleteSecret_Call {
 	return &MockSecretManagementServiceClient_DeleteSecret_Call{Call: _e.mock.On("DeleteSecret",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockSecretManagementServiceClient_DeleteSecret_Call) Run(run func(ctx context.Context, in *management.DeleteSecretRequest, opts ...grpc.CallOption)) *MockSecretManagementServiceClient_DeleteSecret_Call {
@@ -248,9 +257,9 @@ type MockSecretManagementServiceClient_GetSecret_Call struct {
 //   - ctx context.Context
 //   - in *management.GetSecretRequest
 //   - opts ...grpc.CallOption
-func (_e *MockSecretManagementServiceClient_Expecter) GetSecret(ctx interface{}, in interface{}, opts ...interface{}) *MockSecretManagementServiceClient_GetSecret_Call {
+func (_e *MockSecretManagementServiceClient_Expecter) GetSecret(ctx any, in any, opts ...any) *MockSecretManagementServiceClient_GetSecret_Call {
 	return &MockSecretManagementServiceClient_GetSecret_Call{Call: _e.mock.On("GetSecret",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockSecretManagementServiceClient_GetSecret_Call) Run(run func(ctx context.Context, in *management.GetSecretRequest, opts ...grpc.CallOption)) *MockSecretManagementServiceClient_GetSecret_Call {
@@ -331,9 +340,9 @@ type MockSecretManagementServiceClient_ListSecrets_Call struct {
 //   - ctx context.Context
 //   - in *management.ListSecretsRequest
 //   - opts ...grpc.CallOption
-func (_e *MockSecretManagementServiceClient_Expecter) ListSecrets(ctx interface{}, in interface{}, opts ...interface{}) *MockSecretManagementServiceClient_ListSecrets_Call {
+func (_e *MockSecretManagementServiceClient_Expecter) ListSecrets(ctx any, in any, opts ...any) *MockSecretManagementServiceClient_ListSecrets_Call {
 	return &MockSecretManagementServiceClient_ListSecrets_Call{Call: _e.mock.On("ListSecrets",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockSecretManagementServiceClient_ListSecrets_Call) Run(run func(ctx context.Context, in *management.ListSecretsRequest, opts ...grpc.CallOption)) *MockSecretManagementServiceClient_ListSecrets_Call {
@@ -414,9 +423,9 @@ type MockSecretManagementServiceClient_UpdateSecret_Call struct {
 //   - ctx context.Context
 //   - in *management.UpdateSecretRequest
 //   - opts ...grpc.CallOption
-func (_e *MockSecretManagementServiceClient_Expecter) UpdateSecret(ctx interface{}, in interface{}, opts ...interface{}) *MockSecretManagementServiceClient_UpdateSecret_Call {
+func (_e *MockSecretManagementServiceClient_Expecter) UpdateSecret(ctx any, in any, opts ...any) *MockSecretManagementServiceClient_UpdateSecret_Call {
 	return &MockSecretManagementServiceClient_UpdateSecret_Call{Call: _e.mock.On("UpdateSecret",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockSecretManagementServiceClient_UpdateSecret_Call) Run(run func(ctx context.Context, in *management.UpdateSecretRequest, opts ...grpc.CallOption)) *MockSecretManagementServiceClient_UpdateSecret_Call {

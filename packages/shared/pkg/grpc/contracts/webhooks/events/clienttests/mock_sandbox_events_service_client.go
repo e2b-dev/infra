@@ -18,10 +18,19 @@ func NewMockSandboxEventsServiceClient(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *MockSandboxEventsServiceClient {
+	if helper, ok := t.(interface{ Helper() }); ok {
+		helper.Helper()
+	}
+
 	mock := &MockSandboxEventsServiceClient{}
 	mock.Mock.Test(t)
 
-	t.Cleanup(func() { mock.AssertExpectations(t) })
+	t.Cleanup(func() {
+		if helper, ok := t.(interface{ Helper() }); ok {
+			helper.Helper()
+		}
+		mock.AssertExpectations(t)
+	})
 
 	return mock
 }
@@ -82,9 +91,9 @@ type MockSandboxEventsServiceClient_ListSandboxEvents_Call struct {
 //   - ctx context.Context
 //   - in *events.ListSandboxEventsRequest
 //   - opts ...grpc.CallOption
-func (_e *MockSandboxEventsServiceClient_Expecter) ListSandboxEvents(ctx interface{}, in interface{}, opts ...interface{}) *MockSandboxEventsServiceClient_ListSandboxEvents_Call {
+func (_e *MockSandboxEventsServiceClient_Expecter) ListSandboxEvents(ctx any, in any, opts ...any) *MockSandboxEventsServiceClient_ListSandboxEvents_Call {
 	return &MockSandboxEventsServiceClient_ListSandboxEvents_Call{Call: _e.mock.On("ListSandboxEvents",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockSandboxEventsServiceClient_ListSandboxEvents_Call) Run(run func(ctx context.Context, in *events.ListSandboxEventsRequest, opts ...grpc.CallOption)) *MockSandboxEventsServiceClient_ListSandboxEvents_Call {
@@ -165,9 +174,9 @@ type MockSandboxEventsServiceClient_ListTeamSandboxEvents_Call struct {
 //   - ctx context.Context
 //   - in *events.ListTeamSandboxEventsRequest
 //   - opts ...grpc.CallOption
-func (_e *MockSandboxEventsServiceClient_Expecter) ListTeamSandboxEvents(ctx interface{}, in interface{}, opts ...interface{}) *MockSandboxEventsServiceClient_ListTeamSandboxEvents_Call {
+func (_e *MockSandboxEventsServiceClient_Expecter) ListTeamSandboxEvents(ctx any, in any, opts ...any) *MockSandboxEventsServiceClient_ListTeamSandboxEvents_Call {
 	return &MockSandboxEventsServiceClient_ListTeamSandboxEvents_Call{Call: _e.mock.On("ListTeamSandboxEvents",
-		append([]interface{}{ctx, in}, opts...)...)}
+		append([]any{ctx, in}, opts...)...)}
 }
 
 func (_c *MockSandboxEventsServiceClient_ListTeamSandboxEvents_Call) Run(run func(ctx context.Context, in *events.ListTeamSandboxEventsRequest, opts ...grpc.CallOption)) *MockSandboxEventsServiceClient_ListTeamSandboxEvents_Call {
