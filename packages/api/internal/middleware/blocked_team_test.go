@@ -58,14 +58,15 @@ func TestBlockedTeamStillReadsItsStatusAndLimits(t *testing.T) {
 	}
 }
 
-// A blocked team can still read its templates' tags and the default templates,
-// as it can read the templates themselves.
+// A blocked team can still read its templates' tags, the default templates and
+// the template search, as it can read the templates themselves.
 func TestBlockedTeamAllowlistKeepsTemplateTagReads(t *testing.T) {
 	t.Parallel()
 
 	get := blockedTeamAllowlist[http.MethodGet]
 	for _, route := range []string{
 		"/default-templates",
+		"/unstable/templates/search",
 		"/templates/:templateID/tags",
 		"/templates/:templateID/tags/count",
 		"/templates/:templateID/tags/exists",

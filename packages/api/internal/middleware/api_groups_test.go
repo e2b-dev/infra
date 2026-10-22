@@ -242,7 +242,8 @@ func TestAPIGroupsCoverTeamScopedOperations(t *testing.T) {
 		"GET /snapshots": "list", "GET /templates": "list", "GET /v2/templates": "list",
 		"GET /templates/{templateID}": "list", "GET /templates/{templateID}/tags": "list",
 		"GET /api-keys": "list", "GET /volumes": "list", "GET /secrets": "list",
-		"DELETE /sandboxes/{sandboxID}": "delete", "DELETE /templates/{templateID}": "delete",
+		"GET /unstable/templates/search": "list",
+		"DELETE /sandboxes/{sandboxID}":  "delete", "DELETE /templates/{templateID}": "delete",
 	}
 	count := 0
 	for path, item := range spec.Paths.Map() {

@@ -195,6 +195,50 @@ components:
       required: false
       schema:
         type: string
+    templatesSearch:
+      name: search
+      in: query
+      required: false
+      description: Case-insensitive substring match on the template ID, its aliases and its names.
+      schema:
+        type: string
+        maxLength: 256
+    templatesSort:
+      name: sort
+      in: query
+      required: false
+      description: Sort column and direction.
+      schema:
+        type: string
+        enum: [created_at_desc, created_at_asc, updated_at_desc, updated_at_asc]
+        default: created_at_desc
+    templatesPublic:
+      name: public
+      in: query
+      required: false
+      description: Only list public (true) or only non-public (false) templates.
+      schema:
+        type: boolean
+    templatesCursor:
+      name: cursor
+      in: query
+      required: false
+      description: >
+        Cursor returned by the previous page in `{sort}|{value}|{templateID}` format. Rejected if
+        its sort does not match the request.
+      schema:
+        type: string
+    templatesLimit:
+      name: limit
+      in: query
+      required: false
+      description: Maximum number of templates to return per page.
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 100
+        default: 50
     volumeID:
       name: volumeID
       in: path
@@ -1804,6 +1848,20 @@ components:
         description:
           type: string
           description: Description of the template
+
+    TemplateSearchResponse:
+      required:
+        - data
+        - nextCursor
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Template"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor of the next page, or null on the last page
 
     TemplateRequestResponseV3:
       required:
@@ -4582,6 +4640,48 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/Template"
+        "401":
+          $ref: "#/components/responses/401"
+        "429":
+          $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /unstable/templates/search:
+    get:
+      summary: Search templates
+      x-api-group: list
+      description: >
+        Lists the team's templates together with the platform's public default templates, which
+        carry `isDefault: true`, with search, a visibility filter and sorts. Default templates are
+        not listed to teams on a dedicated cluster, and those owned by another team carry zero or
+        null usage fields. Results are newest first unless `sort` says otherwise; `nextCursor`
+        continues the listing and is only valid with the same `sort`. For E2B's own clients: it
+        may change or disappear without notice.
+      tags: [unstable]
+      security:
+        - ApiKeyAuth: []
+        - AuthProviderBearerAuth: []
+          AuthProviderTeamAuth: []
+        - AdminApiKeyAuth: []
+          AdminTeamAuth: []
+        - AdminJWTAuth: []
+          AdminTeamAuth: []
+      parameters:
+        - $ref: "#/components/parameters/templatesSearch"
+        - $ref: "#/components/parameters/templatesSort"
+        - $ref: "#/components/parameters/templatesPublic"
+        - $ref: "#/components/parameters/templatesLimit"
+        - $ref: "#/components/parameters/templatesCursor"
+      responses:
+        "200":
+          description: Successfully returned the templates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TemplateSearchResponse"
+        "400":
+          $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
         "429":

@@ -42,6 +42,7 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/templates/:templateID/tags/groups":            {},
 		"/templates/:templateID/tags/:tag/assignments":  {},
 		"/templates/aliases/:alias":                     {},
+		"/unstable/templates/search":                    {},
 		"/templates/:templateID/builds/:buildID/logs":   {},
 		"/templates/:templateID/builds/:buildID/status": {},
 		"/v2/sandboxes":                                 {},

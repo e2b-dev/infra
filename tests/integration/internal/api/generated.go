@@ -370,6 +370,30 @@ func (e TagGroupsSort) Valid() bool {
 	}
 }
 
+// Defines values for TemplatesSort.
+const (
+	TemplatesSortCreatedAtAsc  TemplatesSort = "created_at_asc"
+	TemplatesSortCreatedAtDesc TemplatesSort = "created_at_desc"
+	TemplatesSortUpdatedAtAsc  TemplatesSort = "updated_at_asc"
+	TemplatesSortUpdatedAtDesc TemplatesSort = "updated_at_desc"
+)
+
+// Valid indicates whether the value is a known member of the TemplatesSort enum.
+func (e TemplatesSort) Valid() bool {
+	switch e {
+	case TemplatesSortCreatedAtAsc:
+		return true
+	case TemplatesSortCreatedAtDesc:
+		return true
+	case TemplatesSortUpdatedAtAsc:
+		return true
+	case TemplatesSortUpdatedAtDesc:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for GetEventsWebhooksWebhookIDDeliveriesParamsDeliveryStatus.
 const (
 	GetEventsWebhooksWebhookIDDeliveriesParamsDeliveryStatusFailed  GetEventsWebhooksWebhookIDDeliveriesParamsDeliveryStatus = "failed"
@@ -424,6 +448,30 @@ func (e GetTemplatesTemplateIDTagsGroupsParamsSort) Valid() bool {
 	case GetTemplatesTemplateIDTagsGroupsParamsSortNameAsc:
 		return true
 	case GetTemplatesTemplateIDTagsGroupsParamsSortNameDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetUnstableTemplatesSearchParamsSort.
+const (
+	GetUnstableTemplatesSearchParamsSortCreatedAtAsc  GetUnstableTemplatesSearchParamsSort = "created_at_asc"
+	GetUnstableTemplatesSearchParamsSortCreatedAtDesc GetUnstableTemplatesSearchParamsSort = "created_at_desc"
+	GetUnstableTemplatesSearchParamsSortUpdatedAtAsc  GetUnstableTemplatesSearchParamsSort = "updated_at_asc"
+	GetUnstableTemplatesSearchParamsSortUpdatedAtDesc GetUnstableTemplatesSearchParamsSort = "updated_at_desc"
+)
+
+// Valid indicates whether the value is a known member of the GetUnstableTemplatesSearchParamsSort enum.
+func (e GetUnstableTemplatesSearchParamsSort) Valid() bool {
+	switch e {
+	case GetUnstableTemplatesSearchParamsSortCreatedAtAsc:
+		return true
+	case GetUnstableTemplatesSearchParamsSortCreatedAtDesc:
+		return true
+	case GetUnstableTemplatesSearchParamsSortUpdatedAtAsc:
+		return true
+	case GetUnstableTemplatesSearchParamsSortUpdatedAtDesc:
 		return true
 	default:
 		return false
@@ -1893,6 +1941,14 @@ type TemplateRequestResponseV3 struct {
 	TemplateID string `json:"templateID"`
 }
 
+// TemplateSearchResponse defines model for TemplateSearchResponse.
+type TemplateSearchResponse struct {
+	Data []Template `json:"data"`
+
+	// NextCursor Cursor of the next page, or null on the last page
+	NextCursor *string `json:"nextCursor"`
+}
+
 // TemplateStep Step in the template build process
 type TemplateStep struct {
 	// Args Arguments for the step
@@ -2307,6 +2363,21 @@ type TeamID = string
 // TemplateID defines model for templateID.
 type TemplateID = string
 
+// TemplatesCursor defines model for templatesCursor.
+type TemplatesCursor = string
+
+// TemplatesLimit defines model for templatesLimit.
+type TemplatesLimit = int32
+
+// TemplatesPublic defines model for templatesPublic.
+type TemplatesPublic = bool
+
+// TemplatesSearch defines model for templatesSearch.
+type TemplatesSearch = string
+
+// TemplatesSort defines model for templatesSort.
+type TemplatesSort string
+
 // VolumeID defines model for volumeID.
 type VolumeID = string
 
@@ -2566,6 +2637,27 @@ type GetTemplatesTemplateIDTagsTagAssignmentsParams struct {
 	// Limit Maximum number of assignment rows to return per page.
 	Limit *TagAssignmentsLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// GetUnstableTemplatesSearchParams defines parameters for GetUnstableTemplatesSearch.
+type GetUnstableTemplatesSearchParams struct {
+	// Search Case-insensitive substring match on the template ID, its aliases and its names.
+	Search *TemplatesSearch `form:"search,omitempty" json:"search,omitempty"`
+
+	// Sort Sort column and direction.
+	Sort *GetUnstableTemplatesSearchParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Public Only list public (true) or only non-public (false) templates.
+	Public *TemplatesPublic `form:"public,omitempty" json:"public,omitempty"`
+
+	// Limit Maximum number of templates to return per page.
+	Limit *TemplatesLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor Cursor returned by the previous page in `{sort}|{value}|{templateID}` format. Rejected if its sort does not match the request.
+	Cursor *TemplatesCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// GetUnstableTemplatesSearchParamsSort defines parameters for GetUnstableTemplatesSearch.
+type GetUnstableTemplatesSearchParamsSort string
 
 // GetV2SandboxesParams defines parameters for GetV2Sandboxes.
 type GetV2SandboxesParams struct {
@@ -3709,6 +3801,13 @@ type ClientInterface interface {
 	//
 	// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
 	GetTemplatesTemplateIDTagsTagAssignments(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetUnstableTemplatesSearch Search templates
+	//
+	// Lists the team's templates together with the platform's public default templates, which carry `isDefault: true`, with search, a visibility filter and sorts. Default templates are not listed to teams on a dedicated cluster, and those owned by another team carry zero or null usage fields. Results are newest first unless `sort` says otherwise; `nextCursor` continues the listing and is only valid with the same `sort`. For E2B's own clients: it may change or disappear without notice.
+	//
+	// Corresponds with GET /unstable/templates/search (the `GetUnstableTemplatesSearch` operationId).
+	GetUnstableTemplatesSearch(ctx context.Context, params *GetUnstableTemplatesSearchParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetV2Sandboxes List sandboxes (v2)
 	//
@@ -5582,6 +5681,23 @@ func (c *Client) GetTemplatesTemplateIDTagsGroups(ctx context.Context, templateI
 // Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
 func (c *Client) GetTemplatesTemplateIDTagsTagAssignments(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetTemplatesTemplateIDTagsTagAssignmentsRequest(c.Server, templateID, tag, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// GetUnstableTemplatesSearch Search templates
+//
+// Lists the team's templates together with the platform's public default templates, which carry `isDefault: true`, with search, a visibility filter and sorts. Default templates are not listed to teams on a dedicated cluster, and those owned by another team carry zero or null usage fields. Results are newest first unless `sort` says otherwise; `nextCursor` continues the listing and is only valid with the same `sort`. For E2B's own clients: it may change or disappear without notice.
+//
+// Corresponds with GET /unstable/templates/search (the `GetUnstableTemplatesSearch` operationId).
+func (c *Client) GetUnstableTemplatesSearch(ctx context.Context, params *GetUnstableTemplatesSearchParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetUnstableTemplatesSearchRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -9677,6 +9793,108 @@ func NewGetTemplatesTemplateIDTagsTagAssignmentsRequest(server string, templateI
 	return req, nil
 }
 
+// NewGetUnstableTemplatesSearchRequest constructs an http.Request for the GetUnstableTemplatesSearch method
+func NewGetUnstableTemplatesSearchRequest(server string, params *GetUnstableTemplatesSearchParams) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/unstable/templates/search")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Search != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "search", *params.Search, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Sort != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "sort", *params.Sort, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Public != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "public", *params.Public, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "boolean", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: "int32"}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "cursor", *params.Cursor, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "string", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetV2SandboxesRequest constructs an http.Request for the GetV2Sandboxes method
 func NewGetV2SandboxesRequest(server string, params *GetV2SandboxesParams) (*http.Request, error) {
 	var err error
@@ -11289,6 +11507,15 @@ type ClientWithResponsesInterface interface {
 	//
 	// Corresponds with GET /templates/{templateID}/tags/{tag}/assignments (the `GetTemplatesTemplateIDTagsTagAssignments` operationId).
 	GetTemplatesTemplateIDTagsTagAssignmentsWithResponse(ctx context.Context, templateID TemplateID, tag Tag, params *GetTemplatesTemplateIDTagsTagAssignmentsParams, reqEditors ...RequestEditorFn) (*GetTemplatesTemplateIDTagsTagAssignmentsResponse, error)
+
+	// GetUnstableTemplatesSearchWithResponse Search templates
+	//
+	// Lists the team's templates together with the platform's public default templates, which carry `isDefault: true`, with search, a visibility filter and sorts. Default templates are not listed to teams on a dedicated cluster, and those owned by another team carry zero or null usage fields. Results are newest first unless `sort` says otherwise; `nextCursor` continues the listing and is only valid with the same `sort`. For E2B's own clients: it may change or disappear without notice.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	//
+	// Corresponds with GET /unstable/templates/search (the `GetUnstableTemplatesSearch` operationId).
+	GetUnstableTemplatesSearchWithResponse(ctx context.Context, params *GetUnstableTemplatesSearchParams, reqEditors ...RequestEditorFn) (*GetUnstableTemplatesSearchResponse, error)
 
 	// GetV2SandboxesWithResponse List sandboxes (v2)
 	//
@@ -17336,6 +17563,82 @@ func (r GetTemplatesTemplateIDTagsTagAssignmentsResponse) ContentType() string {
 	return ""
 }
 
+// GetUnstableTemplatesSearchResponse429Headers the declared response headers of an HTTP 429 response for GetUnstableTemplatesSearch
+type GetUnstableTemplatesSearchResponse429Headers struct {
+	RetryAfter *int
+}
+
+type GetUnstableTemplatesSearchResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *TemplateSearchResponse
+	// JSON400 the response for an HTTP 400 `application/json` response
+	JSON400 *N400
+	// JSON401 the response for an HTTP 401 `application/json` response
+	JSON401 *N401
+	// JSON429 the response for an HTTP 429 `application/json` response
+	JSON429 *N429
+	// JSON500 the response for an HTTP 500 `application/json` response
+	JSON500 *N500
+	// Headers429 the parsed response headers for an HTTP 429 response
+	Headers429 *GetUnstableTemplatesSearchResponse429Headers
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r GetUnstableTemplatesSearchResponse) GetJSON200() *TemplateSearchResponse {
+	return r.JSON200
+}
+
+// GetJSON400 returns the response for an HTTP 400 `application/json` response
+func (r GetUnstableTemplatesSearchResponse) GetJSON400() *N400 {
+	return r.JSON400
+}
+
+// GetJSON401 returns the response for an HTTP 401 `application/json` response
+func (r GetUnstableTemplatesSearchResponse) GetJSON401() *N401 {
+	return r.JSON401
+}
+
+// GetJSON429 returns the response for an HTTP 429 `application/json` response
+func (r GetUnstableTemplatesSearchResponse) GetJSON429() *N429 {
+	return r.JSON429
+}
+
+// GetJSON500 returns the response for an HTTP 500 `application/json` response
+func (r GetUnstableTemplatesSearchResponse) GetJSON500() *N500 {
+	return r.JSON500
+}
+
+// GetBody returns the raw response body bytes
+func (r GetUnstableTemplatesSearchResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r GetUnstableTemplatesSearchResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetUnstableTemplatesSearchResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetUnstableTemplatesSearchResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetV2SandboxesResponse200Headers the declared response headers of an HTTP 200 response for GetV2Sandboxes
 type GetV2SandboxesResponse200Headers struct {
 	XNextToken    *string
@@ -19851,6 +20154,21 @@ func (c *ClientWithResponses) GetTemplatesTemplateIDTagsTagAssignmentsWithRespon
 		return nil, err
 	}
 	return ParseGetTemplatesTemplateIDTagsTagAssignmentsResponse(rsp)
+}
+
+// GetUnstableTemplatesSearchWithResponse Search templates
+//
+// Lists the team's templates together with the platform's public default templates, which carry `isDefault: true`, with search, a visibility filter and sorts. Default templates are not listed to teams on a dedicated cluster, and those owned by another team carry zero or null usage fields. Results are newest first unless `sort` says otherwise; `nextCursor` continues the listing and is only valid with the same `sort`. For E2B's own clients: it may change or disappear without notice.
+//
+// Returns a wrapper object for the known response body format(s).
+//
+// Corresponds with GET /unstable/templates/search (the `GetUnstableTemplatesSearch` operationId).
+func (c *ClientWithResponses) GetUnstableTemplatesSearchWithResponse(ctx context.Context, params *GetUnstableTemplatesSearchParams, reqEditors ...RequestEditorFn) (*GetUnstableTemplatesSearchResponse, error) {
+	rsp, err := c.GetUnstableTemplatesSearch(ctx, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetUnstableTemplatesSearchResponse(rsp)
 }
 
 // GetV2SandboxesWithResponse List sandboxes (v2)
@@ -25327,6 +25645,73 @@ func ParseGetTemplatesTemplateIDTagsTagAssignmentsResponse(rsp *http.Response) (
 	switch {
 	case rsp.StatusCode == 429:
 		var headers GetTemplatesTemplateIDTagsTagAssignmentsResponse429Headers
+		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
+			var value int
+			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			}
+			headers.RetryAfter = &value
+		}
+		response.Headers429 = &headers
+	}
+
+	return response, nil
+}
+
+// ParseGetUnstableTemplatesSearchResponse parses an HTTP response from a GetUnstableTemplatesSearchWithResponse call
+func ParseGetUnstableTemplatesSearchResponse(rsp *http.Response) (*GetUnstableTemplatesSearchResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetUnstableTemplatesSearchResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest TemplateSearchResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest N400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest N401
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 429:
+		var dest N429
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON429 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest N500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	switch {
+	case rsp.StatusCode == 429:
+		var headers GetUnstableTemplatesSearchResponse429Headers
 		if values := rsp.Header.Values("Retry-After"); len(values) > 0 {
 			var value int
 			if err := runtime.BindStyledParameterWithOptions("simple", "Retry-After", values[0], &value, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: false, Type: "integer", Format: ""}); err != nil {

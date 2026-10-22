@@ -11,6 +11,7 @@ import (
 	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	middleware "github.com/oapi-codegen/gin-middleware"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
@@ -363,6 +364,28 @@ func TestDefaultTemplatesRoute(t *testing.T) {
 		require.NotEmpty(t, matched, tc.path)
 		require.Equal(t, tc.want, matched[0], "%s %s", tc.method, tc.path)
 	}
+}
+
+// The template search is for E2B's own clients: its only tag is one the SDK
+// generators do not include, and it takes the credentials of the template list.
+func TestTemplateSearchRouteStaysOutOfTheSDKs(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := GetSpec()
+	require.NoError(t, err)
+
+	search := swagger.Paths.Value("/unstable/templates/search")
+	require.NotNil(t, search)
+	require.NotNil(t, search.Get)
+	require.Equal(t, []string{"unstable"}, search.Get.Tags)
+
+	sdkTags := []string{"sandboxes", "snapshots", "templates", "tags", "auth", "volumes", "secrets"}
+	assert.NotContains(t, sdkTags, search.Get.Tags[0])
+
+	list := swagger.Paths.Value("/v2/templates")
+	require.NotNil(t, list)
+	require.NotNil(t, list.Get)
+	assert.Equal(t, list.Get.Security, search.Get.Security)
 }
 
 func TestTemplateBuildMinimumFreeDiskContract(t *testing.T) {
