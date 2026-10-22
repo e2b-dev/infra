@@ -6,7 +6,7 @@ tool github.com/go-swagger/go-swagger/cmd/swagger
 
 require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
-	cloud.google.com/go/artifactregistry v1.26.0
+	cloud.google.com/go/artifactregistry v1.27.0
 	cloud.google.com/go/storage v1.64.0
 	connectrpc.com/connect v1.18.1
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.22.0
