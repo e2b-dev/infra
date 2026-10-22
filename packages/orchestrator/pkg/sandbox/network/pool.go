@@ -100,9 +100,51 @@ type Config struct {
 
 	// NetworkVersion selects v1 (iptables per-sandbox) or v2 (nftables, host sets).
 	NetworkVersion int `env:"NETWORK_VERSION" envDefault:"1"`
+
+	// VethPrefix is the prefix used for host-side sandbox veth interfaces (e.g. "e2b-").
+	VethPrefix string `env:"NETWORK_VETH_PREFIX" envDefault:"e2b-"`
 }
 
-const maxDSCP = 63 // DSCP is the top 6 bits of the IPv4 TOS / IPv6 traffic-class byte.
+const (
+	maxDSCP = 63 // DSCP is the top 6 bits of the IPv4 TOS / IPv6 traffic-class byte.
+
+	// DefaultVethPrefix is the default host-side veth device prefix.
+	DefaultVethPrefix = "e2b-"
+	// LegacyVethPrefix is the legacy host-side veth device prefix.
+	LegacyVethPrefix = "veth-"
+
+	maxVethPrefixLen = 10 // max IFNAMSIZ-1 (15) minus max 5 digits for slot index (vrtSlotsSize is 32766)
+)
+
+func isValidVethPrefixChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || r == '-'
+}
+
+// ValidateVethPrefix verifies that prefix is non-empty, contains only valid
+// interface name characters ([A-Za-z0-9_.-]), has length <= 10 so that
+// prefix + 5-digit index fits within Linux IFNAMSIZ-1 (15 bytes), and ends
+// with a non-alphanumeric separator ('-', '_', or '.') so a slot device name
+// <prefix><digits> cannot be a prefix-match for other host devices that
+// continue with letters.
+func ValidateVethPrefix(prefix string) error {
+	if prefix == "" {
+		return errors.New("NETWORK_VETH_PREFIX must not be empty")
+	}
+	if len(prefix) > maxVethPrefixLen {
+		return fmt.Errorf("NETWORK_VETH_PREFIX=%q too long (%d chars, max %d)", prefix, len(prefix), maxVethPrefixLen)
+	}
+	for _, r := range prefix {
+		if !isValidVethPrefixChar(r) {
+			return fmt.Errorf("NETWORK_VETH_PREFIX=%q contains invalid character %q (allowed: [A-Za-z0-9_.-])", prefix, r)
+		}
+	}
+	last := prefix[len(prefix)-1]
+	if last != '-' && last != '_' && last != '.' {
+		return fmt.Errorf("NETWORK_VETH_PREFIX=%q must end with a separator ('-', '_', or '.')", prefix)
+	}
+
+	return nil
+}
 
 // EgressDSCP returns the DSCP class to stamp on egress for the given kind of
 // sandbox. 0 means "leave the field alone".
@@ -162,7 +204,12 @@ func (c Config) Validate() error {
 		return fmt.Errorf("BUILD_SANDBOX_EGRESS_DSCP=%d out of range (0..%d)", *c.BuildSandboxEgressDSCP, maxDSCP)
 	}
 
-	return nil
+	prefix := c.VethPrefix
+	if prefix == "" {
+		prefix = DefaultVethPrefix
+	}
+
+	return ValidateVethPrefix(prefix)
 }
 
 func ParseConfig() (Config, error) {

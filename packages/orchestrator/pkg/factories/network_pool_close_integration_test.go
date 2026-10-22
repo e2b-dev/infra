@@ -225,7 +225,7 @@ func TestNetworkPoolCloserDrainsFullKernelPool(t *testing.T) { //nolint:parallel
 				links, err := netlink.LinkList()
 				require.NoError(t, err)
 				for _, link := range links {
-					require.False(t, strings.HasPrefix(link.Attrs().Name, "veth-"), "orphan veth: %s", link.Attrs().Name)
+					require.False(t, strings.HasPrefix(link.Attrs().Name, network.DefaultVethPrefix) || strings.HasPrefix(link.Attrs().Name, network.LegacyVethPrefix), "orphan veth: %s", link.Attrs().Name)
 				}
 				rules, err := exec.CommandContext(t.Context(), "iptables-save").CombinedOutput()
 				require.NoError(t, err, "%s", rules)

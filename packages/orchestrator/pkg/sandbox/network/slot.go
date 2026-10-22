@@ -119,6 +119,11 @@ type Slot struct {
 	// release rebuilds the chain again under the mutex.
 	handedOut atomic.Bool
 
+	// networkCreated tracks whether the network for this slot was cleanly
+	// created by the current process. When true, teardown can skip legacy-name
+	// cleanup.
+	networkCreated atomic.Bool
+
 	// tenantMode evaluates the mode with the flag contexts of the hand-out or
 	// the last egress update, so a flag change keeps the tenant's targeting;
 	// tenantEgress is what the chain was last built from. All under firewallMu.
@@ -133,6 +138,13 @@ type NonDNSUDPModeProvider func(ctx context.Context) string
 func NewSlot(key string, idx int, config Config, egressProxy EgressProxy) (*Slot, error) {
 	if idx < 1 || idx > vrtSlotsSize {
 		return nil, fmt.Errorf("slot index %d is out of range [1, %d]", idx, vrtSlotsSize)
+	}
+
+	if config.VethPrefix == "" {
+		config.VethPrefix = DefaultVethPrefix
+	}
+	if err := ValidateVethPrefix(config.VethPrefix); err != nil {
+		return nil, err
 	}
 
 	vEthIp, err := netutils.GetIndexedIP(vrtNetworkCIDR, idx*vrtAddressPerSlot)
@@ -204,8 +216,39 @@ func (s *Slot) VethIP() net.IP {
 	return s.vEthIp
 }
 
+func (s *Slot) VethPrefix() string {
+	if s.config.VethPrefix != "" {
+		return s.config.VethPrefix
+	}
+
+	return DefaultVethPrefix
+}
+
 func (s *Slot) VethName() string {
-	return fmt.Sprintf("veth-%d", s.Idx)
+	return fmt.Sprintf("%s%d", s.VethPrefix(), s.Idx)
+}
+
+// MarkNetworkCreated sets whether the network was cleanly created by this process.
+func (s *Slot) MarkNetworkCreated(ok bool) {
+	s.networkCreated.Store(ok)
+}
+
+// TeardownVethNames returns the veth device names to clean up during teardown.
+// If the slot network was cleanly created by this process, only the configured
+// name is returned. Otherwise, if the configured prefix differs from the legacy
+// prefix, it returns [configured, legacy]; when equal, [configured].
+func (s *Slot) TeardownVethNames() []string {
+	configured := s.VethName()
+	if s.networkCreated.Load() {
+		return []string{configured}
+	}
+
+	legacy := fmt.Sprintf("%s%d", LegacyVethPrefix, s.Idx)
+	if configured == legacy {
+		return []string{configured}
+	}
+
+	return []string{configured, legacy}
 }
 
 func (s *Slot) VrtMask() net.IPMask {

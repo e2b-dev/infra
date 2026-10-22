@@ -152,8 +152,8 @@ type proxyRule struct {
 	desc      string // description for error messages
 }
 
-func (p *Proxy) ruleArgs(s *network.Slot, rule proxyRule) []string {
-	args := []string{"-i", s.VethName(), "-p", "tcp"}
+func (p *Proxy) ruleArgsForVeth(vethName string, rule proxyRule) []string {
+	args := []string{"-i", vethName, "-p", "tcp"}
 	if rule.dstPort != "" {
 		args = append(args, "--dport", rule.dstPort)
 	}
@@ -162,6 +162,10 @@ func (p *Proxy) ruleArgs(s *network.Slot, rule proxyRule) []string {
 	)
 
 	return args
+}
+
+func (p *Proxy) ruleArgs(s *network.Slot, rule proxyRule) []string {
+	return p.ruleArgsForVeth(s.VethName(), rule)
 }
 
 func (p *Proxy) OnSlotCreate(s *network.Slot, tables *iptables.IPTables) error {
@@ -177,10 +181,12 @@ func (p *Proxy) OnSlotCreate(s *network.Slot, tables *iptables.IPTables) error {
 
 func (p *Proxy) OnSlotDelete(s *network.Slot, tables *iptables.IPTables) error {
 	var errs []error
-	for _, rule := range p.proxyRules {
-		err := tables.Delete("nat", "PREROUTING", p.ruleArgs(s, rule)...)
-		if err != nil {
-			errs = append(errs, fmt.Errorf("error deleting %s egress proxy redirect rule: %w", rule.desc, err))
+	for _, vethName := range s.TeardownVethNames() {
+		for _, rule := range p.proxyRules {
+			err := tables.Delete("nat", "PREROUTING", p.ruleArgsForVeth(vethName, rule)...)
+			if err != nil {
+				errs = append(errs, fmt.Errorf("error deleting %s egress proxy redirect rule: %w", rule.desc, err))
+			}
 		}
 	}
 

@@ -76,6 +76,8 @@ func appendUnlessExpectedAbsentf(errs *[]error, err error, isExpected func(error
 }
 
 func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
+	s.networkCreated.Store(false)
+
 	// Prevent thread changes so we can safely manipulate with namespaces
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -357,6 +359,8 @@ func (s *Slot) CreateNetwork(ctx context.Context) (retErr error) {
 		return err
 	}
 
+	s.networkCreated.Store(true)
+
 	return nil
 }
 
@@ -372,24 +376,42 @@ func (s *Slot) RemoveNetwork(ctx context.Context) error {
 	if err != nil {
 		errs = append(errs, fmt.Errorf("error initializing iptables: %w", err))
 	} else {
-		// Delete host forwarding rules
-		err = tables.Delete("filter", "FORWARD", "-i", s.VethName(), "-o", defaultGateway, "-j", "ACCEPT")
-		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host forwarding rule to default gateway: %w")
+		for _, vethName := range s.TeardownVethNames() {
+			// Delete host forwarding rules
+			err = tables.Delete("filter", "FORWARD", "-i", vethName, "-o", defaultGateway, "-j", "ACCEPT")
+			appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host forwarding rule to default gateway: %w")
 
-		err = tables.Delete("filter", "FORWARD", "-i", defaultGateway, "-o", s.VethName(), "-j", "ACCEPT")
-		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host forwarding rule from default gateway: %w")
+			err = tables.Delete("filter", "FORWARD", "-i", defaultGateway, "-o", vethName, "-j", "ACCEPT")
+			appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host forwarding rule from default gateway: %w")
+
+			// Delete hyperloop proxy redirect rule
+			err = tables.Delete(
+				"nat", "PREROUTING", "-i", vethName,
+				"-p", "tcp", "-d", s.config.OrchestratorInSandboxIPAddress, "--dport", "80",
+				"-j", "REDIRECT", "--to-port", s.hyperloopPort,
+			)
+			appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox hyperloop proxy redirect rule: %w")
+
+			// Delete NFS proxy redirect rule
+			err = tables.Delete("nat", "PREROUTING",
+				"--in-interface", vethName, "--protocol", "tcp",
+				"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
+				"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
+			)
+			appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox NFS proxy redirect rule: %w")
+
+			// Delete portmapper redirect rule
+			err = tables.Delete("nat", "PREROUTING",
+				"--in-interface", vethName, "--protocol", "tcp",
+				"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
+				"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
+			)
+			appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox portmapper redirect rule: %w")
+		}
 
 		// Delete host postrouting rules
 		err = tables.Delete("nat", "POSTROUTING", "-s", s.HostCIDR(), "-o", defaultGateway, "-j", "MASQUERADE")
 		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting host postrouting rule: %w")
-
-		// Delete hyperloop proxy redirect rule
-		err = tables.Delete(
-			"nat", "PREROUTING", "-i", s.VethName(),
-			"-p", "tcp", "-d", s.config.OrchestratorInSandboxIPAddress, "--dport", "80",
-			"-j", "REDIRECT", "--to-port", s.hyperloopPort,
-		)
-		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox hyperloop proxy redirect rule: %w")
 
 		// Delete changes made by egress proxy
 		err = s.egressProxy.OnSlotDelete(s, tables)
@@ -407,30 +429,14 @@ func (s *Slot) RemoveNetwork(ctx context.Context) error {
 	// We explicitly delete the veth device from the host namespace because even though deleting
 	// is deleting the device there may be a race condition when creating a new veth device with
 	// the same name immediately after deleting the namespace.
-	veth, err := netlink.LinkByName(s.VethName())
-	if err != nil {
-		appendUnlessExpectedAbsentf(&errs, err, isLinkNotExist, "error finding veth: %w")
-	} else {
-		err = netlink.LinkDel(veth)
-		appendUnlessExpectedAbsentf(&errs, err, isLinkNotExist, "error deleting veth device: %w")
-	}
-
-	if tables != nil {
-		// Delete NFS proxy redirect rule
-		err = tables.Delete("nat", "PREROUTING",
-			"--in-interface", s.VethName(), "--protocol", "tcp",
-			"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "2049",
-			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.NFSProxyPort)),
-		)
-		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox NFS proxy redirect rule: %w")
-
-		// Delete portmapper redirect rule
-		err = tables.Delete("nat", "PREROUTING",
-			"--in-interface", s.VethName(), "--protocol", "tcp",
-			"--destination", s.config.OrchestratorInSandboxIPAddress, "--dport", "111",
-			"--jump", "REDIRECT", "--to-port", strconv.Itoa(int(s.config.PortmapperPort)),
-		)
-		appendUnlessExpectedAbsentf(&errs, err, isIPTablesNotExist, "error deleting sandbox portmapper redirect rule: %w")
+	for _, vethName := range s.TeardownVethNames() {
+		veth, err := netlink.LinkByName(vethName)
+		if err != nil {
+			appendUnlessExpectedAbsentf(&errs, err, isLinkNotExist, "error finding veth: %w")
+		} else {
+			err = netlink.LinkDel(veth)
+			appendUnlessExpectedAbsentf(&errs, err, isLinkNotExist, "error deleting veth device: %w")
+		}
 	}
 
 	// Delete the named namespace only after every host-side (root namespace)
