@@ -297,6 +297,14 @@ func RecordReadBlobDecompress(ctx context.Context, dur time.Duration, bytes int6
 
 var meter = otel.Meter("github.com/e2b-dev/infra/packages/shared/pkg/storage")
 
+// uploadFramesHeld counts the memory compressed frames occupy, by capacity,
+// from compression until their part is uploaded. See heldFrames.
+var uploadFramesHeld = utils.Must(meter.Int64UpDownCounter(
+	"orchestrator.storage.upload.frames.held",
+	metric.WithDescription("Memory held by compressed frames of in-progress uploads, by allocated capacity, until their part is uploaded"),
+	metric.WithUnit("By"),
+))
+
 var googleWriteTimerFactory = utils.Must(telemetry.NewTimerFactory(meter,
 	"orchestrator.storage.gcs.write",
 	"Duration of GCS writes",
