@@ -31,6 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	orchestratorinfo "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator-info"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
@@ -42,6 +43,8 @@ type pauseStubClient struct {
 	orchestrator.SandboxServiceClient
 
 	err error
+	// deleteErr is the answer to every Delete (nil = success).
+	deleteErr error
 	// gate, when set, holds the answer until closed.
 	gate <-chan struct{}
 	// onPause, when set, runs before the answer — a test's chance to change
@@ -56,6 +59,9 @@ func (c *pauseStubClient) Delete(context.Context, *orchestrator.SandboxDeleteReq
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.deletes++
+	if c.deleteErr != nil {
+		return nil, c.deleteErr
+	}
 
 	return &emptypb.Empty{}, nil
 }
@@ -485,4 +491,70 @@ func TestPausingTransitionsPinRestoreEdge(t *testing.T) {
 	assert.Equal(t,
 		map[sandbox.State]bool{sandbox.StateKilling: true, sandbox.StateRunning: true},
 		sandbox.AllowedTransitions[sandbox.StatePausing])
+}
+
+// Only an acknowledged delete frees the sandbox's CPU and memory in the API's
+// view of the node. On NotFound the node's last report may already leave the
+// sandbox out, so debiting it again would undercount the node until the next
+// sync and let the scheduler overfill it.
+func TestKillSandboxOnNode_ResourceAccounting(t *testing.T) {
+	t.Parallel()
+
+	const mib = uint64(1024 * 1024)
+
+	sbx := sandbox.NodeSandbox{SandboxID: "sandbox-to-delete", VCpu: 2, RamMB: 512}
+	cases := []struct {
+		name       string
+		deleteErr  error
+		wantErr    bool
+		wantCPU    uint32
+		wantMemory uint64
+	}{
+		{
+			name:       "acknowledged delete frees the sandbox",
+			wantCPU:    2,
+			wantMemory: 512 * mib,
+		},
+		{
+			name:       "not found leaves allocations unchanged",
+			deleteErr:  status.Error(codes.NotFound, "sandbox not found"),
+			wantCPU:    4,
+			wantMemory: 1024 * mib,
+		},
+		{
+			name:       "other delete error leaves allocations unchanged",
+			deleteErr:  status.Error(codes.Unavailable, "node unavailable"),
+			wantErr:    true,
+			wantCPU:    4,
+			wantMemory: 1024 * mib,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			node := nodemanager.NewTestNode("node-1", api.NodeStatusReady, 0, 8)
+			stub := &pauseStubClient{deleteErr: tt.deleteErr}
+			node.SetSandboxClient(stub)
+			node.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{
+				MetricCpuAllocated:         4,
+				MetricCpuCount:             8,
+				MetricMemoryAllocatedBytes: 1024 * mib,
+				MetricMemoryTotalBytes:     2048 * mib,
+			})
+
+			err := (&Orchestrator{}).killSandboxOnNode(t.Context(), node, sbx, sandbox.KillReasonUnknown)
+			if tt.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			assert.Equal(t, 1, stub.deleteCount())
+			metrics := node.Metrics()
+			assert.Equal(t, tt.wantCPU, metrics.CpuAllocated)
+			assert.Equal(t, tt.wantMemory, metrics.MemoryAllocatedBytes)
+		})
+	}
 }
