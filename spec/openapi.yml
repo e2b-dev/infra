@@ -1664,7 +1664,6 @@ components:
         - id
         - email
         - name
-        - tier
         - isBanned
         - isBlocked
         - createdAt
@@ -1676,8 +1675,6 @@ components:
         email:
           type: string
         name:
-          type: string
-        tier:
           type: string
         isBanned:
           type: boolean
@@ -1703,7 +1700,6 @@ components:
         - email
         - name
         - slug
-        - tier
         - createdAt
         - isBlocked
         - isBanned
@@ -1717,8 +1713,6 @@ components:
         name:
           type: string
         slug:
-          type: string
-        tier:
           type: string
         createdAt:
           type: string

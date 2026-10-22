@@ -542,7 +542,6 @@ type AdminTeam struct {
 	Name                    string              `json:"name"`
 	SandboxSchedulingLabels []string            `json:"sandboxSchedulingLabels"`
 	Slug                    string              `json:"slug"`
-	Tier                    string              `json:"tier"`
 }
 
 // AdminTeamList defines model for AdminTeamList.
@@ -567,7 +566,6 @@ type AdminTeamListItem struct {
 
 	// RunningSandboxCount Running sandboxes from the same cached snapshot as `GET /admin/sandboxes/running-counts`. Present only when the list is sorted by `runningSandboxes`.
 	RunningSandboxCount *int64 `json:"runningSandboxCount,omitempty"`
-	Tier                string `json:"tier"`
 }
 
 // AdminTeamListRequest defines model for AdminTeamListRequest.

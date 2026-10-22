@@ -10,7 +10,7 @@ WITH running AS (
         unnest(sqlc.arg(running_sandbox_counts)::bigint[]) AS sandbox_count
 )
 SELECT
-    t.id, t.email, t.name, t.tier, t.is_banned, t.is_blocked, t.created_at,
+    t.id, t.email, t.name, t.is_banned, t.is_blocked, t.created_at,
     (SELECT COUNT(*) FROM public.users_teams ut WHERE ut.team_id = t.id)::bigint AS member_count,
     COALESCE(r.sandbox_count, 0)::bigint AS running_sandbox_count
 FROM public.teams t
@@ -70,7 +70,7 @@ WHERE
 
 -- name: GetAdminTeam :one
 SELECT
-    t.id, t.email, t.name, t.slug, t.tier, t.created_at,
+    t.id, t.email, t.name, t.slug, t.created_at,
     t.is_blocked, t.is_banned, t.blocked_reason,
     t.sandbox_scheduling_labels, t.cluster_id,
     c.name AS cluster_name

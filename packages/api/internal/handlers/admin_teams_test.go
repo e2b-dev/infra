@@ -306,7 +306,6 @@ func TestGetUnstableAdminTeamsTeamIDReturnsBannedTeamWithCluster(t *testing.T) {
 	require.Equal(t, "Test Team "+teamID.String(), body.Name)
 	require.Equal(t, "test-"+teamID.String()+"@example.com", body.Email)
 	require.Equal(t, "test-team-"+teamID.String()[:8], body.Slug)
-	require.Equal(t, "base_v1", body.Tier)
 	require.True(t, body.IsBanned)
 	require.True(t, body.IsBlocked)
 	require.Equal(t, new("abuse"), body.BlockedReason)
