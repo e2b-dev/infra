@@ -92,7 +92,7 @@ flowchart TB
 | Template manager | `packages/orchestrator` (role) | build nodes | Builds templates from Docker images |
 | Client proxy | `packages/client-proxy` | API nodes | Edge router: sandbox URL → correct node |
 | Envd | `packages/envd` | inside every VM | In-VM agent: process/filesystem API for SDKs |
-| Dashboard API | `packages/dashboard-api` | API nodes | Backend for the web dashboard (teams, builds, admin) |
+| Dashboard API | `packages/dashboard-api` | API nodes | Backend for the web dashboard (templates, builds, admin) |
 
 Supporting packages: `packages/shared` (protos, telemetry, storage clients, feature flags),
 `packages/auth` (authentication library), `packages/db` (Postgres migrations + sqlc queries),
@@ -460,7 +460,7 @@ answers 408.
 ### Dashboard API (`packages/dashboard-api`)
 
 A separate REST service (port 3010, spec `spec/openapi-dashboard.yml`) consumed by the web
-dashboard, not the SDK: team reads, template tags, build listings, and admin profiles. Its admin
+dashboard, not the SDK: template tags, build listings, and admin profiles. Its admin
 routes accept either a shared admin token or
 a short-lived service JWT verified against the configured admin JWKS. Team-scoped template and build read routes accept either dashboard user auth or
 team API key auth (`X-API-Key`). Its workspace-agnostic `/v1/management` operations are defined in the

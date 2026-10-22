@@ -640,62 +640,6 @@ components:
           type: string
           description: Human-readable health check result.
 
-    UserTeamLimits:
-      type: object
-      required:
-        - maxLengthHours
-        - concurrentSandboxes
-        - concurrentTemplateBuilds
-        - maxVcpu
-        - maxRamMb
-        - diskMb
-        - eventsTtlDays
-      properties:
-        maxLengthHours:
-          type: integer
-          format: int64
-        concurrentSandboxes:
-          type: integer
-          format: int64
-        concurrentTemplateBuilds:
-          type: integer
-          format: int64
-        maxVcpu:
-          type: integer
-          format: int64
-        maxRamMb:
-          type: integer
-          format: int64
-        diskMb:
-          type: integer
-          format: int64
-        eventsTtlDays:
-          type: integer
-          format: int64
-
-    TeamLimitsResponse:
-      type: object
-      required:
-        - limits
-      properties:
-        limits:
-          $ref: "#/components/schemas/UserTeamLimits"
-
-    TeamStatusResponse:
-      type: object
-      required:
-        - isBlocked
-        - isBanned
-        - blockedReason
-      properties:
-        isBlocked:
-          type: boolean
-        isBanned:
-          type: boolean
-        blockedReason:
-          type: string
-          nullable: true
-
     DefaultTemplateAlias:
       type: object
       required:
@@ -1327,7 +1271,6 @@ tags:
   - name: control-plane-management
     description: Workspace control-plane operations authenticated with service JWTs.
   - name: sandboxes
-  - name: teams
   - name: templates
 
 paths:
@@ -1664,58 +1607,6 @@ paths:
           $ref: "#/components/responses/400"
         "401":
           $ref: "#/components/responses/401"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /teams/{teamID}/status:
-    get:
-      summary: Get team access status
-      description: Returns whether the team is blocked or banned and its recorded blocked reason. Team-authenticated requests may read only the team they are scoped to.
-      tags: [teams]
-      security:
-        - AuthProviderBearerAuth: []
-          AuthProviderTeamAuth: []
-        - AdminApiKeyAuth: []
-        - AdminJWTAuth: []
-      parameters:
-        - $ref: "#/components/parameters/teamID"
-      responses:
-        "200":
-          description: Successfully returned team access status.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TeamStatusResponse"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
-        "500":
-          $ref: "#/components/responses/500"
-
-  /teams/{teamID}/limits:
-    get:
-      summary: Get team limits
-      description: Returns the team's effective resource limits. Team-authenticated requests may read only the team they are scoped to.
-      tags: [teams]
-      security:
-        - AuthProviderBearerAuth: []
-          AuthProviderTeamAuth: []
-        - AdminApiKeyAuth: []
-        - AdminJWTAuth: []
-      parameters:
-        - $ref: "#/components/parameters/teamID"
-      responses:
-        "200":
-          description: Successfully returned team limits.
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TeamLimitsResponse"
-        "401":
-          $ref: "#/components/responses/401"
-        "404":
-          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 

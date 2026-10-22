@@ -7,22 +7,11 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 
-	"github.com/e2b-dev/infra/packages/auth/pkg/auth"
 	"github.com/e2b-dev/infra/packages/dashboard-api/internal/api"
 	"github.com/e2b-dev/infra/packages/db/pkg/dberrors"
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
-
-func (s *APIStore) requireAuthedTeamMatchesPath(c *gin.Context, teamID api.TeamID) bool {
-	if auth.MustGetTeamID(c) != teamID {
-		s.sendAPIStoreError(c, http.StatusForbidden, "Team path parameter does not match authenticated team")
-
-		return false
-	}
-
-	return true
-}
 
 func (s *APIStore) requireTemplateAccess(c *gin.Context, templateID api.TemplateID, teamID uuid.UUID) bool {
 	ctx := c.Request.Context()

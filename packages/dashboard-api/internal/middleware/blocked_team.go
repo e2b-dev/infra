@@ -17,8 +17,6 @@ var blockedTeamAllowlist = auth.BlockedTeamAllowlist{
 		"/builds/statuses":                             {},
 		"/builds/:build_id":                            {},
 		"/sandboxes/:sandboxID/record":                 {},
-		"/teams/:teamID/limits":                        {},
-		"/teams/:teamID/status":                        {},
 		"/templates":                                   {},
 		"/templates/defaults":                          {},
 		"/templates/:templateID":                       {},
