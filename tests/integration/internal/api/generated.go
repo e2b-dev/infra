@@ -595,8 +595,7 @@ type AdminTeamListRequest struct {
 	Search *string `json:"search,omitempty"`
 
 	// SortBy Column to order by, with newer teams first among equal values. Omit it
-	// to list enterprise tiers first, then pro tiers, then the rest, each
-	// newest first.
+	// to list the newest teams first.
 	SortBy *AdminTeamListSortField `json:"sortBy,omitempty"`
 
 	// SortOrder Ignored when `sortBy` is omitted.
@@ -604,8 +603,7 @@ type AdminTeamListRequest struct {
 }
 
 // AdminTeamListSortField Column to order by, with newer teams first among equal values. Omit it
-// to list enterprise tiers first, then pro tiers, then the rest, each
-// newest first.
+// to list the newest teams first.
 type AdminTeamListSortField string
 
 // AdminTeamRunningSandboxCounts Cached live sandbox index count keyed by team ID. Counts may briefly

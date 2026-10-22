@@ -148,13 +148,6 @@ ORDER BY
     CASE WHEN $13::text = 'createdAt' AND $14::boolean THEN t.created_at END DESC,
     CASE WHEN $13::text = 'runningSandboxes' AND NOT $14::boolean THEN COALESCE(r.sandbox_count, 0) END ASC,
     CASE WHEN $13::text = 'runningSandboxes' AND $14::boolean THEN COALESCE(r.sandbox_count, 0) END DESC,
-    CASE WHEN $13::text = '' THEN
-        CASE
-            WHEN t.tier ILIKE '%enterprise%' THEN 0
-            WHEN t.tier ILIKE '%pro%' THEN 1
-            ELSE 2
-        END
-    END ASC,
     t.created_at DESC,
     t.id DESC
 LIMIT $16::bigint OFFSET $15::bigint
@@ -193,8 +186,7 @@ type ListAdminTeamsRow struct {
 }
 
 // At most one of by_search_id and by_search_text is set. An empty sort_by
-// orders enterprise tiers first, then pro, then the rest. Teams missing from
-// the running arrays run no sandboxes.
+// orders newest first. Teams missing from the running arrays run no sandboxes.
 func (q *Queries) ListAdminTeams(ctx context.Context, arg ListAdminTeamsParams) ([]ListAdminTeamsRow, error) {
 	rows, err := q.db.Query(ctx, listAdminTeams,
 		arg.ByProjectIds,

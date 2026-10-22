@@ -1630,8 +1630,7 @@ components:
       type: string
       description: |
         Column to order by, with newer teams first among equal values. Omit it
-        to list enterprise tiers first, then pro tiers, then the rest, each
-        newest first.
+        to list the newest teams first.
       enum:
         - name
         - email

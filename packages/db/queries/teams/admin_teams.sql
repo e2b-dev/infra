@@ -1,6 +1,5 @@
 -- At most one of by_search_id and by_search_text is set. An empty sort_by
--- orders enterprise tiers first, then pro, then the rest. Teams missing from
--- the running arrays run no sandboxes.
+-- orders newest first. Teams missing from the running arrays run no sandboxes.
 -- name: ListAdminTeams :many
 WITH running AS (
     -- Set-returning functions in one select list advance together, pairing
@@ -38,13 +37,6 @@ ORDER BY
     CASE WHEN sqlc.arg(sort_by)::text = 'createdAt' AND sqlc.arg(descending)::boolean THEN t.created_at END DESC,
     CASE WHEN sqlc.arg(sort_by)::text = 'runningSandboxes' AND NOT sqlc.arg(descending)::boolean THEN COALESCE(r.sandbox_count, 0) END ASC,
     CASE WHEN sqlc.arg(sort_by)::text = 'runningSandboxes' AND sqlc.arg(descending)::boolean THEN COALESCE(r.sandbox_count, 0) END DESC,
-    CASE WHEN sqlc.arg(sort_by)::text = '' THEN
-        CASE
-            WHEN t.tier ILIKE '%enterprise%' THEN 0
-            WHEN t.tier ILIKE '%pro%' THEN 1
-            ELSE 2
-        END
-    END ASC,
     t.created_at DESC,
     t.id DESC
 LIMIT sqlc.arg(page_size)::bigint OFFSET sqlc.arg(offset_count)::bigint;

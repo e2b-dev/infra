@@ -227,7 +227,7 @@ func TestPostUnstableAdminTeamsQueryOrdersByRunningSandboxesWithCounts(t *testin
 	require.Equal(t, []uuid.UUID{idleNew, idleOld, quiet, busy}, adminTeamIDs(list))
 }
 
-func TestPostUnstableAdminTeamsQueryListsEnterpriseThenProTeamsFirstByDefault(t *testing.T) {
+func TestPostUnstableAdminTeamsQueryDefaultOrderIgnoresTheTier(t *testing.T) {
 	t.Parallel()
 
 	testDB := testutils.SetupDatabase(t)
@@ -242,7 +242,7 @@ func TestPostUnstableAdminTeamsQueryListsEnterpriseThenProTeamsFirstByDefault(t 
 
 	code, list, body := postAdminTeamsQuery(t, store, `{"sortOrder":"asc","createdBefore":"2026-06-01T00:00:00Z"}`)
 	require.Equal(t, http.StatusOK, code, body)
-	require.Equal(t, []uuid.UUID{enterprise, pro, baseNew, baseOld}, adminTeamIDs(list))
+	require.Equal(t, []uuid.UUID{baseNew, pro, baseOld, enterprise}, adminTeamIDs(list))
 }
 
 func TestPostUnstableAdminTeamsQueryFailsWhenRunningCountsAreUnavailable(t *testing.T) {
