@@ -127,7 +127,7 @@ func TestPool_NonDNSUDPFlagChangeReachesHandedOutSlot(t *testing.T) { //nolint:p
 
 	setNonDNSUDPFlag(td, NonDNSUDPModeCount)
 	awaitNonDNSUDPMode(t, slot, NonDNSUDPModeCount)
-	require.Equal(t, []ruleShape{nonDNSUDPCount, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny},
+	require.Equal(t, []ruleShape{nonDNSUDPCount, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny},
 		filterChainShapes(t, h.fwNS), "the rule is back without a release")
 	sendNonDNSUDP(t, h, 2)
 
@@ -179,7 +179,7 @@ func TestPool_NonDNSUDPFlagChangeHonoursTeamTargetingPerSlot(t *testing.T) { //n
 
 	target(NonDNSUDPModeCount, NonDNSUDPModeOff)
 	awaitNonDNSUDPMode(t, targeted, NonDNSUDPModeCount)
-	require.Equal(t, []ruleShape{nonDNSUDPCount, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny},
+	require.Equal(t, []ruleShape{nonDNSUDPCount, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny},
 		filterChainShapes(t, targeted.NamespaceID()), "the team's slot follows the team's value")
 	require.Equal(t, otherHandles, ruleHandles(filterChainRules(t, other.NamespaceID())), "a change targeting another team does not touch the slot")
 

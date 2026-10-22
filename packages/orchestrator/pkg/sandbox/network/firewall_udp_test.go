@@ -21,14 +21,17 @@ import (
 // ruleShape is the match and verdict shape of one filter chain rule, precise
 // enough to tell the chain's rules apart and to pin their order.
 type ruleShape struct {
-	ct     bool
+	ct bool
+	// ctDir is the conntrack direction comparison following a ct direction
+	// load: "reply" or "" when the rule does not match on it.
+	ctDir  string
 	lookup bool
 	// notInSets is the number of inverted set lookups.
 	notInSets int
 	// counter is a reference to the table's named counter.
 	counter bool
 	// l4proto is the protocol comparison following a meta l4proto load:
-	// "!=tcp", "==udp", or "" when the rule does not match on it.
+	// "!=tcp", "==udp", "!=udp", or "" when the rule does not match on it.
 	l4proto string
 	// nfproto is the family comparison following a meta nfproto load:
 	// "ipv4" or "" when the rule applies to both families.
@@ -47,6 +50,9 @@ func shapeOf(r *nftables.Rule) ruleShape {
 		switch x := e.(type) {
 		case *expr.Ct:
 			s.ct = true
+			if x.Key == expr.CtKeyDIRECTION {
+				pending = "ctdir"
+			}
 		case *expr.Lookup:
 			if x.Invert {
 				s.notInSets++
@@ -72,6 +78,10 @@ func shapeOf(r *nftables.Rule) ruleShape {
 				s.l4proto = "!=tcp"
 			case pending == "l4proto" && x.Op == expr.CmpOpEq && bytes.Equal(x.Data, []byte{unix.IPPROTO_UDP}):
 				s.l4proto = "==udp"
+			case pending == "l4proto" && x.Op == expr.CmpOpNeq && bytes.Equal(x.Data, []byte{unix.IPPROTO_UDP}):
+				s.l4proto = "!=udp"
+			case pending == "ctdir" && x.Op == expr.CmpOpEq && bytes.Equal(x.Data, []byte{ctDirReply}):
+				s.ctDir = "reply"
 			case pending == "dport" && x.Op == expr.CmpOpNeq && bytes.Equal(x.Data, binaryutil.BigEndian.PutUint16(53)):
 				s.dport = "!=53"
 			case pending == "nfproto" && x.Op == expr.CmpOpEq && bytes.Equal(x.Data, []byte{unix.NFPROTO_IPV4}):
@@ -104,19 +114,20 @@ func filterChainShapes(t *testing.T, nsName string) []ruleShape {
 }
 
 var (
-	establishedAccept = ruleShape{ct: true, verdict: "accept"}
-	allowSetAccept    = ruleShape{lookup: true, verdict: "accept"}
-	denySetDrop       = ruleShape{lookup: true, verdict: "drop"}
-	nonTCPDenySetDrop = ruleShape{lookup: true, l4proto: "!=tcp", verdict: "drop"}
-	nonTCPUserAllow   = ruleShape{lookup: true, l4proto: "!=tcp", verdict: "accept"}
-	nonTCPUserDeny    = ruleShape{lookup: true, l4proto: "!=tcp", verdict: "drop"}
-	nonDNSUDPCount    = ruleShape{counter: true, l4proto: "==udp", dport: "!=53", nfproto: "ipv4", notInSets: 2}
-	nonDNSUDPDrop     = ruleShape{counter: true, l4proto: "==udp", dport: "!=53", nfproto: "ipv4", notInSets: 2, verdict: "drop"}
+	establishedNonUDPAccept = ruleShape{ct: true, l4proto: "!=udp", verdict: "accept"}
+	establishedReplyAccept  = ruleShape{ct: true, ctDir: "reply", verdict: "accept"}
+	allowSetAccept          = ruleShape{lookup: true, verdict: "accept"}
+	denySetDrop             = ruleShape{lookup: true, verdict: "drop"}
+	nonTCPDenySetDrop       = ruleShape{lookup: true, l4proto: "!=tcp", verdict: "drop"}
+	nonTCPUserAllow         = ruleShape{lookup: true, l4proto: "!=tcp", verdict: "accept"}
+	nonTCPUserDeny          = ruleShape{lookup: true, l4proto: "!=tcp", verdict: "drop"}
+	nonDNSUDPCount          = ruleShape{counter: true, l4proto: "==udp", dport: "!=53", nfproto: "ipv4", notInSets: 2}
+	nonDNSUDPDrop           = ruleShape{counter: true, l4proto: "==udp", dport: "!=53", nfproto: "ipv4", notInSets: 2, verdict: "drop"}
 )
 
 // defaultChain is the chain every slot has carried so far: the off mode must
 // keep producing exactly this.
-var defaultChain = []ruleShape{establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
+var defaultChain = []ruleShape{establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
 
 func newFirewallTestSlot(t *testing.T, key string) *Slot {
 	t.Helper()
@@ -150,8 +161,8 @@ func TestFirewall_NonDNSUDP_RuleShape(t *testing.T) { //nolint:paralleltest // m
 		mode NonDNSUDPMode
 		want []ruleShape
 	}{
-		{NonDNSUDPModeCount, []ruleShape{nonDNSUDPCount, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}},
-		{NonDNSUDPModeDrop, []ruleShape{nonDNSUDPDrop, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}},
+		{NonDNSUDPModeCount, []ruleShape{nonDNSUDPCount, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}},
+		{NonDNSUDPModeDrop, []ruleShape{nonDNSUDPDrop, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}},
 		{NonDNSUDPModeOff, defaultChain},
 	} {
 		require.NoError(t, slot.Firewall.ApplyRules(t.Context(), false, tc.mode, nil, nil))
@@ -179,12 +190,12 @@ func TestFirewall_NonDNSUDP_BYOPKeepsTCPPath(t *testing.T) { //nolint:parallelte
 	slot := newFirewallTestSlot(t, "fw-non-dns-udp-byop")
 
 	require.NoError(t, slot.Firewall.ApplyRules(t.Context(), true, NonDNSUDPModeOff, nil, nil))
-	byopChain := []ruleShape{establishedAccept, allowSetAccept, nonTCPDenySetDrop, nonTCPUserAllow, nonTCPUserDeny}
+	byopChain := []ruleShape{establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, nonTCPDenySetDrop, nonTCPUserAllow, nonTCPUserDeny}
 	require.Equal(t, byopChain, filterChainShapes(t, slot.NamespaceID()))
 
 	require.NoError(t, slot.Firewall.ApplyRules(t.Context(), true, NonDNSUDPModeDrop, nil, nil))
 	got := filterChainShapes(t, slot.NamespaceID())
-	require.Equal(t, []ruleShape{nonDNSUDPDrop, establishedAccept, allowSetAccept, nonTCPDenySetDrop, nonTCPUserAllow, nonTCPUserDeny}, got)
+	require.Equal(t, []ruleShape{nonDNSUDPDrop, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, nonTCPDenySetDrop, nonTCPUserAllow, nonTCPUserDeny}, got)
 
 	for _, shape := range got {
 		require.NotEqual(t, "==tcp", shape.l4proto, "no rule may match TCP: the proxy owns it")
@@ -218,7 +229,7 @@ func TestPool_NonDNSUDPModeReachesSlot(t *testing.T) { //nolint:paralleltest // 
 	t.Cleanup(func() { _ = got.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
 	require.Equal(t, NonDNSUDPModeDrop, got.Firewall.NonDNSUDPMode())
-	require.Equal(t, []ruleShape{nonDNSUDPDrop, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}, filterChainShapes(t, got.NamespaceID()))
+	require.Equal(t, []ruleShape{nonDNSUDPDrop, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}, filterChainShapes(t, got.NamespaceID()))
 }
 
 // ResetInternet rebuilds only a chain the tenant shaped, with the mode the
@@ -233,8 +244,8 @@ func TestFirewall_NonDNSUDP_ResetRestoresMode(t *testing.T) { //nolint:parallelt
 	mode.Store("off")
 	slot.UseNonDNSUDPMode(func(context.Context) string { return mode.Load().(string) })
 
-	countChain := []ruleShape{nonDNSUDPCount, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
-	dropChain := []ruleShape{nonDNSUDPDrop, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
+	countChain := []ruleShape{nonDNSUDPCount, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
+	dropChain := []ruleShape{nonDNSUDPDrop, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
 	noRules := &orchestrator.SandboxNetworkConfig{}
 
 	require.NoError(t, slot.ResetInternet(t.Context()))
@@ -363,8 +374,8 @@ func TestFirewall_NonDNSUDP_ConfigureInternetAppliesTenantMode(t *testing.T) { /
 	require.NoError(t, slot.CreateNetwork(t.Context()))
 	t.Cleanup(func() { _ = slot.RemoveNetwork(context.WithoutCancel(t.Context())) })
 
-	dropChain := []ruleShape{nonDNSUDPDrop, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
-	countChain := []ruleShape{nonDNSUDPCount, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
+	dropChain := []ruleShape{nonDNSUDPDrop, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
+	countChain := []ruleShape{nonDNSUDPCount, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny}
 	require.Equal(t, dropChain, filterChainShapes(t, slot.NamespaceID()), "the slot was built under drop")
 
 	noRules := &orchestrator.SandboxNetworkConfig{}

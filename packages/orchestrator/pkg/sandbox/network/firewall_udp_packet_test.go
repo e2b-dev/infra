@@ -645,7 +645,7 @@ func TestFirewall_HostThreadOperatesOnSlotNamespace(t *testing.T) { //nolint:par
 	require.False(t, hostTableExists(t), "building the firewall adds nothing to the host namespace")
 
 	require.NoError(t, fw.ApplyRules(ctx, false, NonDNSUDPModeCount, nil, []string{"8.8.8.8/32"}))
-	require.Equal(t, []ruleShape{nonDNSUDPCount, establishedAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny},
+	require.Equal(t, []ruleShape{nonDNSUDPCount, establishedNonUDPAccept, establishedReplyAccept, allowSetAccept, denySetDrop, nonTCPUserAllow, nonTCPUserDeny},
 		filterChainShapes(t, h.fwNS), "the update replaced the chain in the slot namespace")
 
 	sendNonDNSUDP(t, h, 3)

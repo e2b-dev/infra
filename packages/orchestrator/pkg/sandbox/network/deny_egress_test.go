@@ -20,10 +20,10 @@ import (
 // is the safety guarantee for the pause-resume prefetch harvest: its throwaway
 // sandbox must not be able to reach the network at all, not even the
 // orchestrator's own in-sandbox IP (which fronts the NFS proxy/portmapper/
-// hyperloop). The ONLY accept is ESTABLISHED/RELATED return traffic, so the
-// orchestrator can still drive the resume by connecting INTO the guest; there
-// must be no destination/set accept that would let the guest open a connection
-// outward.
+// hyperloop). The ONLY accepts are the ESTABLISHED/RELATED pair ApplyRules
+// installs too, so the orchestrator can still drive the resume by connecting
+// INTO the guest; there must be no destination/set accept that would let the
+// guest open a connection outward.
 //
 // It builds a real slot netns + nftables ruleset, so it needs root; it skips
 // otherwise — same gating as the other privileged integration tests in this
@@ -62,6 +62,8 @@ func TestDenyEgress_InstallsAllProtocolDrop(t *testing.T) { //nolint:paralleltes
 		"DenyEgress must still accept ESTABLISHED/RELATED so the control path replies, got %+v", got)
 	require.Falsef(t, got.hasAllowSetAccept,
 		"DenyEgress must NOT accept any allow-set/destination — all guest-initiated egress is dropped, including to the orchestrator IP; got %+v", got)
+	require.Equal(t, []ruleShape{establishedNonUDPAccept, establishedReplyAccept, {verdict: "drop"}}, filterChainShapes(t, slot.NamespaceID()),
+		"DenyEgress accepts only the ESTABLISHED/RELATED pair ahead of the drop")
 }
 
 // headFilterProxy is an EgressProxy whose head rule accepts everything from
@@ -122,8 +124,9 @@ type filterChainSummary struct {
 	// hasUnconditionalDrop is a drop with no protocol/set/conntrack qualifier —
 	// i.e. it drops every protocol to any destination from the tap.
 	hasUnconditionalDrop bool
-	// hasProtocolQualifiedRule is any rule that matches on the L4 protocol (the
-	// non-TCP-only variant that would let TCP escape to the proxy).
+	// hasProtocolQualifiedRule is any rule without a conntrack match that
+	// matches on the L4 protocol (the non-TCP-only variant that would let TCP
+	// escape to the proxy).
 	hasProtocolQualifiedRule bool
 	// hasEstablishedAccept is a conntrack-state accept (return traffic).
 	hasEstablishedAccept bool
@@ -207,7 +210,7 @@ func summarizeFilterChain(t *testing.T, nsName string) filterChainSummary {
 		if i == 0 {
 			s.plainAcceptFirst = plainAccept
 		}
-		if l4proto {
+		if l4proto && !ct {
 			s.hasProtocolQualifiedRule = true
 		}
 		if isUnconditionalDrop {

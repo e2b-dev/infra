@@ -600,28 +600,63 @@ func (fw *Firewall) addNonTCPSetFilterRule(ipSet *nftables.Set, drop bool) {
 	})
 }
 
-// addEstablishedAcceptRule buffers a rule that accepts ESTABLISHED/RELATED
-// return traffic from the tap interface, so response packets are allowed even
-// when the source sits in a deny set. Buffer-only; the caller flushes.
-func (fw *Firewall) addEstablishedAcceptRule() {
+// ctDirReply is conntrack's reply direction (IP_CT_DIR_REPLY): the packet
+// travels opposite to the one that opened the flow.
+const ctDirReply = 1
+
+// establishedMatch matches tap packets on an ESTABLISHED or RELATED flow.
+func (fw *Firewall) establishedMatch() []expr.Any {
+	return append(fw.tapIfaceMatch(),
+		&expr.Ct{Key: expr.CtKeySTATE, Register: 1},
+		&expr.Bitwise{
+			SourceRegister: 1,
+			DestRegister:   1,
+			Len:            4,
+			Mask:           binaryutil.NativeEndian.PutUint32(expr.CtStateBitESTABLISHED | expr.CtStateBitRELATED),
+			Xor:            binaryutil.NativeEndian.PutUint32(0),
+		},
+		&expr.Cmp{
+			Op:       expr.CmpOpNeq,
+			Register: 1,
+			Data:     binaryutil.NativeEndian.PutUint32(0),
+		},
+	)
+}
+
+// addEstablishedAcceptRules buffers the two rules that accept tap traffic on
+// ESTABLISHED/RELATED flows ahead of the policy sets, so the guest's replies
+// are allowed even when their destination sits in a deny set:
+//   - every protocol but UDP, in both directions;
+//   - every protocol in the reply direction, i.e. the guest answering a flow
+//     opened from outside.
+//
+// UDP the guest sends on a flow it opened matches neither, so the policy
+// judges every such datagram and a stricter policy applies to it at once.
+// Buffer-only; the caller flushes.
+func (fw *Firewall) addEstablishedAcceptRules() {
 	fw.conn.AddRule(&nftables.Rule{
 		Table: fw.table,
 		Chain: fw.filterChain,
-		Exprs: append(append(fw.tapIfaceMatch(),
-			// Load CT state
-			&expr.Ct{Key: expr.CtKeySTATE, Register: 1},
-			// Check ESTABLISHED or RELATED
-			&expr.Bitwise{
-				SourceRegister: 1,
-				DestRegister:   1,
-				Len:            4,
-				Mask:           binaryutil.NativeEndian.PutUint32(expr.CtStateBitESTABLISHED | expr.CtStateBitRELATED),
-				Xor:            binaryutil.NativeEndian.PutUint32(0),
-			},
+		Exprs: append(append(fw.establishedMatch(),
+			&expr.Meta{Key: expr.MetaKeyL4PROTO, Register: 1},
 			&expr.Cmp{
 				Op:       expr.CmpOpNeq,
 				Register: 1,
-				Data:     binaryutil.NativeEndian.PutUint32(0),
+				Data:     []byte{unix.IPPROTO_UDP},
+			}),
+			accept()...,
+		),
+	})
+
+	fw.conn.AddRule(&nftables.Rule{
+		Table: fw.table,
+		Chain: fw.filterChain,
+		Exprs: append(append(fw.establishedMatch(),
+			&expr.Ct{Key: expr.CtKeyDIRECTION, Register: 1},
+			&expr.Cmp{
+				Op:       expr.CmpOpEq,
+				Register: 1,
+				Data:     []byte{ctDirReply},
 			}),
 			accept()...,
 		),
@@ -716,7 +751,8 @@ func (fw *Firewall) installRules(byop bool, nonDNSUDPMode NonDNSUDPMode, counter
 	// FILTER CHAIN (PREROUTING, priority -150)
 	//   0. EgressProxy.HeadFilterRules, if any
 	//   0. IPv4 UDP to a port other than 53, destination in neither allow set → named counter, DROP in drop mode (absent in off mode)
-	//   1. ESTABLISHED/RELATED → accept
+	//   1. ESTABLISHED/RELATED, non-UDP → accept
+	//   1. ESTABLISHED/RELATED, reply direction → accept (UDP the guest sends on its own flows falls through)
 	//   2. predefinedAllowSet → accept (all protocols)
 	//   3. predefinedDenySet → DROP (all protocols, or non-TCP only when byop)
 	//   4. Non-TCP: userAllowSet → accept
@@ -731,9 +767,9 @@ func (fw *Firewall) installRules(byop bool, nonDNSUDPMode NonDNSUDPMode, counter
 	// counted and, in drop mode, dropped, whether or not a reply came back.
 	fw.addNonDNSUDPRule(nonDNSUDPMode, counter)
 
-	// Rule 1: Allow ESTABLISHED/RELATED connections - all protocols
-	// This ensures response packets are allowed even if the source is in predefinedDenySet
-	fw.addEstablishedAcceptRule()
+	// Rule 1: ESTABLISHED/RELATED → accept, except UDP the guest sends on a
+	// flow it opened, which the rules below judge on every datagram.
+	fw.addEstablishedAcceptRules()
 
 	// Rule 2: predefinedAllowSet → accept (all protocols)
 	fw.addSetFilterRule(fw.predefinedAllowSet.Set(), false)
@@ -822,19 +858,20 @@ func (fw *Firewall) ApplyRules(ctx context.Context, byop bool, nonDNSUDPMode Non
 }
 
 // DenyEgress rebuilds the filter chain so that every packet originating from
-// the guest (the tap interface) is dropped, except ESTABLISHED/RELATED return
-// traffic. Unlike the user deny set — which drops only non-TCP traffic and
-// leaves TCP to the egress proxy — this drops ALL protocols and allows NO
-// guest-initiated destination, so a sandbox isolated this way cannot reach the
-// network at all, including the orchestrator's own in-sandbox IP (which also
-// fronts the NFS proxy, portmapper and hyperloop). The orchestrator still
-// drives the resume because it connects INTO the guest (envd /init, health
-// probes) and those replies match ESTABLISHED/RELATED; nothing about the resume
-// needs the guest to open a connection outward. It backs the throwaway
-// pause-resume prefetch harvest sandbox, whose envd init must not egress — the
-// throwaway is also resumed with its volume mounts suppressed so /init does not
-// attempt the (now-blocked) NFS mount. The egress proxy's head rules are left
-// out: they extend the ordinary policy, and there is none here.
+// the guest (the tap interface) is dropped, except replies on flows opened into
+// the guest and non-UDP ESTABLISHED/RELATED traffic. Unlike the user deny set —
+// which drops only non-TCP traffic and leaves TCP to the egress proxy — this
+// drops ALL protocols and allows NO guest-initiated destination, so a sandbox
+// isolated this way cannot reach the network at all, including the
+// orchestrator's own in-sandbox IP (which also fronts the NFS proxy, portmapper
+// and hyperloop). The orchestrator still drives the resume because it connects
+// INTO the guest (envd /init, health probes) and those replies match
+// ESTABLISHED/RELATED; nothing about the resume needs the guest to open a
+// connection outward. It backs the throwaway pause-resume prefetch harvest
+// sandbox, whose envd init must not egress — the throwaway is also resumed with
+// its volume mounts suppressed so /init does not attempt the (now-blocked) NFS
+// mount. The egress proxy's head rules are left out: they extend the ordinary
+// policy, and there is none here.
 //
 // Like ApplyRules the chain is rebuilt from scratch and committed in a single
 // flush; on failure the conn is reset so a poisoned batch cannot leak into a
@@ -856,9 +893,10 @@ func (fw *Firewall) DenyEgress(ctx context.Context) (err error) {
 	next := ChainDescriptor{Mode: NonDNSUDPModeOff, Posture: postureIsolated}
 
 	return fw.replaceChainLocked(ctx, next, func(*nftables.CounterObj) error {
-		// Rule 1: ESTABLISHED/RELATED → accept (lets the orchestrator-driven control
-		// path, which connects into the guest, get its replies back).
-		fw.addEstablishedAcceptRule()
+		// Rule 1: ESTABLISHED/RELATED → accept, as in ApplyRules (lets the
+		// orchestrator-driven control path, which connects into the guest, get
+		// its replies back).
+		fw.addEstablishedAcceptRules()
 		// Rule 2: everything else from the tap → drop, all protocols. No
 		// guest-initiated egress is allowed, not even to the orchestrator IP.
 		fw.addTapDropRule()
