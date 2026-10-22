@@ -54,6 +54,12 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 		return
 	}
 
+	if apiErr := validateDNSServers(body.DnsServers); apiErr != nil {
+		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
+
+		return
+	}
+
 	var egressProxy *sandbox_network.EgressProxyConfig
 	if ep := body.EgressProxy; ep != nil {
 		if !a.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
@@ -98,7 +104,7 @@ func (a *APIStore) PutSandboxesSandboxIDNetwork(c *gin.Context, sandboxID string
 
 	rules := apiRulesToDBRules(body.Rules)
 
-	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, teamID, sandboxID, allowedEntries, deniedEntries, rules, body.AllowInternetAccess, egressProxy); apiErr != nil {
+	if apiErr := a.orchestrator.UpdateSandboxNetworkConfig(ctx, teamID, sandboxID, allowedEntries, deniedEntries, rules, body.AllowInternetAccess, body.DnsServers, egressProxy); apiErr != nil {
 		telemetry.ReportErrorByCode(ctx, apiErr.Code, "error updating sandbox network config", apiErr.Err)
 		a.sendAPIStoreError(c, apiErr.Code, apiErr.ClientMsg)
 

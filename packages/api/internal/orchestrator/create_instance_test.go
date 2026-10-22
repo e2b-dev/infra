@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -137,7 +138,7 @@ func TestBuildEgressConfigPreservesWildcardRuleKey(t *testing.T) {
 	const domain = "*.github.com"
 	config := buildEgressConfig(nil, nil, map[string][]dbtypes.SandboxNetworkRule{
 		domain: {{Transform: &dbtypes.SandboxNetworkTransform{Headers: map[string]string{"X-Test": "value"}}}},
-	})
+	}, nil)
 
 	rules, ok := config.GetRules()[domain]
 	require.True(t, ok)
@@ -204,6 +205,142 @@ func TestEgressProxyTLSRoundTrip(t *testing.T) {
 
 		assert.Empty(t, stored.EgressProxyAddress)
 		assert.Nil(t, stored.EgressProxyTLS)
+	})
+}
+
+const defaultNameserverCIDR = sandbox_network.DefaultNameserver + "/32"
+
+func TestBuildNetworkConfigDnsServers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		allowed    []string
+		dnsServers *[]string
+		want       []string
+		wantNot    []string
+	}{
+		{"domain allows the default nameserver when unset", []string{"example.com"}, nil, []string{defaultNameserverCIDR}, nil},
+		{"empty list allows no nameserver", []string{"example.com"}, &[]string{}, nil, []string{defaultNameserverCIDR}},
+		{"listed servers replace the default", []string{"example.com"}, &[]string{"1.1.1.1", "9.9.9.9"}, []string{"1.1.1.1/32", "9.9.9.9/32"}, []string{defaultNameserverCIDR}},
+		{"explicit allowOut entry wins over an empty list", []string{"example.com", "8.8.8.8"}, &[]string{}, []string{defaultNameserverCIDR}, nil},
+		{"ip-only allow list never gets the default", []string{"1.1.1.1"}, nil, nil, []string{defaultNameserverCIDR}},
+		{"ip-only allow list ignores listed servers", []string{"1.1.1.1"}, &[]string{"9.9.9.9"}, nil, []string{"9.9.9.9/32"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			wire := buildNetworkConfig(&dbtypes.SandboxNetworkConfig{
+				Egress: &dbtypes.SandboxNetworkEgressConfig{
+					AllowedAddresses: tt.allowed,
+					DeniedAddresses:  []string{sandbox_network.AllInternetTrafficCIDR},
+					DnsServers:       tt.dnsServers,
+				},
+			}, nil, nil)
+
+			cidrs := wire.GetEgress().GetAllowedCidrs()
+			for _, cidr := range tt.want {
+				assert.Contains(t, cidrs, cidr)
+			}
+			for _, cidr := range tt.wantNot {
+				assert.NotContains(t, cidrs, cidr)
+			}
+		})
+	}
+}
+
+// The firewall rejects overlapping ranges, so a DNS server that an allowed
+// CIDR already covers, or that is listed twice, must only be sent once.
+func TestBuildNetworkConfigDnsServersSkipsCoveredServers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		allowed    []string
+		dnsServers *[]string
+		want       []string
+	}{
+		{"default inside an allowed subnet", []string{"example.com", "8.8.8.0/24"}, nil, []string{"8.8.8.0/24"}},
+		{"default also listed in allowOut", []string{"example.com", "8.8.8.8"}, nil, []string{defaultNameserverCIDR}},
+		{"listed server inside an allowed subnet", []string{"example.com", "1.1.1.0/24"}, &[]string{"1.1.1.1", "9.9.9.9"}, []string{"1.1.1.0/24", "9.9.9.9/32"}},
+		{"repeated server", []string{"example.com"}, &[]string{"1.1.1.1", "1.1.1.1"}, []string{"1.1.1.1/32"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			wire := buildNetworkConfig(&dbtypes.SandboxNetworkConfig{
+				Egress: &dbtypes.SandboxNetworkEgressConfig{
+					AllowedAddresses: tt.allowed,
+					DeniedAddresses:  []string{sandbox_network.AllInternetTrafficCIDR},
+					DnsServers:       tt.dnsServers,
+				},
+			}, nil, nil)
+
+			assert.Equal(t, tt.want, wire.GetEgress().GetAllowedCidrs())
+		})
+	}
+}
+
+// Resume, fork and auto-resume rebuild egress from the stored snapshot config,
+// so the list has to survive a JSON round trip, including an empty one.
+func TestDnsServersSurvivePausedConfig(t *testing.T) {
+	t.Parallel()
+
+	roundTrip := func(t *testing.T, dnsServers *[]string) *dbtypes.SandboxNetworkEgressConfig {
+		t.Helper()
+
+		data, err := json.Marshal(dbtypes.PausedSandboxConfig{
+			Version: dbtypes.PausedSandboxConfigVersion,
+			Network: &dbtypes.SandboxNetworkConfig{Egress: &dbtypes.SandboxNetworkEgressConfig{
+				AllowedAddresses: []string{"example.com"},
+				DnsServers:       dnsServers,
+			}},
+		})
+		require.NoError(t, err)
+
+		var resumed dbtypes.PausedSandboxConfig
+		require.NoError(t, json.Unmarshal(data, &resumed))
+		require.NotNil(t, resumed.Network)
+		require.NotNil(t, resumed.Network.Egress)
+
+		return resumed.Network.Egress
+	}
+
+	t.Run("empty list stays empty after resume", func(t *testing.T) {
+		t.Parallel()
+
+		egress := roundTrip(t, &[]string{})
+		require.NotNil(t, egress.DnsServers)
+		assert.Empty(t, *egress.DnsServers)
+
+		wire := buildNetworkConfig(&dbtypes.SandboxNetworkConfig{Egress: egress}, nil, nil)
+		assert.NotContains(t, wire.GetEgress().GetAllowedCidrs(), defaultNameserverCIDR)
+	})
+
+	t.Run("listed servers stay after resume", func(t *testing.T) {
+		t.Parallel()
+
+		egress := roundTrip(t, &[]string{"1.1.1.1"})
+		require.NotNil(t, egress.DnsServers)
+		assert.Equal(t, []string{"1.1.1.1"}, *egress.DnsServers)
+
+		cidrs := buildNetworkConfig(&dbtypes.SandboxNetworkConfig{Egress: egress}, nil, nil).GetEgress().GetAllowedCidrs()
+		assert.Contains(t, cidrs, "1.1.1.1/32")
+		assert.NotContains(t, cidrs, defaultNameserverCIDR)
+	})
+
+	t.Run("unset list keeps the default", func(t *testing.T) {
+		t.Parallel()
+
+		egress := roundTrip(t, nil)
+		assert.Nil(t, egress.DnsServers)
+
+		wire := buildNetworkConfig(&dbtypes.SandboxNetworkConfig{Egress: egress}, nil, nil)
+		assert.Contains(t, wire.GetEgress().GetAllowedCidrs(), defaultNameserverCIDR)
 	})
 }
 
@@ -1082,7 +1219,7 @@ func TestCreateSandbox_RetainsWinningPlacement(t *testing.T) {
 			_, apiErr = o.KeepAliveFor(ctx, team.ID, sandboxID, 2*time.Hour, false)
 			require.Nil(t, apiErr)
 			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
-			require.Nil(t, o.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, []string{"1.1.1.1"}, nil, nil, nil, nil))
+			require.Nil(t, o.UpdateSandboxNetworkConfig(ctx, team.ID, sandboxID, []string{"1.1.1.1"}, nil, nil, nil, nil, nil))
 			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
 
 			transition, _, finish, err := o.sandboxStore.StartRemoving(ctx, team.ID, sandboxID, sandbox.RemoveOpts{Action: sandbox.StateActionPause})

@@ -30,6 +30,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 	deniedEntries []string,
 	rules map[string][]types.SandboxNetworkRule,
 	allowInternetAccess *bool,
+	dnsServers *[]string,
 	egressProxy *sandbox_network.EgressProxyConfig,
 ) *api.APIError {
 	// PUT is full-replace: omitting egressProxy clears BYOP.
@@ -37,6 +38,7 @@ func (o *Orchestrator) UpdateSandboxNetworkConfig(
 		AllowedAddresses: allowedEntries,
 		DeniedAddresses:  deniedEntries,
 		Rules:            rules,
+		DnsServers:       dnsServers,
 	}
 	ApplyValidatedEgressProxy(egressConfig, egressProxy)
 	network := &types.SandboxNetworkConfig{Egress: egressConfig}

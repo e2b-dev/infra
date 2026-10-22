@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
+	"slices"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -102,14 +104,20 @@ func iamToProto(iam *types.SandboxIam) *orchestrator.SandboxIam {
 }
 
 // buildEgressConfig constructs the orchestrator egress configuration from
-// allow/deny entry lists. It splits allowed entries into CIDRs and domains,
-// and adds the default nameserver when domains are present so the sandbox can
-// resolve them.
-func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string][]types.SandboxNetworkRule) *orchestrator.SandboxNetworkEgressConfig {
+// allow/deny entry lists. It splits allowed entries into CIDRs and domains.
+// If there are domains, it also allows the DNS servers so the sandbox can
+// resolve them: the default nameserver when dnsServers is nil, otherwise the
+// listed servers.
+func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string][]types.SandboxNetworkRule, dnsServers *[]string) *orchestrator.SandboxNetworkEgressConfig {
 	allowedAddresses, allowedDomains := sandbox_network.ParseAddressesAndDomains(allowedEntries)
 
+	allowedCidrs := sandbox_network.AddressStringsToCIDRs(allowedAddresses)
 	if len(allowedDomains) > 0 {
-		allowedAddresses = append(allowedAddresses, sandbox_network.DefaultNameserver)
+		servers := []string{sandbox_network.DefaultNameserver}
+		if dnsServers != nil {
+			servers = *dnsServers
+		}
+		allowedCidrs = append(allowedCidrs, dnsServerCIDRs(servers, allowedCidrs)...)
 	}
 
 	var orchRules map[string]*orchestrator.SandboxNetworkDomainRules
@@ -131,11 +139,45 @@ func buildEgressConfig(allowedEntries, deniedEntries []string, rules map[string]
 	}
 
 	return &orchestrator.SandboxNetworkEgressConfig{
-		AllowedCidrs:   sandbox_network.AddressStringsToCIDRs(allowedAddresses),
+		AllowedCidrs:   allowedCidrs,
 		DeniedCidrs:    sandbox_network.AddressStringsToCIDRs(deniedEntries),
 		AllowedDomains: allowedDomains,
 		Rules:          orchRules,
 	}
+}
+
+// dnsServerCIDRs turns DNS server IPs into /32 CIDRs. It skips servers that
+// an allowed CIDR already covers, and repeated servers, because the firewall
+// rejects overlapping ranges. The API validates the entries, so anything that
+// is not an IPv4 address is skipped.
+func dnsServerCIDRs(servers []string, allowedCidrs []string) []string {
+	covered := make([]netip.Prefix, 0, len(allowedCidrs))
+	for _, cidr := range allowedCidrs {
+		if prefix, err := netip.ParsePrefix(cidr); err == nil {
+			covered = append(covered, prefix)
+		}
+	}
+
+	added := make(map[netip.Addr]struct{}, len(servers))
+	cidrs := make([]string, 0, len(servers))
+	for _, server := range servers {
+		addr, err := netip.ParseAddr(server)
+		if err != nil {
+			continue
+		}
+
+		if _, ok := added[addr]; ok || !addr.Is4() {
+			continue
+		}
+		if slices.ContainsFunc(covered, func(p netip.Prefix) bool { return p.Contains(addr) }) {
+			continue
+		}
+
+		added[addr] = struct{}{}
+		cidrs = append(cidrs, netip.PrefixFrom(addr, 32).String())
+	}
+
+	return cidrs
 }
 
 // applyEgressProxy copies BYOP SOCKS5 fields from src to dst. No-op on nil.
@@ -187,7 +229,12 @@ func buildNetworkConfig(network *types.SandboxNetworkConfig, allowInternetAccess
 	}
 
 	if network != nil && network.Egress != nil {
-		egress := buildEgressConfig(network.Egress.AllowedAddresses, network.Egress.DeniedAddresses, network.Egress.Rules)
+		egress := buildEgressConfig(
+			network.Egress.AllowedAddresses,
+			network.Egress.DeniedAddresses,
+			network.Egress.Rules,
+			network.Egress.DnsServers,
+		)
 		applyEgressProxy(egress, network.Egress)
 		orchNetwork.Egress = egress
 	}

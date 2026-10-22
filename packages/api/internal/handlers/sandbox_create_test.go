@@ -402,6 +402,57 @@ func TestValidateNetworkConfig(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		// DNS server validation tests
+		{
+			name: "empty dns_servers is valid",
+			network: &api.SandboxNetworkConfig{
+				DnsServers: &[]string{},
+			},
+			wantErr: false,
+		},
+		{
+			name: "IPv4 dns_servers are valid",
+			network: &api.SandboxNetworkConfig{
+				DnsServers: &[]string{"1.1.1.1", "9.9.9.9"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "more than 10 dns_servers is invalid",
+			network: &api.SandboxNetworkConfig{
+				DnsServers: &[]string{"1.1.1.1", "1.1.1.2", "1.1.1.3", "1.1.1.4", "1.1.1.5", "1.1.1.6", "1.1.1.7", "1.1.1.8", "1.1.1.9", "1.1.1.10", "1.1.1.11"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "DNS servers can have at most 10 entries.",
+		},
+		{
+			name: "hostname in dns_servers is invalid",
+			network: &api.SandboxNetworkConfig{
+				DnsServers: &[]string{"1.1.1.1", "dns.example.com"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid DNS server dns.example.com: must be an IPv4 address",
+		},
+		{
+			name: "CIDR in dns_servers is invalid",
+			network: &api.SandboxNetworkConfig{
+				DnsServers: &[]string{"1.1.1.1/32"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid DNS server 1.1.1.1/32: must be an IPv4 address",
+		},
+		{
+			name: "unspecified address in dns_servers is invalid",
+			network: &api.SandboxNetworkConfig{
+				DnsServers: &[]string{"0.0.0.0"},
+			},
+			wantErr:    true,
+			wantCode:   http.StatusBadRequest,
+			wantErrMsg: "invalid DNS server 0.0.0.0: must be an IPv4 address",
+		},
 	}
 
 	for _, tt := range tests {

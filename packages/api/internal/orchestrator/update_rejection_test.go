@@ -76,7 +76,7 @@ func TestSandboxUpdateRejectionHTTPConsumers(t *testing.T) {
 			_, timeoutErr := o.KeepAliveFor(t.Context(), sbx.TeamID, sbx.SandboxID, time.Minute, true)
 			require.NotNil(t, timeoutErr)
 			require.Equal(t, tc.want, timeoutErr.Code)
-			networkErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil)
+			networkErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil, nil)
 			require.NotNil(t, networkErr)
 			require.Equal(t, tc.want, networkErr.Code)
 		})

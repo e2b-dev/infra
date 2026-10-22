@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -54,7 +55,9 @@ const (
 	// Network validation error messages
 	ErrMsgDomainsRequireBlockAll = "When specifying allowed domains in allow out, you must include 'ALL_TRAFFIC' in deny out to block all other traffic."
 
-	maxHTTPSPorts                     = 128
+	maxHTTPSPorts = 128
+	// maxDNSServers caps dnsServers. Resolvers only use the first few anyway.
+	maxDNSServers                     = 10
 	maxNetworkRuleTransformsPerDomain = 1
 	maxNetworkRuleDomainLen           = 128
 	maxNetworkRuleHeaderNameLen       = 64
@@ -332,6 +335,7 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
 				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
 				Rules:            apiRulesToDBRules(n.Rules),
+				DnsServers:       n.DnsServers,
 			},
 		}
 
@@ -873,6 +877,10 @@ func validateNetworkConfig(ctx context.Context, featureFlags featureFlagsClient,
 		return err
 	}
 
+	if err := validateDNSServers(network.DnsServers); err != nil {
+		return err
+	}
+
 	return validateNetworkRules(ctx, featureFlags, teamID, envdVersion, maxDomains, network.Rules)
 }
 
@@ -910,6 +918,31 @@ func validateEgressRules(allowOut, denyOut []string) *api.APIError {
 				Code:      http.StatusBadRequest,
 				Err:       errors.New("allow out contains domains but deny out is missing 0.0.0.0/0 (ALL_TRAFFIC)"),
 				ClientMsg: ErrMsgDomainsRequireBlockAll,
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateDNSServers checks that every DNS server is a plain IPv4 address.
+func validateDNSServers(dnsServers *[]string) *api.APIError {
+	servers := sharedUtils.DerefOrDefault(dnsServers, nil)
+	if len(servers) > maxDNSServers {
+		return &api.APIError{
+			Code:      http.StatusBadRequest,
+			Err:       fmt.Errorf("too many DNS servers: %d (max %d)", len(servers), maxDNSServers),
+			ClientMsg: fmt.Sprintf("DNS servers can have at most %d entries.", maxDNSServers),
+		}
+	}
+
+	for _, server := range servers {
+		addr, err := netip.ParseAddr(server)
+		if err != nil || !addr.Is4() || addr.IsUnspecified() {
+			return &api.APIError{
+				Code:      http.StatusBadRequest,
+				Err:       fmt.Errorf("invalid DNS server %q", server),
+				ClientMsg: fmt.Sprintf("invalid DNS server %s: must be an IPv4 address", server),
 			}
 		}
 	}

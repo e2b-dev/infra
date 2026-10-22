@@ -67,6 +67,8 @@ func dbNetworkConfigToAPI(network *dbtypes.SandboxNetworkConfig) *api.SandboxNet
 			result.DenyOut = &egress.DeniedAddresses
 		}
 
+		result.DnsServers = egress.DnsServers
+
 		if egress.Rules != nil {
 			apiRules := make(map[string][]api.SandboxNetworkRule, len(egress.Rules))
 			for domain, dbRules := range egress.Rules {

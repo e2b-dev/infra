@@ -76,6 +76,10 @@ type SandboxNetworkEgressConfig struct {
 	DeniedAddresses  []string                        `json:"deniedAddresses,omitempty"`
 	Rules            map[string][]SandboxNetworkRule `json:"rules,omitempty"`
 
+	// DnsServers lists the DNS servers allowed when AllowedAddresses has a
+	// domain. Nil means the default nameserver; empty means none.
+	DnsServers *[]string `json:"dnsServers,omitempty"`
+
 	// SOCKS5 BYOP egress proxy configuration.
 	EgressProxyAddress  string                       `json:"egressProxyAddress,omitempty"`
 	EgressProxyUsername string                       `json:"egressProxyUsername,omitempty"`

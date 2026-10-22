@@ -10,15 +10,20 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/emptypb"
 
+	"github.com/e2b-dev/infra/packages/api/internal/api"
 	"github.com/e2b-dev/infra/packages/api/internal/orchestrator/nodemanager"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
 	"github.com/e2b-dev/infra/packages/db/pkg/types"
 	orchestratorgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
 )
 
 // Node versions as orchestrator-ee reports them: the build that added
@@ -76,7 +81,7 @@ func TestUpdateSandboxNetworkConfig_PlacedNetworkRefusesProxyBeforeStore(t *test
 	})
 	require.NoError(t, err)
 
-	apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, tlsProxy())
+	apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil, tlsProxy())
 	require.NotNil(t, apiErr)
 	assert.Equal(t, http.StatusBadRequest, apiErr.Code)
 	stored, err := o.sandboxStore.Get(t.Context(), sbx.TeamID, sbx.SandboxID)
@@ -84,7 +89,7 @@ func TestUpdateSandboxNetworkConfig_PlacedNetworkRefusesProxyBeforeStore(t *test
 	assert.Equal(t, &types.SandboxNetworkEgressConfig{AllowedAddresses: []string{"example.com"}}, stored.Network.Egress,
 		"a rejected proxy must not replace the API's committed configuration")
 
-	require.Nil(t, o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil),
+	require.Nil(t, o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil, nil),
 		"removing the proxy is still accepted on a routed execution")
 }
 
@@ -99,7 +104,7 @@ func TestUpdateSandboxNetworkConfig_EgressProxyTLSGate(t *testing.T) {
 		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithOrchestratorVersion(buildBeforeEgressProxyTLS))
 		sbx := addRunningSandbox(t, o)
 
-		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, tlsProxy())
+		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil, tlsProxy())
 		require.NotNil(t, apiErr, "a node that would drop the TLS block must not be sent it")
 		assert.Equal(t, http.StatusServiceUnavailable, apiErr.Code)
 		assert.Equal(t, errCodeFeatureUnsupported, apiErr.ErrorCode)
@@ -116,7 +121,7 @@ func TestUpdateSandboxNetworkConfig_EgressProxyTLSGate(t *testing.T) {
 		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithOrchestratorVersion(buildWithEgressProxyTLS))
 		sbx := addRunningSandbox(t, o)
 
-		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, tlsProxy())
+		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil, tlsProxy())
 		require.Nil(t, apiErr)
 
 		stored, err := o.sandboxStore.Get(t.Context(), sbx.TeamID, sbx.SandboxID)
@@ -130,7 +135,7 @@ func TestUpdateSandboxNetworkConfig_EgressProxyTLSGate(t *testing.T) {
 		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithOrchestratorVersion(buildBeforeEgressProxyTLS))
 		sbx := addRunningSandbox(t, o)
 
-		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil,
+		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil,
 			&sandbox_network.EgressProxyConfig{Address: "proxy.example.com:1080"})
 		require.Nil(t, apiErr, "the gate applies only to configs that ask for TLS")
 	})
@@ -141,7 +146,7 @@ func TestUpdateSandboxNetworkConfig_EgressProxyTLSGate(t *testing.T) {
 		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithOrchestratorVersion(buildBeforeEgressProxyTLS))
 		sbx := addSandboxInState(t, o, sandbox.StateSnapshotting, "node-1")
 
-		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, tlsProxy())
+		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil, tlsProxy())
 		require.NotNil(t, apiErr)
 		assert.Equal(t, http.StatusConflict, apiErr.Code)
 
@@ -156,7 +161,7 @@ func TestUpdateSandboxNetworkConfig_EgressProxyTLSGate(t *testing.T) {
 		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithOrchestratorVersion(buildWithEgressProxyTLS))
 		sbx := addSandboxInState(t, o, sandbox.StateRunning, "node-unknown")
 
-		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, tlsProxy())
+		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID, nil, nil, nil, nil, nil, tlsProxy())
 		require.NotNil(t, apiErr, "a node whose version cannot be read must not be sent TLS")
 		assert.Equal(t, http.StatusServiceUnavailable, apiErr.Code)
 
@@ -170,10 +175,88 @@ func TestUpdateSandboxNetworkConfig_EgressProxyTLSGate(t *testing.T) {
 
 		o := newCreateSandboxTestOrchestrator(t, nodemanager.WithOrchestratorVersion(buildWithEgressProxyTLS))
 
-		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), uuid.New(), "sbx-missing", nil, nil, nil, nil, tlsProxy())
+		apiErr := o.UpdateSandboxNetworkConfig(t.Context(), uuid.New(), "sbx-missing", nil, nil, nil, nil, nil, tlsProxy())
 		require.NotNil(t, apiErr)
 		assert.Equal(t, http.StatusNotFound, apiErr.Code)
 	})
+}
+
+type capturingSandboxUpdateClient struct {
+	orchestratorgrpc.SandboxServiceClient
+
+	req *orchestratorgrpc.SandboxUpdateRequest
+}
+
+func (c *capturingSandboxUpdateClient) Update(_ context.Context, req *orchestratorgrpc.SandboxUpdateRequest, _ ...grpc.CallOption) (*emptypb.Empty, error) {
+	c.req = req
+
+	return &emptypb.Empty{}, nil
+}
+
+// An update replaces dnsServers like every other egress field: leaving it out
+// resets it to the default, which allows the default nameserver.
+func TestUpdateSandboxNetworkConfig_DnsServers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		stored         *[]string
+		update         *[]string
+		wantStored     *[]string
+		wantNameserver bool
+	}{
+		{"omitted resets an empty list to the default", &[]string{}, nil, nil, true},
+		{"listed default server reopens it", &[]string{}, &[]string{"8.8.8.8"}, &[]string{"8.8.8.8"}, true},
+		{"empty list closes the default nameserver", nil, &[]string{}, &[]string{}, false},
+		{"other server replaces the default", nil, &[]string{"1.1.1.1"}, &[]string{"1.1.1.1"}, false},
+		{"omitted keeps the default", nil, nil, nil, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			sbx := sandbox.Sandbox{
+				SandboxID: "sbx-dns", TeamID: uuid.New(), NodeID: "node-dns",
+				ClusterID: uuid.Nil, State: sandbox.StateRunning,
+				StartTime: time.Now(), EndTime: time.Now().Add(time.Hour), MaxInstanceLength: time.Hour,
+				Network: &types.SandboxNetworkConfig{Egress: &types.SandboxNetworkEgressConfig{
+					AllowedAddresses: []string{"example.com"},
+					DeniedAddresses:  []string{sandbox_network.AllInternetTrafficCIDR},
+					DnsServers:       tt.stored,
+				}},
+			}
+			storage := &updateRejectionStorage{sbx: sbx}
+			o := &Orchestrator{
+				sandboxStore: sandbox.NewStore(storage, nil, sandbox.Callbacks{}),
+				nodes:        smap.New[*nodemanager.Node](),
+			}
+			client := &capturingSandboxUpdateClient{}
+			node := nodemanager.NewTestNode(sbx.NodeID, api.NodeStatusReady, 0, 2)
+			node.ClusterID = sbx.ClusterID
+			node.SetSandboxClient(client)
+			o.registerNode(node)
+
+			apiErr := o.UpdateSandboxNetworkConfig(t.Context(), sbx.TeamID, sbx.SandboxID,
+				[]string{"example.com"}, []string{sandbox_network.AllInternetTrafficCIDR}, nil, nil, tt.update, nil)
+			require.Nil(t, apiErr)
+
+			require.NotNil(t, storage.sbx.Network)
+			require.NotNil(t, storage.sbx.Network.Egress)
+			assert.Equal(t, tt.wantStored, storage.sbx.Network.Egress.DnsServers)
+
+			require.NotNil(t, client.req, "the update must reach the node")
+			cidrs := client.req.GetEgress().GetAllowedCidrs()
+			if tt.wantNameserver {
+				assert.Contains(t, cidrs, defaultNameserverCIDR)
+			} else {
+				assert.NotContains(t, cidrs, defaultNameserverCIDR)
+			}
+			for _, server := range utils.DerefOrDefault(tt.update, nil) {
+				assert.Contains(t, cidrs, server+"/32")
+			}
+		})
+	}
 }
 
 // A checkpoint records the network of the execution it left running, as
@@ -208,19 +291,19 @@ func TestCheckpointRecordsTheRunningNetwork(t *testing.T) {
 
 			checkpoint(reportedNetwork(nil))
 			require.Nil(t, runningPlacement(t, f), "the replacement runs on the worker's network")
-			require.Nil(t, f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil, proxy),
+			require.Nil(t, f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil, nil, proxy),
 				"the replacement takes a proxy")
 
 			setPlacement(t, f, nil)
 			checkpoint(reportedNetwork(placed))
 			assert.True(t, proto.Equal(placed, runningPlacement(t, f)), "a replacement placed on the Router again is recorded")
-			apiErr := f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, []string{"example.com"}, nil, nil, nil, proxy)
+			apiErr := f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, []string{"example.com"}, nil, nil, nil, nil, proxy)
 			require.NotNil(t, apiErr)
 			assert.Equal(t, http.StatusBadRequest, apiErr.Code, "and refuses a proxy before anything is stored")
 			stored, err := f.o.sandboxStore.Get(t.Context(), f.sbx.TeamID, f.sbx.SandboxID)
 			require.NoError(t, err)
 			assert.Equal(t, proxy.Address, stored.Network.Egress.EgressProxyAddress, "the stored configuration is the earlier one")
-			require.Nil(t, f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil, nil), "and takes the proxy's removal")
+			require.Nil(t, f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil, nil, nil), "and takes the proxy's removal")
 
 			client.checkpoint = func(context.Context) error {
 				return status.Error(codes.FailedPrecondition, "envd too old")
@@ -260,7 +343,7 @@ func TestCheckpointNeverServesAStalePlacement(t *testing.T) {
 			assert.Equal(t, sandbox.StateSnapshotting, stored.State)
 			assert.True(t, proto.Equal(placed, stored.NetworkPlacement))
 			assert.Zero(t, client.deletes.Load(), "the healthy VM is not killed")
-			apiErr := f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil,
+			apiErr := f.o.UpdateSandboxNetworkConfig(t.Context(), f.sbx.TeamID, f.sbx.SandboxID, nil, nil, nil, nil, nil,
 				&sandbox_network.EgressProxyConfig{Address: "proxy.example.com:1080"})
 			require.NotNil(t, apiErr)
 			assert.Equal(t, http.StatusConflict, apiErr.Code)

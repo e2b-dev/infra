@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,4 +98,43 @@ func TestDBNetworkConfigToAPI_EgressProxy(t *testing.T) {
 
 		assert.Nil(t, result.EgressProxy)
 	})
+}
+
+// GET returns the stored list, so callers can see which servers are allowed.
+// An empty list is shown as [], and an unset one is left out.
+func TestDBNetworkConfigToAPI_DnsServers(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		stored   *[]string
+		wantJSON string
+	}{
+		{"listed servers are echoed", &[]string{"1.1.1.1", "9.9.9.9"}, `"dnsServers":["1.1.1.1","9.9.9.9"]`},
+		{"empty list is echoed", &[]string{}, `"dnsServers":[]`},
+		{"unset list is omitted", nil, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := dbNetworkConfigToAPI(&dbtypes.SandboxNetworkConfig{
+				Egress: &dbtypes.SandboxNetworkEgressConfig{
+					AllowedAddresses: []string{"example.com"},
+					DnsServers:       tt.stored,
+				},
+			})
+			require.NotNil(t, result)
+			assert.Equal(t, tt.stored, result.DnsServers)
+
+			data, err := json.Marshal(result)
+			require.NoError(t, err)
+			if tt.wantJSON == "" {
+				assert.NotContains(t, string(data), "dnsServers")
+			} else {
+				assert.Contains(t, string(data), tt.wantJSON)
+			}
+		})
+	}
 }

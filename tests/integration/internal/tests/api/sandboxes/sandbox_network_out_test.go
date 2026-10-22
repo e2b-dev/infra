@@ -753,6 +753,135 @@ func TestEgressFirewallDomainPersistsAfterResume(t *testing.T) {
 	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail after resume")
 }
 
+// assertDefaultDNSBlocked asserts that both DNS queries and HTTPS requests to
+// the default nameserver are blocked.
+func assertDefaultDNSBlocked(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient, when string) {
+	t.Helper()
+	assertBlockedDNSQuery(t, ctx, sbx, envdClient, sandbox_network.DefaultNameserver, "google.com", "Expected DNS query to the default nameserver to fail "+when)
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://"+sandbox_network.DefaultNameserver, "Expected curl to the default nameserver to fail "+when)
+}
+
+// pinGoogleInHosts adds google.com to /etc/hosts so it resolves without DNS.
+// The firewall matches allowed domains by SNI, so any public address works.
+func pinGoogleInHosts(t *testing.T, ctx context.Context, sbx *api.Sandbox, envdClient *setup.EnvdClient) {
+	t.Helper()
+	err := utils.ExecCommandAsRoot(t, ctx, sbx, envdClient, "sh", "-c", "echo '1.1.1.1 google.com' >> /etc/hosts")
+	require.NoError(t, err, "Expected to modify /etc/hosts without error")
+}
+
+// assertStoredDNSServers asserts what GET reports for dnsServers. A nil want
+// means the field must be left out.
+func assertStoredDNSServers(t *testing.T, ctx context.Context, client *api.ClientWithResponses, sandboxID string, want *[]string) {
+	t.Helper()
+	resp, err := client.GetSandboxesSandboxIDWithResponse(ctx, sandboxID, setup.WithAPIKey())
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, resp.StatusCode())
+	require.NotNil(t, resp.JSON200)
+	require.NotNil(t, resp.JSON200.Network)
+	if want == nil {
+		assert.Nil(t, resp.JSON200.Network.DnsServers, "Expected GET to leave out dnsServers")
+
+		return
+	}
+	require.NotNil(t, resp.JSON200.Network.DnsServers, "Expected GET to echo dnsServers")
+	assert.ElementsMatch(t, *want, *resp.JSON200.Network.DnsServers)
+}
+
+// TestEgressFirewallDomainWithoutDNSServers tests that an empty dnsServers
+// list keeps the default nameserver closed while the allowed domain still works.
+func TestEgressFirewallDomainWithoutDNSServers(t *testing.T) {
+	t.Parallel()
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut:   &[]string{"google.com"},
+			DenyOut:    &[]string{sandbox_network.AllInternetTrafficCIDR},
+			DnsServers: &[]string{},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	assertDefaultDNSBlocked(t, ctx, sbx, envdClient, "with an empty dnsServers list")
+
+	pinGoogleInHosts(t, ctx, sbx, envdClient)
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed without DNS")
+	assertBlockedHTTPRequest(t, ctx, sbx, envdClient, "https://cloudflare.com", "Expected curl to non-allowed domain (cloudflare.com) to fail")
+
+	assertStoredDNSServers(t, ctx, client, sbx.SandboxID, &[]string{})
+}
+
+// TestEgressFirewallDomainWithCustomDNSServer tests that a listed DNS server
+// is allowed in place of the default nameserver.
+func TestEgressFirewallDomainWithCustomDNSServer(t *testing.T) {
+	t.Parallel()
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut:   &[]string{"google.com"},
+			DenyOut:    &[]string{sandbox_network.AllInternetTrafficCIDR},
+			DnsServers: &[]string{"1.1.1.1"},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	assertSuccessfulDNSQuery(t, ctx, sbx, envdClient, "1.1.1.1", "example.com", "Expected DNS query to the listed server (1.1.1.1) to succeed")
+	assertDefaultDNSBlocked(t, ctx, sbx, envdClient, "when another DNS server is listed")
+
+	assertStoredDNSServers(t, ctx, client, sbx.SandboxID, &[]string{"1.1.1.1"})
+}
+
+// TestEgressFirewallDomainWithoutDNSServersPersistsAfterResume tests that an
+// empty dnsServers list is reapplied on resume.
+func TestEgressFirewallDomainWithoutDNSServersPersistsAfterResume(t *testing.T) {
+	t.Parallel()
+	templateID := ensureNetworkTestTemplate(t)
+	ctx := t.Context()
+	sbxTimeout := int32(60)
+	client := setup.GetAPIClient()
+
+	sbx := utils.SetupSandboxWithCleanup(t, client,
+		utils.WithTemplateID(templateID),
+		utils.WithTimeout(60),
+		utils.WithNetwork(&api.SandboxNetworkConfig{
+			AllowOut:   &[]string{"google.com"},
+			DenyOut:    &[]string{sandbox_network.AllInternetTrafficCIDR},
+			DnsServers: &[]string{},
+		}),
+	)
+
+	envdClient := setup.GetEnvdClient(t, ctx)
+
+	pinGoogleInHosts(t, ctx, sbx, envdClient)
+	assertDefaultDNSBlocked(t, ctx, sbx, envdClient, "before pause")
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed before pause")
+
+	respPause, err := client.PostSandboxesSandboxIDPauseWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDPauseJSONRequestBody{}, setup.WithAPIKey())
+	require.NoError(t, err, "Expected to pause sandbox without error")
+	require.Equal(t, http.StatusNoContent, respPause.StatusCode(), "Expected status code 204 No Content, got %d", respPause.StatusCode())
+
+	respResume, err := client.PostSandboxesSandboxIDResumeWithResponse(ctx, sbx.SandboxID, api.PostSandboxesSandboxIDResumeJSONRequestBody{
+		Timeout: &sbxTimeout,
+	}, setup.WithAPIKey())
+	require.NoError(t, err, "Expected to resume sandbox without error")
+	require.Equal(t, http.StatusCreated, respResume.StatusCode(), "Expected status code 201 Created, got %d", respResume.StatusCode())
+
+	assertSuccessfulHTTPRequest(t, ctx, sbx, envdClient, "https://google.com", "Expected curl to allowed domain (google.com) to succeed after resume")
+	assertDefaultDNSBlocked(t, ctx, sbx, envdClient, "after resume")
+	assertStoredDNSServers(t, ctx, client, sbx.SandboxID, &[]string{})
+}
+
 // =============================================================================
 // HTTP (non-HTTPS) protocol tests
 // =============================================================================
