@@ -93,8 +93,8 @@ github.com/ClickHouse/clickhouse-go/v2 v2.46.0 h1:s3eRy+hYmu5uzotB6ZhDofgHu8kDgG
 github.com/ClickHouse/clickhouse-go/v2 v2.46.0/go.mod h1:giJfUVlMkcfUEPVfRpt51zZaGEx9i17gCos8gBl392c=
 github.com/DataDog/datadog-go/v5 v5.2.0 h1:kSptqUGSNK67DgA+By3rwtFnAh6pTBxJ7Hn8JCLZcKY=
 github.com/DataDog/datadog-go/v5 v5.2.0/go.mod h1:XRDJk1pTc00gm+ZDiBKsjh7oOOtJfYfglVCmFb8C2+Q=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 h1:l7+6kwRMJNwdCvYdDl7Eax+wzEYHSnNY7zrrfbhDdTA=
-github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0/go.mod h1:pJTkW8hEUIIi3Pf65lPZOnn4Y81yCllX6IWk2jNXdkM=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.34.0 h1:yzIYdwuro811Z27D3T80Wkd3rqZzb0K43nner7Eh1yE=
+github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.34.0/go.mod h1:pJTkW8hEUIIi3Pf65lPZOnn4Y81yCllX6IWk2jNXdkM=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0 h1:jLdiS1vO+XJFyDSWRHBx56r4s/NNtcl5J6KyCcWUX/w=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0/go.mod h1:8lmpHY+1VRoteiOwyrQMDt1YGXOrFKCz+1wJW7n3ODY=
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/cloudmock v0.57.0 h1:cSjUzZ7KU8hicTgzaSv9NmSyM9fTVK3y5lsBUl3wOis=
@@ -1191,8 +1191,8 @@ github.com/spf13/pflag v1.0.9/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An
 github.com/spf13/pflag v1.0.10 h1:4EBh2KAYBwaONj6b2Ye1GiHfwjqyROoF4RwYO+vPwFk=
 github.com/spf13/pflag v1.0.10/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/spf13/viper v1.4.0/go.mod h1:PTJ7Z/lr49W6bUbkmS1V3by4uWynFiR9p7+dSq/yZzE=
-github.com/spiffe/go-spiffe/v2 v2.7.0 h1:uXe1MflJoHw58wAUvxVlcM7WpKtijWG7I1UidcGh6g4=
-github.com/spiffe/go-spiffe/v2 v2.7.0/go.mod h1:47Q0Q9/AqGha8QLHp+kxpH4Wca7X7EnOtlIJy3mxZ3U=
+github.com/spiffe/go-spiffe/v2 v2.8.1 h1:eXZMLsu+3MLEPJyGJkolqtVrteZfQdUpOWj6LTiDl/E=
+github.com/spiffe/go-spiffe/v2 v2.8.1/go.mod h1:47Q0Q9/AqGha8QLHp+kxpH4Wca7X7EnOtlIJy3mxZ3U=
 github.com/stefanberger/go-pkcs11uri v0.0.0-20201008174630-78d3cae3a980/go.mod h1:AO3tvPzVZ/ayst6UlUKUv6rcPQInYe3IknH3jYhAKu8=
 github.com/stretchr/objx v0.0.0-20180129172003-8a3f7159479f/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
@@ -1709,8 +1709,8 @@ google.golang.org/grpc v1.27.0/go.mod h1:qbnxyOmOxrQa7FizSgH+ReBfzJrCY1pSN7KXBS8
 google.golang.org/grpc v1.27.1/go.mod h1:qbnxyOmOxrQa7FizSgH+ReBfzJrCY1pSN7KXBS8abTk=
 google.golang.org/grpc v1.30.0/go.mod h1:N36X2cJ7JwdamYAgDz+s+rVMFjt3numwzf/HckM8pak=
 google.golang.org/grpc v1.33.2/go.mod h1:JMHMWHQWaTccqQQlmk3MJZS+GWXOdAesneDmEnv2fbc=
-google.golang.org/grpc v1.83.2 h1:EManeRomTObA0BU7I8vXgg/78uE5MJ9M8B39EX2WscU=
-google.golang.org/grpc v1.83.2/go.mod h1:YPI1hK3kDked6iHvgX3tR0y+nX/qpMFKhPgFsokw1S8=
+google.golang.org/grpc v1.84.0 h1:soMyaPJ8pAak5PIQ0DGBUir0XRo2fRoMqhNWMLlLxO0=
+google.golang.org/grpc v1.84.0/go.mod h1:ljCht0DrxQrXBDRTZp52Qxh3Ffk8CdYm2sj4O2QN2C0=
 google.golang.org/protobuf v0.0.0-20200109180630-ec00e32a8dfd/go.mod h1:DFci5gLYBciE7Vtevhsrf46CRTquxDuWsQurQQe4oz8=
 google.golang.org/protobuf v0.0.0-20200221191635-4d8936d0db64/go.mod h1:kwYJMbMJ01Woi6D6+Kah6886xMZcty6N08ah7+eCXa0=
 google.golang.org/protobuf v0.0.0-20200228230310-ab0ca4ff8a60/go.mod h1:cfTl7dwQJ+fmap5saPgwCLgHXTUD7jkjRqWcaiX5VyM=

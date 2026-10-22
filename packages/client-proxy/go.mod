@@ -23,7 +23,7 @@ require (
 	go.uber.org/zap v1.28.0
 	golang.org/x/oauth2 v0.37.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260825221802-da73d73af1c5
-	google.golang.org/grpc v1.83.2
+	google.golang.org/grpc v1.84.0
 )
 
 require (
@@ -85,7 +85,7 @@ require (
 	github.com/redis/go-redis/v9 v9.22.0 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.6 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/spiffe/go-spiffe/v2 v2.7.0 // indirect
+	github.com/spiffe/go-spiffe/v2 v2.8.1 // indirect
 	github.com/sumup/typeid v0.8.0 // indirect
 	github.com/testcontainers/testcontainers-go v0.44.0 // indirect
 	github.com/tklauser/go-sysconf v0.4.0 // indirect

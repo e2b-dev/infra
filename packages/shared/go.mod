@@ -55,7 +55,7 @@ require (
 	github.com/riverqueue/river/rivertype v0.47.0
 	github.com/riverqueue/rivercontrib/otelriver v0.12.0
 	github.com/samber/lo v1.53.0
-	github.com/spiffe/go-spiffe/v2 v2.7.0
+	github.com/spiffe/go-spiffe/v2 v2.8.1
 	github.com/stretchr/testify v1.12.1
 	github.com/sumup/typeid v0.8.0
 	github.com/testcontainers/testcontainers-go v0.44.0
@@ -83,7 +83,7 @@ require (
 	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.23.0
 	google.golang.org/api v0.297.0
-	google.golang.org/grpc v1.83.2
+	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	k8s.io/api v0.35.3
 	k8s.io/apimachinery v0.35.3
@@ -105,7 +105,7 @@ require (
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.7.2 // indirect
 	github.com/DataDog/datadog-go/v5 v5.2.0 // indirect
 	github.com/DataDog/sketches-go v1.4.7 // indirect
-	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.33.0 // indirect
+	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.34.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.57.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/internal/resourcemapping v0.57.0 // indirect
 	github.com/HdrHistogram/hdrhistogram-go v1.1.2 // indirect
