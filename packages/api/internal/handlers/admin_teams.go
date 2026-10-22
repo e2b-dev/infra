@@ -26,10 +26,6 @@ const adminTeamListDefaultLimit = 50
 // literally.
 var likePatternEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-func (a *APIStore) PostAdminTeamsQuery(c *gin.Context) {
-	a.PostUnstableAdminTeamsQuery(c)
-}
-
 func (a *APIStore) PostUnstableAdminTeamsQuery(c *gin.Context) {
 	ctx := c.Request.Context()
 
@@ -152,10 +148,6 @@ func adminTeamListFilter(body api.AdminTeamListRequest) queries.CountAdminTeamsP
 	return filter
 }
 
-func (a *APIStore) GetAdminTeamsTeamID(c *gin.Context, teamID openapi_types.UUID) {
-	a.GetUnstableAdminTeamsTeamID(c, teamID)
-}
-
 func (a *APIStore) GetUnstableAdminTeamsTeamID(c *gin.Context, teamID openapi_types.UUID) {
 	ctx := c.Request.Context()
 
@@ -186,10 +178,6 @@ func (a *APIStore) GetUnstableAdminTeamsTeamID(c *gin.Context, teamID openapi_ty
 		ClusterId:               row.ClusterID,
 		ClusterName:             row.ClusterName,
 	})
-}
-
-func (a *APIStore) PutAdminTeamsTeamIDSchedulingLabels(c *gin.Context, teamID openapi_types.UUID) {
-	a.PutUnstableAdminTeamsTeamIDSchedulingLabels(c, teamID)
 }
 
 func (a *APIStore) PutUnstableAdminTeamsTeamIDSchedulingLabels(c *gin.Context, teamID openapi_types.UUID) {

@@ -14,10 +14,6 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
-func (a *APIStore) GetTeamsTeamIDStatus(c *gin.Context, teamID api.TeamID) {
-	a.GetUnstableTeamsTeamIDStatus(c, teamID)
-}
-
 func (a *APIStore) GetUnstableTeamsTeamIDStatus(c *gin.Context, teamID api.TeamID) {
 	row, ok := a.getPathTeam(c, teamID)
 	if !ok {

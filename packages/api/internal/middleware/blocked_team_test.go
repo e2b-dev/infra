@@ -41,10 +41,8 @@ func TestBlockedTeamStillReadsItsStatusAndLimits(t *testing.T) {
 	blocked := &types.Team{Team: &authqueries.Team{ID: uuid.New(), IsBlocked: true, BlockedReason: &reason}}
 
 	for name, route := range map[string]string{
-		"status":          "/teams/:teamID/status",
-		"limits":          "/teams/:teamID/limits",
-		"unstable status": "/unstable/teams/:teamID/status",
-		"unstable limits": "/unstable/teams/:teamID/limits",
+		"status": "/unstable/teams/:teamID/status",
+		"limits": "/unstable/teams/:teamID/limits",
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
