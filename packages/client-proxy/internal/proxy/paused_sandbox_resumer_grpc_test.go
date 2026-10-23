@@ -18,6 +18,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/mtls/servicetest"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
@@ -123,7 +124,10 @@ func TestGRPCPausedSandboxResumer_ResumeSendsMetadataAndReturnsIP(t *testing.T) 
 	t.Parallel()
 
 	srv := &fakeSandboxServer{
-		resp: &proxygrpc.SandboxResumeResponse{OrchestratorIp: "  10.0.0.5  "},
+		// The proxy routes on orchestrator_ip and ignores the placement.
+		resp: &proxygrpc.SandboxResumeResponse{OrchestratorIp: "  10.0.0.5  ", NetworkPlacement: &orchestrator.SandboxNetworkPlacement{
+			ExecutionId: "execution", NetworkMode: "egress-router", RouterId: "router", IngressAddress: "10.0.0.5", IngressPort: 5007,
+		}},
 	}
 	conn := startFakeServer(t, srv)
 

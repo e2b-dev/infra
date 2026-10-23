@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -9,8 +10,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	snapshotcache "github.com/e2b-dev/infra/packages/api/internal/cache/snapshots"
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox"
@@ -20,17 +25,18 @@ import (
 	"github.com/e2b-dev/infra/packages/db/pkg/testutils"
 	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 	"github.com/e2b-dev/infra/packages/db/queries"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 )
 
 // autoResumeBackendStub answers GetSandbox with a fixed sandbox or error and
-// routes a running one to a fixed node IP.
+// routes a running one with a fixed response.
 type autoResumeBackendStub struct {
 	sbx    sandbox.Sandbox
 	sbxErr error
-	nodeIP string
+	resp   *proxygrpc.SandboxResumeResponse
 
 	routed int
 }
@@ -39,10 +45,10 @@ func (s *autoResumeBackendStub) GetSandbox(context.Context, uuid.UUID, string) (
 	return s.sbx, s.sbxErr
 }
 
-func (s *autoResumeBackendStub) HandleExistingSandboxAutoResume(context.Context, uuid.UUID, string, sandbox.Sandbox, time.Duration) (string, bool, error) {
+func (s *autoResumeBackendStub) HandleExistingSandboxAutoResume(context.Context, uuid.UUID, string, sandbox.Sandbox, time.Duration) (*proxygrpc.SandboxResumeResponse, bool, error) {
 	s.routed++
 
-	return s.nodeIP, true, nil
+	return s.resp, true, nil
 }
 
 type teamAuthServiceStub struct {
@@ -108,7 +114,7 @@ func newFilesystemOnlyResumeService(t *testing.T, backend *autoResumeBackendStub
 func TestResumeSandbox_RunningSourceOfFilesystemOnlySnapshotIsRouted(t *testing.T) {
 	t.Parallel()
 
-	backend := &autoResumeBackendStub{sbx: sandbox.Sandbox{State: sandbox.StateRunning}, nodeIP: "10.0.0.1"}
+	backend := &autoResumeBackendStub{sbx: sandbox.Sandbox{State: sandbox.StateRunning}, resp: &proxygrpc.SandboxResumeResponse{OrchestratorIp: "10.0.0.1"}}
 	svc, sandboxID := newFilesystemOnlyResumeService(t, backend)
 
 	resp, err := svc.ResumeSandbox(t.Context(), &proxygrpc.SandboxResumeRequest{SandboxId: sandboxID})
@@ -130,4 +136,45 @@ func TestResumeSandbox_PausedFilesystemOnlySnapshotIsRefused(t *testing.T) {
 	assert.Equal(t, codes.FailedPrecondition, status.Code(err))
 	assert.Contains(t, err.Error(), "filesystem-only snapshot must be resumed explicitly")
 	assert.Zero(t, backend.routed)
+}
+
+// The placement reaches a client over a real TCP gRPC connection, and a
+// client built before network_placement existed still reads orchestrator_ip
+// from the same response.
+func TestResumeSandbox_PlacementSurvivesTheWire(t *testing.T) {
+	t.Parallel()
+
+	backend := &autoResumeBackendStub{sbx: sandbox.Sandbox{State: sandbox.StateRunning}}
+	svc, sandboxID := newFilesystemOnlyResumeService(t, backend)
+
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	server := grpc.NewServer()
+	proxygrpc.RegisterSandboxServiceServer(server, svc)
+	go func() { _ = server.Serve(listener) }()
+	t.Cleanup(server.Stop)
+
+	conn, err := grpc.NewClient(listener.Addr().String(), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	client := proxygrpc.NewSandboxServiceClient(conn)
+	req := &proxygrpc.SandboxResumeRequest{SandboxId: sandboxID}
+
+	for _, want := range []*proxygrpc.SandboxResumeResponse{
+		{OrchestratorIp: "10.0.0.1"},
+		{NetworkPlacement: &orchestrator.SandboxNetworkPlacement{
+			ExecutionId: "execution-b", NetworkMode: "full-router", RouterId: "router-b", IngressAddress: "10.8.0.2", IngressPort: 5010,
+		}},
+	} {
+		backend.resp = want
+
+		got, err := client.ResumeSandbox(t.Context(), req)
+		require.NoError(t, err)
+		require.Truef(t, proto.Equal(want, got), "want %v, got %v", want, got)
+
+		// orchestrator_ip is field 1, a string, exactly as StringValue encodes value.
+		old := &wrapperspb.StringValue{}
+		require.NoError(t, conn.Invoke(t.Context(), proxygrpc.SandboxService_ResumeSandbox_FullMethodName, req, old))
+		assert.Equal(t, want.GetOrchestratorIp(), old.GetValue())
+	}
 }

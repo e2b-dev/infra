@@ -827,7 +827,7 @@ sequenceDiagram
         R-->>CP: node IP
     else paused / unknown
         CP->>API: gRPC ResumeSandbox(i7fa3) — one flight shared by concurrent requests
-        API-->>CP: node IP (after resume), or 409 / 503 + Retry-After to the client
+        API-->>CP: orchestrator IP and network placement (after resume), or 409 / 503 + Retry-After to the client
     end
     CP->>OP: forward to http://nodeIP:5007
     OP->>OP: lookup sandbox, check traffic access token
@@ -868,8 +868,18 @@ in Redis (`networkPlacement`), and callers that join the same start get the same
 execution carries only its own create's placement. On a completed checkpoint response, the API
 records the resulting VM's placement together with the return to Running. If the caller abandons
 the checkpoint, the node can finish without returning its placement to the API, which can retain
-the old placement. Recovery of that outcome is not implemented. Nothing routes on this placement
-yet: client-proxy and the API still send traffic to the worker.
+the old placement. Recovery of that outcome is not implemented.
+
+A `ResumeSandbox` answer for a routed sandbox carries `network_placement` for the execution it
+reports: the winning start's placement for a fresh or joined resume, and the record's placement
+for a sandbox already running or back to Running after a pause or checkpoint wait. A record
+without a placement is a legacy sandbox and is answered with `orchestrator_ip` alone, as before.
+A placement from another execution, an unknown mode, or a full-router placement without Router,
+address and port fails the RPC. A full-router answer has an empty `orchestrator_ip` and never
+looks up an orchestrator. Egress-router and legacy answers still carry `orchestrator_ip`.
+client-proxy still routes on `orchestrator_ip` only, so full-router sandboxes need a client-proxy
+that reads the placement, deployed Router ingress, and placement publication and refresh in the
+routing record before they can be enabled.
 
 ### Volume content
 

@@ -44,7 +44,7 @@ type SandboxService struct {
 // testable without a real orchestrator.
 type autoResumeOrchestrator interface {
 	GetSandbox(ctx context.Context, teamID uuid.UUID, sandboxID string) (sandbox.Sandbox, error)
-	HandleExistingSandboxAutoResume(ctx context.Context, teamID uuid.UUID, sandboxID string, sbx sandbox.Sandbox, transitionWaitBudget time.Duration) (string, bool, error)
+	HandleExistingSandboxAutoResume(ctx context.Context, teamID uuid.UUID, sandboxID string, sbx sandbox.Sandbox, transitionWaitBudget time.Duration) (*proxygrpc.SandboxResumeResponse, bool, error)
 }
 
 // autoResumeBackend returns the auto-resume RPC's orchestrator slice,
@@ -199,7 +199,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			return nil, status.Errorf(codes.Internal, "failed to get sandbox state: %v", sandboxErr)
 		}
 	} else {
-		nodeIP, handled, existingErr := backend.HandleExistingSandboxAutoResume(
+		resp, handled, existingErr := backend.HandleExistingSandboxAutoResume(
 			ctx,
 			teamID,
 			sandboxID,
@@ -220,7 +220,7 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 			return nil, status.Error(codes.Internal, existingErr.Error())
 		}
 		if handled {
-			return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
+			return resp, nil
 		}
 	}
 
@@ -302,12 +302,13 @@ func (s *SandboxService) ResumeSandbox(ctx context.Context, req *proxygrpc.Sandb
 		return nil, resumeStatusError(ctx, apiErr)
 	}
 
-	nodeIP := s.api.orchestrator.GetNodeRouteIPAddress(sbx.ClusterID, sbx.NodeID)
-	if nodeIP == "" {
-		return nil, status.Error(codes.Internal, "sandbox resumed but orchestrator IP is not available yet")
+	// sbx is the start that won, possibly another caller's, with its placement.
+	resp, err := s.api.orchestrator.StartedSandboxResumeResponse(sbx)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
 	}
 
-	return &proxygrpc.SandboxResumeResponse{OrchestratorIp: nodeIP}, nil
+	return resp, nil
 }
 
 // resumeStatusError turns a start failure into the resume RPC's status. The

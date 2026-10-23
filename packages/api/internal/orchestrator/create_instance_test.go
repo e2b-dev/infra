@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -38,6 +39,7 @@ import (
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/machineinfo"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
 	sandbox_network "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-network"
@@ -1081,9 +1083,12 @@ type placementSandboxClient struct {
 	orchestrator.SandboxServiceClient
 
 	placement *orchestrator.SandboxNetworkPlacement
+	creates   atomic.Int32
 }
 
 func (c *placementSandboxClient) Create(context.Context, *orchestrator.SandboxCreateRequest, ...grpc.CallOption) (*orchestrator.SandboxCreateResponse, error) {
+	c.creates.Add(1)
+
 	return &orchestrator.SandboxCreateResponse{NetworkPlacement: c.placement}, nil
 }
 
@@ -1179,7 +1184,13 @@ func TestCreateSandbox_RetainsWinningPlacement(t *testing.T) {
 			t.Cleanup(func() { _ = joinerClient.Close() })
 			probe := &pendingProbeHook{probed: make(chan struct{})}
 			joinerClient.AddHook(probe)
-			joinerAPI := newCreateSandboxTestOrchestratorOnRedis(t, joinerClient, ldtestdata.DataSource())
+			// The joining API's own node would answer with another placement if
+			// it were ever asked to start the sandbox.
+			joinerRPC := &placementSandboxClient{placement: &orchestrator.SandboxNetworkPlacement{
+				ExecutionId: uuid.NewString(), NetworkMode: "full-router", RouterId: "router-loser", IngressAddress: "10.9.0.9", IngressPort: 5999,
+			}}
+			joinerAPI := newCreateSandboxTestOrchestratorOnRedis(t, joinerClient, ldtestdata.DataSource(),
+				func(node *nodemanager.TestNode) { node.SetSandboxClient(joinerRPC) })
 			joined := make(chan sandbox.Sandbox, 1)
 			team := testTeam()
 			sandboxID := "sbx-placement"
@@ -1215,6 +1226,21 @@ func TestCreateSandbox_RetainsWinningPlacement(t *testing.T) {
 			assert.Equal(t, sbx.NodeID, joiner.NodeID)
 			requirePlacement(t, want, joiner.NetworkPlacement)
 			requirePlacement(t, want, storedPlacement(t, o, team.ID, sandboxID))
+			assert.EqualValues(t, 1, rpc.creates.Load())
+			assert.Zero(t, joinerRPC.creates.Load())
+
+			wantResp := &proxygrpc.SandboxResumeResponse{OrchestratorIp: "127.0.0.1", NetworkPlacement: want}
+			if want.GetNetworkMode() == "full-router" {
+				wantResp.OrchestratorIp = ""
+			}
+			for _, started := range []struct {
+				api *Orchestrator
+				sbx sandbox.Sandbox
+			}{{o, sbx}, {joinerAPI, joiner}} {
+				resp, err := started.api.StartedSandboxResumeResponse(started.sbx)
+				require.NoError(t, err)
+				require.Truef(t, proto.Equal(wantResp, resp), "want %v, got %v", wantResp, resp)
+			}
 
 			_, apiErr = o.KeepAliveFor(ctx, team.ID, sandboxID, 2*time.Hour, false)
 			require.Nil(t, apiErr)
