@@ -69,10 +69,10 @@ type mockEgressProxy struct {
 	bundle string
 }
 
-func (m *mockEgressProxy) CABundle() string { return m.bundle }
+func (m *mockEgressProxy) CABundle(_ string) string { return m.bundle }
 
 // newTestSandboxWithBundle builds a minimal Sandbox with CABundle set —
-// mirroring what Factory.CreateSandbox does with f.egressProxy.CABundle().
+// mirroring how Factory.CreateSandbox sets the bundle for the template version.
 func newTestSandboxWithBundle(bundle string) *Sandbox {
 	return &Sandbox{
 		Metadata: &Metadata{
@@ -93,7 +93,7 @@ func TestEnvdInitSendsCaBundle(t *testing.T) { //nolint:paralleltest
 		"-----BEGIN CERTIFICATE-----\nCUSTOM\n-----END CERTIFICATE-----\n"
 
 	proxy := &mockEgressProxy{bundle: pemBundle}
-	sbx := newTestSandboxWithBundle(proxy.CABundle())
+	sbx := newTestSandboxWithBundle(proxy.CABundle("0.11.0"))
 
 	var captured envd.PostInitJSONBody
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

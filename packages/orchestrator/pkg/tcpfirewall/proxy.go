@@ -201,7 +201,7 @@ func (p *Proxy) Close(_ context.Context) error {
 	return nil
 }
 
-func (p *Proxy) CABundle() string {
+func (p *Proxy) CABundle(_ string) string {
 	return ""
 }
 

@@ -1297,7 +1297,7 @@ func (f *Factory) CreateSandbox(
 
 		APIStoredConfig: apiConfigToStore,
 
-		CABundle: f.egressProxy.CABundle(),
+		CABundle: f.egressProxy.CABundle(config.Envd.Version),
 
 		exit: exit,
 	}
@@ -1930,7 +1930,7 @@ func (f *Factory) ResumeSandbox(
 		featureFlags: f.featureFlags,
 
 		APIStoredConfig: apiConfigToStore,
-		CABundle:        f.egressProxy.CABundle(),
+		CABundle:        f.egressProxy.CABundle(config.Envd.Version),
 
 		exit: exit,
 
