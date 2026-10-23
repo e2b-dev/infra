@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/api/internal/api"
+	"github.com/e2b-dev/infra/packages/shared/pkg/apicors"
 )
 
 // TestCORSExposesSpecResponseHeaders asserts that every response header the
@@ -23,6 +24,7 @@ func TestCORSExposesSpecResponseHeaders(t *testing.T) {
 	swagger, err := api.GetSpec()
 	require.NoError(t, err)
 
+	exposedResponseHeaders := apicors.Options().ExposedHeaders
 	exposed := make(map[string]struct{}, len(exposedResponseHeaders))
 	for _, header := range exposedResponseHeaders {
 		exposed[strings.ToLower(header)] = struct{}{}
@@ -33,7 +35,7 @@ func TestCORSExposesSpecResponseHeaders(t *testing.T) {
 			for status, response := range operation.Responses.Map() {
 				for header := range response.Value.Headers {
 					assert.Containsf(t, exposed, strings.ToLower(header),
-						"%s %s (%s) declares response header %q, add it to exposedResponseHeaders",
+						"%s %s (%s) declares response header %q, add it to exposedResponseHeaders in packages/shared/pkg/apicors",
 						method, path, status, header)
 				}
 			}
@@ -51,8 +53,6 @@ func TestCORSSetsExposeHeaders(t *testing.T) {
 	r.GET("/", func(c *gin.Context) { c.Status(http.StatusOK) })
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
-	// Must differ from the request host, otherwise the middleware treats the
-	// request as same-origin and skips the CORS headers entirely.
 	req.Header.Set("Origin", "https://app.e2b.dev")
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
@@ -73,5 +73,5 @@ func TestCORSAllowsIdempotencyKey(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusNoContent, w.Code)
-	require.Contains(t, w.Header().Get("Access-Control-Allow-Headers"), "Idempotency-Key")
+	require.Equal(t, "content-type,idempotency-key", w.Header().Get("Access-Control-Allow-Headers"))
 }

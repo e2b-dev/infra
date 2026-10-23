@@ -55,6 +55,7 @@ require (
 	github.com/riverqueue/river/riverdriver v0.47.0
 	github.com/riverqueue/river/rivertype v0.47.0
 	github.com/riverqueue/rivercontrib/otelriver v0.12.0
+	github.com/rs/cors v1.11.1
 	github.com/samber/lo v1.53.0
 	github.com/spiffe/go-spiffe/v2 v2.8.1
 	github.com/stretchr/testify v1.12.1
