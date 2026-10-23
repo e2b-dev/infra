@@ -38,9 +38,11 @@ const (
 	// the connection dead and returns EIO to the guest.
 	ioTimeout = 90 * time.Second
 
-	// deadconnTimeout is how long the kernel waits after an I/O timeout
-	// before declaring the NBD connection dead.
-	deadconnTimeout = 30 * time.Second
+	// The kernel waits here only for a replacement NBD socket. This mount never
+	// reconnects: after its last connection is lost, fail queued I/O instead of
+	// waiting for a recovery path that does not exist. Keep the separate 90s
+	// request timeout so a healthy slow backend still has time to respond.
+	deadconnTimeout = 0
 
 	// disconnectTimeout should not be necessary if the disconnect is reliable
 	disconnectTimeout = 30 * time.Second
@@ -130,7 +132,7 @@ func WithIOTimeout(d time.Duration) MountOption {
 	return func(m *DirectPathMount) { m.ioTimeout = d }
 }
 
-// WithDeadconnTimeout overrides the kernel NBD dead-connection timeout (default 30s).
+// WithDeadconnTimeout overrides the kernel NBD reconnect wait (default 0).
 func WithDeadconnTimeout(d time.Duration) MountOption {
 	return func(m *DirectPathMount) { m.deadconnTimeout = d }
 }
