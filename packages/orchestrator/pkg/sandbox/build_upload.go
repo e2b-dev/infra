@@ -313,6 +313,10 @@ func resolveCompressConfig(ctx context.Context, base storage.CompressConfig, ff 
 		return storage.CompressConfig{}, false, err
 	}
 
+	if ff != nil {
+		resolved.FrameSizedOutput = !ff.BoolFlag(ctx, featureflags.CompressRightSizedFramesFlag)
+	}
+
 	return resolved, useV4, nil
 }
 
