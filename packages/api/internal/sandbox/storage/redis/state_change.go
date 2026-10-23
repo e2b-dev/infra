@@ -153,7 +153,7 @@ func (s *Storage) StartRemoving(ctx context.Context, teamID uuid.UUID, sandboxID
 	ttlSeconds := int(transitionKeyTTL.Seconds())
 	resultTtlSeconds := int(transitionResultKeyTTL.Seconds())
 
-	written, err := startTransitionScript.Run(ctx, s.redisClient,
+	written, err := RunScript(ctx, s.redisClient, "start_transition", startTransitionScript,
 		[]string{key, transitionKey, resultKey},
 		newData, transitionID, ttlSeconds, resultTtlSeconds, opts.ExpectExecutionID,
 	).Int64()
@@ -208,7 +208,7 @@ func (s *Storage) createCallback(teamID uuid.UUID, sandboxID, transitionKey, res
 		}
 
 		// Publish the result before waiters can observe completion; expired owners cannot delete a successor's key.
-		err := finishTransitionScript.Run(cbCtx, s.redisClient, []string{transitionKey, resultKey},
+		err := RunScript(cbCtx, s.redisClient, "finish_transition", finishTransitionScript, []string{transitionKey, resultKey},
 			transitionID, resultValue, int(transitionResultKeyTTL.Seconds())).Err()
 		if err != nil {
 			logger.L().Warn(cbCtx, "Failed to finish state transition", logger.WithSandboxID(sandboxID), zap.String("transitionID", transitionID), zap.Error(err))
@@ -335,7 +335,7 @@ func (s *Storage) compareAndRestore(ctx context.Context, key string, transition 
 	if err != nil {
 		return sandboxtypes.Sandbox{}, err
 	}
-	written, err := restoreSandboxScript.Run(ctx, s.redisClient, []string{key}, data, updated).Int64()
+	written, err := RunScript(ctx, s.redisClient, "restore_sandbox", restoreSandboxScript, []string{key}, data, updated).Int64()
 	if err != nil {
 		return sandboxtypes.Sandbox{}, fmt.Errorf("failed to restore sandbox: %w", err)
 	}

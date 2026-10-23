@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/api/internal/sandbox/sandboxtypes"
+	storage_redis "github.com/e2b-dev/infra/packages/api/internal/sandbox/storage/redis"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 )
 
@@ -64,7 +65,7 @@ func (s *ReservationStorage) Reserve(ctx context.Context, teamID uuid.UUID, sand
 	now := float64(time.Now().Unix())
 	staleCutoff := float64(time.Now().Add(-StaleTTL).Unix())
 
-	result, err := reserveScript.Run(ctx, s.redisClient,
+	result, err := storage_redis.RunScript(ctx, s.redisClient, "reserve", reserveScript,
 		[]string{storageIndexKey, pendingSetKey, resultKeyStr},
 		sandboxID, limit, now, staleCutoff,
 	).Int()
@@ -95,7 +96,7 @@ func (s *ReservationStorage) Release(ctx context.Context, teamID uuid.UUID, sand
 	pendingSetKey := getPendingSetKey(teamIDStr)
 	resultKeyStr := getResultKey(teamIDStr, sandboxID)
 
-	err := releaseScript.Run(ctx, s.redisClient,
+	err := storage_redis.RunScript(ctx, s.redisClient, "release", releaseScript,
 		[]string{pendingSetKey, resultKeyStr},
 		sandboxID,
 	).Err()
@@ -136,7 +137,7 @@ func (s *ReservationStorage) createFinishStart(ctx context.Context, teamID uuid.
 		}
 
 		ttlSeconds := int(resultTTL.Seconds())
-		err := finishStartScript.Run(bgCtx, s.redisClient,
+		err := storage_redis.RunScript(bgCtx, s.redisClient, "finish_start", finishStartScript,
 			[]string{pendingSetKey, resultKeyStr},
 			sandboxID, resultData, ttlSeconds,
 		).Err()

@@ -400,6 +400,10 @@ const (
 	// a transition. A sustained high rate means transitions pile up at the
 	// front of the index, e.g. evictions near their concurrency limit.
 	ApiRedisStorageExpirationIndexDeferred CounterType = "api.redis_storage.expiration_index.deferred"
+	// ApiRedisScriptCalls counts the sandbox store's Lua script runs by script
+	// and outcome (ok|error). The store's load is mostly EVALSHA, which names
+	// no script; this does. A nil reply is a result, so it counts as ok.
+	ApiRedisScriptCalls CounterType = "api.redis.script.calls"
 
 	// ClientProxyResumeFlightCounterName counts callers of the per-sandbox
 	// resume flight by role (leader|joiner|none) and result
@@ -663,6 +667,9 @@ const (
 
 const (
 	ApiRedisStoragePublisherPublishDuration HistogramType = "api.redis_storage.publisher.publish.duration"
+	// ApiRedisScriptDuration is the round trip of one Lua script run against
+	// the sandbox store, by script (see ApiRedisScriptCalls).
+	ApiRedisScriptDuration HistogramType = "api.redis.script.duration"
 	// ApiSandboxListAge is the age of a served sandbox list, by outcome only
 	// (see ApiSandboxListReads; a per-team histogram would multiply the counter's
 	// series by its buckets once the flag is fleet-wide), recorded only for teams whose lag
@@ -844,6 +851,7 @@ var counterDesc = map[CounterType]string{
 	ApiRedisStorageExpirationIndexSwept:    "Members removed from the global expiration index by the evictor scan (reason=orphan|dead_execution|invalid)",
 	ApiRedisStorageExpirationIndexRescored: "Live expiration index members re-scored after drifting from the stored EndTime",
 	ApiRedisStorageExpirationIndexDeferred: "Expired expiration index members moved out of the evictor scan window while their sandbox is in a transition",
+	ApiRedisScriptCalls:                    "Lua script runs against the sandbox store (script=add_sandbox|remove_sandbox|start_transition|finish_transition|restore_sandbox|reserve|finish_start|release, outcome=ok|error)",
 
 	ClientProxyResumeFlightCounterName:          "Callers of the per-sandbox resume flight at the client proxy (role=leader|joiner|none, result=served|error|canceled)",
 	ClientProxyResumeParkingRejectedCounterName: "Requests shed with a 503 because the client proxy parking lot was full at their flight's first retry",
@@ -934,6 +942,7 @@ var counterUnits = map[CounterType]string{
 	ApiRedisStorageExpirationIndexSwept:    "{member}",
 	ApiRedisStorageExpirationIndexRescored: "{member}",
 	ApiRedisStorageExpirationIndexDeferred: "{member}",
+	ApiRedisScriptCalls:                    "{call}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -1118,6 +1127,7 @@ func GetGaugeInt(meter metric.Meter, name GaugeIntType) (metric.Int64ObservableG
 
 var histogramDesc = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "Duration of a single Redis PUBLISH round-trip from the storage publisher",
+	ApiRedisScriptDuration:                  "Round trip of one Lua script run against the sandbox store, by script",
 	ApiSandboxListAge:                       "Age of a served sandbox list: the store sweep's duration for a read, the wait from the sweep's start for a joined (shared) read, the snapshot's lag for a hit",
 
 	FPHRunDurationName:                                "Duration of a completed free-page-hinting drain or run, labeled by phase",
@@ -1210,6 +1220,7 @@ var histogramDesc = map[HistogramType]string{
 
 var histogramUnits = map[HistogramType]string{
 	ApiRedisStoragePublisherPublishDuration: "ms",
+	ApiRedisScriptDuration:                  "ms",
 	ApiSandboxListAge:                       "ms",
 
 	FPHRunDurationName:                                "ms",

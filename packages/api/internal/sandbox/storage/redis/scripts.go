@@ -1,6 +1,19 @@
 package redis
 
-import "github.com/redis/go-redis/v9"
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
+	"github.com/e2b-dev/infra/packages/shared/pkg/utils"
+)
 
 // Lua scripts for atomic operations.
 // These scripts ensure true atomicity in Redis cluster mode
@@ -83,3 +96,64 @@ var (
 		return 1
 	`)
 )
+
+const (
+	scriptAttr         = "script"
+	scriptOutcomeAttr  = "outcome"
+	scriptOutcomeOK    = "ok"
+	scriptOutcomeError = "error"
+)
+
+// scriptMetrics records every script run: a count by script and outcome,
+// and the round trip by script.
+type scriptMetrics struct {
+	calls    metric.Int64Counter
+	duration metric.Float64Histogram
+}
+
+func newScriptMetrics(meter metric.Meter) (scriptMetrics, error) {
+	calls, err := telemetry.GetCounter(meter, telemetry.ApiRedisScriptCalls)
+	if err != nil {
+		return scriptMetrics{}, fmt.Errorf("script calls counter: %w", err)
+	}
+
+	duration, err := telemetry.GetFloatHistogram(meter, telemetry.ApiRedisScriptDuration)
+	if err != nil {
+		return scriptMetrics{}, fmt.Errorf("script duration histogram: %w", err)
+	}
+
+	return scriptMetrics{calls: calls, duration: duration}, nil
+}
+
+// On the global provider the API installs at startup: the reservation storage runs scripts too and has no meter.
+var defaultScriptMetrics = utils.Must(newScriptMetrics(otel.Meter(meterScope)))
+
+// RunScript runs script on client as Script.Run does and records the run
+// under name. It returns the command unchanged, so callers read it as they
+// would Script.Run's.
+func RunScript(ctx context.Context, client redis.Scripter, name string, script *redis.Script, keys []string, args ...any) *redis.Cmd {
+	return defaultScriptMetrics.run(ctx, client, name, script, keys, args...)
+}
+
+func (m scriptMetrics) run(ctx context.Context, client redis.Scripter, name string, script *redis.Script, keys []string, args ...any) *redis.Cmd {
+	start := time.Now()
+	cmd := script.Run(ctx, client, keys, args...)
+	elapsed := time.Since(start)
+
+	// A nil reply is the script's result (remove_sandbox on a missing key), not a failed run.
+	outcome := scriptOutcomeOK
+	if err := cmd.Err(); err != nil && !errors.Is(err, redis.Nil) {
+		outcome = scriptOutcomeError
+	}
+
+	m.calls.Add(ctx, 1, metric.WithAttributes(
+		attribute.String(scriptAttr, name),
+		attribute.String(scriptOutcomeAttr, outcome),
+	))
+	// Float: a script round trip is usually under a millisecond.
+	m.duration.Record(ctx, float64(elapsed)/float64(time.Millisecond), metric.WithAttributes(
+		attribute.String(scriptAttr, name),
+	))
+
+	return cmd
+}
