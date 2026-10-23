@@ -351,7 +351,7 @@ Key mechanisms (all under `pkg/sandbox/`):
   namespaces from a previous run are torn down by startup reclaim).
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port over HTTP or configured HTTPS, enforcing per-sandbox
-  traffic access tokens. HTTPS backends may use self-signed certificates.
+  traffic access tokens through the shared ingress policy. HTTPS backends may use self-signed certificates.
   Shared proxy shutdown waits for H2C and upgraded connections to close and includes them in
   forced connection cleanup. Failed H2C handshakes release their hijacked connections when the
   handshake handler returns.

@@ -4,25 +4,20 @@ package proxy
 
 import (
 	"context"
-	"crypto/subtle"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/envd"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
-	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
-	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
@@ -35,27 +30,9 @@ const (
 	// https://cloud.google.com/load-balancing/docs/https#timeouts_and_retries%23:~:text=The%20load%20balancer%27s%20backend%20keepalive,is%20greater%20than%20600%20seconds
 	idleTimeout     = 620 * time.Second
 	shutdownTimeout = 30 * time.Second
-
-	trafficAccessTokenHeader = "e2b-traffic-access-token"
 )
 
 var _ sandbox.MapSubscriber = (*SandboxProxy)(nil)
-
-// envd speaks plaintext, so its port stays HTTP even when the config lists it.
-// The API refuses it at create time; this covers direct gRPC callers.
-func schemeForPort(ingress *orchestrator.SandboxNetworkIngressConfig, port uint64) string {
-	if port == uint64(consts.DefaultEnvdServerPort) {
-		return "http"
-	}
-
-	for _, httpsPort := range ingress.GetHttpsPorts() {
-		if uint64(httpsPort) == port {
-			return "https"
-		}
-	}
-
-	return "http"
-}
 
 type SandboxProxy struct {
 	proxy   *reverseproxy.Proxy
@@ -63,92 +40,42 @@ type SandboxProxy struct {
 }
 
 // newDestinationResolver returns the proxy's routing decision: which sandbox and
-// port a request is for, or why it is refused.
+// port a request is for, or why it is refused. The ingress policy is the
+// shared one; this supplies the lookup.
 func newDestinationResolver(sandboxes *sandbox.Map) func(r *http.Request) (*pool.Destination, error) {
-	getTargetFromRequest := reverseproxy.GetTargetFromRequest()
-
 	return func(r *http.Request) (*pool.Destination, error) {
-		sandboxId, port, err := getTargetFromRequest(r)
+		var sbx *sandbox.Sandbox
+		d, err := reverseproxy.ResolveIngress(r, func(id string, port uint64) (reverseproxy.IngressTarget, error) {
+			var found bool
+			if sbx, found = sandboxes.Get(id); !found {
+				return reverseproxy.IngressTarget{}, reverseproxy.NewErrSandboxNotFound(id)
+			}
+
+			return reverseproxy.IngressTarget{
+				Config: sbx.Config.GetNetworkIngress(),
+				Destination: pool.Destination{
+					Url:                                &url.URL{Host: net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10))},
+					DefaultToPortError:                 true,
+					IncludeSandboxIdInProxyErrorLogger: true,
+					// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
+					// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
+					ConnectionKey: sbx.LifecycleID,
+				},
+			}, nil
+		})
 		if err != nil {
 			return nil, err
 		}
-
-		isNonEnvdTraffic := int64(port) != consts.DefaultEnvdServerPort
-
-		// envd serves the orchestrator's control plane (/init, the pause
-		// freeze/thaw hooks, the live self-upgrade) on the same port as the
-		// sandbox's public surface. The orchestrator calls those routes directly
-		// at the slot IP and never through this proxy, so a request for one that
-		// arrived here came from outside and has no business reaching envd —
-		// envd's own access-token check would let the sandbox's owner wedge or
-		// re-image their guest, and /init is exempt from that check altogether.
-		//
-		// Refused before the sandbox is looked up: the answer is the same whether
-		// or not the addressed sandbox is on this node, so the reply carries
-		// nothing about which sandboxes exist here.
-		if !isNonEnvdTraffic && envd.IsInternalPath(r.URL.Path) {
-			return nil, reverseproxy.NewErrInternalRoute(sandboxId, r.URL.Path)
-		}
-
-		sbx, found := sandboxes.Get(sandboxId)
-		if !found {
-			return nil, reverseproxy.NewErrSandboxNotFound(sandboxId)
-		}
-
-		ingress := sbx.Config.GetNetworkIngress()
-		accessToken := ingress.GetTrafficAccessToken()
-
-		// Handle traffic access token validation.
-		// We are skipping envd port as it has its own access validation mechanism.
-		// Preflights fail this check too — the Fetch standard forbids a preflight
-		// from carrying custom headers, so it can never present the token. The
-		// proxy answers them from the resulting error path, so no unauthenticated
-		// request ever reaches the guest port.
-		if accessToken != "" && isNonEnvdTraffic {
-			accessTokenRaw := r.Header.Get(trafficAccessTokenHeader)
-			if accessTokenRaw == "" {
-				return nil, reverseproxy.NewErrMissingTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-			} else if subtle.ConstantTimeCompare([]byte(accessTokenRaw), []byte(accessToken)) != 1 {
-				return nil, reverseproxy.NewErrInvalidTrafficAccessToken(sandboxId, trafficAccessTokenHeader)
-			}
-		}
-
-		// Handle request host masking only for non-envd traffic.
-		var maskRequestHost *string = nil
-		if h := ingress.GetMaskRequestHost(); isNonEnvdTraffic && h != "" {
-			h = strings.ReplaceAll(h, pool.MaskRequestHostPortPlaceholder, strconv.FormatUint(port, 10))
-			maskRequestHost = &h
-		}
-
-		url := &url.URL{
-			Scheme: schemeForPort(ingress, port),
-			Host:   net.JoinHostPort(sbx.Slot.HostIPString(), strconv.FormatUint(port, 10)),
-		}
-
-		logger := logger.L().With(
+		// Built once the request is admitted: a refused one never logs through it.
+		d.RequestLogger = logger.L().With(
 			append(
-				logger.ProxyRequestFields(r, sbx.Runtime.SandboxID, port),
+				logger.ProxyRequestFields(r, sbx.Runtime.SandboxID, d.SandboxPort),
 				logger.WithTeamID(sbx.Runtime.TeamID),
 				logger.WithSandboxIP(sbx.Slot.HostIPString()),
 			)...,
 		)
 
-		return &pool.Destination{
-			Url:                                url,
-			SandboxId:                          sbx.Runtime.SandboxID,
-			SandboxPort:                        port,
-			DefaultToPortError:                 true,
-			IncludeSandboxIdInProxyErrorLogger: true,
-			// We need to include id unique to sandbox to prevent reuse of connection to the same IP:port pair by different sandboxes reusing the network slot.
-			// We are not using sandbox id to prevent removing connections based on sandbox id (pause/resume race condition).
-			ConnectionKey:   sbx.LifecycleID,
-			RequestLogger:   logger,
-			MaskRequestHost: maskRequestHost,
-			// Guest certificates are self-signed, so verification cannot
-			// succeed. Safe to decide per destination because ingress is fixed
-			// for the lifecycle the pool keys its clients by.
-			InsecureSkipTLSVerify: len(ingress.GetHttpsPorts()) > 0,
-		}, nil
+		return d, nil
 	}
 }
 

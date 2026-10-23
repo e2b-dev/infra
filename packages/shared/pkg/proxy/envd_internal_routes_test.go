@@ -1,4 +1,4 @@
-package envd
+package proxy
 
 import (
 	"slices"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const specFile = "../../../../envd/spec/envd.yaml"
+const specFile = "../../../envd/spec/envd.yaml"
 
 // specMarksInternal reports whether the spec marks an operation as control plane.
 // It re-derives the answer independently of the generator so that a bug in one is
@@ -29,7 +29,7 @@ func loadSpec(t *testing.T) *openapi3.T {
 	return doc
 }
 
-// TestSpecInternalPathsMatchSpec fails when internal_routes.gen.go is stale, so a
+// TestSpecInternalPathsMatchSpec fails when envd_internal_routes.gen.go is stale, so a
 // control route added to the spec cannot ship without the proxy learning to
 // reject it. Re-run `go generate ./...` in this package to fix.
 func TestSpecInternalPathsMatchSpec(t *testing.T) {
@@ -49,7 +49,7 @@ func TestSpecInternalPathsMatchSpec(t *testing.T) {
 
 	slices.Sort(want)
 
-	assert.Equal(t, want, specInternalPaths, "internal_routes.gen.go is out of date; run go generate ./...")
+	assert.Equal(t, want, specInternalPaths, "envd_internal_routes.gen.go is out of date; run go generate ./...")
 }
 
 // TestSpecOperationsAgreeOnInternal guards the assumption the generated set
@@ -88,7 +88,7 @@ func TestUnspecifiedInternalPathsAreAbsentFromSpec(t *testing.T) {
 	}
 }
 
-func TestIsInternalPath(t *testing.T) {
+func TestIsInternalEnvdPath(t *testing.T) {
 	t.Parallel()
 
 	for _, tt := range []struct {
@@ -133,7 +133,7 @@ func TestIsInternalPath(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tt.internal, IsInternalPath(tt.path))
+			assert.Equal(t, tt.internal, isInternalEnvdPath(tt.path))
 		})
 	}
 }

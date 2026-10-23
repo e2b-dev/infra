@@ -23,6 +23,8 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
+	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 )
@@ -1600,6 +1602,104 @@ func TestProxyRejectsInvalidSandboxPort(t *testing.T) {
 			body, err := io.ReadAll(resp.Body)
 			require.NoError(t, err)
 			assert.Contains(t, string(body), "Invalid sandbox port")
+		})
+	}
+}
+
+func TestSharedIngressPolicy(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, token, path string
+		port              uint64
+		success           bool
+	}{
+		{name: "missing token", port: 8443},
+		{name: "wrong token", token: "wrong", port: 8443},
+		{name: "authorized", token: "secret", port: 8443, success: true},
+		{name: "envd exemption", port: 49983, success: true},
+		{name: "internal before lookup", port: 49983, path: "/init"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mask, token := "localhost:${PORT}", "secret"
+			config := &orchestrator.SandboxNetworkIngressConfig{TrafficAccessToken: &token, MaskRequestHost: &mask, HttpsPorts: []uint32{8443, 49983}}
+			lookedUp := false
+			resolver := func(r *http.Request) (*pool.Destination, error) {
+				return ResolveIngress(r, func(string, uint64) (IngressTarget, error) {
+					lookedUp = true
+
+					return IngressTarget{Config: config, Destination: pool.Destination{Url: &url.URL{Host: "127.0.0.1"}, RequestLogger: logger.NewNopLogger()}}, nil
+				})
+			}
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://example"+tc.path, nil)
+			r.Host = fmt.Sprintf("%d-im9r2ycjiy2534qsdy1oo.e2b.app", tc.port)
+			r.Header.Set(trafficAccessTokenHeader, tc.token)
+			d, err := resolver(r)
+			if tc.success {
+				require.NoError(t, err)
+				if tc.port == 49983 {
+					assert.Equal(t, "http", d.Url.Scheme)
+					assert.Nil(t, d.MaskRequestHost)
+				} else {
+					assert.Equal(t, "https", d.Url.Scheme)
+					require.NotNil(t, d.MaskRequestHost)
+					assert.Equal(t, "localhost:8443", *d.MaskRequestHost)
+				}
+				assert.True(t, d.InsecureSkipTLSVerify)
+			} else {
+				require.Error(t, err)
+				switch tc.name {
+				case "missing token":
+					var e *MissingTrafficAccessTokenError
+					require.ErrorAs(t, err, &e)
+				case "wrong token":
+					var e *InvalidTrafficAccessTokenError
+					require.ErrorAs(t, err, &e)
+				case "internal before lookup":
+					var e *InternalRouteError
+					require.ErrorAs(t, err, &e)
+					assert.False(t, lookedUp)
+				}
+				// A preflight cannot carry the token, so it fails the policy;
+				// the browser still needs the CORS answer, from the error path.
+				r.Method = http.MethodOptions
+				r.Header.Set("Origin", "https://caller.example")
+				r.Header.Set("Access-Control-Request-Method", "POST")
+				recorder := httptest.NewRecorder()
+				p := pool.New(4, 1, time.Second, false)
+				handler(p, resolver, nil).ServeHTTP(recorder, r)
+				assert.GreaterOrEqual(t, recorder.Code, 200)
+				assert.Less(t, recorder.Code, 300)
+				assert.NotEmpty(t, recorder.Header().Get("Access-Control-Allow-Origin"))
+			}
+		})
+	}
+}
+
+func TestIngressSchemeForPort(t *testing.T) {
+	t.Parallel()
+	envdPort := uint64(consts.DefaultEnvdServerPort)
+	for _, tt := range []struct {
+		name    string
+		ingress *orchestrator.SandboxNetworkIngressConfig
+		port    uint64
+		want    string
+	}{
+		{name: "nil ingress defaults to http", port: 8080, want: "http"},
+		{name: "no HTTPS ports defaults to http", ingress: &orchestrator.SandboxNetworkIngressConfig{}, port: 8080, want: "http"},
+		{name: "port in HTTPS ports uses https", ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: []uint32{443, 8443}}, port: 8443, want: "https"},
+		{name: "port not in HTTPS ports uses http", ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: []uint32{443, 8443}}, port: 8080, want: "http"},
+		{name: "envd port stays http even when listed", ingress: &orchestrator.SandboxNetworkIngressConfig{HttpsPorts: []uint32{uint32(envdPort)}}, port: envdPort, want: "http"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://example/", nil)
+			r.Host = fmt.Sprintf("%d-im9r2ycjiy2534qsdy1oo.e2b.app", tt.port)
+			d, err := ResolveIngress(r, func(string, uint64) (IngressTarget, error) {
+				return IngressTarget{Config: tt.ingress, Destination: pool.Destination{Url: &url.URL{Host: "127.0.0.1"}, RequestLogger: logger.NewNopLogger()}}, nil
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, d.Url.Scheme)
 		})
 	}
 }

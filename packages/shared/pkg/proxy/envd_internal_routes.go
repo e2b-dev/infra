@@ -1,4 +1,4 @@
-package envd
+package proxy
 
 import (
 	"path"
@@ -30,8 +30,8 @@ func newInternalPathSet(sets ...[]string) map[string]struct{} {
 	return paths
 }
 
-// IsInternalPath reports whether requestPath addresses an envd route reserved
-// for the orchestrator's control plane. The orchestrator reaches envd over the
+// isInternalEnvdPath reports whether requestPath addresses an envd route
+// reserved for the orchestrator's control plane. The orchestrator reaches envd over the
 // host network at the sandbox slot IP, so a request for one of these paths that
 // arrives through the public sandbox URL has no legitimate sender.
 //
@@ -50,7 +50,7 @@ func newInternalPathSet(sets ...[]string) map[string]struct{} {
 // router can only ever reach a control route through a request whose decoded path
 // is that route, spelled exactly. Cleaning only widens that: /init/, //init and
 // /files/../init are refused here though envd would have 404'd them itself.
-func IsInternalPath(requestPath string) bool {
+func isInternalEnvdPath(requestPath string) bool {
 	if requestPath == "" {
 		return false
 	}
