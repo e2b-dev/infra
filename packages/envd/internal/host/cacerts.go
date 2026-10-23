@@ -1,216 +1,263 @@
 package host
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
+	"regexp"
 	"time"
 
 	"github.com/rs/zerolog"
 	"golang.org/x/sync/semaphore"
+
+	"github.com/e2b-dev/infra/packages/envd/internal/cabundle"
 )
 
-// ErrCAInstallInProgress means the lock is held by a prior install's cleanup.
 var ErrCAInstallInProgress = errors.New("CA install already in progress")
 
-const (
-	CaBundlePath = "/etc/ssl/certs/ca-certificates.crt"
+var managedCertFilename = regexp.MustCompile(`^e2b-([0-9a-f]{64})\.crt$`)
 
-	// caExtraPath is where the injected cert is persisted on the NBD-backed
-	// filesystem so that running update-ca-certificates later re-includes it
-	// when rebuilding the bundle. Note: a fast cold boot (filesystem-only
-	// reboot) seeds the tmpfs bundle from a build-time tar and skips
-	// update-ca-certificates, so this persisted cert is NOT auto-merged at boot;
-	// /init re-installs the current proxy CA before the sandbox is routable.
-	caExtraPath = "/usr/local/share/ca-certificates/e2b-ca.crt"
+const (
+	CaBundlePath     = "/etc/ssl/certs/ca-certificates.crt"
+	caCertDir        = "/usr/local/share/ca-certificates"
+	legacyCACertFile = "e2b-ca.crt"
 )
 
-// CACertInstaller manages installation of a CA certificate into the VM's
-// system trust bundle.
-//
-// /etc/ssl/certs/ is bind-mounted from tmpfs at VM boot (see envd.service
-// ExecStartPre), so all reads and writes bypass the NBD-backed filesystem and
-// atomic cert rotation via os.Rename works within the same device.
+// CACertInstaller replaces the certificates it injected into the tmpfs bundle.
+// Ownership is process-local, so a restart can leave old certificates until a
+// trust-store rebuild. Rootfs persistence runs in the background.
 type CACertInstaller struct {
-	mu     *semaphore.Weighted
-	logger *zerolog.Logger
+	mu        *semaphore.Weighted
+	logger    *zerolog.Logger
+	requested cabundle.Bundle
+	owned     cabundle.Bundle
+	pending   *pendingCAAppend
+}
 
-	// lastCACert caches the most recently installed PEM so that resume (same
-	// cert, same process) is a zero-I/O hot-path hit. Empty on process start;
-	// lost on OOM restart, which is acceptable — the old cert stays in the
-	// bundle temporarily until update-ca-certificates rebuilds it from
-	// caExtraPath (which always holds the latest cert).
-	lastCACert string
+type pendingCAAppend struct {
+	before []byte
 }
 
 func NewCACertInstaller(logger *zerolog.Logger) *CACertInstaller {
-	return &CACertInstaller{
-		logger: logger,
-		mu:     semaphore.NewWeighted(1),
-	}
+	return &CACertInstaller{logger: logger, mu: semaphore.NewWeighted(1)}
 }
 
-// Install injects certPEM into the system CA bundle. Returns an error if the
-// foreground append fails so the caller can signal init failure to the
-// orchestrator.
-func (c *CACertInstaller) Install(ctx context.Context, certPEM string) error {
-	return c.install(ctx, certPEM, CaBundlePath, caExtraPath)
+// Install makes the certificates in bundlePEM the set envd trusts on behalf of
+// the orchestrator. Requested roots are present before Install returns.
+// Retired roots and duplicate certificates are removed in the background,
+// followed by persistence for later trust-store rebuilds.
+func (c *CACertInstaller) Install(ctx context.Context, bundlePEM string) error {
+	return c.install(ctx, bundlePEM, CaBundlePath, caCertDir)
 }
 
 // install is the testable core; tests supply their own paths.
-//
-// The cert changes on every sandbox create but stays the same across
-// pause/resume cycles. The critical path only appends to the bundle (fast on
-// tmpfs); removing the previous cert and persisting to the extra-certs dir
-// happens in a background goroutine.
-//
-// On OOM restart lastCACert is empty, so prevPEM will be "" and the background
-// goroutine skips bundle cleanup. The stale cert remains until the next
-// rotation or until update-ca-certificates is run (which rebuilds the bundle
-// from extraPath, which always holds the current cert).
-//
-// All goroutine work runs under mu to keep the bundle and extra-certs file
-// consistent with concurrent foreground appends.
-func (c *CACertInstaller) install(ctx context.Context, certPEM, bundlePath, extraPath string) error {
-	if certPEM == "" {
+func (c *CACertInstaller) install(ctx context.Context, bundlePEM, bundlePath, certDir string) error {
+	if bundlePEM == "" {
 		return nil
+	}
+
+	certs, err := cabundle.Parse(bundlePEM)
+	if err != nil {
+		return fmt.Errorf("parse CA bundle: %w", err)
 	}
 
 	start := time.Now()
-
-	// Normalise to a single trailing newline so comparisons and removals are
-	// consistent regardless of how the caller formatted the PEM.
-	normalized := strings.TrimRight(certPEM, "\n") + "\n"
-
-	// Cancellation here means a prior install's cleanup still holds mu (83ee89f9b).
-	if err := c.mu.Acquire(ctx, 1); err != nil {
-		return fmt.Errorf("%w: %w", ErrCAInstallInProgress, err)
+	changed, err := c.updateBundle(ctx, certs, bundlePath)
+	if err != nil || !changed {
+		return err
 	}
-	defer c.mu.Release(1)
-
-	if c.lastCACert == normalized {
-		c.logger.Debug().
-			Dur("duration", time.Since(start)).
-			Msg("CA cert unchanged, skipping install")
-
-		return nil
-	}
-
-	// Snapshot the previous cert before overwriting.
-	prevPEM := c.lastCACert
-
-	f, err := os.OpenFile(bundlePath, os.O_APPEND|os.O_WRONLY, 0o644)
-	if err != nil {
-		return fmt.Errorf("open CA bundle: %w", err)
-	}
-
-	_, err = f.WriteString(normalized)
-	f.Close()
-
-	if err != nil {
-		return fmt.Errorf("append CA cert: %w", err)
-	}
-
-	c.lastCACert = normalized
 
 	c.logger.Info().
-		Dur("append_duration", time.Since(start)).
-		Msg("CA cert appended to bundle")
+		Dur("duration", time.Since(start)).
+		Int("certificates", len(certs)).
+		Msg("CA certificates installed in bundle")
 
 	go func() {
-		cleanStart := time.Now()
-
-		_ = c.mu.Acquire(context.WithoutCancel(ctx), 1)
-		defer c.mu.Release(1)
-
-		// A newer install has taken over; let that goroutine handle cleanup.
-		if c.lastCACert != normalized {
-			return
-		}
-
-		// Persist the cert on the NBD-backed filesystem so that
-		// update-ca-certificates picks it up when rebuilding the bundle.
-		if err := os.MkdirAll(filepath.Dir(extraPath), 0o755); err != nil {
-			c.logger.Error().Err(err).Msg("Failed to create CA extra dir")
-		} else if err := os.WriteFile(extraPath, []byte(normalized), 0o644); err != nil {
-			c.logger.Error().Err(err).Msg("Failed to write CA cert to extra dir")
-		}
-
-		// prevPEM is "" on first install or after an OOM restart — skip cleanup.
-		// The stale cert (if any) is removed on the next rotation or when
-		// update-ca-certificates regenerates the bundle from extraPath.
-		if prevPEM == "" {
-			return
-		}
-
-		if err := removeCertFromBundle(bundlePath, prevPEM); err != nil {
-			c.logger.Error().Err(err).Msg("Failed to remove old CA cert from bundle")
+		persistStart := time.Now()
+		if err := c.persist(context.WithoutCancel(ctx), certs, bundlePath, certDir); err != nil {
+			c.logger.Error().Err(err).Msg("Failed to persist CA certificates")
 
 			return
 		}
 
 		c.logger.Info().
-			Dur("cleanup_duration", time.Since(cleanStart)).
-			Msg("Old CA cert removed from bundle")
+			Dur("duration", time.Since(persistStart)).
+			Msg("CA certificates persisted")
 	}()
 
 	return nil
 }
 
-// removeCertFromBundle rewrites bundlePath removing all occurrences of certPEM.
-// The write is atomic (write to temp file in the same directory, then rename)
-// so the bundle is never partially written from the perspective of concurrent
-// readers. Since /etc/ssl/certs/ is bind-mounted from tmpfs, the temp file and
-// the target are on the same device — the rename never crosses filesystem
-// boundaries (no EXDEV).
-//
-// Must be called under mu.
-func removeCertFromBundle(bundlePath, certPEM string) error {
-	tmpDir := filepath.Dir(bundlePath)
-
+// updateBundle finishes any pending cleanup, then atomically appends requested roots.
+func (c *CACertInstaller) updateBundle(ctx context.Context, certs cabundle.Bundle, bundlePath string) (bool, error) {
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return false, fmt.Errorf("%w: %w", ErrCAInstallInProgress, err)
+	}
+	defer c.mu.Release(1)
+	if c.requested.Equal(certs) {
+		return c.pending != nil, nil
+	}
+	if err := c.cleanupBundle(bundlePath); err != nil {
+		return false, err
+	}
 	content, err := os.ReadFile(bundlePath)
 	if err != nil {
+		return false, fmt.Errorf("read CA bundle: %w", err)
+	}
+	before := content
+	content = bytes.Clone(content)
+	if len(content) > 0 && content[len(content)-1] != '\n' {
+		content = append(content, '\n')
+	}
+	for _, cert := range certs {
+		content = append(content, cert.PEM...)
+	}
+	if err := writeFileAtomic(bundlePath, content); err != nil {
+		return false, fmt.Errorf("write CA bundle: %w", err)
+	}
+	c.pending = &pendingCAAppend{before: before}
+	c.requested = certs
+
+	return true, nil
+}
+
+// persist skips superseded installs so delayed work cannot restore old roots.
+func (c *CACertInstaller) persist(ctx context.Context, certs cabundle.Bundle, bundlePath, certDir string) error {
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	defer c.mu.Release(1)
+	if !c.requested.Equal(certs) {
+		return nil
+	}
+	if err := c.cleanupBundle(bundlePath); err != nil {
+		return err
+	}
+	if err := writeCertFiles(certDir, certs); err != nil {
 		return err
 	}
 
-	cleaned := strings.ReplaceAll(string(content), certPEM, "")
+	return removeRetiredCertFiles(certDir, certs)
+}
 
-	tmp, err := os.CreateTemp(tmpDir, "ca-bundle-*")
+// cleanupBundle runs with mu held. Only one append can await reconciliation.
+func (c *CACertInstaller) cleanupBundle(bundlePath string) error {
+	if c.pending == nil {
+		return nil
+	}
+	// The pre-append snapshot distinguishes our additions from preexisting roots.
+	added := cabundle.Missing(c.pending.before, c.requested)
+	owned := append(append(cabundle.Bundle(nil), c.owned...), added...)
+	content, err := os.ReadFile(bundlePath)
+	if err != nil {
+		return fmt.Errorf("read CA bundle for cleanup: %w", err)
+	}
+	content, nextOwned := cabundle.Reconcile(content, owned, c.requested)
+	if err := writeFileAtomic(bundlePath, content); err != nil {
+		return fmt.Errorf("clean CA bundle: %w", err)
+	}
+	c.owned, c.pending = nextOwned, nil
+
+	return nil
+}
+
+func writeCertFiles(certDir string, certs cabundle.Bundle) error {
+	if err := os.MkdirAll(certDir, 0o755); err != nil {
+		return fmt.Errorf("create CA cert dir: %w", err)
+	}
+	for _, cert := range certs {
+		name := makeCertName(cert.Fingerprint)
+		if err := writeFileAtomic(filepath.Join(certDir, name), cert.PEM); err != nil {
+			return fmt.Errorf("persist CA cert: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func removeRetiredCertFiles(certDir string, certs cabundle.Bundle) error {
+	wanted := make(map[string]struct{}, len(certs))
+	for _, cert := range certs {
+		wanted[cert.Fingerprint] = struct{}{}
+	}
+	entries, err := os.ReadDir(certDir)
+	if err != nil {
+		return fmt.Errorf("read CA cert dir: %w", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == legacyCACertFile {
+			keep, err := legacyCertRequested(filepath.Join(certDir, name), wanted)
+			if err != nil {
+				return err
+			}
+			if keep {
+				continue
+			}
+		} else {
+			match := managedCertFilename.FindStringSubmatch(name)
+			if match == nil {
+				continue
+			}
+			if _, keep := wanted[match[1]]; keep {
+				continue
+			}
+		}
+		if err := os.Remove(filepath.Join(certDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("remove stale CA cert: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Existing OpenSSL hash links still resolve through the legacy source filename.
+func legacyCertRequested(path string, wanted map[string]struct{}) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, fmt.Errorf("read legacy CA cert: %w", err)
+	}
+	legacy, err := cabundle.Parse(string(data))
+	if err == nil && len(legacy) == 1 {
+		_, keep := wanted[legacy[0].Fingerprint]
+
+		return keep, nil
+	}
+
+	return false, nil
+}
+
+func makeCertName(fingerprint string) string {
+	return fmt.Sprintf("e2b-%s.crt", fingerprint)
+}
+
+// writeFileAtomic replaces path with data through a temp file in the same
+// directory. The temp name starts with a dot so trust-store tools skip it.
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp*")
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
-
 	tmpPath := tmp.Name()
 
-	// os.CreateTemp creates with 0600; restore world-readable so non-root
-	// processes can still verify TLS after the rename replaces the bundle.
-	if err := tmp.Chmod(0o644); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-
-		return fmt.Errorf("chmod temp file: %w", err)
+	// os.CreateTemp creates with 0600; non-root processes must read trust.
+	err = tmp.Chmod(0o644)
+	if err == nil {
+		_, err = tmp.Write(data)
 	}
-
-	if _, err := tmp.WriteString(cleaned); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
-
-		return fmt.Errorf("write temp file: %w", err)
+	if closeErr := tmp.Close(); err == nil {
+		err = closeErr
 	}
-
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
-
-		return fmt.Errorf("close temp file: %w", err)
+	if err == nil {
+		err = os.Rename(tmpPath, path)
 	}
-
-	if err := os.Rename(tmpPath, bundlePath); err != nil {
+	if err != nil {
 		os.Remove(tmpPath)
 
-		return fmt.Errorf("rename temp file: %w", err)
+		return err
 	}
 
 	return nil

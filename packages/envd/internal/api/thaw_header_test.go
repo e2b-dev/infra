@@ -2,6 +2,12 @@ package api
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"testing"
 	"time"
@@ -91,7 +97,12 @@ func TestPostInit_SkipLeavesTheWatchdogArmed(t *testing.T) {
 func TestPostInit_FailingAfterAuth(t *testing.T) {
 	t.Parallel()
 
-	bundle := "-----BEGIN CERTIFICATE-----\nnot a certificate\n-----END CERTIFICATE-----"
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), NotAfter: time.Now().Add(time.Hour)}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+	bundle := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
 
 	for _, tt := range []struct {
 		name       string

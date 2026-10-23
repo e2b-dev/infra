@@ -385,6 +385,13 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
   404, for every method, so they are not reachable through a sandbox URL. Adding a control route
   therefore means marking it in the spec (`go generate` carries the marker into the proxy's
   rejection list) — otherwise it ships reachable from the internet.
+- **Guest trust** (`internal/host/cacerts.go`): `/init` supplies the current CA bundle.
+  envd replaces certificates it injected earlier in the same process by DER identity,
+  retaining shared roots and unrelated system certificates. The tmpfs bundle is replaced
+  atomically before `/init` returns. Each requested certificate is persisted asynchronously
+  as `e2b-<SHA-256>.crt` in `/usr/local/share/ca-certificates` for trust-store rebuilds.
+  Ownership is not recovered after an envd restart, so older roots can survive until a
+  rebuild. Applications that cached their trust store must reload it.
 - **Auth**: `X-Access-Token` header checked against a token delivered via Firecracker MMDS;
   signed URLs for file endpoints. `/init` is exempt (it is what *delivers* the token), which is the
   main reason the proxy refuses it outright.

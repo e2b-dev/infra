@@ -5,9 +5,11 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -78,17 +80,18 @@ func TestCACertBundleOnTmpfs(t *testing.T) {
 }
 
 // TestCACertPersistsThroughUpdateCACertificates checks the platform assumption
-// envd's CA installer is built on: that a cert dropped in its extra-certs path is
-// picked up when update-ca-certificates rebuilds the trust bundle from its source
-// directories. envd persists every injected cert there for exactly that reason,
-// so if the template's tooling or layout ever stopped honouring the directory,
-// injected certs would silently vanish on the next rebuild.
+// envd's CA installer is built on: that a cert file envd persists in the local
+// certificate directory is picked up when update-ca-certificates rebuilds the
+// trust bundle from its source directories. envd persists every injected cert
+// there for exactly that reason, so if the template's tooling or layout ever
+// stopped honouring the directory, injected certs would silently vanish on the
+// next rebuild.
 //
 // It deliberately exercises the guest, not envd: the cert is written straight to
 // the path rather than through /init, which is how the orchestrator delivers it
 // in production but is not reachable through the sandbox URL. envd's own side —
-// that it appends, rotates and persists the cert — is covered by
-// TestInstallCACert_* in packages/envd/internal/host.
+// that it installs, replaces and persists certs by identity — is covered by
+// TestInstallCACerts_* in packages/envd/internal/host.
 func TestCACertPersistsThroughUpdateCACertificates(t *testing.T) {
 	t.Parallel()
 
@@ -98,12 +101,13 @@ func TestCACertPersistsThroughUpdateCACertificates(t *testing.T) {
 
 	certPEM := generateSelfSignedCA(t, "e2b-test-ca-persist")
 
-	// caExtraPath in packages/envd/internal/host/cacerts.go, which this module
-	// cannot import (it is internal to envd). Change it there, change it here —
+	// The file name envd uses in caCertDir (packages/envd/internal/host/cacerts.go),
+	// which this module cannot import. Change it there, change it here —
 	// otherwise this keeps passing while testing a path envd no longer writes.
-	const caExtraPath = "/usr/local/share/ca-certificates/e2b-ca.crt"
+	block, _ := pem.Decode([]byte(certPEM))
+	caCertPath := fmt.Sprintf("/usr/local/share/ca-certificates/e2b-%x.crt", sha256.Sum256(block.Bytes))
 
-	utils.UploadFileAs(t, t.Context(), sbx, client, caExtraPath, certPEM, "root")
+	utils.UploadFileAs(t, t.Context(), sbx, client, caCertPath, certPEM, "root")
 
 	// Rebuild the bundle from source directories.
 	err := utils.ExecCommandAsRoot(t, t.Context(), sbx, client, "update-ca-certificates")
@@ -111,5 +115,5 @@ func TestCACertPersistsThroughUpdateCACertificates(t *testing.T) {
 
 	bundle := readBundle(t, sbx, client)
 	assert.Contains(t, bundle, strings.TrimRight(certPEM, "\n"),
-		"a cert in envd's extra-certs path should survive an update-ca-certificates rebuild")
+		"a cert in envd's local certificate directory should survive an update-ca-certificates rebuild")
 }
