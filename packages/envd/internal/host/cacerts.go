@@ -1,13 +1,15 @@
 package host
 
 import (
-	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -16,9 +18,10 @@ import (
 	"github.com/e2b-dev/infra/packages/envd/internal/cabundle"
 )
 
-var ErrCAInstallInProgress = errors.New("CA install already in progress")
-
-var managedCertFilename = regexp.MustCompile(`^e2b-([0-9a-f]{64})\.crt$`)
+var (
+	ErrCAInstallInProgress = errors.New("CA install already in progress")
+	managedCertFilename    = regexp.MustCompile(`^e2b-([0-9a-f]{64})\.crt$`)
+)
 
 const (
 	CaBundlePath     = "/etc/ssl/certs/ca-certificates.crt"
@@ -26,140 +29,257 @@ const (
 	legacyCACertFile = "e2b-ca.crt"
 )
 
-// CACertInstaller replaces the certificates it injected into the tmpfs bundle.
-// Ownership is process-local, so a restart can leave old certificates until a
-// trust-store rebuild. Rootfs persistence runs in the background.
+type caState struct {
+	DesiredPEM string   `json:"desiredPEM"`
+	Owned      []string `json:"owned"`
+}
+
+// CACertInstaller owns orchestrator-supplied certificates, including preexisting copies.
+// It records intent before publishing trust; one Run loop retires old roots.
 type CACertInstaller struct {
 	mu        *semaphore.Weighted
 	logger    *zerolog.Logger
+	statePath string
+	state     *caState
 	requested cabundle.Bundle
-	owned     cabundle.Bundle
-	pending   *pendingCAAppend
-}
-
-type pendingCAAppend struct {
-	before []byte
+	loaded    bool
+	installed bool
+	pending   bool
+	wake      chan struct{}
 }
 
 func NewCACertInstaller(logger *zerolog.Logger) *CACertInstaller {
-	return &CACertInstaller{logger: logger, mu: semaphore.NewWeighted(1)}
+	return &CACertInstaller{logger: logger, mu: semaphore.NewWeighted(1), statePath: "/run/e2b/ca/state.json", wake: make(chan struct{}, 1)}
 }
 
-// Install makes the certificates in bundlePEM the set envd trusts on behalf of
-// the orchestrator. Requested roots are present before Install returns.
-// Retired roots and duplicate certificates are removed in the background,
-// followed by persistence for later trust-store rebuilds.
 func (c *CACertInstaller) Install(ctx context.Context, bundlePEM string) error {
-	return c.install(ctx, bundlePEM, CaBundlePath, caCertDir)
+	return c.install(ctx, bundlePEM, CaBundlePath)
 }
 
-// install is the testable core; tests supply their own paths.
-func (c *CACertInstaller) install(ctx context.Context, bundlePEM, bundlePath, certDir string) error {
+func (c *CACertInstaller) install(ctx context.Context, bundlePEM, bundlePath string) error {
 	if bundlePEM == "" {
 		return nil
 	}
-
 	certs, err := cabundle.Parse(bundlePEM)
 	if err != nil {
 		return fmt.Errorf("parse CA bundle: %w", err)
 	}
-
-	start := time.Now()
-	changed, err := c.updateBundle(ctx, certs, bundlePath)
-	if err != nil || !changed {
-		return err
+	err = c.updateBundle(ctx, certs, bundlePath)
+	select {
+	case c.wake <- struct{}{}:
+	default:
 	}
 
-	c.logger.Info().
-		Dur("duration", time.Since(start)).
-		Int("certificates", len(certs)).
-		Msg("CA certificates installed in bundle")
+	return err
+}
 
-	go func() {
-		persistStart := time.Now()
-		if err := c.persist(context.WithoutCancel(ctx), certs, bundlePath, certDir); err != nil {
-			c.logger.Error().Err(err).Msg("Failed to persist CA certificates")
-
-			return
+// updateBundle records every pending retirement before publishing new trust.
+func (c *CACertInstaller) updateBundle(ctx context.Context, certs cabundle.Bundle, bundlePath string) error {
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return fmt.Errorf("%w: %w", ErrCAInstallInProgress, err)
+	}
+	defer c.mu.Release(1)
+	if err := c.loadState(); err != nil {
+		return err
+	}
+	if c.installed && c.requested.Equal(certs) {
+		return nil
+	}
+	recovering := !c.installed && c.state != nil
+	var owned []string
+	if c.state != nil {
+		owned = slices.Clone(c.state.Owned)
+	}
+	var desired strings.Builder
+	for _, cert := range certs {
+		if !slices.Contains(owned, cert.Fingerprint) {
+			owned = append(owned, cert.Fingerprint)
 		}
-
-		c.logger.Info().
-			Dur("duration", time.Since(persistStart)).
-			Msg("CA certificates persisted")
-	}()
+		desired.Write(cert.PEM)
+	}
+	state := &caState{DesiredPEM: desired.String(), Owned: owned}
+	if err := c.saveState(state); err != nil {
+		return err
+	}
+	c.state, c.requested = state, certs
+	c.installed, c.pending = false, true
+	data, err := os.ReadFile(bundlePath)
+	if err != nil {
+		return fmt.Errorf("read CA bundle: %w", err)
+	}
+	if recovering {
+		// Repair an interrupted older append before init can report success.
+		data = cabundle.Reconcile(data, state.Owned, certs)
+	} else {
+		// Ordinary installs copy existing bytes without decoding the bundle.
+		data = append(data, '\n')
+		data = append(data, state.DesiredPEM...)
+	}
+	if err := writeFileAtomic(bundlePath, data); err != nil {
+		return fmt.Errorf("publish CA bundle: %w", err)
+	}
+	c.installed = true
 
 	return nil
 }
 
-// updateBundle finishes any pending cleanup, then atomically appends requested roots.
-func (c *CACertInstaller) updateBundle(ctx context.Context, certs cabundle.Bundle, bundlePath string) (bool, error) {
-	if err := c.mu.Acquire(ctx, 1); err != nil {
-		return false, fmt.Errorf("%w: %w", ErrCAInstallInProgress, err)
-	}
-	defer c.mu.Release(1)
-	if c.requested.Equal(certs) {
-		return c.pending != nil, nil
-	}
-	if err := c.cleanupBundle(bundlePath); err != nil {
-		return false, err
-	}
-	content, err := os.ReadFile(bundlePath)
-	if err != nil {
-		return false, fmt.Errorf("read CA bundle: %w", err)
-	}
-	before := content
-	content = bytes.Clone(content)
-	if len(content) > 0 && content[len(content)-1] != '\n' {
-		content = append(content, '\n')
-	}
-	for _, cert := range certs {
-		content = append(content, cert.PEM...)
-	}
-	if err := writeFileAtomic(bundlePath, content); err != nil {
-		return false, fmt.Errorf("write CA bundle: %w", err)
-	}
-	c.pending = &pendingCAAppend{before: before}
-	c.requested = certs
-
-	return true, nil
+// Run resumes persisted intent immediately and retries interrupted work once a second.
+func (c *CACertInstaller) Run(ctx context.Context) {
+	c.run(ctx, CaBundlePath, caCertDir)
 }
 
-// persist skips superseded installs so delayed work cannot restore old roots.
-func (c *CACertInstaller) persist(ctx context.Context, certs cabundle.Bundle, bundlePath, certDir string) error {
+func (c *CACertInstaller) run(ctx context.Context, bundlePath, certDir string) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	var failed bool
+	for {
+		err := c.persist(ctx, bundlePath, certDir)
+		if err == nil {
+			failed = false
+		} else if !failed && ctx.Err() == nil {
+			failed = true
+			c.logger.Error().Err(err).Msg("Failed to reconcile CA certificates")
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.wake:
+		case <-ticker.C:
+		}
+	}
+}
+
+// persist runs in one worker. Source writes run outside mu; legacy removal checks the latest request.
+func (c *CACertInstaller) persist(ctx context.Context, bundlePath, certDir string) error {
 	if err := c.mu.Acquire(ctx, 1); err != nil {
 		return err
 	}
-	defer c.mu.Release(1)
-	if !c.requested.Equal(certs) {
-		return nil
-	}
-	if err := c.cleanupBundle(bundlePath); err != nil {
+	if err := c.loadState(); err != nil {
+		c.mu.Release(1)
+
 		return err
 	}
-	if err := writeCertFiles(certDir, certs); err != nil {
-		return err
-	}
+	if !c.pending {
+		c.mu.Release(1)
 
-	return removeRetiredCertFiles(certDir, certs)
-}
-
-// cleanupBundle runs with mu held. Only one append can await reconciliation.
-func (c *CACertInstaller) cleanupBundle(bundlePath string) error {
-	if c.pending == nil {
 		return nil
 	}
-	// The pre-append snapshot distinguishes our additions from preexisting roots.
-	added := cabundle.Missing(c.pending.before, c.requested)
-	owned := append(append(cabundle.Bundle(nil), c.owned...), added...)
+	state, certs := c.state, c.requested
+	c.mu.Release(1)
+
 	content, err := os.ReadFile(bundlePath)
 	if err != nil {
 		return fmt.Errorf("read CA bundle for cleanup: %w", err)
 	}
-	content, nextOwned := cabundle.Reconcile(content, owned, c.requested)
-	if err := writeFileAtomic(bundlePath, content); err != nil {
-		return fmt.Errorf("clean CA bundle: %w", err)
+	var nextOwned []string
+	for _, cert := range certs {
+		nextOwned = append(nextOwned, cert.Fingerprint)
 	}
-	c.owned, c.pending = nextOwned, nil
+	content = cabundle.Reconcile(content, state.Owned, certs)
+	tmp, err := prepareFile(bundlePath, content, 0o644)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	if c.state != state {
+		c.mu.Release(1)
+
+		return nil
+	}
+	err = os.Rename(tmp, bundlePath)
+	if err == nil {
+		c.installed = true
+	}
+	c.mu.Release(1)
+	if err != nil {
+		return fmt.Errorf("publish CA bundle: %w", err)
+	}
+
+	// Rootfs failures must not prevent retirement in the active bundle.
+	if err := writeCertFiles(certDir, certs); err != nil {
+		return err
+	}
+	if err := c.removeRetiredCertFiles(ctx, certDir, certs); err != nil {
+		return err
+	}
+	nextState := &caState{DesiredPEM: state.DesiredPEM, Owned: nextOwned}
+	stateData, err := json.Marshal(nextState)
+	if err != nil {
+		return err
+	}
+	stateTmp, err := prepareFile(c.statePath, stateData, 0o600)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(stateTmp)
+
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	defer c.mu.Release(1)
+	if c.state != state {
+		return nil
+	}
+	// Forget retired identities only after source files and the aggregate are cleaned.
+	if err := os.Rename(stateTmp, c.statePath); err != nil {
+		return fmt.Errorf("publish CA state: %w", err)
+	}
+	c.state = nextState
+	c.installed, c.pending = true, false
+
+	return nil
+}
+
+// loadState runs under mu. Missing state never authorizes removal of existing trust.
+func (c *CACertInstaller) loadState() error {
+	if c.loaded {
+		return nil
+	}
+	data, err := os.ReadFile(c.statePath)
+	if errors.Is(err, os.ErrNotExist) {
+		c.loaded = true
+
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read CA state: %w", err)
+	}
+	var state caState
+	if err := json.Unmarshal(data, &state); err != nil {
+		return fmt.Errorf("decode CA state: %w", err)
+	}
+	var certs cabundle.Bundle
+	if state.DesiredPEM != "" {
+		certs, err = cabundle.Parse(state.DesiredPEM)
+		if err != nil {
+			return fmt.Errorf("parse CA state: %w", err)
+		}
+	}
+	c.state, c.requested = &state, certs
+	c.loaded, c.pending = true, true
+
+	return nil
+}
+
+func (c *CACertInstaller) saveState(state *caState) error {
+	data, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(c.statePath), 0o700); err != nil {
+		return fmt.Errorf("create CA state directory: %w", err)
+	}
+	tmp, err := prepareFile(c.statePath, data, 0o600)
+	if err != nil {
+		return fmt.Errorf("prepare CA state: %w", err)
+	}
+	defer os.Remove(tmp)
+	if err := os.Rename(tmp, c.statePath); err != nil {
+		return fmt.Errorf("publish CA state: %w", err)
+	}
 
 	return nil
 }
@@ -178,7 +298,7 @@ func writeCertFiles(certDir string, certs cabundle.Bundle) error {
 	return nil
 }
 
-func removeRetiredCertFiles(certDir string, certs cabundle.Bundle) error {
+func (c *CACertInstaller) removeRetiredCertFiles(ctx context.Context, certDir string, certs cabundle.Bundle) error {
 	wanted := make(map[string]struct{}, len(certs))
 	for _, cert := range certs {
 		wanted[cert.Fingerprint] = struct{}{}
@@ -190,21 +310,18 @@ func removeRetiredCertFiles(certDir string, certs cabundle.Bundle) error {
 	for _, entry := range entries {
 		name := entry.Name()
 		if name == legacyCACertFile {
-			keep, err := legacyCertRequested(filepath.Join(certDir, name), wanted)
-			if err != nil {
+			if err := c.removeLegacyCert(ctx, filepath.Join(certDir, name)); err != nil {
 				return err
 			}
-			if keep {
-				continue
-			}
-		} else {
-			match := managedCertFilename.FindStringSubmatch(name)
-			if match == nil {
-				continue
-			}
-			if _, keep := wanted[match[1]]; keep {
-				continue
-			}
+
+			continue
+		}
+		match := managedCertFilename.FindStringSubmatch(name)
+		if match == nil {
+			continue
+		}
+		if _, keep := wanted[match[1]]; keep {
+			continue
 		}
 		if err := os.Remove(filepath.Join(certDir, name)); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return fmt.Errorf("remove stale CA cert: %w", err)
@@ -215,50 +332,64 @@ func removeRetiredCertFiles(certDir string, certs cabundle.Bundle) error {
 }
 
 // Existing OpenSSL hash links still resolve through the legacy source filename.
-func legacyCertRequested(path string, wanted map[string]struct{}) (bool, error) {
+func (c *CACertInstaller) removeLegacyCert(ctx context.Context, path string) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return false, fmt.Errorf("read legacy CA cert: %w", err)
+		return fmt.Errorf("read legacy CA cert: %w", err)
 	}
-	legacy, err := cabundle.Parse(string(data))
-	if err == nil && len(legacy) == 1 {
-		_, keep := wanted[legacy[0].Fingerprint]
-
-		return keep, nil
+	legacy, parseErr := cabundle.Parse(string(data))
+	if err := c.mu.Acquire(ctx, 1); err != nil {
+		return err
+	}
+	defer c.mu.Release(1)
+	// Check the latest request and unlink together, so init cannot adopt this alias between them.
+	if parseErr == nil && len(legacy) == 1 {
+		for _, cert := range c.requested {
+			if cert.Fingerprint == legacy[0].Fingerprint {
+				return nil
+			}
+		}
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove legacy CA cert: %w", err)
 	}
 
-	return false, nil
+	return nil
 }
 
 func makeCertName(fingerprint string) string {
 	return fmt.Sprintf("e2b-%s.crt", fingerprint)
 }
 
-// writeFileAtomic replaces path with data through a temp file in the same
-// directory. The temp name starts with a dot so trust-store tools skip it.
-func writeFileAtomic(path string, data []byte) error {
+// prepareFile stages a complete replacement beside its destination.
+func prepareFile(path string, data []byte, mode os.FileMode) (string, error) {
 	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tmp*")
 	if err != nil {
-		return fmt.Errorf("create temp file: %w", err)
+		return "", fmt.Errorf("create temp file: %w", err)
 	}
 	tmpPath := tmp.Name()
-
-	// os.CreateTemp creates with 0600; non-root processes must read trust.
-	err = tmp.Chmod(0o644)
+	err = tmp.Chmod(mode)
 	if err == nil {
 		_, err = tmp.Write(data)
 	}
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
-	if err == nil {
-		err = os.Rename(tmpPath, path)
-	}
 	if err != nil {
 		os.Remove(tmpPath)
 
-		return err
+		return "", err
 	}
 
-	return nil
+	return tmpPath, nil
+}
+
+func writeFileAtomic(path string, data []byte) error {
+	tmp, err := prepareFile(path, data, 0o644)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+
+	return os.Rename(tmp, path)
 }

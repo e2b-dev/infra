@@ -180,6 +180,10 @@ func New(l *zerolog.Logger, defaults *execcontext.Defaults, mmdsChan chan *host.
 	}
 }
 
+func (a *API) RunCACertCleanup(ctx context.Context) {
+	a.caCertInstaller.Run(ctx)
+}
+
 func (a *API) GetHealth(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 

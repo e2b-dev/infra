@@ -68,18 +68,16 @@ func (a Bundle) Equal(b Bundle) bool {
 	return true
 }
 
-// Reconcile removes only previously owned certificates that are no longer requested.
-// The caller must publish the returned bytes before committing the new ownership.
-func Reconcile(content []byte, previouslyOwned, certs Bundle) ([]byte, Bundle) {
-	previous := make(map[string]struct{}, len(previouslyOwned))
-	for _, cert := range previouslyOwned {
-		previous[cert.Fingerprint] = struct{}{}
+// Reconcile removes owned identities from the aggregate, then appends the desired set.
+// Unrelated certificates retain their trust regardless of their source.
+func Reconcile(content []byte, owned []string, desired Bundle) []byte {
+	managed := make(map[string]struct{}, len(owned)+len(desired))
+	for _, id := range owned {
+		managed[id] = struct{}{}
 	}
-	wanted := make(map[string]struct{}, len(certs))
-	for _, cert := range certs {
-		wanted[cert.Fingerprint] = struct{}{}
+	for _, cert := range desired {
+		managed[cert.Fingerprint] = struct{}{}
 	}
-	present := make(map[string]struct{})
 	var out bytes.Buffer
 	for rest := content; len(rest) > 0; {
 		block, tail := pem.Decode(rest)
@@ -89,52 +87,15 @@ func Reconcile(content []byte, previouslyOwned, certs Bundle) ([]byte, Bundle) {
 		rest = tail
 		if block.Type == "CERTIFICATE" {
 			id := fmt.Sprintf("%x", sha256.Sum256(block.Bytes))
-			_, wasOwned := previous[id]
-			_, want := wanted[id]
-			if want {
-				present[id] = struct{}{}
-			}
-			if wasOwned || want {
+			if _, remove := managed[id]; remove {
 				continue
 			}
 		}
 		_ = pem.Encode(&out, block)
 	}
-	var nextOwned Bundle
-	for _, cert := range certs {
-		_, found := present[cert.Fingerprint]
+	for _, cert := range desired {
 		out.Write(cert.PEM)
-		if _, wasOwned := previous[cert.Fingerprint]; wasOwned || !found {
-			nextOwned = append(nextOwned, cert)
-		}
 	}
 
-	return out.Bytes(), nextOwned
-}
-
-// Missing returns requested certificates whose DER identities are absent from content.
-// Like Reconcile, it scans existing PEM without validating X.509 or rewriting bytes.
-func Missing(content []byte, certs Bundle) Bundle {
-	missing := make(map[string]struct{}, len(certs))
-	for _, cert := range certs {
-		missing[cert.Fingerprint] = struct{}{}
-	}
-	for len(missing) > 0 {
-		block, tail := pem.Decode(content)
-		if block == nil {
-			break
-		}
-		content = tail
-		if block.Type == "CERTIFICATE" {
-			delete(missing, fmt.Sprintf("%x", sha256.Sum256(block.Bytes)))
-		}
-	}
-	var result Bundle
-	for _, cert := range certs {
-		if _, absent := missing[cert.Fingerprint]; absent {
-			result = append(result, cert)
-		}
-	}
-
-	return result
+	return out.Bytes()
 }

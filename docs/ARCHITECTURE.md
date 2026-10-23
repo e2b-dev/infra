@@ -385,13 +385,23 @@ The agent inside every VM (started by systemd very early in boot), port 49983, c
   404, for every method, so they are not reachable through a sandbox URL. Adding a control route
   therefore means marking it in the spec (`go generate` carries the marker into the proxy's
   rejection list) — otherwise it ships reachable from the internet.
-- **Guest trust** (`internal/host/cacerts.go`): `/init` supplies the current CA bundle.
-  envd replaces certificates it injected earlier in the same process by DER identity,
-  retaining shared roots and unrelated system certificates. The tmpfs bundle is replaced
-  atomically before `/init` returns. Each requested certificate is persisted asynchronously
-  as `e2b-<SHA-256>.crt` in `/usr/local/share/ca-certificates` for trust-store rebuilds.
-  Ownership is not recovered after an envd restart, so older roots can survive until a
-  rebuild. Applications that cached their trust store must reload it.
+- **Guest trust** (`internal/host/cacerts.go`): `/init` supplies the desired CA bundle.
+  envd atomically records its PEM and owned DER identities in `/run/e2b/ca/state.json`,
+  then publishes a complete replacement of the active bundle with the requested roots
+  before returning. Ordinary installs copy the existing bundle without decoding it;
+  recovery first repairs interrupted writes. All supplied identities are owned,
+  including identical preexisting copies. A background loop resumes saved intent at startup
+  and retries cleanup every second. It atomically removes retired roots from the active
+  bundle before rootfs work, so source-file failures cannot delay that cleanup.
+  It persists each requested certificate as
+  `e2b-<SHA-256>.crt` in `/usr/local/share/ca-certificates`, removes retired managed files,
+  and retains retirement identities until both bundle and source cleanup succeed.
+  Superseded cleanup cannot publish an older bundle. Legacy-file removal checks the latest
+  desired roots under the init lock, preserving hash links to a still-requested certificate.
+  State survives envd process restart,
+  not guest reboot. Retired roots may be trusted until cleanup succeeds, and an independent
+  trust-store rebuild can restore a copy from a customer source file. Applications that
+  cached their trust store must reload it.
 - **Auth**: `X-Access-Token` header checked against a token delivered via Firecracker MMDS;
   signed URLs for file endpoints. `/init` is exempt (it is what *delivers* the token), which is the
   main reason the proxy refuses it outright.

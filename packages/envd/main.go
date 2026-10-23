@@ -294,6 +294,7 @@ func run() error {
 	}
 
 	service := api.New(&envLogger, defaults, mmdsChan, isNotFC, workloadFreezer, oomWatcher, cpuManager, logFlusher)
+	go service.RunCACertCleanup(ctx)
 	if resumeHandover {
 		// Restore the NFS mount ledger carried across the upgrade before the
 		// post-upgrade /init runs setupNFS, so it recognizes a still-live mount
