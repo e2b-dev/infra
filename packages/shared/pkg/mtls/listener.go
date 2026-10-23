@@ -241,9 +241,9 @@ func (l *Listener) classify(ctx context.Context, raw net.Conn, mode Mode) {
 	tlsConn := tls.Server(hooked, l.tlsConfig)
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		_ = tlsConn.Close()
-		metrics.handshake(ctx, l.cfg.Name, handshakeOutcome(err))
-		l.cfg.log().Debug(ctx, "mtls: TLS handshake failed",
-			zap.String("listener", l.cfg.Name), zap.String("remote", key), zap.Bool("timeout", isTimeout(err)), zap.Error(err))
+		outcome := handshakeOutcome(err)
+		metrics.handshake(ctx, l.cfg.Name, outcome)
+		logHandshakeFailure(ctx, l.cfg, key, outcome, err)
 
 		return
 	}
@@ -275,13 +275,14 @@ func (l *Listener) plaintext(ctx context.Context, key string, conn net.Conn, mod
 	return plain
 }
 
-// peekOutcome labels a failed first-byte read.
+// peekOutcome labels a failed first-byte read: a deadline, or a peer that
+// closed the connection without sending anything. No TLS was attempted.
 func peekOutcome(err error) string {
 	if isTimeout(err) {
 		return OutcomeTimeout
 	}
 
-	return OutcomeFailed
+	return OutcomeClosed
 }
 
 // handshakeOutcome labels a failed TLS handshake: a deadline, a refusal by
@@ -296,6 +297,19 @@ func handshakeOutcome(err error) string {
 	}
 
 	return OutcomeFailed
+}
+
+// logHandshakeFailure logs a failed server handshake. A refusal stays at
+// Debug: verifyPeer already warned with its reason. Any other failure, such
+// as a peer offering no certificate, which Go rejects before verifyPeer runs,
+// has no record besides the counter, so it is a Warn.
+func logHandshakeFailure(ctx context.Context, cfg ServerConfig, remote, outcome string, err error) {
+	logAt := cfg.log().Warn
+	if outcome == OutcomeRefused {
+		logAt = cfg.log().Debug
+	}
+	logAt(ctx, "mtls: TLS handshake failed",
+		zap.String("listener", cfg.Name), zap.String("remote", remote), zap.Bool("timeout", isTimeout(err)), zap.Error(err))
 }
 
 // deliver hands a classified connection to Accept, or closes it when the

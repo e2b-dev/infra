@@ -63,6 +63,13 @@ func TestMetricsCountHandshakesByOutcomeAndCaller(t *testing.T) {
 	assert.False(t, counted, "a name that would be refused is not a connection by caller")
 
 	var dialer net.Dialer
+	probe, err := dialer.DialContext(t.Context(), "tcp", addr)
+	require.NoError(t, err)
+	require.NoError(t, probe.Close())
+	awaitPoint(t, fx.reader, 1, MetricHandshakes, listenerAttr(), attribute.String(AttrOutcome, OutcomeClosed))
+	_, failed := pointValue(t, fx.reader, MetricHandshakes, listenerAttr(), attribute.String(AttrOutcome, OutcomeFailed))
+	assert.False(t, failed, "a close before the first byte is not a failed handshake")
+
 	silent, err := dialer.DialContext(t.Context(), "tcp", addr)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = silent.Close() })
@@ -85,9 +92,12 @@ func TestMetricsCountRefusalsOnARequiredListener(t *testing.T) {
 	require.Error(t, getErr(t, httpClient(rawClientTLS(fx.peerLeaf(t, strangerID), protoHTTP11)), "https://"+addr+"/"))
 	awaitPoint(t, fx.reader, 1, MetricHandshakes, listenerAttr(), attribute.String(AttrOutcome, OutcomeRefused))
 	awaitPoint(t, fx.reader, 1, MetricRefused, listenerAttr(), attribute.String(AttrReason, string(ReasonNotAllowed)), attribute.String(AttrKind, KindHandshake))
+	assert.Zero(t, failedHandshakeWarnings(fx), "verifyPeer warns about a refusal with its reason; the handshake line stays Debug for it")
 
 	require.Error(t, getErr(t, httpClient(rawClientTLS(nil, protoHTTP11)), "https://"+addr+"/"), "no certificate under RequireAnyClientCert fails inside Go's handshake")
 	awaitPoint(t, fx.reader, 1, MetricHandshakes, listenerAttr(), attribute.String(AttrOutcome, OutcomeFailed))
+	// The counter and this line are the only record of such a failure.
+	require.Eventually(t, func() bool { return failedHandshakeWarnings(fx) == 1 }, 5*time.Second, 20*time.Millisecond, "a failed handshake is logged at Warn")
 }
 
 func TestMetricsCountPlaintextRequestsAndRPCs(t *testing.T) {

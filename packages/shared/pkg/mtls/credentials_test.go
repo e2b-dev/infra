@@ -136,9 +136,17 @@ func TestServerCredentialsRequiredAdmission(t *testing.T) {
 	for _, tc := range admissionCases(t, fx) {
 		creds := NewServerCredentials(newServerConfig(t, fx, StaticMode(ModeRequired), clientID))
 		addr, outcomes := serveCredentials(t, creds)
+		warned := failedHandshakeWarnings(fx)
 
 		_, err := dialTLS(t, addr, tc.client)
 		outcome := awaitOutcome(t, outcomes)
+		// verifyPeer warns about a refusal with its reason; only a failure Go
+		// raises before it, such as no certificate, warns here.
+		wantWarnings := 0
+		if tc.reason == ReasonNoCertificate {
+			wantWarnings = 1
+		}
+		assert.Equal(t, wantWarnings, failedHandshakeWarnings(fx)-warned, tc.name)
 
 		if tc.reason == "" {
 			require.NoError(t, err, tc.name)

@@ -13,6 +13,7 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
@@ -210,6 +211,11 @@ func testLogger(t *testing.T) (logger.Logger, *observer.ObservedLogs) {
 	core, logs := observer.New(zap.DebugLevel)
 
 	return logger.NewTracedLoggerFromCore(core), logs
+}
+
+// failedHandshakeWarnings counts the Warn lines failed server handshakes wrote.
+func failedHandshakeWarnings(fx *fixture) int {
+	return fx.logs.FilterLevelExact(zapcore.WarnLevel).FilterMessage("mtls: TLS handshake failed").Len()
 }
 
 func logMessages(logs *observer.ObservedLogs) []string {

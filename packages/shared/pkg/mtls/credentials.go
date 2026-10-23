@@ -142,7 +142,9 @@ func (c *ServerCredentials) ServerHandshake(raw net.Conn) (net.Conn, credentials
 	tlsConn := tls.Server(hooked, c.tlsConfig)
 	if err := tlsConn.HandshakeContext(ctx); err != nil {
 		_ = tlsConn.Close()
-		metrics.handshake(ctx, c.cfg.Name, handshakeOutcome(err))
+		outcome := handshakeOutcome(err)
+		metrics.handshake(ctx, c.cfg.Name, outcome)
+		logHandshakeFailure(ctx, c.cfg, key, outcome, err)
 
 		return nil, nil, err
 	}

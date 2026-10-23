@@ -57,6 +57,9 @@ const (
 	OutcomeRefused = "refused"
 	// OutcomeFailed: the TLS handshake itself failed.
 	OutcomeFailed = "failed"
+	// OutcomeClosed: the peer closed the connection before its first byte,
+	// as a TCP health check or a port probe does.
+	OutcomeClosed = "closed"
 	// OutcomeTimeout: the first byte or the handshake did not arrive in time.
 	OutcomeTimeout = "timeout"
 
