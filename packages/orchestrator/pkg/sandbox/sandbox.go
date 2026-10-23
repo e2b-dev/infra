@@ -3348,7 +3348,7 @@ func (s *Sandbox) runDeferredMemoryExport(
 		// when a window fails or the tripwire fires, and trace ids are
 		// sampled — the sandbox/build identity must be on the line itself.
 		sbxlogger.I(s).Error(ctx, "deferred memory export failed",
-			zap.String("build_id", buildID.String()), zap.Error(err))
+			logger.WithBuildID(buildID.String()), zap.Error(err))
 		// Drain in-flight fault-path copies before closing the cache: Sweep
 		// returns on cancel WITHOUT waiting them out. sharedCacheWriter's
 		// lock makes a straggler fail cleanly (ErrCacheClosed) rather than
@@ -3358,7 +3358,7 @@ func (s *Sandbox) runDeferredMemoryExport(
 		window.CancelAndDrain(err)
 		if closeErr := cache.Close(); closeErr != nil {
 			sbxlogger.I(s).Warn(ctx, "closing memory export cache",
-				zap.String("build_id", buildID.String()), zap.Error(closeErr))
+				logger.WithBuildID(buildID.String()), zap.Error(closeErr))
 		}
 		// The SANDBOX is unharmed: a failed or cancelled capture loses only
 		// THIS checkpoint's artifact. Unlike the rootfs seal (whose failure

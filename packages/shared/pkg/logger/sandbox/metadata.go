@@ -26,8 +26,10 @@ func (sm SandboxMetadata) Fields() []zap.Field {
 		logger.WithTemplateID(sm.TemplateID),
 		logger.WithTeamID(sm.TeamID),
 
-		// Fields for Vector
-		zap.String("instanceID", sm.SandboxID),
-		zap.String("envID", sm.TemplateID),
+		// Legacy aliases kept only for the Vector pipeline during the migration
+		// window; see packages/local-dev/vector.toml and the deprecation note
+		// in scripts/check-log-field-keys.sh. Do not add new raw ID keys here.
+		zap.String("instanceID", sm.SandboxID), // log-key-exempt: vector-legacy
+		zap.String("envID", sm.TemplateID),     // log-key-exempt: vector-legacy
 	}
 }

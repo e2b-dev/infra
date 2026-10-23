@@ -145,6 +145,10 @@ fmt:
 lint:
 	go work edit -json | jq -r '.Use[].DiskPath' | xargs -P 4 -I{} golangci-lint run {}/... --fix
 
+.PHONY: check-log-field-keys
+check-log-field-keys:
+	@scripts/check-log-field-keys.sh
+
 .PHONY: generate-mocks
 generate-mocks:
 	GOOS=linux mockery

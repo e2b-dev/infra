@@ -11,52 +11,73 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// Canonical structured-log field keys. These are the single source of truth
+// for identifier field names across every service (api, orchestrator,
+// client-proxy, ...). Always log an identifier through its With* helper below
+// rather than a raw zap.String("...", v); scripts/check-log-field-keys.sh
+// enforces this. The dotted "<noun>.id" convention is what the Vector pipeline
+// normalizes on (packages/local-dev/vector.toml).
+const (
+	KeySandboxID       = "sandbox.id"
+	KeyLifecycleID     = "sandbox.lifecycle.id"
+	KeyTemplateID      = "template.id"
+	KeyBuildID         = "build.id"
+	KeyExecutionID     = "execution.id"
+	KeyUserID          = "user.id"
+	KeyTeamID          = "team.id"
+	KeyNodeID          = "node.id"
+	KeyClusterID       = "cluster.id"
+	KeyEdgeTraceID     = "edge.trace.id"
+	KeyServiceInstance = "service.instance.id"
+	KeySandboxIP       = "sandbox.ip"
+)
+
 func WithSandboxID(sandboxID string) zap.Field {
-	return zap.String("sandbox.id", sandboxID)
+	return zap.String(KeySandboxID, sandboxID)
 }
 
 func WithLifecycleID(lifecycleID string) zap.Field {
-	return zap.String("sandbox.lifecycle.id", lifecycleID)
+	return zap.String(KeyLifecycleID, lifecycleID)
 }
 
 func WithTemplateID(templateID string) zap.Field {
-	return zap.String("template.id", templateID)
+	return zap.String(KeyTemplateID, templateID)
 }
 
 func WithBuildID(buildID string) zap.Field {
-	return zap.String("build.id", buildID)
+	return zap.String(KeyBuildID, buildID)
 }
 
 func WithExecutionID(executionID string) zap.Field {
-	return zap.String("execution.id", executionID)
+	return zap.String(KeyExecutionID, executionID)
 }
 
 func WithUserID(userID string) zap.Field {
-	return zap.String("user.id", userID)
+	return zap.String(KeyUserID, userID)
 }
 
 func WithTeamID(teamID string) zap.Field {
-	return zap.String("team.id", teamID)
+	return zap.String(KeyTeamID, teamID)
 }
 
 func WithNodeID(nodeID string) zap.Field {
-	return zap.String("node.id", nodeID)
+	return zap.String(KeyNodeID, nodeID)
 }
 
 func WithClusterID(clusterID uuid.UUID) zap.Field {
-	return zap.String("cluster.id", clusterID.String())
+	return zap.String(KeyClusterID, clusterID.String())
 }
 
 func WithEdgeTraceID(traceID string) zap.Field {
-	return zap.String("edge.trace.id", traceID)
+	return zap.String(KeyEdgeTraceID, traceID)
 }
 
 func WithServiceInstanceID(instanceID string) zap.Field {
-	return zap.String("service.instance.id", instanceID)
+	return zap.String(KeyServiceInstance, instanceID)
 }
 
 func WithSandboxIP(sandboxIP string) zap.Field {
-	return zap.String("sandbox.ip", sandboxIP)
+	return zap.String(KeySandboxIP, sandboxIP)
 }
 
 func WithEnvdVersion(envdVersion string) zap.Field {

@@ -2245,7 +2245,7 @@ func (s *Server) snapshotAndCacheSandbox(
 		}
 
 		if err := s.peerRegistry.Unregister(ctx, meta.Template.BuildID); err != nil {
-			logger.L().Warn(ctx, "failed to unregister peer address from routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
+			logger.L().Warn(ctx, "failed to unregister peer address from routing", logger.WithBuildID(meta.Template.BuildID), zap.Error(err))
 		}
 	}
 
@@ -2261,7 +2261,7 @@ func (s *Server) snapshotAndCacheSandbox(
 
 	if peerEnabled {
 		if err := s.peerRegistry.Register(ctx, meta.Template.BuildID, redisPeerKeyTTL); err != nil {
-			logger.L().Warn(ctx, "failed to register peer address for routing", zap.String("build_id", meta.Template.BuildID), zap.Error(err))
+			logger.L().Warn(ctx, "failed to register peer address for routing", logger.WithBuildID(meta.Template.BuildID), zap.Error(err))
 		}
 	}
 

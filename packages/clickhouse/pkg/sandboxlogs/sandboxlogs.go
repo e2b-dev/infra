@@ -222,7 +222,7 @@ func (r *Reader) scanSandboxLogs(ctx context.Context, q string, args ...any) ([]
 
 		entry := rr.toLogEntry(func(err error) {
 			logger.L().Warn(ctx, "failed to parse sandbox log fields",
-				zap.String("sandbox_id", rr.SandboxID),
+				logger.WithSandboxID(rr.SandboxID),
 				logger.Time("timestamp", rr.Timestamp),
 				zap.Error(err),
 			)

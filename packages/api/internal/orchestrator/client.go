@@ -176,7 +176,7 @@ func (o *Orchestrator) getOrConnectNode(ctx context.Context, clusterID uuid.UUID
 
 	logger.L().Warn(ctx, "Node not found in cache, attempting on-demand connection",
 		logger.WithNodeID(nodeID),
-		zap.String("cluster_id", clusterID.String()),
+		logger.WithClusterID(clusterID),
 	)
 
 	scopedKey := o.scopedNodeID(clusterID, nodeID)

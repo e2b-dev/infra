@@ -176,7 +176,7 @@ func logSandboxCreated(ctx context.Context, sbx sandbox.Sandbox) {
 		zap.String("end_time", endTimeStr),
 		zap.String("auto_resume_policy", autoResumePolicy),
 		zap.Bool("auto_pause", sbx.AutoPause),
-		zap.String("template_id", sbx.BaseTemplateID),
+		logger.WithTemplateID(sbx.BaseTemplateID),
 	)
 }
 

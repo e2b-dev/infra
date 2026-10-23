@@ -93,10 +93,20 @@ jobs:
           # The command is terminated due to an error: [../../.golangci.yml] validate: compile schema: failing loading "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": Get "https://golangci-lint.run/jsonschema/golangci.v2.11.jsonschema.json": context deadline exceeded (Client.Timeout exceeded while awaiting headers)
           verify: 'false'
 
+  log-field-keys:
+    if: ${{ inputs.run-lint == true }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check canonical structured-log field keys
+        run: ./scripts/check-log-field-keys.sh
+
   lint:
     needs:
       - detect-modules
       - golangci-lint
+      - log-field-keys
     if: ${{ always() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -116,6 +126,11 @@ jobs:
           # "skipped" is expected when no Go modules changed (empty matrix).
           if [[ "${{ needs.golangci-lint.result }}" != "success" && "${{ needs.golangci-lint.result }}" != "skipped" ]]; then
             echo "golangci-lint result: ${{ needs.golangci-lint.result }}"
+            exit 1
+          fi
+
+          if [[ "${{ needs.log-field-keys.result }}" != "success" ]]; then
+            echo "log-field-keys result: ${{ needs.log-field-keys.result }}"
             exit 1
           fi
 

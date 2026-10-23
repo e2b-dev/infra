@@ -123,7 +123,7 @@ func (b *EnsureFreeDiskBuilder) Layer(
 		logger.L().Info(ctx, "resize-disk artifact unavailable in cache, building it",
 			zap.Error(err),
 			zap.String("hash", hash),
-			zap.String("build_id", layerMeta.Template.BuildID),
+			logger.WithBuildID(layerMeta.Template.BuildID),
 		)
 
 		return notCachedResult, nil //nolint:nilerr // An unavailable cached artifact must be rebuilt.

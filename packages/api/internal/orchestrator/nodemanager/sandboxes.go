@@ -58,7 +58,7 @@ func (n *Node) GetOrphanCandidates(ctx context.Context) ([]sandbox.NodeSandbox, 
 		// running under some other identity.
 		if sandboxID == "" {
 			logger.L().Error(childCtx, "Skipping sandbox with no sandbox ID during node sync",
-				zap.String("team_id", rawTeamID),
+				logger.WithTeamID(rawTeamID),
 				logger.WithNodeID(n.ID),
 			)
 
@@ -69,7 +69,7 @@ func (n *Node) GetOrphanCandidates(ctx context.Context) ([]sandbox.NodeSandbox, 
 		if parseErr != nil {
 			logger.L().Error(childCtx, "Skipping sandbox with unparseable team ID during node sync",
 				zap.Error(parseErr),
-				zap.String("team_id", rawTeamID),
+				logger.WithTeamID(rawTeamID),
 				logger.WithSandboxID(sandboxID),
 				logger.WithNodeID(n.ID),
 			)

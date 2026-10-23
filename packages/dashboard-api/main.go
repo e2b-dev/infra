@@ -120,7 +120,7 @@ func run() int {
 		return 1
 	}
 
-	l.Info(ctx, "Starting dashboard-api service...", zap.String("commit_sha", commitSHA), zap.String("instance_id", serviceInstanceID))
+	l.Info(ctx, "Starting dashboard-api service...", zap.String("commit_sha", commitSHA), logger.WithServiceInstanceID(serviceInstanceID))
 
 	expectedMigration, err := strconv.ParseInt(expectedMigrationTimestamp, 10, 64)
 	if err != nil {

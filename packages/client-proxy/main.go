@@ -99,7 +99,7 @@ func run() int {
 	signalCtx, sigCancel := signal.NotifyContext(ctx, syscall.SIGTERM, syscall.SIGINT)
 	defer sigCancel()
 
-	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), zap.String("instance_id", instanceID))
+	l.Info(ctx, "Starting client proxy", zap.String("commit", commitSHA), logger.WithServiceInstanceID(instanceID))
 
 	featureFlagsClient, err := featureflags.NewClient(config.DeploymentEnvironment, serviceName, version, featureflags.WithStartOnInitTimeout())
 	if err != nil {
