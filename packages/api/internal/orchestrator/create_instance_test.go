@@ -99,6 +99,7 @@ func newCreateSandboxTestOrchestratorOnRedis(t *testing.T, client redis.Universa
 
 	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	counter, _ := meter.Int64Counter("test-created-sandboxes")
+	noCeilingCounter, _ := meter.Int64Counter("test-placements-without-hugepage-ceiling")
 
 	ffClient, ffErr := featureflags.NewClientWithDatasource(flagSource)
 	require.NoError(t, ffErr)
@@ -109,11 +110,12 @@ func newCreateSandboxTestOrchestratorOnRedis(t *testing.T, client redis.Universa
 	node.ClusterID = uuid.Nil // match consts.LocalClusterID (fallback when team.ClusterID is nil)
 
 	o := &Orchestrator{
-		sandboxStore:            store,
-		nodes:                   smap.New[*nodemanager.Node](),
-		placementAlgorithm:      algo,
-		featureFlagsClient:      ffClient,
-		createdSandboxesCounter: counter,
+		sandboxStore:               store,
+		nodes:                      smap.New[*nodemanager.Node](),
+		placementAlgorithm:         algo,
+		featureFlagsClient:         ffClient,
+		createdSandboxesCounter:    counter,
+		noCeilingPlacementsCounter: noCeilingCounter,
 	}
 
 	o.registerNode(node)
@@ -1077,6 +1079,105 @@ func TestCreateSandbox_CreatedCounterCarriesTeam(t *testing.T) {
 	teamID, ok := sum.DataPoints[0].Attributes.Value("team.id")
 	require.True(t, ok)
 	assert.Equal(t, team.ID.String(), teamID.AsString())
+}
+
+// Under a hugepage limit, a placement on a node that reports no pool ceiling
+// went unchecked; the counter is the only sign of it. A placement the limit
+// never applied to (limit off, or a sandbox without hugepages) is not one.
+func TestCreateSandbox_CountsPlacementWithoutHugepageCeiling(t *testing.T) {
+	t.Parallel()
+
+	const pageSize = 2 << 20
+	for _, tc := range []struct {
+		name               string
+		limitPercent       int
+		firecrackerVersion string
+		nodeOpts           []nodemanager.TestOptions
+		want               map[string]int64
+	}{
+		{
+			name:         "no ceiling reported",
+			limitPercent: 80,
+			want:         map[string]int64{placement.NoHugepageCapacity: 1},
+		},
+		{
+			name:         "ceiling reported",
+			limitPercent: 80,
+			nodeOpts:     []nodemanager.TestOptions{nodemanager.WithHugePages(1000, 0, 0, pageSize), nodemanager.WithHugePagesCapacity(1000)},
+			want:         map[string]int64{},
+		},
+		{
+			name:         "limit off",
+			limitPercent: 0,
+			want:         map[string]int64{},
+		},
+		{
+			name:               "sandbox without hugepages",
+			limitPercent:       80,
+			firecrackerVersion: "v1.6.0_abc1234",
+			want:               map[string]int64{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			source := ldtestdata.DataSource()
+			source.Update(source.Flag(featureflags.PlacementHugepageLimitPercent.Key()).ValueForAll(ldvalue.Int(tc.limitPercent)))
+			o := newCreateSandboxTestOrchestratorWithFlags(t, source, tc.nodeOpts...)
+
+			reader := sdkmetric.NewManualReader()
+			counter, err := telemetry.GetCounter(sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader)).Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator"), telemetry.ApiOrchestratorPlacementsWithoutHugepageCeiling)
+			require.NoError(t, err)
+			o.noCeilingPlacementsCounter = counter
+
+			build := testBuild()
+			if tc.firecrackerVersion != "" {
+				build.FirecrackerVersion = tc.firecrackerVersion
+			}
+			fetcher := func(_ context.Context) (SandboxMetadata, *api.APIError) {
+				return SandboxMetadata{TemplateID: "tpl", BaseTemplateID: "base-tpl", Build: build}, nil
+			}
+
+			now := time.Now()
+			_, apiErr := o.CreateSandbox(t.Context(), "sbx-"+uuid.New().String()[:8], uuid.New().String(), testTeam(),
+				fetcher, now, now.Add(time.Hour), time.Hour, true, false, sandbox.CreationMetadata{})
+			require.Nil(t, apiErr)
+
+			var rm metricdata.ResourceMetrics
+			require.NoError(t, reader.Collect(t.Context(), &rm))
+			assert.Equal(t, tc.want, placementsWithoutCeilingByReason(t, rm, "node-1"))
+		})
+	}
+}
+
+// placementsWithoutCeilingByReason reads the counter's points, all of which
+// must name nodeID.
+func placementsWithoutCeilingByReason(t *testing.T, rm metricdata.ResourceMetrics, nodeID string) map[string]int64 {
+	t.Helper()
+
+	got := map[string]int64{}
+	for _, scope := range rm.ScopeMetrics {
+		for _, m := range scope.Metrics {
+			if m.Name != string(telemetry.ApiOrchestratorPlacementsWithoutHugepageCeiling) {
+				continue
+			}
+
+			sum, ok := m.Data.(metricdata.Sum[int64])
+			require.True(t, ok, "%s is not an int64 sum", m.Name)
+
+			for _, point := range sum.DataPoints {
+				node, found := point.Attributes.Value("node.id")
+				require.True(t, found, "datapoint carries no node.id")
+				require.Equal(t, nodeID, node.AsString())
+				reason, found := point.Attributes.Value("reason")
+				require.True(t, found, "datapoint carries no reason")
+
+				got[reason.AsString()] = point.Value
+			}
+		}
+	}
+
+	return got
 }
 
 type placementSandboxClient struct {

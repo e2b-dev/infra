@@ -586,6 +586,13 @@ func (o *Orchestrator) CreateSandbox(
 	}
 	o.createdSandboxesCounter.Add(ctx, 1, metric.WithAttributes(attributes...))
 
+	if placed.MissingHugepageCeiling != "" {
+		o.noCeilingPlacementsCounter.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("node.id", node.ID),
+			attribute.String("reason", placed.MissingHugepageCeiling),
+		))
+	}
+
 	telemetry.SetAttributes(ctx, attribute.String("node.id", node.ID))
 	telemetry.ReportEvent(ctx, "Created sandbox")
 

@@ -30,6 +30,11 @@ type PlacementResult struct {
 	TimedOut bool
 	// Response is the successful create's RPC response; nil on failure.
 	Response *orchestrator.SandboxCreateResponse
+	// MissingHugepageCeiling is why the final memory check admitted Node
+	// unbounded (a MissingHugepageCeiling reason), "" when the check bounded
+	// it or no limit applied. Taken at admission: the node's metrics may
+	// change before the caller reads them.
+	MissingHugepageCeiling string
 }
 
 // Requirements are what a node must meet to take a sandbox; a zero field
@@ -221,8 +226,12 @@ func placeSandbox(
 		}
 
 		chosen := node
+		var missingCeiling string
 		if !node.PlacementMetrics.StartPlacingIf(sbxRequest.GetSandbox().GetSandboxId(), resources, func() bool {
-			return NodeSatisfiesMemory(chosen, resources, requirements.Memory)
+			ok, missing := MemoryAdmission(chosen, resources, requirements.Memory)
+			missingCeiling = missing
+
+			return ok
 		}) {
 			telemetry.ReportEvent(ctx, "Node's hugepage pool is full", telemetry.WithNodeID(node.ID))
 			nodesExcluded[node.ID] = struct{}{}
@@ -255,7 +264,7 @@ func placeSandbox(
 			node.OptimisticAdd(resources)
 			node.PlacementMetrics.Success(sbxRequest.GetSandbox().GetSandboxId())
 
-			return PlacementResult{Node: node, Response: resp}, nil
+			return PlacementResult{Node: node, Response: resp, MissingHugepageCeiling: missingCeiling}, nil
 		}
 
 		failedNode := node

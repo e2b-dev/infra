@@ -110,3 +110,25 @@ func TestNodeSatisfiesMemory_PassesWhenTheCheckDoesNotApply(t *testing.T) {
 	assert.True(t, NodeSatisfiesMemory(full, nodemanager.SandboxResources{MiBMemory: 512}, limit95), "ordinary pages do not use the pool")
 	assert.True(t, NodeSatisfiesMemory(hugepageNode("silent", 2000, 2000, 0, 0), hugepageSandbox, limit95), "a node that does not report its ceiling is not refused")
 }
+
+// The reason travels with the admission so the caller records what was
+// checked, not what the metrics say later.
+func TestMemoryAdmission_NamesWhyANodePassedUnbounded(t *testing.T) {
+	t.Parallel()
+
+	ok, missing := MemoryAdmission(hugepageNode("n", 1000, 900, 100, 0), hugepageSandbox, limit95)
+	assert.True(t, ok)
+	assert.Equal(t, NoHugepageCapacity, missing)
+
+	ok, missing = MemoryAdmission(hugepageNode("n", 1600, 1600, 44, 2000), hugepageSandbox, limit95)
+	assert.True(t, ok)
+	assert.Empty(t, missing)
+
+	ok, missing = MemoryAdmission(hugepageNode("n", 1600, 1600, 200, 2000), hugepageSandbox, limit95)
+	assert.False(t, ok)
+	assert.Empty(t, missing)
+
+	ok, missing = MemoryAdmission(hugepageNode("n", 1000, 900, 100, 0), hugepageSandbox, MemoryRequirement{})
+	assert.True(t, ok)
+	assert.Empty(t, missing)
+}

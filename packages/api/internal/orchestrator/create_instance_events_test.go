@@ -72,6 +72,7 @@ func newOrchestratorWithCounter(t *testing.T) (*Orchestrator, *eventCounter) {
 
 	meter := noop.NewMeterProvider().Meter("github.com/e2b-dev/infra/packages/api/internal/orchestrator")
 	counter, _ := meter.Int64Counter("test-created")
+	noCeilingCounter, _ := meter.Int64Counter("test-placements-without-hugepage-ceiling")
 
 	ffClient, err := featureflags.NewClientWithDatasource(ldtestdata.DataSource())
 	require.NoError(t, err)
@@ -82,11 +83,12 @@ func newOrchestratorWithCounter(t *testing.T) (*Orchestrator, *eventCounter) {
 	node.ClusterID = uuid.Nil
 
 	o := &Orchestrator{
-		sandboxStore:            store,
-		nodes:                   smap.New[*nodemanager.Node](),
-		placementAlgorithm:      algo,
-		featureFlagsClient:      ffClient,
-		createdSandboxesCounter: counter,
+		sandboxStore:               store,
+		nodes:                      smap.New[*nodemanager.Node](),
+		placementAlgorithm:         algo,
+		featureFlagsClient:         ffClient,
+		createdSandboxesCounter:    counter,
+		noCeilingPlacementsCounter: noCeilingCounter,
 	}
 	o.registerNode(node)
 

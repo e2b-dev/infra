@@ -29,6 +29,11 @@ const (
 	// superseded: the ID was reclaimed by a new incarnation meanwhile; nothing
 	// was restored, removed, or killed.
 	ApiOrchestratorPauseRefusalRestore CounterType = "api.orchestrator.pause_refusal_restore"
+	// ApiOrchestratorPlacementsWithoutHugepageCeiling counts hugepage sandboxes
+	// placed under a hugepage limit on a node the limit could not bound, by
+	// node.id and reason: no_capacity (the orchestrator reports no pool
+	// ceiling) | no_page_size. The limit was a no-op for that placement.
+	ApiOrchestratorPlacementsWithoutHugepageCeiling CounterType = "api.orchestrator.placements_without_hugepage_ceiling"
 	// ApiSandboxListReads counts sandbox list requests by team and by how the
 	// team's store read was served: disabled (no lag allowed, own read) | read
 	// (started the shared read) | shared (joined one in flight) | hit (a live
@@ -773,6 +778,14 @@ const (
 
 	SandboxCountGaugeName GaugeIntType = "api.env.instance.running"
 
+	// ApiOrchestratorNodesWithoutHugepageCeiling counts ready nodes the
+	// hugepage placement limit cannot bound, by reason: no_capacity (the
+	// orchestrator reports no pool ceiling, as builds predating the report
+	// do) | no_page_size. Such a node takes hugepage sandboxes unchecked.
+	// Every API replica reports the whole fleet, so read the max across
+	// replicas, never the sum.
+	ApiOrchestratorNodesWithoutHugepageCeiling GaugeIntType = "api.orchestrator.nodes_without_hugepage_ceiling"
+
 	// Build resource metrics
 	BuildRootfsSizeHistogramName HistogramType = "template.build.rootfs.size"
 )
@@ -864,6 +877,8 @@ var counterDesc = map[CounterType]string{
 
 	ClientProxyResumeFlightCounterName:          "Callers of the per-sandbox resume flight at the client proxy (role=leader|joiner|none, result=served|error|canceled)",
 	ClientProxyResumeParkingRejectedCounterName: "Requests shed with a 503 because the client proxy parking lot was full at their flight's first retry",
+
+	ApiOrchestratorPlacementsWithoutHugepageCeiling: "Hugepage sandboxes placed under a hugepage limit on a node the limit could not bound, by node and reason (no_capacity | no_page_size).",
 }
 
 var counterUnits = map[CounterType]string{
@@ -952,6 +967,8 @@ var counterUnits = map[CounterType]string{
 	ApiRedisStorageExpirationIndexRescored: "{member}",
 	ApiRedisStorageExpirationIndexDeferred: "{member}",
 	ApiRedisScriptCalls:                    "{call}",
+
+	ApiOrchestratorPlacementsWithoutHugepageCeiling: "{placement}",
 }
 
 var observableCounterDesc = map[ObservableCounterType]string{
@@ -1042,6 +1059,8 @@ var gaugeIntDesc = map[GaugeIntType]string{
 	OrchestratorTemplateCacheLayerEntriesGaugeName:      "Templates resident in the template cache, by how they were inserted (kind). Sums to entries.",
 	OrchestratorTemplateCacheLayerMappingBytesGaugeName: "Approximate heap bytes held by resident templates' header mappings, by kind and chain generation band. Sums to mapping_bytes.",
 	OrchestratorTemplateCacheLayersUnlandedGaugeName:    "Resident pause layers whose own upload failed for good, so this node holds the only copy. Read against orchestrator.snapshot.upload.failed.",
+
+	ApiOrchestratorNodesWithoutHugepageCeiling: "Ready nodes the hugepage placement limit cannot bound, by reason (no_capacity | no_page_size). Every API replica reports the whole fleet: max across replicas, not sum.",
 }
 
 var gaugeIntUnits = map[GaugeIntType]string{
@@ -1080,6 +1099,8 @@ var gaugeIntUnits = map[GaugeIntType]string{
 	OrchestratorTemplateCacheLayerEntriesGaugeName:      "{template}",
 	OrchestratorTemplateCacheLayerMappingBytesGaugeName: "{By}",
 	OrchestratorTemplateCacheLayersUnlandedGaugeName:    "{layer}",
+
+	ApiOrchestratorNodesWithoutHugepageCeiling: "{node}",
 }
 
 func GetCounter(meter metric.Meter, name CounterType) (metric.Int64Counter, error) {
