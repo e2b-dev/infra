@@ -27,8 +27,10 @@ func TestServeStats_ModeAndDeferred(t *testing.T) {
 
 	u.recordServeStats(pageClassNew, faultResultDeferred, 0, time.Millisecond)
 	u.recordServeStats(pageClassNew, faultResultInstalled, 4096, time.Millisecond)
+	u.recordServeStats(pageClassNew, faultResultDeduped, 0, 0)
 	st := u.ServeStats()
 	assert.Equal(t, int64(1), st.Deferred)
-	assert.Equal(t, int64(1), st.Pages)
+	assert.Equal(t, int64(1), st.Deduped)
+	assert.Equal(t, int64(1), st.Pages, "a deduped fault is not a served page")
 	assert.Equal(t, int64(4096), st.Bytes)
 }

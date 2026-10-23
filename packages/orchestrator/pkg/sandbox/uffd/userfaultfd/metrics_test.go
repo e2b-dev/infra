@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
@@ -85,6 +86,65 @@ func TestServeMetric(t *testing.T) {
 	// deferred: counted, no bytes faulted.
 	assert.Equal(t, int64(1), counts[key("new", "deferred")])
 	assert.Equal(t, int64(0), bytesSum[key("new", "deferred")])
+}
+
+//nolint:paralleltest // swaps the package-level serve instruments
+func TestDroppedFaultsOnlyCount(t *testing.T) {
+	reader := sdkmetric.NewManualReader()
+	mp := sdkmetric.NewMeterProvider(sdkmetric.WithReader(reader))
+	m := mp.Meter("github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/uffd/userfaultfd")
+
+	prevTimer, prevCount := serveTimer, serveCount
+	serveTimer = utils.Must(telemetry.NewTimerFactory(
+		m,
+		serveMetricName,
+		"Time to serve a UFFD demand page fault",
+		"Bytes installed into the guest by demand-fault serves",
+		"UFFD demand-fault serve attempts",
+	))
+	serveCount = utils.Must(m.Int64Counter(serveMetricName, metric.WithDescription("UFFD demand-fault serve attempts")))
+	t.Cleanup(func() {
+		serveTimer, serveCount = prevTimer, prevCount
+	})
+
+	ctx := t.Context()
+	pageSize := int64(header.PageSize)
+	serveTimer.Begin().RecordRaw(ctx, pageSize, serveAttrs[BalloonModeUnknown][genBucket0][pageClassNew][faultResultInstalled])
+
+	var u Userfaultfd
+	for range 63 {
+		u.recordDropped(ctx, pageClassNew, faultResultDeduped)
+	}
+	u.recordDropped(ctx, pageClassResident, faultResultPresent)
+
+	var rm metricdata.ResourceMetrics
+	require.NoError(t, reader.Collect(ctx, &rm))
+
+	histogramCounts, bytesSum := collectTriplet(t, rm, serveMetricName)
+	assert.Equal(t, map[string]int64{key("new", "installed"): 1}, histogramCounts,
+		"dropped faults must not dilute latency histograms")
+	assert.Equal(t, map[string]int64{key("new", "installed"): pageSize}, bytesSum,
+		"dropped faults install no bytes")
+
+	counts := map[string]int64{}
+	for _, sm := range rm.ScopeMetrics {
+		for _, m := range sm.Metrics {
+			data, ok := m.Data.(metricdata.Sum[int64])
+			if m.Name != serveMetricName || m.Unit != "" || !ok {
+				continue
+			}
+			for _, dp := range data.DataPoints {
+				counts[attrKey(t, dp.Attributes)] += dp.Value
+			}
+		}
+	}
+	assert.Equal(t, map[string]int64{
+		key("new", "installed"):    1,
+		key("new", "deduped"):      63,
+		key("resident", "present"): 1,
+	}, counts, "served and dropped faults share the attempt counter")
+	assert.Equal(t, int64(63), u.ServeStats().Deduped)
+	assert.Equal(t, int64(1), u.ServeStats().Pages)
 }
 
 // TestPrefaultMetric exercises the prefault recording exactly as Prefault does
@@ -187,10 +247,13 @@ func TestServeSnapshotSub(t *testing.T) {
 
 	var u Userfaultfd
 	u.recordServeStats(pageClassNew, faultResultInstalled, 4096, 5*time.Millisecond)
+	u.recordServeStats(pageClassNew, faultResultDeduped, 0, 0)
 	before := u.ServeStats()
 	u.recordServeStats(pageClassNew, faultResultInstalled, 4096, 7*time.Millisecond)
 	u.recordServeStats(pageClassZero, faultResultInstalled, 4096, 2*time.Millisecond)
 	u.recordServeStats(pageClassNew, faultResultDeferred, 0, time.Millisecond)
+	u.recordServeStats(pageClassNew, faultResultDeduped, 0, 0)
+	u.recordServeStats(pageClassNew, faultResultDeduped, 0, 0)
 
 	d := u.ServeStats().Sub(before)
 	assert.Equal(t, ServeSnapshot{
@@ -198,6 +261,7 @@ func TestServeSnapshotSub(t *testing.T) {
 		SourcePages:     1,
 		Bytes:           8192,
 		Deferred:        1,
+		Deduped:         2,
 		ServeTime:       9 * time.Millisecond,
 		SourceServeTime: 7 * time.Millisecond,
 	}, d)

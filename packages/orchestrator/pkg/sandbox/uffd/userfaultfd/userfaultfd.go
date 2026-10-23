@@ -163,9 +163,15 @@ type Userfaultfd struct {
 	servedSourcePages atomic.Int64 // subset installed from the source (page_class=new)
 	servedBytes       atomic.Int64 // bytes installed into the guest (new + zero)
 	servedDeferred    atomic.Int64 // serve attempts deferred on EAGAIN
+	servedDeduped     atomic.Int64 // MISSING faults dropped: a worker was already installing the page
 	servedNanos       atomic.Int64 // time spent serving resolved faults
 	servedSourceNanos atomic.Int64 // subset spent on faults installed from the source
 	wpDeferred        atomic.Int64 // write-protect resolves deferred on EAGAIN
+
+	// installDedup gates the serve loop's one-installer-per-page claim
+	// (UffdInstallDedupFlag). Off dispatches a worker per fault message, as
+	// before the dedup; no page is ever marked Installing then.
+	installDedup atomic.Bool
 
 	// mode is the BalloonMode the serve metrics carry; unknown until set.
 	mode atomic.Uint32
@@ -221,6 +227,14 @@ const (
 	// Prefault here, call Close() concurrently, and verify the closed flag is
 	// checked after the RLock is acquired.
 	faultPhaseBeforePrefaultRLock
+	// faultPhaseBeforeSettleLock fires in the serve loop once a REMOVE batch
+	// has been read, before settleRequests.Lock; addr is the batch's first
+	// start. A test parks the loop here to keep later events unread.
+	faultPhaseBeforeSettleLock
+	// faultPhaseAfterDeferral fires in a worker right after it re-queued its
+	// fault on EAGAIN, before it returns; a test checks the claim is already
+	// released at that point.
+	faultPhaseAfterDeferral
 )
 
 // faultOutcome is the terminal classification of a faultPage call.
@@ -273,6 +287,7 @@ func NewUserfaultfdFromFd(fd uintptr, src PageReader, m *memory.Mapping, generat
 		genBucket:       bucketForGeneration(generation),
 		logger:          logger,
 	}
+	u.installDedup.Store(true)
 	u.wg.SetLimit(maxRequestsInProgress)
 	u.wgWP.SetLimit(maxWPResolvesInProgress)
 
@@ -472,6 +487,11 @@ func (u *Userfaultfd) Serve(
 			}
 
 			if len(removes) > 0 {
+				// Test hook (nil in production): parks the loop here so a
+				// later event stays unread while a worker is mid-install.
+				if h := u.testFaultHook.Load(); h != nil {
+					(*h)(uintptr(removes[0].start), faultPhaseBeforeSettleLock)
+				}
 				u.settleRequests.Lock()
 				for _, rm := range removes {
 					// rm.start (inclusive) and rm.end (exclusive) are page-aligned
@@ -583,6 +603,39 @@ func (u *Userfaultfd) Serve(
 				continue
 			}
 
+			idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
+
+			// One installer per page. The claim is taken here, before a
+			// worker or scratch buffer exists, under the tracker's own mutex
+			// only: settleRequests would stall the loop behind a REMOVE
+			// batch and stop it draining the kernel queue.
+			if u.installDedup.Load() {
+				if prev, claimed := u.pageTracker.BeginInstall(idx); !claimed {
+					switch prev {
+					case block.Installing:
+						// Another worker owns the install; its UFFDIO_COPY
+						// wakes every thread blocked on the page.
+						u.recordDropped(ctx, pageClassNew, faultResultDeduped)
+
+						continue
+					case block.Dirty, block.Clean:
+						// Stale message: only a REMOVE moves a page out of
+						// Dirty/Clean, and the batch above already recorded
+						// it. The worker's short-circuit, without the worker.
+						u.recordDropped(ctx, pageClassResident, faultResultPresent)
+
+						continue
+					default:
+						// Zero or Removed: not deduped. A zero-fill reads no
+						// source and takes no scratch buffer, so a duplicate
+						// costs one worker and an EEXIST; deduping it would
+						// need a second claim state so the worker still knows
+						// to zero-fill, and Zero should not MISSING-fault at
+						// all.
+					}
+				}
+			}
+
 			u.wg.Go(func() error {
 				// Record serve latency / installed bytes / fault count once
 				// per serve attempt, tagged by page class and outcome. Begun
@@ -616,8 +669,11 @@ func (u *Userfaultfd) Serve(
 
 				var source PageReader
 
-				idx := uint32(header.BlockIdx(offset, int64(u.pageSize)))
-
+				// Re-read under the lock: a REMOVE batch may have landed
+				// between the loop's claim and this RLock, replacing
+				// Installing with Removed; the page is then zero-filled
+				// like any other removed page. Only the claim's owner is
+				// ever dispatched for an Installing page.
 				state := u.pageTracker.Get(idx)
 				switch state {
 				case block.Dirty, block.Clean:
@@ -636,7 +692,7 @@ func (u *Userfaultfd) Serve(
 					// an ack for the original MISSING fault or the faulting
 					// thread stays blocked.
 					pclass = pageClassZero
-				case block.NotPresent:
+				case block.NotPresent, block.Installing:
 					pclass = pageClassNew
 					source = u.src
 				default:
@@ -644,6 +700,11 @@ func (u *Userfaultfd) Serve(
 
 					return fmt.Errorf("unexpected block.State: %#v", state)
 				}
+				// The claim is released explicitly on every exit that leaves
+				// the page absent (not deferred: on EAGAIN the release must
+				// come before the retry is published, see below); the install
+				// paths replace it through MarkInstalled / SetRange(Dirty).
+				owner := state == block.Installing
 
 				var accessType block.AccessType
 				if pf.flags&UFFD_PAGEFAULT_FLAG_WRITE == 0 {
@@ -666,6 +727,9 @@ func (u *Userfaultfd) Serve(
 				)
 				if err != nil {
 					result = faultResultError
+					if owner {
+						u.pageTracker.AbortInstall(idx)
+					}
 
 					return err
 				}
@@ -707,13 +771,29 @@ func (u *Userfaultfd) Serve(
 					u.prefetchTracker.Add(offset, accessType)
 				case faultDeferred:
 					result = faultResultDeferred
+					// Release before the retry is published: the loop may
+					// drain and re-serve it before this worker returns, and
+					// that re-serve must be able to claim the page, or it is
+					// dropped as a duplicate and the fault is lost.
+					if owner {
+						u.pageTracker.AbortInstall(idx)
+					}
 					deferred.push(pf)
 					u.signalWakeup()
+					if h := u.testFaultHook.Load(); h != nil {
+						(*h)(addr, faultPhaseAfterDeferral)
+					}
 				case faultDiscarded:
 					// No install happened (ESRCH); retry would be pointless.
 					result = faultResultDiscarded
+					if owner {
+						u.pageTracker.AbortInstall(idx)
+					}
 				default:
 					result = faultResultError
+					if owner {
+						u.pageTracker.AbortInstall(idx)
+					}
 
 					return fmt.Errorf("unexpected faultOutcome: %#v", outcome)
 				}
@@ -968,7 +1048,9 @@ func (u *Userfaultfd) faultPage(
 		if r := recover(); r != nil {
 			u.logger.Error(ctx, "UFFD serve panic", zap.Any("pagesize", u.pageSize), zap.Any("panic", r))
 			outcome = faultDiscarded
-			err = fmt.Errorf("uffd serve panic: %v", r)
+			// Fatal like a failed read: the faults deduplicated onto this
+			// install are blocked on this page and only the exit wakes them.
+			err = errors.Join(fmt.Errorf("uffd serve panic: %v", r), safeInvoke(onFailure))
 		}
 	}()
 
@@ -1115,6 +1197,12 @@ func (u *Userfaultfd) faultPage(
 	}
 
 	return faultInstalled, nil
+}
+
+// SetInstallDedup turns the serve loop's one-installer-per-page claim on or
+// off; see UffdInstallDedupFlag. Read once per fault, so it costs a load.
+func (u *Userfaultfd) SetInstallDedup(on bool) {
+	u.installDedup.Store(on)
 }
 
 func (u *Userfaultfd) PrefetchData() block.PrefetchData {

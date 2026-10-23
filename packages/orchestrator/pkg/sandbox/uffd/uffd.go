@@ -54,6 +54,9 @@ type Uffd struct {
 	// balloonMode is applied to the handler when it is created, or at once if
 	// it already exists; the read that sets it races FC connecting.
 	balloonMode atomic.Uint32
+	// installDedupOff is applied to the handler the same way; it holds the
+	// inverse so the zero value keeps the dedup on (UffdInstallDedupFlag).
+	installDedupOff atomic.Bool
 
 	// logger carries the sandbox's identity (sandbox, template, team and
 	// build ids), so the serve loop and every component it hands the logger
@@ -281,6 +284,7 @@ func (u *Uffd) handle(ctx context.Context, fdExit *fdexit.FdExit) error {
 	u.handler.SetValue(uffd)
 	// Publish first: a label stored before this line lands here, one stored after it lands in SetBalloonMode.
 	uffd.SetBalloonMode(userfaultfd.BalloonMode(u.balloonMode.Load()))
+	uffd.SetInstallDedup(!u.installDedupOff.Load())
 
 	u.readyOnce.Do(func() { close(u.readyCh) })
 
@@ -494,6 +498,15 @@ func (u *Uffd) SetBalloonMode(mode userfaultfd.BalloonMode) {
 	u.balloonMode.Store(uint32(mode))
 	if handler, err := u.handler.Result(); err == nil {
 		handler.SetBalloonMode(mode)
+	}
+}
+
+// SetInstallDedup applies UffdInstallDedupFlag to the handler, now or when it
+// is created; it never blocks on the handler.
+func (u *Uffd) SetInstallDedup(on bool) {
+	u.installDedupOff.Store(!on)
+	if handler, err := u.handler.Result(); err == nil {
+		handler.SetInstallDedup(on)
 	}
 }
 

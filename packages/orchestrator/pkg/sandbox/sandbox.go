@@ -1977,6 +1977,7 @@ func (f *Factory) ResumeSandbox(
 	// The backend records its own mode so DiffMetadata can refuse the
 	// tracker dirty source for a WP_ASYNC sandbox (fail closed).
 	fcUffd.SetSyncWP(useSyncWP)
+	fcUffd.SetInstallDedup(f.featureFlags.BoolFlag(ctx, featureflags.UffdInstallDedupFlag, sandboxLDContext(runtime, config)))
 
 	// Part of the sandbox as we need to stop Checks before pausing the sandbox
 	// This is to prevent race condition of reporting unhealthy sandbox

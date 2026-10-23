@@ -3,6 +3,7 @@
 package userfaultfd
 
 import (
+	"context"
 	"errors"
 	"syscall"
 	"testing"
@@ -46,4 +47,39 @@ func TestFaultPageMarksOnlyCopyFailures(t *testing.T) {
 			assert.Equal(t, tc.wantCopy, errors.Is(err, ErrCopyFailed), "marked as a UFFDIO_COPY failure")
 		})
 	}
+}
+
+type panickingReader struct{}
+
+func (panickingReader) ReadAt(context.Context, []byte, int64) (int, error) {
+	panic("boom")
+}
+
+// A panic while serving a fault is fatal, like a failed read: faults deduped
+// onto this install are blocked on the page and only the handler's exit
+// wakes them, so the recover must signal it, not just return an error.
+func TestFaultPagePanicSignalsExit(t *testing.T) {
+	t.Parallel()
+
+	u := &Userfaultfd{
+		fd:       Fd(^uintptr(0)),
+		pageSize: header.PageSize,
+		logger:   logger.NewNopLogger(),
+	}
+	signalErr := errors.New("signal failed")
+	signalled := 0
+	onFailure := func() error {
+		signalled++
+
+		return signalErr
+	}
+
+	outcome, err := u.faultPage(t.Context(), header.PageSize, 0, block.Read, panickingReader{}, onFailure)
+	assert.Equal(t, faultDiscarded, outcome)
+	require.ErrorContains(t, err, "uffd serve panic: boom")
+	require.ErrorIs(t, err, signalErr, "the exit signal's own error stays in the chain")
+	assert.Equal(t, 1, signalled, "the recover must signal the handler exit exactly once")
+
+	_, err = u.faultPage(t.Context(), header.PageSize, 0, block.Read, panickingReader{}, nil)
+	require.ErrorContains(t, err, "uffd serve panic: boom", "a nil onFailure is tolerated")
 }

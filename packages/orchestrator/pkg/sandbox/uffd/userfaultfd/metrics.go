@@ -48,6 +48,12 @@ var serveTimer = utils.Must(telemetry.NewTimerFactory(
 	"UFFD demand-fault serve attempts",
 ))
 
+// Shares serveTimer's counter so dropped faults add no latency or byte samples.
+var serveCount = utils.Must(meter.Int64Counter(
+	serveMetricName,
+	metric.WithDescription("UFFD demand-fault serve attempts"),
+))
+
 // pageClass classifies a fault by the page-tracker state at the time it was
 // served — the distinction that matters for diagnosing slow resumes, since only
 // pageClassNew faults reach the source (and may hit GCS).
@@ -71,6 +77,7 @@ const (
 	faultResultDiscarded                    // ESRCH: faulting thread gone, retry pointless
 	faultResultError                        // serving failed
 	faultResultSkipped                      // prefault only: tracker not NotPresent — prefetch arrived too late (or page was removed)
+	faultResultDeduped                      // serve loop only: a worker is already installing the page, whose install wakes this fault too
 	numFaultResult
 )
 
@@ -82,6 +89,7 @@ var resultNames = [numFaultResult]string{
 	faultResultDiscarded: "discarded",
 	faultResultError:     "error",
 	faultResultSkipped:   "skipped",
+	faultResultDeduped:   "deduped",
 }
 
 // generationBucket coarsens the snapshot's Metadata.Generation (its
@@ -387,6 +395,10 @@ type ServeSnapshot struct {
 	// install. WPDeferred is the same for write-protect resolves.
 	Deferred   int64
 	WPDeferred int64
+	// Deduped is the number of MISSING faults dropped by the serve loop
+	// because a worker was already installing their page; the owner's
+	// UFFDIO_COPY woke them. They are not in Pages.
+	Deduped int64
 	// ServeTime is the time spent serving the resolved faults in Pages,
 	// summed over faults. Faults are served concurrently, so it can exceed
 	// the wall time it covers. It is a lower bound on the guest's wait: a
@@ -406,6 +418,7 @@ func (s ServeSnapshot) Sub(earlier ServeSnapshot) ServeSnapshot {
 		WPFaults:        s.WPFaults - earlier.WPFaults,
 		Deferred:        s.Deferred - earlier.Deferred,
 		WPDeferred:      s.WPDeferred - earlier.WPDeferred,
+		Deduped:         s.Deduped - earlier.Deduped,
 		ServeTime:       s.ServeTime - earlier.ServeTime,
 		SourceServeTime: s.SourceServeTime - earlier.SourceServeTime,
 	}
@@ -419,11 +432,18 @@ func (u *Userfaultfd) ServeStats() ServeSnapshot {
 		Bytes:       u.servedBytes.Load(),
 		WPFaults:    u.wpFaultsResolved.Load(),
 		Deferred:    u.servedDeferred.Load(),
+		Deduped:     u.servedDeduped.Load(),
 		WPDeferred:  u.wpDeferred.Load(),
 
 		ServeTime:       time.Duration(u.servedNanos.Load()),
 		SourceServeTime: time.Duration(u.servedSourceNanos.Load()),
 	}
+}
+
+// recordDropped counts a MISSING fault handled without a worker or measured serve duration.
+func (u *Userfaultfd) recordDropped(ctx context.Context, pclass pageClass, result faultResult) {
+	serveCount.Add(ctx, 1, serveAttrs[u.balloonMode()][u.genBucket][pclass][result])
+	u.recordServeStats(pclass, result, 0, 0)
 }
 
 // recordServeStats folds one finished serve attempt, and how long it took, into
@@ -445,6 +465,8 @@ func (u *Userfaultfd) recordServeStats(pclass pageClass, result faultResult, ser
 		}
 	case faultResultDeferred:
 		u.servedDeferred.Add(1)
+	case faultResultDeduped:
+		u.servedDeduped.Add(1)
 	}
 }
 

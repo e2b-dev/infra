@@ -238,6 +238,14 @@ var (
 	// fields on snapshot load, so a mismatch fails the resume loudly.
 	UseSyncWPFlag = NewBoolFlag("use-sync-wp", false)
 
+	// UffdInstallDedupFlag makes the UFFD serve loop drop a MISSING fault for
+	// a page another worker is already installing instead of starting a
+	// second worker, buffer and source read for it (one installer per page).
+	// Read once per start/resume. Off restores one worker per fault message,
+	// the behaviour before the dedup; it is the kill switch for that change.
+	// UFFD_INSTALL_DEDUP sets the fallback where there is no LaunchDarkly.
+	UffdInstallDedupFlag = NewBoolFlag("uffd-install-dedup", envBoolOr("UFFD_INSTALL_DEDUP", true))
+
 	// InPlaceCheckpointFlag makes Checkpoint pause, snapshot and resume the
 	// SAME Firecracker process (in-place) instead of resuming a fresh sandbox
 	// from the new build. Only honored for sandboxes resumed with

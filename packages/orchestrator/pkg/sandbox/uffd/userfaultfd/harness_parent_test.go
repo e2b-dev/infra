@@ -169,6 +169,9 @@ func configureCrossProcessTest(ctx context.Context, t *testing.T, tt testConfig)
 		AlwaysWP:    tt.alwaysWP,
 		Barriers:    tt.barriers,
 		ContentPath: contentPath,
+
+		SourceDelayMs:   tt.sourceDelay.Milliseconds(),
+		InstallDedupOff: tt.installDedupOff,
 	}); err != nil {
 		return nil, fmt.Errorf("Lifecycle.Bootstrap: %w", err)
 	}
