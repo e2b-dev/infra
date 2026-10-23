@@ -1472,7 +1472,7 @@ type SandboxNetworkConfig struct {
 	// AllowOut List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries. When allowOut contains a domain, the servers in dnsServers (8.8.8.8 by default) are also allowed.
 	AllowOut *[]string `json:"allowOut,omitempty"`
 
-	// AllowPublicTraffic Specify if the sandbox URLs should be accessible only with authentication.
+	// AllowPublicTraffic Whether sandbox URLs accept traffic without the sandbox's traffic access token. When omitted or null on create, the project's default applies, which is true unless the project changed it.
 	AllowPublicTraffic *bool `json:"allowPublicTraffic,omitempty"`
 
 	// DenyOut List of denied CIDR blocks or IP addresses for egress traffic. Domain names are not supported for deny rules.

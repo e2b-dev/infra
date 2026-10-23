@@ -59,6 +59,8 @@ func TestGetTeamsByUserResolvesEachTeamsLimitsInOneStatement(t *testing.T) {
 			api_team_rps_list, api_team_rps_delete, max_secrets
 		) VALUES ($1, 1, 222, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)`, pushed))
 	require.NoError(t, db.AuthDB.TestsRawSQL(t.Context(),
+		`INSERT INTO projection.project_settings (project_id, revision, sandbox_default_allow_public_traffic) VALUES ($1, 1, false)`, pushed))
+	require.NoError(t, db.AuthDB.TestsRawSQL(t.Context(),
 		`UPDATE public.default_limits SET concurrent_sandboxes = 33`))
 
 	recordedDB, recorder := db.RecordedAuthDB(t)
@@ -69,12 +71,15 @@ func TestGetTeamsByUserResolvesEachTeamsLimitsInOneStatement(t *testing.T) {
 	require.Equal(t, []string{"GetUserTeamsWithLimits"}, recorder.Take())
 	sandboxes := map[uuid.UUID]int64{}
 	defaults := map[uuid.UUID]bool{}
+	publicTrafficDefaults := map[uuid.UUID]*bool{}
 	for _, team := range teams {
 		sandboxes[team.Team.ID] = team.Limits.SandboxConcurrency
 		defaults[team.Team.ID] = team.IsDefault
+		publicTrafficDefaults[team.Team.ID] = team.ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic
 	}
 	require.Equal(t, map[uuid.UUID]int64{pushed: 222, unpushed: 33}, sandboxes)
 	require.Equal(t, map[uuid.UUID]bool{pushed: false, unpushed: true}, defaults)
+	require.Equal(t, map[uuid.UUID]*bool{pushed: new(false), unpushed: nil}, publicTrafficDefaults)
 }
 
 // A column added to both rows but not to teamRow would reach the team as zero.
@@ -89,6 +94,7 @@ func TestTeamRowCopiesEveryColumn(t *testing.T) {
 		}
 	}
 	source.Team.ID = uuid.New()
+	source.SandboxDefaultAllowPublicTraffic = new(false)
 
 	copied := reflect.ValueOf(teamRow(source))
 	for i := range copied.NumField() {

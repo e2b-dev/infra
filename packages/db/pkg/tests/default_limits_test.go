@@ -299,7 +299,8 @@ func TestDefaultLimitsMigrationKeepsWhatEveryTeamResolvedTo(t *testing.T) {
 	storedBefore := count(stored)
 	assert.Equal(t, 2, missing, "the two teams seeded without a row")
 
-	_, err = provider.UpTo(ctx, defaultLimitsMigration)
+	// Apply the latest schema before using generated queries.
+	_, err = provider.Up(ctx)
 	require.NoError(t, err)
 
 	assert.Equal(t, before, queryLimits(t, db, teams), "no team's limits move")

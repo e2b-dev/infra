@@ -215,6 +215,14 @@ type ProjectionProjectMember struct {
 	UpdatedAt time.Time
 }
 
+type ProjectionProjectSetting struct {
+	ProjectID                        uuid.UUID
+	Revision                         int64
+	SandboxDefaultAllowPublicTraffic pgtype.Bool
+	CreatedAt                        time.Time
+	UpdatedAt                        time.Time
+}
+
 type Snapshot struct {
 	CreatedAt           pgtype.Timestamptz
 	EnvID               string

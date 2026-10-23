@@ -13,6 +13,7 @@ import (
 
 const getTeamByAPIKey = `-- name: GetTeamByAPIKey :one
 SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.deleted_at, t.slug,
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -30,24 +31,26 @@ FROM "public"."team_api_keys" tak
 JOIN "public"."teams" t ON tak.team_id = t.id
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE tak.api_key_hash = $1
 `
 
 type GetTeamByAPIKeyRow struct {
-	Team                     Team
-	MaxLengthHours           int64
-	ConcurrentSandboxes      int64
-	ConcurrentTemplateBuilds int64
-	MaxVcpu                  int64
-	MaxRamMb                 int64
-	DiskMb                   int64
-	EventsTtlDays            int64
-	DefaultFreeDiskSizeMb    int64
-	MaxDiskSizeMb            int64
-	MaxFreeDiskSizeMb        int64
-	ApiTeamRpsList           int64
-	ApiTeamRpsDelete         int64
-	MaxSecrets               int64
+	Team                             Team
+	SandboxDefaultAllowPublicTraffic *bool
+	MaxLengthHours                   int64
+	ConcurrentSandboxes              int64
+	ConcurrentTemplateBuilds         int64
+	MaxVcpu                          int64
+	MaxRamMb                         int64
+	DiskMb                           int64
+	EventsTtlDays                    int64
+	DefaultFreeDiskSizeMb            int64
+	MaxDiskSizeMb                    int64
+	MaxFreeDiskSizeMb                int64
+	ApiTeamRpsList                   int64
+	ApiTeamRpsDelete                 int64
+	MaxSecrets                       int64
 }
 
 // Each lookup resolves the team and its limits in one statement: the pushed
@@ -73,6 +76,7 @@ func (q *Queries) GetTeamByAPIKey(ctx context.Context, apiKeyHash string) (GetTe
 		&i.Team.SsoAutoJoin,
 		&i.Team.DeletedAt,
 		&i.Team.Slug,
+		&i.SandboxDefaultAllowPublicTraffic,
 		&i.MaxLengthHours,
 		&i.ConcurrentSandboxes,
 		&i.ConcurrentTemplateBuilds,
@@ -92,6 +96,7 @@ func (q *Queries) GetTeamByAPIKey(ctx context.Context, apiKeyHash string) (GetTe
 
 const getTeamByTeamAndUser = `-- name: GetTeamByTeamAndUser :one
 SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.deleted_at, t.slug,
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -109,6 +114,7 @@ FROM "public"."teams" t
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE ut.user_id = $1 AND t.id = $2
 `
 
@@ -118,20 +124,21 @@ type GetTeamByTeamAndUserParams struct {
 }
 
 type GetTeamByTeamAndUserRow struct {
-	Team                     Team
-	MaxLengthHours           int64
-	ConcurrentSandboxes      int64
-	ConcurrentTemplateBuilds int64
-	MaxVcpu                  int64
-	MaxRamMb                 int64
-	DiskMb                   int64
-	EventsTtlDays            int64
-	DefaultFreeDiskSizeMb    int64
-	MaxDiskSizeMb            int64
-	MaxFreeDiskSizeMb        int64
-	ApiTeamRpsList           int64
-	ApiTeamRpsDelete         int64
-	MaxSecrets               int64
+	Team                             Team
+	SandboxDefaultAllowPublicTraffic *bool
+	MaxLengthHours                   int64
+	ConcurrentSandboxes              int64
+	ConcurrentTemplateBuilds         int64
+	MaxVcpu                          int64
+	MaxRamMb                         int64
+	DiskMb                           int64
+	EventsTtlDays                    int64
+	DefaultFreeDiskSizeMb            int64
+	MaxDiskSizeMb                    int64
+	MaxFreeDiskSizeMb                int64
+	ApiTeamRpsList                   int64
+	ApiTeamRpsDelete                 int64
+	MaxSecrets                       int64
 }
 
 func (q *Queries) GetTeamByTeamAndUser(ctx context.Context, arg GetTeamByTeamAndUserParams) (GetTeamByTeamAndUserRow, error) {
@@ -152,6 +159,7 @@ func (q *Queries) GetTeamByTeamAndUser(ctx context.Context, arg GetTeamByTeamAnd
 		&i.Team.SsoAutoJoin,
 		&i.Team.DeletedAt,
 		&i.Team.Slug,
+		&i.SandboxDefaultAllowPublicTraffic,
 		&i.MaxLengthHours,
 		&i.ConcurrentSandboxes,
 		&i.ConcurrentTemplateBuilds,
@@ -171,6 +179,7 @@ func (q *Queries) GetTeamByTeamAndUser(ctx context.Context, arg GetTeamByTeamAnd
 
 const getTeamByTeamID = `-- name: GetTeamByTeamID :one
 SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.deleted_at, t.slug,
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -187,24 +196,26 @@ SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t
 FROM "public"."teams" t
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE t.id = $1
 `
 
 type GetTeamByTeamIDRow struct {
-	Team                     Team
-	MaxLengthHours           int64
-	ConcurrentSandboxes      int64
-	ConcurrentTemplateBuilds int64
-	MaxVcpu                  int64
-	MaxRamMb                 int64
-	DiskMb                   int64
-	EventsTtlDays            int64
-	DefaultFreeDiskSizeMb    int64
-	MaxDiskSizeMb            int64
-	MaxFreeDiskSizeMb        int64
-	ApiTeamRpsList           int64
-	ApiTeamRpsDelete         int64
-	MaxSecrets               int64
+	Team                             Team
+	SandboxDefaultAllowPublicTraffic *bool
+	MaxLengthHours                   int64
+	ConcurrentSandboxes              int64
+	ConcurrentTemplateBuilds         int64
+	MaxVcpu                          int64
+	MaxRamMb                         int64
+	DiskMb                           int64
+	EventsTtlDays                    int64
+	DefaultFreeDiskSizeMb            int64
+	MaxDiskSizeMb                    int64
+	MaxFreeDiskSizeMb                int64
+	ApiTeamRpsList                   int64
+	ApiTeamRpsDelete                 int64
+	MaxSecrets                       int64
 }
 
 func (q *Queries) GetTeamByTeamID(ctx context.Context, id uuid.UUID) (GetTeamByTeamIDRow, error) {
@@ -225,6 +236,7 @@ func (q *Queries) GetTeamByTeamID(ctx context.Context, id uuid.UUID) (GetTeamByT
 		&i.Team.SsoAutoJoin,
 		&i.Team.DeletedAt,
 		&i.Team.Slug,
+		&i.SandboxDefaultAllowPublicTraffic,
 		&i.MaxLengthHours,
 		&i.ConcurrentSandboxes,
 		&i.ConcurrentTemplateBuilds,
@@ -244,6 +256,7 @@ func (q *Queries) GetTeamByTeamID(ctx context.Context, id uuid.UUID) (GetTeamByT
 
 const getUserTeamsWithLimits = `-- name: GetUserTeamsWithLimits :many
 SELECT t.id, t.created_at, t.is_blocked, t.name, t.tier, t.email, t.is_banned, t.blocked_reason, t.cluster_id, t.sandbox_scheduling_labels, t.sso_organization_id, t.sso_auto_join, t.deleted_at, t.slug, ut.is_default,
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -261,25 +274,27 @@ FROM "public"."teams" t
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE ut.user_id = $1
 `
 
 type GetUserTeamsWithLimitsRow struct {
-	Team                     Team
-	IsDefault                bool
-	MaxLengthHours           int64
-	ConcurrentSandboxes      int64
-	ConcurrentTemplateBuilds int64
-	MaxVcpu                  int64
-	MaxRamMb                 int64
-	DiskMb                   int64
-	EventsTtlDays            int64
-	DefaultFreeDiskSizeMb    int64
-	MaxDiskSizeMb            int64
-	MaxFreeDiskSizeMb        int64
-	ApiTeamRpsList           int64
-	ApiTeamRpsDelete         int64
-	MaxSecrets               int64
+	Team                             Team
+	IsDefault                        bool
+	SandboxDefaultAllowPublicTraffic *bool
+	MaxLengthHours                   int64
+	ConcurrentSandboxes              int64
+	ConcurrentTemplateBuilds         int64
+	MaxVcpu                          int64
+	MaxRamMb                         int64
+	DiskMb                           int64
+	EventsTtlDays                    int64
+	DefaultFreeDiskSizeMb            int64
+	MaxDiskSizeMb                    int64
+	MaxFreeDiskSizeMb                int64
+	ApiTeamRpsList                   int64
+	ApiTeamRpsDelete                 int64
+	MaxSecrets                       int64
 }
 
 func (q *Queries) GetUserTeamsWithLimits(ctx context.Context, userID uuid.UUID) ([]GetUserTeamsWithLimitsRow, error) {
@@ -307,6 +322,7 @@ func (q *Queries) GetUserTeamsWithLimits(ctx context.Context, userID uuid.UUID) 
 			&i.Team.DeletedAt,
 			&i.Team.Slug,
 			&i.IsDefault,
+			&i.SandboxDefaultAllowPublicTraffic,
 			&i.MaxLengthHours,
 			&i.ConcurrentSandboxes,
 			&i.ConcurrentTemplateBuilds,

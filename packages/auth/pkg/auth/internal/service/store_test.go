@@ -98,3 +98,42 @@ func TestAuthStoreResolvesTeamAndLimitsInOneStatement(t *testing.T) {
 	_, err = store.GetTeamByIDAndUserID(ctx, userID, pushed.String())
 	assert.True(t, dberrors.IsNotFoundError(err), "a team the user is not in is not found: %v", err)
 }
+
+func TestAuthStoreLoadsProjectedSettings(t *testing.T) {
+	t.Parallel()
+
+	db := testutils.SetupDatabase(t)
+	ctx := t.Context()
+	store := newAuthStore(db.AuthDB)
+	teamID := testutils.CreateTestTeam(t, db)
+	userID := uuid.New()
+	require.NoError(t, db.AuthDB.UpsertPublicUser(ctx, userID))
+	require.NoError(t, db.AuthDB.CreateTeamMembership(ctx, authqueries.CreateTeamMembershipParams{
+		UserID: userID, TeamID: teamID,
+	}))
+	const keyHash = "settings-test-key-hash"
+	_, err := db.AuthDB.CreateTeamAPIKey(ctx, authqueries.CreateTeamAPIKeyParams{
+		TeamID: teamID, ApiKeyHash: keyHash, ApiKeyPrefix: "e2b_", ApiKeyLength: 40,
+		ApiKeyMaskPrefix: "ab", ApiKeyMaskSuffix: "yz", Name: "settings test",
+	})
+	require.NoError(t, err)
+
+	for i, value := range []*bool{nil, new(false), new(true), nil} {
+		if i > 0 {
+			require.NoError(t, db.AuthDB.TestsRawSQL(ctx,
+				`INSERT INTO projection.project_settings (project_id, revision, sandbox_default_allow_public_traffic)
+                VALUES ($1, $2, $3) ON CONFLICT (project_id) DO UPDATE
+                SET revision = EXCLUDED.revision, sandbox_default_allow_public_traffic = EXCLUDED.sandbox_default_allow_public_traffic`,
+				teamID, int64(i), value))
+		}
+		byKey, err := store.GetTeamByHashedAPIKey(ctx, keyHash)
+		require.NoError(t, err)
+		require.Equal(t, value, byKey.ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic)
+		byID, err := store.GetTeamByID(ctx, teamID)
+		require.NoError(t, err)
+		require.Equal(t, value, byID.ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic)
+		byMember, err := store.GetTeamByIDAndUserID(ctx, userID, teamID.String())
+		require.NoError(t, err)
+		require.Equal(t, value, byMember.ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic)
+	}
+}

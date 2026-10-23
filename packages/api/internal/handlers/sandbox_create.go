@@ -110,7 +110,15 @@ func (a *APIStore) PostV2Sandboxes(c *gin.Context, _ api.PostV2SandboxesParams) 
 		return
 	}
 
-	idempotency.Execute(c, body, func() {
+	fingerprintBody := body
+	// Keep pre-upgrade idempotency keys valid for projects without a saved default.
+	if n := body.Network; n != nil && n.AllowPublicTraffic == nil && auth.MustGetTeamInfo(c).ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic == nil {
+		network := *n
+		network.AllowPublicTraffic = new(true)
+		fingerprintBody.Network = &network
+	}
+
+	idempotency.Execute(c, fingerprintBody, func() {
 		sbx, apiErr := a.createSandbox(c, newSandboxFromV2(body), sandbox.SandboxTimeoutDefaultV2)
 		if apiErr != nil {
 			apierrors.SendAPIError(c, apiErr)
@@ -325,19 +333,7 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 			return nil, err
 		}
 
-		network = &types.SandboxNetworkConfig{
-			Ingress: &types.SandboxNetworkIngressConfig{
-				AllowPublicAccess: n.AllowPublicTraffic,
-				MaskRequestHost:   n.MaskRequestHost,
-				HTTPSPorts:        sharedUtils.DerefOrDefault(n.HttpsPorts, nil),
-			},
-			Egress: &types.SandboxNetworkEgressConfig{
-				AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
-				DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
-				Rules:            apiRulesToDBRules(n.Rules),
-				DnsServers:       n.DnsServers,
-			},
-		}
+		network = sandboxNetworkConfig(n, teamInfo.ProjectSettings.SandboxSettings)
 
 		if ep := n.EgressProxy; ep != nil {
 			if !a.featureFlags.BoolFlag(ctx, featureflags.BYOPProxyEnabledFlag) {
@@ -363,6 +359,8 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 
 			apiorch.ApplyValidatedEgressProxy(network.Egress, canonical)
 		}
+	} else {
+		network = sandboxNetworkConfig(nil, teamInfo.ProjectSettings.SandboxSettings)
 	}
 
 	sbxVolumeMounts, err := convertAPIVolumesToOrchestratorVolumes(
@@ -436,6 +434,35 @@ func (a *APIStore) createSandbox(c *gin.Context, body api.NewSandbox, defaultTim
 	}
 
 	return sbx, nil
+}
+
+// Preserve the legacy nil network for public creates without network options.
+// Persist private ingress so pause and resume retain it.
+func sandboxNetworkConfig(n *api.SandboxNetworkConfig, settings types.SandboxSettings) *types.SandboxNetworkConfig {
+	projectAllowsPublicTraffic := sharedUtils.DerefOrDefault(settings.DefaultAllowPublicTraffic, types.AllowPublicAccessDefault)
+	if n == nil {
+		if projectAllowsPublicTraffic {
+			return nil
+		}
+
+		return &types.SandboxNetworkConfig{
+			Ingress: &types.SandboxNetworkIngressConfig{AllowPublicAccess: new(false)},
+		}
+	}
+
+	return &types.SandboxNetworkConfig{
+		Ingress: &types.SandboxNetworkIngressConfig{
+			AllowPublicAccess: new(sharedUtils.DerefOrDefault(n.AllowPublicTraffic, projectAllowsPublicTraffic)),
+			MaskRequestHost:   n.MaskRequestHost,
+			HTTPSPorts:        sharedUtils.DerefOrDefault(n.HttpsPorts, nil),
+		},
+		Egress: &types.SandboxNetworkEgressConfig{
+			AllowedAddresses: sharedUtils.DerefOrDefault(n.AllowOut, nil),
+			DeniedAddresses:  sharedUtils.DerefOrDefault(n.DenyOut, nil),
+			Rules:            apiRulesToDBRules(n.Rules),
+			DnsServers:       n.DnsServers,
+		},
+	}
 }
 
 // iamTokenTypeJWTSVID is the only workload token type accepted in this version.

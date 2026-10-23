@@ -103,6 +103,21 @@ Supporting packages: `packages/shared` (protos, telemetry, storage clients, feat
 
 The control-plane entry point (Gin, OpenAPI-generated from `spec/openapi.yml`, port 80).
 
+`PUT /unstable/management/projects/{projectID}/settings` applies a revisioned settings
+projection from the owning management service. This endpoint belongs to the API
+and accepts only service JWTs through `AdminJWTAuth`. It locks the team and checks
+that it has not been deleted before applying the projection. The shared `ProjectSettings` type
+contains `SandboxSettings`, with the optional ingress default under
+`sandboxSettings.defaultAllowPublicTraffic`. Storage uses `projection.project_settings`,
+with `revision` and nullable `sandbox_default_allow_public_traffic` in the same row.
+The receiver applies both in one guarded upsert. Equal or older revisions cannot
+overwrite it. Clearing stores NULL at a newer revision, retaining the ordering fence.
+Cache invalidation follows commit and is retried on duplicate
+delivery after a cache failure. There is no rollout flag check on accepted delivery.
+Sandbox creation resolves an absent default to true and honors a saved default
+independently of rollout eligibility. New sandboxes can use an older value while
+delivery or cache refresh is pending.
+
 - **Resources**: sandboxes (create/list/kill/pause/resume/connect/timeout/metrics/logs),
   templates and builds, teams, volumes, API keys, secrets, sandbox events and webhooks,
   admin operations.
@@ -648,6 +663,19 @@ The API blocks on the gRPC `Create`, which itself blocks on envd's `/init` — w
 gets a response, the sandbox is fully usable. Fresh creates are internally a *resume* of the
 template's base snapshot (cold boots happen for filesystem-only templates and builds, or when
 an explicit resume requests one — see pause and resume below; template creates never do).
+
+A create that leaves `network.allowPublicTraffic` unset or null uses the project's
+`ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic`, read from the cached team.
+A missing key, including a team cached before settings existed, keeps public traffic. An explicit value wins.
+With no `network` object, a public sandbox stores no network config and a private one stores only
+the ingress setting. Either way a private sandbox gets a traffic access token at create, and
+resume, auto-resume and fork keep the setting saved with the sandbox rather than reading the
+project default again.
+
+V2 create idempotency keeps the former `allowPublicTraffic: true` fingerprint for an omitted
+flag on unconfigured projects, so retries across API versions still replay. Configured projects
+distinguish omission from an explicit boolean. The first configuration change can make an older
+key return 409 until its idempotency record expires; it does not alter the original sandbox.
 
 How that `/init` reaches envd depends on the envd expected to answer it. Behind the
 `envd-init-held-request` flag, and for an envd at or above 0.10.0, the orchestrator sends one

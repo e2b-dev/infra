@@ -5,6 +5,7 @@
 -- in pkg/tests fails when a lookup misses one.
 -- name: GetTeamByAPIKey :one
 SELECT sqlc.embed(t),
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -22,10 +23,12 @@ FROM "public"."team_api_keys" tak
 JOIN "public"."teams" t ON tak.team_id = t.id
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE tak.api_key_hash = $1;
 
 -- name: GetTeamByTeamAndUser :one
 SELECT sqlc.embed(t),
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -43,10 +46,12 @@ FROM "public"."teams" t
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE ut.user_id = $1 AND t.id = $2;
 
 -- name: GetTeamByTeamID :one
 SELECT sqlc.embed(t),
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -63,10 +68,12 @@ SELECT sqlc.embed(t),
 FROM "public"."teams" t
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE t.id = $1;
 
 -- name: GetUserTeamsWithLimits :many
 SELECT sqlc.embed(t), ut.is_default,
+    ps.sandbox_default_allow_public_traffic,
     COALESCE(pl.max_length_hours, d.max_length_hours) AS max_length_hours,
     COALESCE(pl.concurrent_sandboxes, d.concurrent_sandboxes) AS concurrent_sandboxes,
     COALESCE(pl.concurrent_template_builds, d.concurrent_template_builds) AS concurrent_template_builds,
@@ -84,4 +91,5 @@ FROM "public"."teams" t
 JOIN "public"."users_teams" ut ON ut.team_id = t.id
 CROSS JOIN "public"."default_limits" d
 LEFT JOIN "public"."project_limits" pl ON pl.team_id = t.id
+LEFT JOIN projection.project_settings ps ON ps.project_id = t.id
 WHERE ut.user_id = $1;

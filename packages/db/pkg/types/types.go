@@ -3,6 +3,8 @@ package types
 import (
 	"database/sql/driver"
 	"encoding/json"
+
+	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
 )
 
 func jsonbValue(v any) (driver.Value, error) {
@@ -47,6 +49,22 @@ func (m *JSONBStringMap) UnmarshalJSON(data []byte) error {
 	*m = JSONBStringMap(raw)
 
 	return nil
+}
+
+type ProjectSettings struct {
+	SandboxSettings SandboxSettings
+}
+
+type SandboxSettings struct {
+	DefaultAllowPublicTraffic *bool
+}
+
+func ProjectSettingsFromRow(row authqueries.GetTeamByTeamIDRow) ProjectSettings {
+	return ProjectSettings{
+		SandboxSettings: SandboxSettings{
+			DefaultAllowPublicTraffic: row.SandboxDefaultAllowPublicTraffic,
+		},
+	}
 }
 
 type BuildReason struct {

@@ -597,8 +597,11 @@ components:
       properties:
         allowPublicTraffic:
           type: boolean
-          default: true
-          description: Specify if the sandbox URLs should be accessible only with authentication.
+          nullable: true
+          description: >-
+            Whether sandbox URLs accept traffic without the sandbox's traffic access token.
+            When omitted or null on create, the project's default applies, which is true
+            unless the project changed it.
         allowOut:
           type: array
           description: List of allowed destinations for egress traffic. Each entry can be a CIDR block (e.g. "8.8.8.8/32"), a bare IP address (e.g. "8.8.8.8"), or a domain name (e.g. "example.com", "*.example.com"). Allowed entries always take precedence over denied entries. When allowOut contains a domain, the servers in dnsServers (8.8.8.8 by default) are also allowed.
@@ -3259,6 +3262,38 @@ components:
           type: string
           nullable: true
           description: Cursor to pass to the next list request, or null when there is no next page.
+    ManagementProjectSettingsRequest:
+      type: object
+      required: [revision, settings]
+      properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 1
+          description: >-
+            Monotonic per-project revision. Older or duplicate revisions
+            succeed without changing stored state.
+        settings:
+          $ref: "#/components/schemas/ProjectSettings"
+
+    ProjectSettings:
+      type: object
+      description: The project's stored settings. PUT replaces the complete document.
+      required: [sandboxSettings]
+      properties:
+        sandboxSettings:
+          $ref: "#/components/schemas/SandboxSettings"
+
+    SandboxSettings:
+      type: object
+      properties:
+        defaultAllowPublicTraffic:
+          type: boolean
+          description: >-
+            Whether new sandboxes without an explicit network.allowPublicTraffic
+            accept traffic without a traffic access token. Omission uses the
+            public default. Existing sandboxes, resumes and forks keep their settings.
+
 tags:
   - name: templates
   - name: sandboxes
@@ -5567,6 +5602,44 @@ paths:
           $ref: "#/components/responses/404"
         "429":
           $ref: "#/components/responses/429"
+        "500":
+          $ref: "#/components/responses/500"
+
+  /unstable/management/projects/{projectID}/settings:
+    parameters:
+      - name: projectID
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+    put:
+      operationId: managementSetProjectSettings
+      summary: Apply a project's settings revision.
+      description: >-
+        Replaces the complete project settings document when the revision is
+        newer than the stored revision. Omitted settings are removed. Older
+        and duplicate revisions leave the stored document unchanged. Every
+        successful delivery invalidates the cached team. Answers 404 when the
+        project is missing or deleted.
+      tags: [admin]
+      security:
+        - AdminJWTAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ManagementProjectSettingsRequest"
+      responses:
+        "204":
+          description: Project settings are applied or already superseded.
+        "400":
+          $ref: "#/components/responses/400"
+        "401":
+          $ref: "#/components/responses/401"
+        "404":
+          $ref: "#/components/responses/404"
         "500":
           $ref: "#/components/responses/500"
 

@@ -11,9 +11,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/launchdarkly/go-sdk-common/v3/ldlog"
+	middleware "github.com/oapi-codegen/gin-middleware"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -29,6 +31,7 @@ import (
 	"github.com/e2b-dev/infra/packages/db/queries"
 	"github.com/e2b-dev/infra/packages/shared/pkg/consts"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	"github.com/e2b-dev/infra/packages/shared/pkg/ginutils"
 	"github.com/e2b-dev/infra/packages/shared/pkg/grpc/orchestrator"
 	"github.com/e2b-dev/infra/packages/shared/pkg/id"
 	redis_utils "github.com/e2b-dev/infra/packages/shared/pkg/redis"
@@ -1579,4 +1582,146 @@ func createTestTemplateAliasWithName(ctx context.Context, t *testing.T, db *test
 		namespace,
 	)
 	require.NoError(t, err)
+}
+
+func TestCreateNetworkAppliesProjectIngressDefault(t *testing.T) {
+	t.Parallel()
+
+	swagger, err := api.GetSwagger()
+	require.NoError(t, err)
+	swagger.Servers = nil
+
+	router := gin.New()
+	router.Use(middleware.OapiRequestValidatorWithOptions(swagger, &middleware.Options{
+		Options: openapi3filter.Options{
+			AuthenticationFunc: func(context.Context, *openapi3filter.AuthenticationInput) error { return nil },
+			MultiError:         true,
+		},
+		SilenceServersWarning: true,
+	}))
+	// Each route decodes the validated body the way its production handler does.
+	router.POST("/sandboxes", func(c *gin.Context) {
+		body, err := ginutils.ParseBody[api.PostSandboxesJSONRequestBody](c.Request.Context(), c)
+		if err != nil {
+			c.Status(http.StatusTeapot)
+
+			return
+		}
+		c.JSON(http.StatusOK, body)
+	})
+	router.POST("/v2/sandboxes", func(c *gin.Context) {
+		var body api.PostV2SandboxesJSONRequestBody
+		if err := c.ShouldBind(&body); err != nil {
+			c.Status(http.StatusTeapot)
+
+			return
+		}
+		c.JSON(http.StatusOK, newSandboxFromV2(body))
+	})
+
+	// An old API binary caches the team without the field.
+	var oldCachedTeam authtypes.Team
+	require.NoError(t, json.Unmarshal([]byte(`{"ID":"`+uuid.NewString()+`","Slug":"team","Limits":{"MaxLengthHours":24}}`), &oldCachedTeam))
+	require.Nil(t, oldCachedTeam.ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic)
+
+	private := ingressOnly(false)
+	projectDefaults := map[string]*bool{"unset": oldCachedTeam.ProjectSettings.SandboxSettings.DefaultAllowPublicTraffic, "public": new(true), "private": new(false)}
+
+	tests := []struct {
+		name    string
+		network string
+		want    map[string]*dbtypes.SandboxNetworkConfig
+	}{
+		{
+			name: "network omitted",
+			want: map[string]*dbtypes.SandboxNetworkConfig{"unset": nil, "public": nil, "private": private},
+		},
+		{
+			name:    "empty network",
+			network: `{}`,
+			want:    map[string]*dbtypes.SandboxNetworkConfig{"unset": withEgress(true, nil), "public": withEgress(true, nil), "private": withEgress(false, nil)},
+		},
+		{
+			name:    "egress only",
+			network: `{"allowOut":["8.8.8.8"]}`,
+			want: map[string]*dbtypes.SandboxNetworkConfig{
+				"unset":   withEgress(true, []string{"8.8.8.8"}),
+				"public":  withEgress(true, []string{"8.8.8.8"}),
+				"private": withEgress(false, []string{"8.8.8.8"}),
+			},
+		},
+		{
+			name:    "legacy null flag",
+			network: `{"allowPublicTraffic":null}`,
+			want:    map[string]*dbtypes.SandboxNetworkConfig{"unset": withEgress(true, nil), "public": withEgress(true, nil), "private": withEgress(false, nil)},
+		},
+		{
+			name:    "explicit true",
+			network: `{"allowPublicTraffic":true}`,
+			want:    map[string]*dbtypes.SandboxNetworkConfig{"unset": withEgress(true, nil), "public": withEgress(true, nil), "private": withEgress(true, nil)},
+		},
+		{
+			name:    "explicit false",
+			network: `{"allowPublicTraffic":false}`,
+			want:    map[string]*dbtypes.SandboxNetworkConfig{"unset": withEgress(false, nil), "public": withEgress(false, nil), "private": withEgress(false, nil)},
+		},
+	}
+
+	for _, path := range []string{"/sandboxes", "/v2/sandboxes"} {
+		t.Run(path+" rejects a null network", func(t *testing.T) {
+			t.Parallel()
+
+			recorder := postSandbox(t, router, path, `{"templateID":"base","network":null}`)
+			require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		})
+
+		for _, tt := range tests {
+			t.Run(path+" "+tt.name, func(t *testing.T) {
+				t.Parallel()
+
+				body := `{"templateID":"base"}`
+				if tt.network != "" {
+					body = `{"templateID":"base","network":` + tt.network + `}`
+				}
+				recorder := postSandbox(t, router, path, body)
+				require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+
+				var decoded api.NewSandbox
+				require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &decoded))
+
+				for project, projectDefault := range projectDefaults {
+					got := sandboxNetworkConfig(decoded.Network, dbtypes.SandboxSettings{DefaultAllowPublicTraffic: projectDefault})
+					if want := tt.want[project]; want == nil {
+						assert.Nil(t, got, "project default %s", project)
+					} else {
+						require.NotNil(t, got, "project default %s", project)
+						assert.Equal(t, want.Ingress.AllowPublicAccess, got.Ingress.AllowPublicAccess, "project default %s", project)
+						assert.Equal(t, want.Egress, got.Egress, "project default %s", project)
+					}
+				}
+			})
+		}
+	}
+}
+
+func postSandbox(t *testing.T, router *gin.Engine, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, path, strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	return recorder
+}
+
+func ingressOnly(allowPublicAccess bool) *dbtypes.SandboxNetworkConfig {
+	return &dbtypes.SandboxNetworkConfig{Ingress: &dbtypes.SandboxNetworkIngressConfig{AllowPublicAccess: &allowPublicAccess}}
+}
+
+func withEgress(allowPublicAccess bool, allowOut []string) *dbtypes.SandboxNetworkConfig {
+	network := ingressOnly(allowPublicAccess)
+	network.Egress = &dbtypes.SandboxNetworkEgressConfig{AllowedAddresses: allowOut}
+
+	return network
 }

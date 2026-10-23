@@ -2,12 +2,14 @@ package types
 
 import (
 	authqueries "github.com/e2b-dev/infra/packages/db/pkg/auth/queries"
+	dbtypes "github.com/e2b-dev/infra/packages/db/pkg/types"
 )
 
 type Team struct {
 	*authqueries.Team
 
-	Limits *TeamLimits
+	Limits          *TeamLimits
+	ProjectSettings dbtypes.ProjectSettings
 }
 
 func (t *Team) TeamID() string {
@@ -40,8 +42,9 @@ func newTeamLimits(
 // drifts stops compiling at the conversion.
 func NewTeam(row authqueries.GetTeamByTeamIDRow) *Team {
 	return &Team{
-		Team:   &row.Team,
-		Limits: newTeamLimits(&row),
+		Team:            &row.Team,
+		Limits:          newTeamLimits(&row),
+		ProjectSettings: dbtypes.ProjectSettingsFromRow(row),
 	}
 }
 
