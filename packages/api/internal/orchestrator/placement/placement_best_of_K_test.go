@@ -416,6 +416,43 @@ func TestBestOfK_Score_HugepageFlagOffIgnoresPool(t *testing.T) {
 	assert.InDelta(t, 5.0/32.0, algo.Score(roomy, resources, config), 1e-9)
 }
 
+func TestBestOfK_Score_BusyCores(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	config.ScoreHugepages = false
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// 96% of 80 cores is 76.8 busy cores: (2 + 215 + 0.5*76.8) / (4*80).
+	node := cpuTestNode("busy", 215, 80, 96)
+	assert.InDelta(t, 0.798125, algo.Score(node, nodemanager.SandboxResources{CPUs: 2}, config), 1e-9)
+}
+
+func TestBestOfK_ChooseNode_BusyHostLosesToIdleHost(t *testing.T) {
+	t.Parallel()
+	config := DefaultBestOfKConfig()
+	config.ScoreHugepages = false
+	algo := NewBestOfK(config).(*BestOfK)
+
+	// One more allocated vCPU must not outweigh a nearly saturated host.
+	busy := cpuTestNode("busy", 215, 80, 96)
+	idle := cpuTestNode("idle", 216, 80, 0)
+
+	selected, err := algo.chooseNode(t.Context(), []*nodemanager.Node{busy, idle}, nil, nodemanager.SandboxResources{CPUs: 2}, Requirements{}, false, nil)
+	require.NoError(t, err)
+	assert.Same(t, idle, selected)
+}
+
+func cpuTestNode(id string, allocated, count, percent uint32) *nodemanager.Node {
+	node := nodemanager.NewTestNode(id, api.NodeStatusReady, int64(allocated), count)
+	node.UpdateMetricsFromServiceInfoResponse(&orchestratorinfo.ServiceInfoResponse{
+		MetricCpuAllocated: allocated,
+		MetricCpuCount:     count,
+		MetricCpuPercent:   percent,
+	})
+
+	return node
+}
+
 func TestBestOfK_ChooseNode_HugepageFlagOffPrefersCPU(t *testing.T) {
 	t.Parallel()
 	config := BestOfKConfig{R: 4, Alpha: 0.5, K: 2}

@@ -58,14 +58,14 @@ func (b *BestOfK) Score(node *nodemanager.Node, resources nodemanager.SandboxRes
 	// Combine allocated resources with in-progress allocations
 	reserved := metrics.CpuAllocated + uint32(pendingCPUs)
 
-	// 1 CPU used = 100% CPU percept
-	usageAvg := float64(metrics.CpuPercent) / 100
+	// CpuPercent is whole-host utilization, so convert it to busy cores.
+	busyCPUs := float64(metrics.CpuPercent) / 100 * cpuCount
 
 	totalCapacity := config.R * cpuCount
 
 	cpuRequested := float64(resources.CPUs)
 
-	cpuScore := (cpuRequested + float64(reserved) + config.Alpha*usageAvg) / totalCapacity
+	cpuScore := (cpuRequested + float64(reserved) + config.Alpha*busyCPUs) / totalCapacity
 
 	if !config.ScoreHugepages {
 		return cpuScore
