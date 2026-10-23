@@ -22,6 +22,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/mtls/servicetest"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type fakeSandboxServer struct {
@@ -120,11 +121,10 @@ func TestNewGRPCPausedSandboxResumer_TLSSucceeds(t *testing.T) {
 	require.NoError(t, closer.Close(t.Context()))
 }
 
-func TestGRPCPausedSandboxResumer_ResumeSendsMetadataAndReturnsIP(t *testing.T) {
+func TestGRPCPausedSandboxResumer_ResumeSendsMetadataAndReturnsRoute(t *testing.T) {
 	t.Parallel()
 
 	srv := &fakeSandboxServer{
-		// The proxy routes on orchestrator_ip and ignores the placement.
 		resp: &proxygrpc.SandboxResumeResponse{OrchestratorIp: "  10.0.0.5  ", NetworkPlacement: &orchestrator.SandboxNetworkPlacement{
 			ExecutionId: "execution", NetworkMode: "egress-router", RouterId: "router", IngressAddress: "10.0.0.5", IngressPort: 5007,
 		}},
@@ -137,9 +137,11 @@ func TestGRPCPausedSandboxResumer_ResumeSendsMetadataAndReturnsIP(t *testing.T) 
 		auth:   noopGrpcResumeAuth{},
 	}
 
-	ip, err := r.Resume(t.Context(), "sbx-123", 49983, "traffic-token", "envd-token")
+	route, err := r.Resume(t.Context(), "sbx-123", 49983, "traffic-token", "envd-token")
 	require.NoError(t, err)
-	require.Equal(t, "10.0.0.5", ip)
+	require.Equal(t, &catalog.SandboxInfo{OrchestratorIP: "10.0.0.5", ExecutionID: "execution", NetworkPlacement: &catalog.NetworkPlacement{
+		NetworkMode: catalog.NetworkModeEgressRouter, RouterID: "router", IngressAddress: "10.0.0.5", IngressPort: 5007,
+	}}, route)
 	require.EqualValues(t, 1, srv.calls.Load())
 	require.Equal(t, "sbx-123", srv.gotSandboxID)
 	require.Equal(t, []string{"49983"}, srv.gotMetadata.Get(proxygrpc.MetadataSandboxRequestPort))
@@ -161,9 +163,9 @@ func TestGRPCPausedSandboxResumer_ResumeOmitsEmptyTokens(t *testing.T) {
 		auth:   noopGrpcResumeAuth{},
 	}
 
-	ip, err := r.Resume(t.Context(), "sbx-456", 8080, "", "")
+	route, err := r.Resume(t.Context(), "sbx-456", 8080, "", "")
 	require.NoError(t, err)
-	require.Equal(t, "10.0.0.6", ip)
+	require.Equal(t, &catalog.SandboxInfo{OrchestratorIP: "10.0.0.6"}, route, "an answer without a placement stays legacy")
 	require.EqualValues(t, 1, srv.calls.Load())
 	require.Empty(t, srv.gotMetadata.Get(proxygrpc.MetadataTrafficAccessToken))
 	require.Empty(t, srv.gotMetadata.Get(proxygrpc.MetadataEnvdAccessToken))
@@ -184,9 +186,9 @@ func TestGRPCPausedSandboxResumer_ResumeReturnsServerError(t *testing.T) {
 		auth:   noopGrpcResumeAuth{},
 	}
 
-	ip, err := r.Resume(t.Context(), "sbx", 80, "", "")
+	route, err := r.Resume(t.Context(), "sbx", 80, "", "")
 	require.Error(t, err)
-	require.Empty(t, ip)
+	require.Nil(t, route)
 	st, ok := status.FromError(errors.Unwrap(err))
 	require.True(t, ok)
 	require.Equal(t, codes.NotFound, st.Code())
@@ -256,9 +258,9 @@ func TestGRPCPausedSandboxResumer_ResumeAuthError(t *testing.T) {
 		auth:   errAuth{err: authErr},
 	}
 
-	ip, err := r.Resume(t.Context(), "sbx", 80, "", "")
+	route, err := r.Resume(t.Context(), "sbx", 80, "", "")
 	require.ErrorIs(t, err, authErr)
-	require.Empty(t, ip)
+	require.Nil(t, route)
 	require.EqualValues(t, 0, srv.calls.Load())
 }
 
@@ -290,9 +292,9 @@ func TestGRPCPausedSandboxResumer_ResumeDoesNotDialAfterAttemptEnded(t *testing.
 		auth:   cancellingAuth{cancel: cancel},
 	}
 
-	ip, err := r.Resume(ctx, "sbx", 80, "", "")
+	route, err := r.Resume(ctx, "sbx", 80, "", "")
 	require.ErrorIs(t, err, context.Canceled)
-	require.Empty(t, ip)
+	require.Nil(t, route)
 	require.EqualValues(t, 0, srv.calls.Load())
 }
 
@@ -323,9 +325,9 @@ func TestResumeFlights_StalledTokenRefreshEndsTheFlight(t *testing.T) {
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
 	start := time.Now()
-	ip, err := flights.Resume(t.Context(), "sbx", 80, "", "")
+	route, err := flights.Resume(t.Context(), "sbx", 80, "", "")
 	require.Less(t, time.Since(start), 5*time.Second)
-	require.Empty(t, ip)
+	require.Nil(t, route)
 
 	var capacityErr *reverseproxy.SandboxCapacityError
 	require.ErrorAs(t, err, &capacityErr)
@@ -374,7 +376,7 @@ func TestResumeFlights_StalledTokenRefreshEndsAtTheAttemptDeadline(t *testing.T)
 	case <-time.After(30 * time.Second):
 		require.FailNow(t, "the attempt did not end with its deadline while the token refresh stayed blocked")
 	}
-	require.Empty(t, served.nodeIP)
+	require.Nil(t, served.route)
 
 	var capacityErr *reverseproxy.SandboxCapacityError
 	require.ErrorAs(t, served.err, &capacityErr)

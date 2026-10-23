@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -16,8 +17,17 @@ import (
 	"google.golang.org/grpc/status"
 
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
+
+// testRoute is what the test resumers answer with: a full-router route with
+// every placement field set and no orchestrator IP. Tests compare it by
+// identity, so a flight that dropped or rebuilt the route fails them.
+var testRoute = &catalog.SandboxInfo{
+	ExecutionID:      "execution",
+	NetworkPlacement: &catalog.NetworkPlacement{NetworkMode: catalog.NetworkModeFullRouter, RouterID: "router", IngressAddress: "10.8.0.2", IngressPort: 5010},
+}
 
 // gatedResumer blocks every Resume call until release is closed or the call's
 // context ends, and counts the calls it received. With firstErr set the first
@@ -25,24 +35,24 @@ import (
 type gatedResumer struct {
 	release  chan struct{}
 	firstErr error
-	nodeIP   string
+	route    *catalog.SandboxInfo
 	err      error
 	calls    atomic.Int32
 	returned atomic.Int32 // calls that have ended, however they ended
 }
 
-func (g *gatedResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (g *gatedResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	defer g.returned.Add(1)
 
 	if g.calls.Add(1) == 1 && g.firstErr != nil {
-		return "", g.firstErr
+		return nil, g.firstErr
 	}
 
 	select {
 	case <-g.release:
-		return g.nodeIP, g.err
+		return g.route, g.err
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -67,8 +77,8 @@ func (c *awaitingContext) Done() <-chan struct{} {
 }
 
 type resumeResult struct {
-	nodeIP string
-	err    error
+	route *catalog.SandboxInfo
+	err   error
 }
 
 // resumeInBackground calls Resume on its own goroutine and delivers the result
@@ -80,8 +90,8 @@ func resumeInBackground(flights *resumeFlights, ctx context.Context) <-chan resu
 func resumeInBackgroundWith(flights *resumeFlights, ctx context.Context, port uint64, trafficAccessToken string, envdAccessToken string) <-chan resumeResult {
 	result := make(chan resumeResult, 1)
 	go func() {
-		nodeIP, err := flights.Resume(ctx, "sbx", port, trafficAccessToken, envdAccessToken)
-		result <- resumeResult{nodeIP: nodeIP, err: err}
+		route, err := flights.Resume(ctx, "sbx", port, trafficAccessToken, envdAccessToken)
+		result <- resumeResult{route: route, err: err}
 	}()
 
 	return result
@@ -92,24 +102,24 @@ func resumeInBackgroundWith(flights *resumeFlights, ctx context.Context, port ui
 type tokenResumer struct {
 	release    chan struct{}
 	validToken string
-	nodeIP     string
+	route      *catalog.SandboxInfo
 	calls      atomic.Int32
 }
 
-func (g *tokenResumer) Resume(ctx context.Context, _ string, _ uint64, trafficAccessToken string, _ string) (string, error) {
+func (g *tokenResumer) Resume(ctx context.Context, _ string, _ uint64, trafficAccessToken string, _ string) (*catalog.SandboxInfo, error) {
 	g.calls.Add(1)
 
 	select {
 	case <-g.release:
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	}
 
 	if trafficAccessToken != g.validToken {
-		return "", status.Error(codes.PermissionDenied, "invalid traffic access token")
+		return nil, status.Error(codes.PermissionDenied, "invalid traffic access token")
 	}
 
-	return g.nodeIP, nil
+	return g.route, nil
 }
 
 type metricReader struct {
@@ -184,7 +194,7 @@ func TestResumeFlights_ConcurrentCallersShareOneResume(t *testing.T) {
 	const callers = 10
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 
 	results := make([]<-chan resumeResult, 0, callers)
@@ -203,7 +213,7 @@ func TestResumeFlights_ConcurrentCallersShareOneResume(t *testing.T) {
 	for _, result := range results {
 		r := <-result
 		require.NoError(t, r.err)
-		require.Equal(t, "10.0.0.1", r.nodeIP)
+		require.Same(t, testRoute, r.route)
 	}
 
 	require.EqualValues(t, 1, resumer.calls.Load())
@@ -217,7 +227,7 @@ func TestResumeFlights_LeaderCancelDoesNotFailJoiners(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 
 	leaderCtx, cancelLeader := context.WithCancel(t.Context())
@@ -236,7 +246,7 @@ func TestResumeFlights_LeaderCancelDoesNotFailJoiners(t *testing.T) {
 	close(resumer.release)
 	joined := <-joinerResult
 	require.NoError(t, joined.err)
-	require.Equal(t, "10.0.0.1", joined.nodeIP)
+	require.Same(t, testRoute, joined.route)
 	require.EqualValues(t, 1, resumer.calls.Load())
 	require.EqualValues(t, 1, metrics.flightCount(t, resumeFlightRoleJoiner, resumeFlightResultServed))
 }
@@ -251,9 +261,9 @@ func TestResumeFlights_FirstAttemptServes(t *testing.T) {
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 49983, "token", "envd-token")
+	route, err := flights.Resume(t.Context(), "sbx", 49983, "token", "envd-token")
 	require.NoError(t, err)
-	require.Equal(t, "10.0.0.1", nodeIP)
+	require.Same(t, testRoute, route)
 	require.Equal(t, "sbx", resumer.sandboxID)
 	require.EqualValues(t, 49983, resumer.sandboxPort)
 	require.Equal(t, "token", resumer.trafficAccessToken)
@@ -275,10 +285,10 @@ func TestResumeFlights_AttemptCeilingEndsAnUnansweredResumeWithTheUnavailablePag
 	flights.attemptCeiling = 50 * time.Millisecond
 
 	start := time.Now()
-	nodeIP, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", flights)
+	route, res, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", flights)
 	require.Less(t, time.Since(start), 5*time.Second)
 	require.Equal(t, autoResumeErrored, res)
-	require.Empty(t, nodeIP)
+	require.Nil(t, route)
 
 	var capacityErr *reverseproxy.SandboxCapacityError
 	require.ErrorAs(t, err, &capacityErr)
@@ -298,19 +308,19 @@ func TestResumeFlights_InvalidLeaderTokenDoesNotDenyValidJoiner(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &tokenResumer{release: make(chan struct{}), validToken: "valid", nodeIP: "10.0.0.1"}
+	resumer := &tokenResumer{release: make(chan struct{}), validToken: "valid", route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 
 	type pausedResult struct {
-		nodeIP string
-		res    autoResumeResult
-		err    error
+		route *catalog.SandboxInfo
+		res   autoResumeResult
+		err   error
 	}
 	resumeThroughHandler := func(ctx context.Context, token string) <-chan pausedResult {
 		result := make(chan pausedResult, 1)
 		go func() {
-			nodeIP, res, err := handlePausedSandbox(ctx, "sbx", 8000, token, "", flights)
-			result <- pausedResult{nodeIP: nodeIP, res: res, err: err}
+			route, res, err := handlePausedSandbox(ctx, "sbx", 8000, token, "", flights)
+			result <- pausedResult{route: route, res: res, err: err}
 		}()
 
 		return result
@@ -334,17 +344,43 @@ func TestResumeFlights_InvalidLeaderTokenDoesNotDenyValidJoiner(t *testing.T) {
 	served := <-joinerResult
 	require.NoError(t, served.err)
 	require.Equal(t, autoResumeSucceeded, served.res)
-	require.Equal(t, "10.0.0.1", served.nodeIP)
+	require.Same(t, testRoute, served.route)
 	require.EqualValues(t, 2, resumer.calls.Load())
 }
 
-// Callers that differ in port or in either token run their own resume;
-// only identical credentials on the same port share a flight.
+// credentialResumer blocks like gatedResumer and then answers each call with
+// a route of its own, naming the port and tokens the call carried.
+type credentialResumer struct {
+	release chan struct{}
+	calls   atomic.Int32
+}
+
+func (c *credentialResumer) Resume(ctx context.Context, _ string, port uint64, trafficAccessToken string, envdAccessToken string) (*catalog.SandboxInfo, error) {
+	c.calls.Add(1)
+
+	select {
+	case <-c.release:
+		return credentialRoute(port, trafficAccessToken, envdAccessToken), nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+func credentialRoute(port uint64, trafficAccessToken string, envdAccessToken string) *catalog.SandboxInfo {
+	return &catalog.SandboxInfo{
+		ExecutionID:      fmt.Sprintf("%d/%s/%s", port, trafficAccessToken, envdAccessToken),
+		NetworkPlacement: &catalog.NetworkPlacement{NetworkMode: catalog.NetworkModeFullRouter, RouterID: "router", IngressAddress: "10.8.0.2", IngressPort: 5010},
+	}
+}
+
+// Callers that differ in port or in either token run their own resume and
+// receive the route answered for their own credentials; only identical
+// credentials on the same port share a flight and its route.
 func TestResumeFlights_DifferentPortOrCredentialsDoNotShare(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &credentialResumer{release: make(chan struct{})}
 	flights := newTestResumeFlights(t, metrics, resumer)
 
 	callers := []struct {
@@ -367,11 +403,14 @@ func TestResumeFlights_DifferentPortOrCredentialsDoNotShare(t *testing.T) {
 	}
 	close(resumer.release)
 
-	for _, result := range results {
+	routes := make([]*catalog.SandboxInfo, 0, len(results))
+	for i, result := range results {
 		r := <-result
 		require.NoError(t, r.err)
-		require.Equal(t, "10.0.0.1", r.nodeIP)
+		require.Equal(t, credentialRoute(callers[i].port, callers[i].traffic, callers[i].envd), r.route)
+		routes = append(routes, r.route)
 	}
+	require.Same(t, routes[0], routes[4], "identical credentials share the flight's route")
 
 	require.EqualValues(t, 4, resumer.calls.Load())
 	require.EqualValues(t, 4, metrics.flightCount(t, resumeFlightRoleLeader, resumeFlightResultServed))

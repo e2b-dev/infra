@@ -18,9 +18,11 @@ import (
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
 	"github.com/e2b-dev/infra/packages/shared/pkg/featureflags"
+	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -49,6 +51,11 @@ func newDestinationResolver(sandboxes *sandbox.Map) func(r *http.Request) (*pool
 			var found bool
 			if sbx, found = sandboxes.Get(id); !found {
 				return reverseproxy.IngressTarget{}, reverseproxy.NewErrSandboxNotFound(id)
+			}
+			// Full-router ingress enters through the sandbox's Router, which this
+			// proxy does not forward for, so it never reaches the guest from here.
+			if catalog.NetworkMode(sbx.NetworkPlacement.GetNetworkMode()) == catalog.NetworkModeFullRouter {
+				return reverseproxy.IngressTarget{}, reverseproxy.NewErrSandboxPlacementRefused(id, "full-router ingress is not served by the orchestrator proxy", proxygrpc.PlacementFeatureUnsupported, http.StatusServiceUnavailable)
 			}
 
 			return reverseproxy.IngressTarget{

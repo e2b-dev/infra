@@ -24,6 +24,7 @@ import (
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
 	"github.com/e2b-dev/infra/packages/shared/pkg/logger"
 	reverseproxy "github.com/e2b-dev/infra/packages/shared/pkg/proxy"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 	"github.com/e2b-dev/infra/packages/shared/pkg/telemetry"
 )
 
@@ -114,8 +115,10 @@ type resumeFlight struct {
 	capDeadline time.Time
 	capStop     func()
 	firstErr    error
-	nodeIP      string
-	err         error
+	// route is the answer every waiter of the flight receives, shared and
+	// never modified.
+	route *catalog.SandboxInfo
+	err   error
 }
 
 // resumeFlightKey names the callers that may share one resume: the API
@@ -338,13 +341,13 @@ func newResumeFlights(meter metric.Meter, resumer SandboxResumer, featureFlags *
 	}, nil
 }
 
-func (r *resumeFlights) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+func (r *resumeFlights) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (*catalog.SandboxInfo, error) {
 	if err := ctx.Err(); err != nil {
 		// A caller already gone would lead a flight nobody waits on and
 		// make the control plane resume for it; it joins nothing instead.
 		r.countCaller(ctx, resumeFlightRoleNone, resumeFlightResultCanceled)
 
-		return "", err
+		return nil, err
 	}
 
 	key := newResumeFlightKey(sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
@@ -356,7 +359,7 @@ func (r *resumeFlights) Resume(ctx context.Context, sandboxId string, sandboxPor
 		// registry still holds.
 		r.countCaller(ctx, resumeFlightRoleNone, resumeFlightResultCanceled)
 
-		return "", reverseproxy.NewErrSandboxCapacity(sandboxId, errFlightClosed.Error())
+		return nil, reverseproxy.NewErrSandboxCapacity(sandboxId, errFlightClosed.Error())
 	}
 	f, ok := r.flights[key]
 	if ok {
@@ -641,14 +644,14 @@ func (r *resumeFlights) run(ctx context.Context, f *resumeFlight, budget time.Du
 	defer func() {
 		if p := recover(); p != nil {
 			logger.L().Error(ctx, "resume flight panicked", zap.Any("panic", p), zap.Stack("stack"), logger.WithSandboxID(sandboxId))
-			f.nodeIP, f.err = "", fmt.Errorf("%w: resume flight panicked: %v", reverseproxy.NewErrSandboxCapacity(sandboxId, "resume flight panicked"), p)
+			f.route, f.err = nil, fmt.Errorf("%w: resume flight panicked: %v", reverseproxy.NewErrSandboxCapacity(sandboxId, "resume flight panicked"), p)
 		}
 	}()
 
 	// The leader attached before this goroutine started and was still
 	// there when Resume began; it may have left since, and a flight nobody
 	// waits on makes no attempt (beginAttempt).
-	f.nodeIP, f.err = r.resume(ctx, f, budget, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
+	f.route, f.err = r.resume(ctx, f, budget, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 }
 
 // end unregisters the flight, releases its detached slot and publishes its
@@ -684,28 +687,28 @@ func (r *resumeFlights) end(f *resumeFlight) {
 // the first retryable failure rather than from the call, no attempt starts
 // with less than the floor left or without a parked waiter, and the loop
 // stops once every waiter has left.
-func (r *resumeFlights) resume(ctx context.Context, f *resumeFlight, budget time.Duration, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+func (r *resumeFlights) resume(ctx context.Context, f *resumeFlight, budget time.Duration, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (*catalog.SandboxInfo, error) {
 	backoff := resumeRetryInitialBackoff
 	var deadline time.Time
 	var lastErr error
 
 	for {
-		nodeIP, err := r.attempt(ctx, f, lastErr != nil, deadline, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
+		route, err := r.attempt(ctx, f, lastErr != nil, deadline, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 		switch {
 		case err == nil:
-			return nodeIP, nil
+			return route, nil
 		case errors.Is(err, errBudgetFloor):
-			return "", &resumeBudgetExhaustedError{err: lastErr}
+			return nil, &resumeBudgetExhaustedError{err: lastErr}
 		case errors.Is(err, errFlightAbandoned):
 			// Nobody is left to read an answer.
-			return "", err
+			return nil, err
 		case localResumeError(err) && lastErr == nil:
 			// The cause stays in the chain: the page is the capacity
 			// page either way, but a Close counts as canceled, not as
 			// an error.
-			return "", fmt.Errorf("%w: %w", reverseproxy.NewErrSandboxCapacity(sandboxId, err.Error()), err)
+			return nil, fmt.Errorf("%w: %w", reverseproxy.NewErrSandboxCapacity(sandboxId, err.Error()), err)
 		case errors.Is(err, errFlightClosed):
-			return "", endedResumeError(ctx, lastErr)
+			return nil, endedResumeError(ctx, lastErr)
 		case localResumeError(err):
 			// After a retryable failure the attempt deadline and a token
 			// the attempt could not obtain are retried within the budget;
@@ -715,10 +718,10 @@ func (r *resumeFlights) resume(ctx context.Context, f *resumeFlight, budget time
 				logger.L().Warn(ctx, "resume token unavailable, retrying", zap.Error(err), logger.WithSandboxID(sandboxId))
 			}
 			if !r.now().Before(deadline) {
-				return "", &resumeBudgetExhaustedError{err: lastErr}
+				return nil, &resumeBudgetExhaustedError{err: lastErr}
 			}
 		case !retryableResumeError(err):
-			return "", err
+			return nil, err
 		default:
 			if lastErr == nil {
 				deadline = r.now().Add(budget)
@@ -730,7 +733,7 @@ func (r *resumeFlights) resume(ctx context.Context, f *resumeFlight, budget time
 
 		// A failure nobody waits for ends the flight.
 		if !r.endAttempt(f) {
-			return "", errFlightAbandoned
+			return nil, errFlightAbandoned
 		}
 
 		// The budget is over once the backoff would leave less than the
@@ -738,11 +741,11 @@ func (r *resumeFlights) resume(ctx context.Context, f *resumeFlight, budget time
 		// answered now rather than after a sleep for nothing.
 		pause := jitteredBackoff(backoff)
 		if deadline.Sub(r.now())-pause < resumeRetryAttemptFloor {
-			return "", &resumeBudgetExhaustedError{err: lastErr}
+			return nil, &resumeBudgetExhaustedError{err: lastErr}
 		}
 
 		if !r.sleep(ctx, pause) {
-			return "", endedResumeError(ctx, lastErr)
+			return nil, endedResumeError(ctx, lastErr)
 		}
 		backoff = min(time.Duration(float64(backoff)*resumeRetryBackoffFactor), resumeRetryBackoffCap)
 	}
@@ -779,9 +782,9 @@ func jitteredBackoff(backoff time.Duration) time.Duration {
 // context's cause says which: the attempt deadline, Close, or the last
 // caller leaving. The attempt mark stays set on return: resume clears it
 // (endAttempt) when it goes on, end when it publishes.
-func (r *resumeFlights) attempt(ctx context.Context, f *resumeFlight, retry bool, deadline time.Time, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+func (r *resumeFlights) attempt(ctx context.Context, f *resumeFlight, retry bool, deadline time.Time, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (*catalog.SandboxInfo, error) {
 	if err := r.beginAttempt(ctx, f, retry, deadline); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	ctx, cancel := context.WithTimeoutCause(ctx, r.attemptCeiling, errAttemptDeadline)
@@ -794,28 +797,28 @@ func (r *resumeFlights) attempt(ctx context.Context, f *resumeFlight, retry bool
 		defer r.disarmCap(f)
 	}
 
-	nodeIP, err := r.resumer.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
+	route, err := r.resumer.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err == nil {
-		return nodeIP, nil
+		return route, nil
 	}
 
 	if cause := context.Cause(ctx); cause != nil && !controlPlaneAnswer(err) {
-		return "", cause
+		return nil, cause
 	}
 
-	return "", err
+	return nil, err
 }
 
 // await holds nothing until the flight reports its first retryable failure;
 // only then does the caller take a lot slot or get shed.
-func (r *resumeFlights) await(ctx context.Context, f *resumeFlight, role string, sandboxId string) (string, error) {
+func (r *resumeFlights) await(ctx context.Context, f *resumeFlight, role string, sandboxId string) (*catalog.SandboxInfo, error) {
 	select {
 	case <-f.done:
 		return r.finish(ctx, f, role)
 	case <-ctx.Done():
 		r.countCaller(ctx, role, resumeFlightResultCanceled)
 
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	case <-f.retrying:
 	}
 
@@ -833,14 +836,14 @@ func (r *resumeFlights) await(ctx context.Context, f *resumeFlight, role string,
 		if !r.awaitAttempt(ctx, f) {
 			r.countCaller(ctx, role, resumeFlightResultCanceled)
 
-			return "", ctx.Err()
+			return nil, ctx.Err()
 		}
 		if f.ready() {
 			return r.finish(ctx, f, role)
 		}
 		r.countCaller(ctx, role, resumeFlightResultError)
 
-		return "", f.firstErr
+		return nil, f.firstErr
 	}
 
 	if !r.lot.tryEnter(r.featureFlags.IntFlag(ctx, featureflags.ClientProxyResumeParkingLotSize)) {
@@ -852,7 +855,7 @@ func (r *resumeFlights) await(ctx context.Context, f *resumeFlight, role string,
 		r.countCaller(ctx, role, resumeFlightResultError)
 
 		// No Retry-After: a fixed delay brings the shed clients back in one wave while the lot is still full.
-		return "", reverseproxy.NewErrSandboxShed(sandboxId, reasonParkingLotFull)
+		return nil, reverseproxy.NewErrSandboxShed(sandboxId, reasonParkingLotFull)
 	}
 
 	r.park(f)
@@ -868,7 +871,7 @@ func (r *resumeFlights) await(ctx context.Context, f *resumeFlight, role string,
 		r.lot.leave(ctx, parkedAt, parkingOutcomeCanceled)
 		r.countCaller(ctx, role, resumeFlightResultCanceled)
 
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -919,7 +922,7 @@ func (f *resumeFlight) ready() bool {
 
 // finish hands the flight's answer to one caller and counts it; a flight
 // Close ended counts as canceled, as its parked waits do.
-func (r *resumeFlights) finish(ctx context.Context, f *resumeFlight, role string) (string, error) {
+func (r *resumeFlights) finish(ctx context.Context, f *resumeFlight, role string) (*catalog.SandboxInfo, error) {
 	result := resumeFlightResultServed
 	switch {
 	case f.err == nil:
@@ -930,7 +933,7 @@ func (r *resumeFlights) finish(ctx context.Context, f *resumeFlight, role string
 	}
 	r.countCaller(ctx, role, result)
 
-	return f.nodeIP, f.err
+	return f.route, f.err
 }
 
 func (r *resumeFlights) countCaller(ctx context.Context, role string, result string) {

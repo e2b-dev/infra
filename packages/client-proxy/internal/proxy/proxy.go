@@ -47,12 +47,21 @@ const (
 	autoResumeErrored
 )
 
-func catalogSandboxNodeIP(s *catalog.SandboxInfo) (string, error) {
-	return normalizeNodeIP(s.OrchestratorIP)
-}
+// routeNodeIP returns the orchestrator IP for legacy and egress-router
+// routes. Full-router and unknown modes must never fall back to orchestrator
+// ingress.
+func routeNodeIP(sandboxId string, route *catalog.SandboxInfo) (string, error) {
+	if placement := route.NetworkPlacement; placement != nil {
+		switch placement.NetworkMode {
+		case catalog.NetworkModeEgressRouter:
+		case catalog.NetworkModeFullRouter:
+			return "", reverseproxy.NewErrSandboxPlacementRefused(sandboxId, "full-router ingress is not served by client-proxy", proxygrpc.PlacementFeatureUnsupported, http.StatusServiceUnavailable)
+		default:
+			return "", fmt.Errorf("%w: unsupported network mode %q", ErrNodeRouteUnavailable, placement.NetworkMode)
+		}
+	}
 
-func normalizeNodeIP(nodeIP string) (string, error) {
-	nodeIP = strings.TrimSpace(nodeIP)
+	nodeIP := strings.TrimSpace(route.OrchestratorIP)
 	if nodeIP == "" {
 		return "", ErrNodeRouteUnavailable
 	}
@@ -71,25 +80,28 @@ func clientProxyMaskRequestHost(ctx context.Context, featureFlags *featureflags.
 	return &orchestratorHost
 }
 
-func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker SandboxResumer) (string, error) {
+// catalogResolution returns the sandbox's route: the routing record on a
+// hit, and on a miss the route the resume answered with, without reading
+// the record again.
+func catalogResolution(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string, c catalog.SandboxesCatalog, pausedChecker SandboxResumer) (*catalog.SandboxInfo, error) {
 	s, err := c.GetSandbox(ctx, sandboxId)
 	if err != nil {
 		if errors.Is(err, catalog.ErrSandboxNotFound) {
-			nodeIP, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, pausedChecker)
+			route, res, pausedErr := handlePausedSandbox(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken, pausedChecker)
 			if pausedErr != nil {
-				return "", pausedErr
+				return nil, pausedErr
 			}
 			if res == autoResumeSucceeded {
-				return nodeIP, nil
+				return route, nil
 			}
 
-			return "", ErrNodeNotFound
+			return nil, ErrNodeNotFound
 		}
 
-		return "", fmt.Errorf("failed to get sandbox from catalog: %w", err)
+		return nil, fmt.Errorf("failed to get sandbox from catalog: %w", err)
 	}
 
-	return catalogSandboxNodeIP(s)
+	return s, nil
 }
 
 func handlePausedSandbox(
@@ -99,32 +111,32 @@ func handlePausedSandbox(
 	trafficAccessToken string,
 	envdAccessToken string,
 	pausedChecker SandboxResumer,
-) (string, autoResumeResult, error) {
+) (*catalog.SandboxInfo, autoResumeResult, error) {
 	if pausedChecker == nil {
-		return "", autoResumeNotAllowed, nil
+		return nil, autoResumeNotAllowed, nil
 	}
 
-	nodeIP, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
+	route, err := pausedChecker.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil {
 		if st, ok := resumeStatus(err); ok {
 			if st.Code() == codes.PermissionDenied {
-				return "", autoResumePermissionDenied, reverseproxy.NewErrSandboxResumePermissionDenied(sandboxId)
+				return nil, autoResumePermissionDenied, reverseproxy.NewErrSandboxResumePermissionDenied(sandboxId)
 			}
 			if st.Code() == codes.NotFound {
-				return "", autoResumeNotAllowed, nil
+				return nil, autoResumeNotAllowed, nil
 			}
 			if st.Code() == codes.FailedPrecondition && st.Message() == proxygrpc.SandboxStillTransitioningMessage {
 				// The SDK reads an envd-port 409 as "already exists" (a
 				// make_dir then reports success), so envd traffic gets
 				// the same page as 503, which it reads as unavailable.
 				if sandboxPort == uint64(consts.DefaultEnvdServerPort) {
-					return "", autoResumeErrored, reverseproxy.NewErrSandboxStillTransitioningUnavailable(sandboxId)
+					return nil, autoResumeErrored, reverseproxy.NewErrSandboxStillTransitioningUnavailable(sandboxId)
 				}
 
-				return "", autoResumeErrored, reverseproxy.NewErrSandboxStillTransitioning(sandboxId)
+				return nil, autoResumeErrored, reverseproxy.NewErrSandboxStillTransitioning(sandboxId)
 			}
 			if st.Code() == codes.ResourceExhausted {
-				return "", autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId, st.Message())
+				return nil, autoResumeResourceExhausted, reverseproxy.NewErrSandboxResourceExhausted(sandboxId, st.Message())
 			}
 			// The code the API sent decides a placement outcome: a refusal
 			// no retry helps gets the refused page whatever its gRPC code
@@ -146,22 +158,17 @@ func handlePausedSandbox(
 					}
 				}
 
-				return "", autoResumeErrored, reverseproxy.NewErrSandboxPlacementRefused(sandboxId, st.Message(), code, statusCode)
+				return nil, autoResumeErrored, reverseproxy.NewErrSandboxPlacementRefused(sandboxId, st.Message(), code, statusCode)
 			}
 			if st.Code() == codes.Unavailable || proxygrpc.RetryablePlacementFailure(code) {
-				return "", autoResumeErrored, reverseproxy.NewErrSandboxCapacity(sandboxId, st.Message())
+				return nil, autoResumeErrored, reverseproxy.NewErrSandboxCapacity(sandboxId, st.Message())
 			}
 		}
 
-		return "", autoResumeErrored, err
+		return nil, autoResumeErrored, err
 	}
 
-	nodeIP, err = normalizeNodeIP(nodeIP)
-	if err != nil {
-		return "", autoResumeErrored, err
-	}
-
-	return nodeIP, autoResumeSucceeded, nil
+	return route, autoResumeSucceeded, nil
 }
 
 // NewClientProxy returns the proxy and, when resumes are enabled, the closer
@@ -198,7 +205,11 @@ func NewClientProxy(meterProvider metric.MeterProvider, serviceName string, port
 
 			trafficAccessToken := r.Header.Get(proxygrpc.MetadataTrafficAccessToken)
 			envdAccessToken := r.Header.Get(proxygrpc.MetadataEnvdHTTPAccessToken)
-			nodeIP, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, resumer)
+			var nodeIP string
+			route, err := catalogResolution(ctx, sandboxId, port, trafficAccessToken, envdAccessToken, catalog, resumer)
+			if err == nil {
+				nodeIP, err = routeNodeIP(sandboxId, route)
+			}
 			if err != nil {
 				if resumeDeniedErr, ok := errors.AsType[*reverseproxy.SandboxResumePermissionDeniedError](err); ok {
 					l.Warn(ctx, "sandbox resume denied", zap.Error(err))

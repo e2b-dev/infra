@@ -367,6 +367,8 @@ Key mechanisms (all under `pkg/sandbox/`):
 - **Sandbox proxy** (:5007, `pkg/proxy/`): reverse-proxies incoming traffic from client-proxy to
   the sandbox's slot IP and requested port over HTTP or configured HTTPS, enforcing per-sandbox
   traffic access tokens through the shared ingress policy. HTTPS backends may use self-signed certificates.
+  It refuses a full-router sandbox with 503 `sandbox_feature_unsupported` before dialing the
+  slot.
   Shared proxy shutdown waits for H2C and upgraded connections to close and includes them in
   forced connection cleanup. Failed H2C handshakes release their hijacked connections when the
   handshake handler returns.
@@ -446,6 +448,13 @@ different downstream port when the node proxy listens elsewhere. If the sandbox 
 the API's `ResumeSandbox` gRPC — paused sandboxes wake transparently on traffic.
 The record is the orchestrator-owned `sandbox:routing:{id}` (see "Sandbox routing records"
 below).
+
+The record on a hit, or the `ResumeSandbox` answer on a miss, is the sandbox's route, placement
+included. A miss uses the resume answer directly and does not read the record again. A legacy
+(no placement) or egress-router route goes to `orchestrator_ip` on the orchestrator proxy port,
+never to the placement's ingress endpoint. A full-router route answers 503
+`sandbox_feature_unsupported` without a Retry-After header and before anything is dialed. An
+unknown mode or a missing `orchestrator_ip` answers the not-found page.
 
 Concurrent requests that miss the record for the same sandbox, port and credentials share one
 **resume flight** per client-proxy process: the first request's call runs detached from its
@@ -905,9 +914,7 @@ without a placement is a legacy sandbox and is answered with `orchestrator_ip` a
 A placement from another execution, an unknown mode, or a full-router placement without Router,
 address and port fails the RPC. A full-router answer has an empty `orchestrator_ip` and never
 looks up an orchestrator. Egress-router and legacy answers still carry `orchestrator_ip`.
-client-proxy still routes on `orchestrator_ip` only, so full-router sandboxes need a client-proxy
-that reads the placement, deployed Router ingress, and placement publication and refresh in the
-routing record before they can be enabled.
+client-proxy reads this placement and refuses full-router routes, as does the orchestrator proxy.
 
 ### Volume content
 

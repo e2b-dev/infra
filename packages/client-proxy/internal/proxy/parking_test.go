@@ -36,18 +36,18 @@ var errStillTransitioning = status.Error(codes.FailedPrecondition, proxygrpc.San
 // sequenceResumer answers its calls with the listed errors in order, then with
 // the node IP.
 type sequenceResumer struct {
-	errs   []error
-	nodeIP string
-	calls  atomic.Int32
+	errs  []error
+	route *catalog.SandboxInfo
+	calls atomic.Int32
 }
 
-func (s *sequenceResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (s *sequenceResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	call := int(s.calls.Add(1)) - 1
 	if call < len(s.errs) {
-		return "", s.errs[call]
+		return nil, s.errs[call]
 	}
 
-	return s.nodeIP, nil
+	return s.route, nil
 }
 
 func newFFWithParking(t *testing.T, enabled bool, budgetMs int, lotSize int) *featureflags.Client {
@@ -262,7 +262,7 @@ func TestResumeFlights_PermanentPlacementRefusalIsNotRetried(t *testing.T) {
 	t.Run(proxygrpc.PlacementFeatureUnsupported+" refused", func(t *testing.T) {
 		t.Parallel()
 
-		resumer := &sequenceResumer{errs: []error{placementStatus(t, proxygrpc.PlacementFeatureUnsupported), placementStatus(t, proxygrpc.PlacementFeatureUnsupported)}, nodeIP: "10.0.0.1"}
+		resumer := &sequenceResumer{errs: []error{placementStatus(t, proxygrpc.PlacementFeatureUnsupported), placementStatus(t, proxygrpc.PlacementFeatureUnsupported)}, route: testRoute}
 		p := newParkedProxy(t, newFFWithParking(t, true, 15000, 512), resumer)
 
 		rr := p.get(t)
@@ -280,13 +280,13 @@ func TestResumeFlights_PermanentPlacementRefusalIsNotRetried(t *testing.T) {
 			t.Parallel()
 
 			metrics := newMetricReader(t)
-			resumer := &sequenceResumer{errs: []error{placementStatus(t, code)}, nodeIP: "10.0.0.1"}
+			resumer := &sequenceResumer{errs: []error{placementStatus(t, code)}, route: testRoute}
 			flights := newTestResumeFlights(t, metrics, resumer)
 			flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
-			nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+			route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
 			require.NoError(t, err)
-			require.Equal(t, "10.0.0.1", nodeIP)
+			require.Same(t, testRoute, route)
 			require.EqualValues(t, 2, resumer.calls.Load())
 			require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeServed))
 		})
@@ -308,13 +308,13 @@ func TestResumeFlights_RetryablePlacementCodeParksAndRetries(t *testing.T) {
 			t.Parallel()
 
 			metrics := newMetricReader(t)
-			resumer := &sequenceResumer{errs: []error{failure}, nodeIP: "10.0.0.1"}
+			resumer := &sequenceResumer{errs: []error{failure}, route: testRoute}
 			flights := newTestResumeFlights(t, metrics, resumer)
 			flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
-			nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+			route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
 			require.NoError(t, err)
-			require.Equal(t, "10.0.0.1", nodeIP)
+			require.Same(t, testRoute, route)
 			require.EqualValues(t, 2, resumer.calls.Load())
 			require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeServed))
 		})
@@ -333,7 +333,7 @@ func TestResumeFlights_RetryablePlacementCodeParksAndRetries(t *testing.T) {
 // client or its instrumentation would.
 type panickingResumer struct{}
 
-func (panickingResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (panickingResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	panic("resumer bug")
 }
 
@@ -364,13 +364,13 @@ func TestResumeFlights_StillTransitioningIsRetriedThenServed(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &sequenceResumer{errs: []error{errStillTransitioning}, nodeIP: "10.0.0.1"}
+	resumer := &sequenceResumer{errs: []error{errStillTransitioning}, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
 	require.NoError(t, err)
-	require.Equal(t, "10.0.0.1", nodeIP)
+	require.Same(t, testRoute, route)
 	require.EqualValues(t, 2, resumer.calls.Load())
 	require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeServed))
 	require.EqualValues(t, 1, metrics.parkingWaitSamples(t))
@@ -496,7 +496,7 @@ func TestResumeFlights_FullLotShedsWithCapacityPage(t *testing.T) {
 func TestResumeFlights_FlagOffReturnsFirstFailure(t *testing.T) {
 	t.Parallel()
 
-	resumer := &sequenceResumer{errs: []error{errStillTransitioning}, nodeIP: "10.0.0.1"}
+	resumer := &sequenceResumer{errs: []error{errStillTransitioning}, route: testRoute}
 	p := newParkedProxy(t, newFFWithParking(t, false, 15000, 512), resumer)
 
 	rr := p.get(t)
@@ -518,7 +518,7 @@ func TestHandlePausedSandbox_StillTransitioningByPort(t *testing.T) {
 	t.Run("user port", func(t *testing.T) {
 		t.Parallel()
 
-		flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{errs: []error{errStillTransitioning}, nodeIP: "10.0.0.1"})
+		flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{errs: []error{errStillTransitioning}, route: testRoute})
 		flights.featureFlags = newFFWithParking(t, false, 15000, 512)
 
 		_, res, err := handlePausedSandbox(t.Context(), "sbx", 3000, "token", "", flights)
@@ -531,7 +531,7 @@ func TestHandlePausedSandbox_StillTransitioningByPort(t *testing.T) {
 	t.Run("envd port", func(t *testing.T) {
 		t.Parallel()
 
-		flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{errs: []error{errStillTransitioning}, nodeIP: "10.0.0.1"})
+		flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{errs: []error{errStillTransitioning}, route: testRoute})
 		flights.featureFlags = newFFWithParking(t, false, 15000, 512)
 
 		_, res, err := handlePausedSandbox(t.Context(), "sbx", uint64(consts.DefaultEnvdServerPort), "token", "", flights)
@@ -575,14 +575,14 @@ func TestResumeFlights_ReadyResultIsServedWhenLotIsFull(t *testing.T) {
 	flights.featureFlags = newFFWithParking(t, true, 15000, 1)
 	require.True(t, flights.lot.tryEnter(1), "another sandbox's caller holds the only slot")
 
-	f := &resumeFlight{done: make(chan struct{}), retrying: make(chan struct{}), nodeIP: "10.0.0.1"}
+	f := &resumeFlight{done: make(chan struct{}), retrying: make(chan struct{}), route: testRoute}
 	close(f.retrying)
 	close(f.done)
 
 	for range 100 {
-		nodeIP, err := flights.await(t.Context(), f, resumeFlightRoleJoiner, "sbx")
+		route, err := flights.await(t.Context(), f, resumeFlightRoleJoiner, "sbx")
 		require.NoError(t, err)
-		require.Equal(t, "10.0.0.1", nodeIP)
+		require.Same(t, testRoute, route)
 	}
 
 	require.Zero(t, metrics.parkingRejected(t))
@@ -601,7 +601,7 @@ func TestResumeFlights_FlagOffJoinerWaitsForTheAttemptUnderWay(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.attemptCeiling = 10 * time.Second
 	clock := newFakeClock()
@@ -616,13 +616,13 @@ func TestResumeFlights_FlagOffJoinerWaitsForTheAttemptUnderWay(t *testing.T) {
 	source.Update(source.Flag(featureflags.ClientProxyResumeParkingFlag.Key()).VariationForAll(false))
 
 	type pausedResult struct {
-		nodeIP string
-		err    error
+		route *catalog.SandboxInfo
+		err   error
 	}
 	joinerResult := make(chan pausedResult, 1)
 	go func() {
-		nodeIP, _, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", flights)
-		joinerResult <- pausedResult{nodeIP: nodeIP, err: err}
+		route, _, err := handlePausedSandbox(t.Context(), "sbx", 8000, "token", "", flights)
+		joinerResult <- pausedResult{route: route, err: err}
 	}()
 	// The joiner is attached and holds no lot slot while the retry runs.
 	require.Eventually(t, func() bool { return waitersInRegistry(flights) == 2 }, 5*time.Second, 5*time.Millisecond)
@@ -631,13 +631,13 @@ func TestResumeFlights_FlagOffJoinerWaitsForTheAttemptUnderWay(t *testing.T) {
 	close(resumer.release)
 	joined := <-joinerResult
 	require.NoError(t, joined.err)
-	require.Equal(t, "10.0.0.1", joined.nodeIP)
+	require.Same(t, testRoute, joined.route)
 	require.EqualValues(t, 1, metrics.flightCount(t, resumeFlightRoleJoiner, resumeFlightResultServed))
 	require.Zero(t, metrics.flightCount(t, resumeFlightRoleJoiner, resumeFlightResultError))
 
 	led := <-leaderResult
 	require.NoError(t, led.err)
-	require.Equal(t, "10.0.0.1", led.nodeIP)
+	require.Same(t, testRoute, led.route)
 	require.EqualValues(t, 2, resumer.calls.Load())
 	require.Zero(t, flightsInRegistry(flights))
 }
@@ -650,7 +650,7 @@ func TestResumeFlights_FlagOffJoinerDoesNotWaitForAnAttemptWithLongToRun(t *test
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.attemptCeiling = 10 * time.Second
 	ff, source := newFFWithParkingSource(t, true, 15000, 512)
@@ -682,7 +682,7 @@ func TestResumeFlights_FlagOffJoinerDoesNotWaitForAnAttemptWithLongToRun(t *test
 	close(resumer.release)
 	led := <-leaderResult
 	require.NoError(t, led.err)
-	require.Equal(t, "10.0.0.1", led.nodeIP)
+	require.Same(t, testRoute, led.route)
 	require.EqualValues(t, 2, resumer.calls.Load())
 }
 
@@ -738,7 +738,7 @@ func TestResumeFlights_FlagOffJoinerBetweenAttemptsTakesTheFirstFailureAtOnce(t 
 func TestResumeFlights_FlagOffJoinerDoesNotWaitForTheNextAttempt(t *testing.T) {
 	t.Parallel()
 
-	flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{nodeIP: "10.0.0.1"})
+	flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{route: testRoute})
 	flights.attemptCeiling = flagOffWaitBound // the joiner waits for an attempt ending within the bound
 	f := &resumeFlight{done: make(chan struct{}), retrying: make(chan struct{}), changed: make(chan struct{}), waiters: 2, parked: 1}
 	require.NoError(t, flights.beginAttempt(t.Context(), f, true, time.Now().Add(time.Minute)))
@@ -782,7 +782,7 @@ func TestResumeFlights_LeaderFlagOffDoesNotEndTheRetriesForAJoinerFlagOn(t *test
 	const callerKind ldcontext.Kind = "caller"
 
 	metrics := newMetricReader(t)
-	resumer := &heldFirstResumer{first: make(chan struct{}), second: make(chan struct{}), firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+	resumer := &heldFirstResumer{first: make(chan struct{}), second: make(chan struct{}), firstErr: errStillTransitioning, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	ff, source := newFFWithParkingSource(t, false, 15000, 512)
 	source.Update(source.Flag(featureflags.ClientProxyResumeParkingFlag.Key()).
@@ -809,7 +809,7 @@ func TestResumeFlights_LeaderFlagOffDoesNotEndTheRetriesForAJoinerFlagOn(t *test
 
 	joined := <-joinerResult
 	require.NoError(t, joined.err)
-	require.Equal(t, "10.0.0.1", joined.nodeIP)
+	require.Same(t, testRoute, joined.route)
 	require.EqualValues(t, 2, resumer.calls.Load())
 	require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeServed))
 	require.EqualValues(t, 1, metrics.flightCount(t, resumeFlightRoleJoiner, resumeFlightResultServed))
@@ -822,21 +822,21 @@ type heldFirstResumer struct {
 	first    chan struct{}
 	second   chan struct{}
 	firstErr error
-	nodeIP   string
+	route    *catalog.SandboxInfo
 	calls    atomic.Int32
 }
 
-func (h *heldFirstResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
-	gate, nodeIP, err := h.second, h.nodeIP, error(nil)
+func (h *heldFirstResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
+	gate, route, err := h.second, h.route, error(nil)
 	if h.calls.Add(1) == 1 {
-		gate, nodeIP, err = h.first, "", h.firstErr
+		gate, route, err = h.first, nil, h.firstErr
 	}
 
 	select {
 	case <-gate:
-		return nodeIP, err
+		return route, err
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	}
 }
 
@@ -848,7 +848,7 @@ func TestResumeFlights_ShortBudgetAnswersWithinTheBudget(t *testing.T) {
 	const budget = 300 * time.Millisecond
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, int(budget.Milliseconds()), 512)
 	flights.attemptCeiling = 10 * time.Second
@@ -857,8 +857,8 @@ func TestResumeFlights_ShortBudgetAnswersWithinTheBudget(t *testing.T) {
 	var sleeps atomic.Int32
 	flights.sleep = advancingSleep(clock, 0, &sleeps)
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	require.Nil(t, route)
 
 	var exhausted *resumeBudgetExhaustedError
 	require.ErrorAs(t, err, &exhausted)
@@ -878,7 +878,7 @@ func TestResumeFlights_BudgetIsExhaustedWithoutASleepThatWouldEatTheFloor(t *tes
 	budget := resumeRetryAttemptFloor + time.Duration(float64(resumeRetryInitialBackoff)*(1-resumeRetryBackoffJitter)) - 50*time.Millisecond
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, int(budget.Milliseconds()), 512)
 	flights.attemptCeiling = 10 * time.Second
@@ -889,8 +889,8 @@ func TestResumeFlights_BudgetIsExhaustedWithoutASleepThatWouldEatTheFloor(t *tes
 		return sleepUnlessDone(ctx, d)
 	}
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	require.Nil(t, route)
 
 	var exhausted *resumeBudgetExhaustedError
 	require.ErrorAs(t, err, &exhausted)
@@ -912,7 +912,7 @@ func TestResumeFlights_NoAttemptStartsBelowTheFloorAfterTheSleep(t *testing.T) {
 	budget := resumeRetryAttemptFloor + slack
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, int(budget.Milliseconds()), 512)
 	flights.attemptCeiling = 10 * time.Second
@@ -931,8 +931,8 @@ func TestResumeFlights_NoAttemptStartsBelowTheFloorAfterTheSleep(t *testing.T) {
 		return advance(ctx, d)
 	}
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	require.Nil(t, route)
 
 	var exhausted *resumeBudgetExhaustedError
 	require.ErrorAs(t, err, &exhausted)
@@ -946,14 +946,14 @@ func TestResumeFlights_NoAttemptStartsBelowTheFloorAfterTheSleep(t *testing.T) {
 // later one at once, recording how long the call's context had left.
 type retryDeadlineResumer struct {
 	firstErr error
-	nodeIP   string
+	route    *catalog.SandboxInfo
 	calls    atomic.Int32
 	left     atomic.Int64 // nanoseconds the retry's context had left; -1 for none
 }
 
-func (d *retryDeadlineResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (d *retryDeadlineResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	if d.calls.Add(1) == 1 {
-		return "", d.firstErr
+		return nil, d.firstErr
 	}
 
 	left := int64(-1)
@@ -962,7 +962,7 @@ func (d *retryDeadlineResumer) Resume(ctx context.Context, _ string, _ uint64, _
 	}
 	d.left.Store(left)
 
-	return d.nodeIP, nil
+	return d.route, nil
 }
 
 // A retry started with the floor of the budget left runs under the ceiling,
@@ -976,7 +976,7 @@ func TestResumeFlights_RetryRunsUnderTheCeilingNotTheBudgetLeft(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &retryDeadlineResumer{firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+	resumer := &retryDeadlineResumer{firstErr: errStillTransitioning, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 2500, 512)
 	flights.attemptCeiling = 10 * time.Second
@@ -984,9 +984,9 @@ func TestResumeFlights_RetryRunsUnderTheCeilingNotTheBudgetLeft(t *testing.T) {
 	flights.now = clock.Now
 	flights.sleep = parkedThenAdvancing(flights, clock, 500*time.Millisecond)
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
 	require.NoError(t, err)
-	require.Equal(t, "10.0.0.1", nodeIP)
+	require.Same(t, testRoute, route)
 	require.EqualValues(t, 2, resumer.calls.Load())
 	left := time.Duration(resumer.left.Load())
 	require.Greater(t, left, resumeRetryAttemptFloor, "the retry was capped at the budget left")
@@ -1046,7 +1046,7 @@ func TestResumeFlights_DetachedRetryIsCutAtTheBudgetsEnd(t *testing.T) {
 		t.Helper()
 
 		metrics := newMetricReader(t)
-		resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, nodeIP: "10.0.0.1"}
+		resumer := &gatedResumer{release: make(chan struct{}), firstErr: errStillTransitioning, route: testRoute}
 		flights := newTestResumeFlights(t, metrics, resumer)
 		flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 		timers := &recordingAfter{}
@@ -1101,7 +1101,7 @@ func TestResumeFlights_DetachedRetryIsCutAtTheBudgetsEnd(t *testing.T) {
 		close(resumer.release)
 		joined := <-joiner
 		require.NoError(t, joined.err)
-		require.Equal(t, "10.0.0.1", joined.nodeIP)
+		require.Same(t, testRoute, joined.route)
 		require.EqualValues(t, 2, resumer.calls.Load())
 		require.EqualValues(t, 1, metrics.flightCount(t, resumeFlightRoleJoiner, resumeFlightResultServed))
 	})
@@ -1128,16 +1128,16 @@ type ceilingCutResumer struct {
 	calls atomic.Int32
 }
 
-func (c *ceilingCutResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (c *ceilingCutResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	switch c.calls.Add(1) {
 	case 1:
-		return "", errStillTransitioning
+		return nil, errStillTransitioning
 	case 2:
 		<-ctx.Done()
 
-		return "", ctx.Err()
+		return nil, ctx.Err()
 	default:
-		return "10.0.0.1", nil
+		return testRoute, nil
 	}
 }
 
@@ -1161,7 +1161,7 @@ func TestResumeFlights_CeilingCutRetriesWhileBudgetRemains(t *testing.T) {
 
 	served := <-resumeInBackground(flights, t.Context())
 	require.NoError(t, served.err)
-	require.Equal(t, "10.0.0.1", served.nodeIP)
+	require.Same(t, testRoute, served.route)
 	require.EqualValues(t, 3, resumer.calls.Load())
 	require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeServed))
 }
@@ -1172,14 +1172,14 @@ type deadlineResumer struct {
 	calls atomic.Int32
 }
 
-func (d *deadlineResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (d *deadlineResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	if d.calls.Add(1) == 1 {
-		return "", status.Error(codes.Unavailable, "no capacity")
+		return nil, status.Error(codes.Unavailable, "no capacity")
 	}
 
 	<-ctx.Done()
 
-	return "", status.Error(codes.ResourceExhausted, "rate limit")
+	return nil, status.Error(codes.ResourceExhausted, "rate limit")
 }
 
 // A status from the control plane that arrives as the attempt's deadline
@@ -1209,14 +1209,14 @@ type carriedCodeAtDeadlineResumer struct {
 	calls atomic.Int32
 }
 
-func (d *carriedCodeAtDeadlineResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (d *carriedCodeAtDeadlineResumer) Resume(ctx context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	if d.calls.Add(1) > 1 {
-		return "10.0.0.1", nil
+		return testRoute, nil
 	}
 
 	<-ctx.Done()
 
-	return "", placementStatusWithCode(d.t, codes.DeadlineExceeded, proxygrpc.PlacementTimeout)
+	return nil, placementStatusWithCode(d.t, codes.DeadlineExceeded, proxygrpc.PlacementTimeout)
 }
 
 // A placement timeout the API sent as the attempt's deadline expired is the
@@ -1233,9 +1233,9 @@ func TestResumeFlights_CarriedCodeRacingTheDeadlineParksAndRetries(t *testing.T)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 	flights.attemptCeiling = 50 * time.Millisecond
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
 	require.NoError(t, err)
-	require.Equal(t, "10.0.0.1", nodeIP)
+	require.Same(t, testRoute, route)
 	require.EqualValues(t, 2, resumer.calls.Load())
 	require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeServed))
 }
@@ -1247,12 +1247,12 @@ func TestResumeFlights_RemoteDeadlineExceededIsNotRetried(t *testing.T) {
 
 	remote := status.Error(codes.DeadlineExceeded, "orchestrator did not answer")
 	metrics := newMetricReader(t)
-	resumer := &sequenceResumer{errs: []error{status.Error(codes.Unavailable, "no capacity"), remote}, nodeIP: "10.0.0.1"}
+	resumer := &sequenceResumer{errs: []error{status.Error(codes.Unavailable, "no capacity"), remote}, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	require.Nil(t, route)
 	require.ErrorIs(t, err, remote)
 	require.EqualValues(t, 2, resumer.calls.Load())
 	require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeError))
@@ -1344,7 +1344,7 @@ func TestResumeFlights_CallerAlreadyGoneAtArrivalStartsNoFlight(t *testing.T) {
 	const callers = 500
 
 	metrics := newMetricReader(t)
-	resumer := &sequenceResumer{nodeIP: "10.0.0.1"}
+	resumer := &sequenceResumer{route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
@@ -1357,7 +1357,7 @@ func TestResumeFlights_CallerAlreadyGoneAtArrivalStartsNoFlight(t *testing.T) {
 	}
 	for _, result := range results {
 		r := <-result
-		require.Empty(t, r.nodeIP)
+		require.Nil(t, r.route)
 		require.ErrorIs(t, r.err, context.Canceled)
 	}
 
@@ -1376,7 +1376,7 @@ func TestResumeFlights_CallerAlreadyGoneAtArrivalStartsNoFlight(t *testing.T) {
 func TestResumeFlights_RunMakesNoAttemptForAFlightWithoutWaiters(t *testing.T) {
 	t.Parallel()
 
-	resumer := &sequenceResumer{nodeIP: "10.0.0.1"}
+	resumer := &sequenceResumer{route: testRoute}
 	flights := newTestResumeFlights(t, newMetricReader(t), resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 	key := newResumeFlightKey("sbx", 8000, "token", "")
@@ -1396,7 +1396,7 @@ func TestResumeFlights_RunMakesNoAttemptForAFlightWithoutWaiters(t *testing.T) {
 	flights.run(t.Context(), attached, 15*time.Second, "sbx", 8000, "token", "")
 	<-attached.done
 	require.NoError(t, attached.err)
-	require.Equal(t, "10.0.0.1", attached.nodeIP)
+	require.Same(t, testRoute, attached.route)
 	require.EqualValues(t, 1, resumer.calls.Load())
 	require.Zero(t, flightsInRegistry(flights))
 }
@@ -1409,7 +1409,7 @@ func TestResumeFlights_LastWaiterLeavingLetsTheAttemptFinishForTheNextCaller(t *
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, false, 15000, 512)
 
@@ -1430,7 +1430,7 @@ func TestResumeFlights_LastWaiterLeavingLetsTheAttemptFinishForTheNextCaller(t *
 	close(resumer.release)
 	joined := <-later
 	require.NoError(t, joined.err)
-	require.Equal(t, "10.0.0.1", joined.nodeIP)
+	require.Same(t, testRoute, joined.route)
 	require.EqualValues(t, 1, resumer.calls.Load())
 	require.Zero(t, flightsInRegistry(flights))
 	require.EqualValues(t, 1, metrics.flightCount(t, resumeFlightRoleLeader, resumeFlightResultCanceled))
@@ -1444,7 +1444,7 @@ func TestResumeFlights_LastWaiterLeavingCancelsTheAttemptBeyondTheDetachedBound(
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, false, 15000, 512)
 	flights.maxDetached = 0
@@ -1497,8 +1497,8 @@ func TestResumeFlights_NoRetryStartsWithoutAParkedWaiter(t *testing.T) {
 	flights.mu.Unlock()
 	go flights.run(ctx, late, 15*time.Second, "sbx", 8000, "token", "")
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	require.Nil(t, route)
 	require.ErrorIs(t, err, errStillTransitioning)
 	require.EqualValues(t, 1, resumer.calls.Load())
 
@@ -1527,7 +1527,7 @@ func TestResumeFlights_NoRetryStartsWithoutAParkedWaiter(t *testing.T) {
 func TestResumeFlights_RetryNeedsAParkedWaiterAtItsStart(t *testing.T) {
 	t.Parallel()
 
-	flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{nodeIP: "10.0.0.1"})
+	flights := newTestResumeFlights(t, newMetricReader(t), &sequenceResumer{route: testRoute})
 	key := newResumeFlightKey("sbx", 8000, "token", "")
 	f := &resumeFlight{key: key, done: make(chan struct{}), retrying: make(chan struct{}), cancel: func(error) {}, waiters: 1, changed: make(chan struct{})}
 	flights.flights[key] = f
@@ -1684,8 +1684,8 @@ func TestResumeFlights_CloseEndsParkedFlights(t *testing.T) {
 	require.EqualValues(t, 1, metrics.flightCount(t, resumeFlightRoleJoiner, resumeFlightResultCanceled))
 	calls := resumer.calls.Load()
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	require.Nil(t, route)
 
 	var capacityErr *reverseproxy.SandboxCapacityError
 	require.ErrorAs(t, err, &capacityErr)
@@ -1709,13 +1709,13 @@ func TestResumeFlights_TokenFailureDuringARetryIsRetried(t *testing.T) {
 	retryable := status.Error(codes.Unavailable, "no capacity")
 	tokenErr := fmt.Errorf("%w: token endpoint down", errResumeToken)
 	metrics := newMetricReader(t)
-	resumer := &sequenceResumer{errs: []error{retryable, tokenErr}, nodeIP: "10.0.0.1"}
+	resumer := &sequenceResumer{errs: []error{retryable, tokenErr}, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx-token", 8000, "token", "")
+	route, err := flights.Resume(t.Context(), "sbx-token", 8000, "token", "")
 	require.NoError(t, err)
-	require.Equal(t, "10.0.0.1", nodeIP)
+	require.Same(t, testRoute, route)
 	require.EqualValues(t, 3, resumer.calls.Load())
 	require.EqualValues(t, 1, metrics.parkingWaitSamples(t, parkingOutcomeServed))
 
@@ -1735,15 +1735,15 @@ func TestResumeFlights_TokenFailuresEndWithTheBudget(t *testing.T) {
 	retryable := status.Error(codes.Unavailable, "no capacity")
 	tokenErr := fmt.Errorf("%w: token endpoint down", errResumeToken)
 	metrics := newMetricReader(t)
-	resumer := &sequenceResumer{errs: []error{retryable, tokenErr, tokenErr, tokenErr, tokenErr}, nodeIP: "10.0.0.1"}
+	resumer := &sequenceResumer{errs: []error{retryable, tokenErr, tokenErr, tokenErr, tokenErr}, route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 2450, 512)
 	clock := newFakeClock()
 	flights.now = clock.Now
 	flights.sleep = advancingSleep(clock, 0, nil)
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx-token", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx-token", 8000, "token", "")
+	require.Nil(t, route)
 	var exhausted *resumeBudgetExhaustedError
 	require.ErrorAs(t, err, &exhausted)
 	require.ErrorIs(t, err, retryable)
@@ -1758,13 +1758,13 @@ type statusGatedResumer struct {
 	gatedResumer
 }
 
-func (g *statusGatedResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
-	nodeIP, err := g.gatedResumer.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
+func (g *statusGatedResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (*catalog.SandboxInfo, error) {
+	route, err := g.gatedResumer.Resume(ctx, sandboxId, sandboxPort, trafficAccessToken, envdAccessToken)
 	if err != nil && ctx.Err() != nil {
-		return "", fmt.Errorf("grpc resume: %w", status.FromContextError(ctx.Err()).Err())
+		return nil, fmt.Errorf("grpc resume: %w", status.FromContextError(ctx.Err()).Err())
 	}
 
-	return nodeIP, err
+	return route, err
 }
 
 type closedResumerCase struct {
@@ -1779,8 +1779,8 @@ type closedResumerCase struct {
 func TestResumeFlights_CloseDuringTheFirstAttemptRendersTheUnavailablePage(t *testing.T) {
 	t.Parallel()
 
-	plain := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
-	withStatus := &statusGatedResumer{gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}}
+	plain := &gatedResumer{release: make(chan struct{}), route: testRoute}
+	withStatus := &statusGatedResumer{gatedResumer{release: make(chan struct{}), route: testRoute}}
 	tests := []closedResumerCase{
 		{name: "context error", resumer: plain, calls: &plain.calls},
 		{name: "grpc status", resumer: withStatus, calls: &withStatus.calls},
@@ -1821,7 +1821,7 @@ func TestResumeFlights_CloseDuringTheFirstAttemptCountsEveryWaiterCanceled(t *te
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
@@ -1856,7 +1856,7 @@ func TestResumeFlights_CloseDuringTheFirstAttemptCountsEveryWaiterCanceled(t *te
 func TestClientProxy_CloseDuringTheFirstAttemptAnswersWithTheCapacityPage(t *testing.T) {
 	t.Parallel()
 
-	resumer := &gatedResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &gatedResumer{release: make(chan struct{}), route: testRoute}
 	p := newParkedProxy(t, newFFWithParking(t, true, 15000, 512), resumer)
 
 	page := p.getInBackground(t)
@@ -1881,15 +1881,15 @@ func TestClientProxy_CloseDuringTheFirstAttemptAnswersWithTheCapacityPage(t *tes
 // the test lets it go.
 type deafResumer struct {
 	release chan struct{}
-	nodeIP  string
+	route   *catalog.SandboxInfo
 	calls   atomic.Int32
 }
 
-func (d *deafResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
+func (d *deafResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
 	d.calls.Add(1)
 	<-d.release
 
-	return d.nodeIP, nil
+	return d.route, nil
 }
 
 // A Resume rejected after Close counts as a canceled caller of no flight
@@ -1899,7 +1899,7 @@ func TestResumeFlights_RejectionAfterCloseIsNotCountedAsAJoiner(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &deafResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &deafResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
@@ -1912,8 +1912,8 @@ func TestResumeFlights_RejectionAfterCloseIsNotCountedAsAJoiner(t *testing.T) {
 	require.Eventually(t, func() bool { return isClosed(flights) }, 5*time.Second, 5*time.Millisecond)
 	require.Equal(t, 1, flightsInRegistry(flights))
 
-	nodeIP, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
-	require.Empty(t, nodeIP)
+	route, err := flights.Resume(t.Context(), "sbx", 8000, "token", "")
+	require.Nil(t, route)
 
 	var capacityErr *reverseproxy.SandboxCapacityError
 	require.ErrorAs(t, err, &capacityErr)
@@ -1926,7 +1926,7 @@ func TestResumeFlights_RejectionAfterCloseIsNotCountedAsAJoiner(t *testing.T) {
 	close(resumer.release)
 	select {
 	case r := <-leader:
-		require.Equal(t, "10.0.0.1", r.nodeIP)
+		require.Same(t, testRoute, r.route)
 		require.NoError(t, r.err)
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "the leader outlived the release")
@@ -1960,7 +1960,7 @@ func TestResumeFlights_CloseWaitsForAFlightInsideItsAttempt(t *testing.T) {
 	t.Parallel()
 
 	metrics := newMetricReader(t)
-	resumer := &deafResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &deafResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, metrics, resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
@@ -1986,7 +1986,7 @@ func TestResumeFlights_CloseWaitsForAFlightInsideItsAttempt(t *testing.T) {
 	require.Zero(t, flightsInRegistry(flights))
 	served := <-leader
 	require.NoError(t, served.err)
-	require.Equal(t, "10.0.0.1", served.nodeIP)
+	require.Same(t, testRoute, served.route)
 	require.EqualValues(t, 1, metrics.flightCount(t, resumeFlightRoleLeader, resumeFlightResultServed))
 }
 
@@ -1995,7 +1995,7 @@ func TestResumeFlights_CloseWaitsForAFlightInsideItsAttempt(t *testing.T) {
 func TestResumeFlights_CloseStopsWaitingWithItsContext(t *testing.T) {
 	t.Parallel()
 
-	resumer := &deafResumer{release: make(chan struct{}), nodeIP: "10.0.0.1"}
+	resumer := &deafResumer{release: make(chan struct{}), route: testRoute}
 	flights := newTestResumeFlights(t, newMetricReader(t), resumer)
 	flights.featureFlags = newFFWithParking(t, true, 15000, 512)
 
@@ -2013,7 +2013,7 @@ func TestResumeFlights_CloseStopsWaitingWithItsContext(t *testing.T) {
 	select {
 	case served := <-leader:
 		require.NoError(t, served.err)
-		require.Equal(t, "10.0.0.1", served.nodeIP)
+		require.Same(t, testRoute, served.route)
 	case <-time.After(5 * time.Second):
 		require.FailNow(t, "the leader outlived the release")
 	}

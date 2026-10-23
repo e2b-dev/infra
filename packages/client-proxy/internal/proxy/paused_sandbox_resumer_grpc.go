@@ -15,6 +15,7 @@ import (
 
 	e2bgrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc"
 	proxygrpc "github.com/e2b-dev/infra/packages/shared/pkg/grpc/proxy"
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 type grpcPausedSandboxResumer struct {
@@ -75,7 +76,7 @@ func (c *grpcPausedSandboxResumer) Close(_ context.Context) error {
 	return c.conn.Close()
 }
 
-func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (string, error) {
+func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string, sandboxPort uint64, trafficAccessToken string, envdAccessToken string) (*catalog.SandboxInfo, error) {
 	ctx = metadata.AppendToOutgoingContext(ctx, proxygrpc.MetadataSandboxRequestPort, strconv.FormatUint(sandboxPort, 10))
 
 	if trafficAccessToken != "" {
@@ -88,21 +89,38 @@ func (c *grpcPausedSandboxResumer) Resume(ctx context.Context, sandboxId string,
 
 	ctx, err := c.auth.authorize(ctx)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	// The token may have arrived as the attempt ended; an attempt that
 	// ended must not dial.
 	if err := ctx.Err(); err != nil {
-		return "", err
+		return nil, err
 	}
 
 	resp, err := c.client.ResumeSandbox(ctx, &proxygrpc.SandboxResumeRequest{
 		SandboxId: sandboxId,
 	})
 	if err != nil {
-		return "", fmt.Errorf("grpc resume: %w", err)
+		return nil, fmt.Errorf("grpc resume: %w", err)
 	}
 
-	return strings.TrimSpace(resp.GetOrchestratorIp()), nil
+	return resumeRoute(resp), nil
+}
+
+// resumeRoute is the route the API answered with, in the routing record's
+// form. An absent placement is the legacy network, as in the record.
+func resumeRoute(resp *proxygrpc.SandboxResumeResponse) *catalog.SandboxInfo {
+	route := &catalog.SandboxInfo{OrchestratorIP: strings.TrimSpace(resp.GetOrchestratorIp())}
+	if placement := resp.GetNetworkPlacement(); placement != nil {
+		route.ExecutionID = placement.GetExecutionId()
+		route.NetworkPlacement = &catalog.NetworkPlacement{
+			NetworkMode:    catalog.NetworkMode(placement.GetNetworkMode()),
+			RouterID:       placement.GetRouterId(),
+			IngressAddress: placement.GetIngressAddress(),
+			IngressPort:    placement.GetIngressPort(),
+		}
+	}
+
+	return route
 }

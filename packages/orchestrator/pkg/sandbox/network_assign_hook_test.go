@@ -150,7 +150,7 @@ func TestFactoryRunUpdate(t *testing.T) {
 	factory := &Factory{networkAssignHook: hook}
 	ordinary, placed := testNetworkAssignHookSandbox(), testNetworkAssignHookSandbox()
 	ordinary.Config, placed.Config = NewConfig(Config{}), NewConfig(Config{})
-	placed.networkPlacement = &orchestrator.SandboxNetworkPlacement{ExecutionId: "execution"}
+	placed.NetworkPlacement = &orchestrator.SandboxNetworkPlacement{ExecutionId: "execution"}
 	committed := func(sbx *Sandbox) uint64 {
 		var n uint64
 		sbx.ReadCommitted(func(committedUpdates uint64) { n = committedUpdates })

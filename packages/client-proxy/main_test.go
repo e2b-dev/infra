@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	catalog "github.com/e2b-dev/infra/packages/shared/pkg/sandbox-catalog"
 )
 
 // namedCloser records its name on the shared list when closed.
@@ -26,8 +28,8 @@ type closableResumer struct {
 
 func (closableResumer) Init(_ context.Context) {}
 
-func (closableResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (string, error) {
-	return "", nil
+func (closableResumer) Resume(_ context.Context, _ string, _ uint64, _ string, _ string) (*catalog.SandboxInfo, error) {
+	return nil, nil
 }
 
 // The resume flights close before the feature flags, which a flight still

@@ -551,7 +551,7 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 		ResolvedFirecrackerVersion: resolvedFCVersion,
 		// The placement of the network this execution started on; none when it
 		// uses the worker's own network.
-		NetworkPlacement: sbx.NetworkPlacement(),
+		NetworkPlacement: sbx.NetworkPlacement,
 	}, nil
 }
 
@@ -1794,7 +1794,7 @@ func (s *Server) checkpointInPlace(ctx context.Context, sbx *sandbox.Sandbox, in
 
 	return &orchestrator.SandboxCheckpointResponse{
 		SchedulingMetadata: res.schedulingMetadata,
-		Network:            &orchestrator.SandboxCheckpointNetwork{Placement: sbx.NetworkPlacement()},
+		Network:            &orchestrator.SandboxCheckpointNetwork{Placement: sbx.NetworkPlacement},
 	}, deferred, nil
 }
 
@@ -2037,7 +2037,7 @@ func (s *Server) checkpointResumeFreshWith(callerCtx context.Context, steps resu
 	// The resumed VM was placed again, possibly on another network.
 	return &orchestrator.SandboxCheckpointResponse{
 		SchedulingMetadata: res.schedulingMetadata,
-		Network:            &orchestrator.SandboxCheckpointNetwork{Placement: resumedSbx.NetworkPlacement()},
+		Network:            &orchestrator.SandboxCheckpointNetwork{Placement: resumedSbx.NetworkPlacement},
 	}, nil
 }
 

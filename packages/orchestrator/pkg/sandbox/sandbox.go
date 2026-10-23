@@ -460,10 +460,10 @@ type Sandbox struct {
 	// afterwards (see UseSyncWP).
 	useSyncWP bool
 
-	// networkPlacement is where the network-assign hook sent the execution's
+	// NetworkPlacement is where the network-assign hook sent the execution's
 	// traffic; nil when the sandbox uses the worker's own network. Written
-	// once before the guest runs; read-only afterwards (see NetworkPlacement).
-	networkPlacement *orchestrator.SandboxNetworkPlacement
+	// once before the guest runs, so it needs no locking.
+	NetworkPlacement *orchestrator.SandboxNetworkPlacement
 
 	// balloonMode is the balloon's free-page mechanism as last stamped: from
 	// the template metadata at resume, the configuration at boot, or a device
@@ -656,13 +656,6 @@ func (s *Sandbox) ReadCommitted(read func(committedUpdates uint64)) {
 // during resume before the sandbox is published, so it needs no locking.
 func (s *Sandbox) UseSyncWP() bool {
 	return s.useSyncWP
-}
-
-// NetworkPlacement is the placement the network-assign hook returned, nil
-// when the sandbox uses the worker's own network. Set once before the guest
-// runs, so it needs no locking.
-func (s *Sandbox) NetworkPlacement() *orchestrator.SandboxNetworkPlacement {
-	return s.networkPlacement
 }
 
 // MachineVcpus is how many vCPUs the Firecracker VM has, online or not. Pause records it
@@ -1036,13 +1029,13 @@ var ErrEgressProxyUnsupported = errors.New("egress proxy is not supported on thi
 // egress proxy in egress before anything commits, and tells the hook once
 // an update committed and released the sandbox.
 func (f *Factory) RunUpdate(ctx context.Context, sbx *Sandbox, egress *orchestrator.SandboxNetworkEgressConfig, update func() error) error {
-	if sbx.networkPlacement != nil && egress.GetEgressProxyAddress() != "" {
+	if sbx.NetworkPlacement != nil && egress.GetEgressProxyAddress() != "" {
 		return ErrEgressProxyUnsupported
 	}
 	if err := sbx.RunUpdate(update); err != nil {
 		return err
 	}
-	if sbx.networkPlacement != nil {
+	if sbx.NetworkPlacement != nil {
 		f.networkAssignHook.OnNetworkUpdate(ctx, sbx)
 	}
 
@@ -1309,7 +1302,7 @@ func (f *Factory) CreateSandbox(
 	// Do not move this call: it must run after AssignNetwork above and
 	// before fcHandle.Create below, so OnNetworkAssign always runs before
 	// the guest can execute. A failure fails the start.
-	if sbx.networkPlacement, err = f.runNetworkAssignHook(ctx, sbx, createOpts.networkAssignReason); err != nil {
+	if sbx.NetworkPlacement, err = f.runNetworkAssignHook(ctx, sbx, createOpts.networkAssignReason); err != nil {
 		return nil, err
 	}
 
@@ -1998,7 +1991,7 @@ func (f *Factory) ResumeSandbox(
 	// before fcHandle.Resume below, so OnNetworkAssign always runs before
 	// the guest can resume (and, with it, resume any live connection). A
 	// failure fails the resume.
-	if sbx.networkPlacement, err = f.runNetworkAssignHook(ctx, sbx, reason); err != nil {
+	if sbx.NetworkPlacement, err = f.runNetworkAssignHook(ctx, sbx, reason); err != nil {
 		return nil, err
 	}
 
