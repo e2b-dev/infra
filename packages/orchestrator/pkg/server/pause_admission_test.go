@@ -119,6 +119,7 @@ func admissionTestServer(t *testing.T, graceMs *int) *Server {
 		info:                       &service.ServiceInfo{},
 		sandboxFactory:             &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()},
 		startingSandboxes:          utils.Must(utils.NewAdjustableSemaphore(1)),
+		startGateWaitDuration:      utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxStartGateWaitDurationName)),
 		sandboxPauseDuration:       utils.Must(telemetry.GetHistogram(meter, telemetry.PauseDurationHistogramName)),
 		sandboxCheckpointCounter:   utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxCheckpointCounterName)),
 		pauseAdmissionCounter:      utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxPauseAdmissionCounterName)),

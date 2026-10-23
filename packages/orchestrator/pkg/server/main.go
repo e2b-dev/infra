@@ -86,6 +86,7 @@ type Server struct {
 	buildDisk *buildDisk
 
 	sandboxCreateDuration     metric.Int64Histogram
+	startGateWaitDuration     metric.Int64Histogram
 	sandboxExecutionDuration  metric.Int64Histogram
 	sandboxPauseDuration      metric.Int64Histogram
 	sandboxKilledCounter      metric.Int64Counter
@@ -180,6 +181,12 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		return nil, fmt.Errorf("failed to register sandbox create duration histogram: %w", err)
 	}
 	server.sandboxCreateDuration = sandboxCreateDuration
+
+	startGateWaitDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxStartGateWaitDurationName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register start gate wait duration histogram: %w", err)
+	}
+	server.startGateWaitDuration = startGateWaitDuration
 
 	sandboxExecutionDuration, err := telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxExecutionDurationName)
 	if err != nil {

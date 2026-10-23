@@ -290,12 +290,12 @@ func (s *Server) Create(ctx context.Context, req *orchestrator.SandboxCreateRequ
 
 	// Check if we've reached the max number of starting instances on this node
 	if req.GetSandbox().GetSnapshot() {
-		err := s.waitForAcquire(ctx)
+		err := s.waitForAcquire(ctx, startGateResume)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		acquired := s.startingSandboxes.TryAcquire(1)
+		acquired := s.tryAcquireStart(ctx, startGateCreate)
 		if !acquired {
 			telemetry.ReportEvent(ctx, "too many starting sandboxes on node")
 
@@ -1503,7 +1503,7 @@ func (s *Server) Checkpoint(ctx context.Context, in *orchestrator.SandboxCheckpo
 	}
 
 	// Acquire the starting semaphore before resuming, same as Create/Pause.
-	if err := s.waitForAcquire(ctx); err != nil {
+	if err := s.waitForAcquire(ctx, startGateCheckpoint); err != nil {
 		return nil, err
 	}
 	releaseSlot := sync.OnceFunc(func() { s.startingSandboxes.Release(1) })

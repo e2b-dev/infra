@@ -447,6 +447,7 @@ func duplicateCreateTestServer() *Server {
 		info:                  &service.ServiceInfo{},
 		sandboxFactory:        &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()},
 		startingSandboxes:     utils.Must(utils.NewAdjustableSemaphore(1)),
+		startGateWaitDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxStartGateWaitDurationName)),
 		sandboxCreateDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxCreateDurationName)),
 		sandboxPauseDuration:  utils.Must(telemetry.GetHistogram(meter, telemetry.PauseDurationHistogramName)),
 		sandboxKilledCounter:  noop.Int64Counter{},

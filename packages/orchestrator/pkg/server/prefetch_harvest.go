@@ -192,7 +192,7 @@ func (s *Server) newPrefetchHarvester() *prefetchHarvester {
 		uploadMetadata: func(ctx context.Context, meta metadata.Template, objectMetadata storage.ObjectMetadata) error {
 			return metadata.UploadMetadata(ctx, s.persistence, meta, objectMetadata)
 		},
-		acquire: s.waitForAcquire,
+		acquire: func(ctx context.Context) error { return s.waitForAcquire(ctx, startGateHarvest) },
 		release: func() { s.startingSandboxes.Release(1) },
 	}
 }

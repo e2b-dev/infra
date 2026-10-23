@@ -521,6 +521,15 @@ const (
 	// by outcome (ready_after_wait/refused only).
 	OrchestratorSandboxPauseAdmissionWaitDurationName HistogramType = "orchestrator.sandbox.pause_admission.wait.duration"
 
+	// How long a start waited for one of the node's start slots (the
+	// MaxStartingInstancesPerNode semaphore), one sample per acquire attempt,
+	// labeled by kind (create|resume|checkpoint|harvest) and outcome
+	// (acquired|cancelled|refused). A create never waits -- it takes a slot or
+	// is refused at once -- so its samples are zero and only its count reads;
+	// the other kinds wait up to the acquire timeout, and cancelled is that
+	// timeout or the caller's context ending the wait.
+	OrchestratorSandboxStartGateWaitDurationName HistogramType = "orchestrator.sandbox.start_gate.wait.duration"
+
 	// Pause-resume prefetch harvest cost, recorded once per harvest attempt.
 	// duration is the SLOT-HOLD cost alone — the throwaway resume, its trace
 	// collection and its reap — which is what the harvest-timeout flag caps.
@@ -1157,6 +1166,7 @@ var histogramDesc = map[HistogramType]string{
 	SnapshotMemorySealDurationName:                    "Time for the background CoW-window memory capture (off the in-place resume critical path), labeled by success",
 	OrchestratorSandboxMemfileDedupDurationName:       "Background memfile dedup latency, from the provisional header's creation at pause to the durable-header swap",
 	OrchestratorSandboxPauseAdmissionWaitDurationName: "Time snapshot admission waited on the durable parent header whenever it waited, labeled by outcome (ready_after_wait/refused)",
+	OrchestratorSandboxStartGateWaitDurationName:      "Time a start waited for a per-node start slot, one sample per acquire attempt, labeled by kind (create|resume|checkpoint|harvest) and outcome (acquired|cancelled|refused); a create never waits, so its samples are zero",
 	OrchestratorEnvdOfflineUpgradeDurationName:        "Wall-time of the offline cold-boot envd rootfs swap (jailed debugfs)",
 	OrchestratorEnvdBinaryCacheSourceStatDurationName: "Wall-time of the resume path's stat of the host envd binary on its mount, by result (ok|error)",
 	OrchestratorFsRecoveryDurationName:                "Wall-time of the jailed pre-boot e2fsck run on a cold boot",
@@ -1253,6 +1263,7 @@ var histogramUnits = map[HistogramType]string{
 	SnapshotMemorySealDurationName:                    "ms",
 	OrchestratorSandboxMemfileDedupDurationName:       "ms",
 	OrchestratorSandboxPauseAdmissionWaitDurationName: "ms",
+	OrchestratorSandboxStartGateWaitDurationName:      "ms",
 	PauseResumePrefetchHarvestDurationName:            "ms",
 	PauseResumePrefetchHarvestPagesName:               "{page}",
 	PauseResumePrefetchSealWaitDurationName:           "ms",

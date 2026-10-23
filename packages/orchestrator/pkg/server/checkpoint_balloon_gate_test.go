@@ -125,6 +125,7 @@ func routeTestServer(t *testing.T, inPlace, admitReporting bool) (*Server, *sdkm
 		info:                      &service.ServiceInfo{},
 		sandboxFactory:            &sandbox.Factory{Sandboxes: sandbox.NewSandboxesMap()},
 		startingSandboxes:         utils.Must(utils.NewAdjustableSemaphore(1)),
+		startGateWaitDuration:     utils.Must(telemetry.GetHistogram(meter, telemetry.OrchestratorSandboxStartGateWaitDurationName)),
 		sandboxCheckpointCounter:  utils.Must(telemetry.GetCounter(meter, telemetry.OrchestratorSandboxCheckpointCounterName)),
 		sandboxCheckpointDuration: utils.Must(telemetry.GetHistogram(meter, telemetry.CheckpointDurationName)),
 		featureFlags:              ff,
