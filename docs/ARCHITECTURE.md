@@ -1061,7 +1061,8 @@ sequenceDiagram
 - **Filesystem-only checkpoint**: `memory: false` on snapshot-template creation exports the
   rootfs and no memfile, resumes the same Firecracker process, and produces a template whose
   sandboxes cold-boot; the source keeps running. Routed by its own flag,
-  `filesystem-only-checkpoint`, independent of `in-place-checkpoint` (no memory is exported, so
+  `filesystem-only-checkpoint` (`FILESYSTEM_ONLY_CHECKPOINT` for a deployment without
+  LaunchDarkly), independent of `in-place-checkpoint` (no memory is exported, so
   the sync-WP tracking, the Firecracker release gate and the balloon gate play no part). The
   API refuses it before the sandbox leaves Running when the flag is off for the team (400,
   `snapshot_filesystem_only_disabled`) or when the sandbox's node runs an orchestrator
