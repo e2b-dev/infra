@@ -262,8 +262,10 @@ var (
 	// sync-WP tracking, the Firecracker release and the balloon that gate the
 	// memory in-place path play no part. Off (the default) refuses the
 	// request before anything is touched; there is no memory fallback, since
-	// the caller asked for a template that cold-boots.
-	FilesystemOnlyCheckpointFlag = NewBoolFlag("filesystem-only-checkpoint", false)
+	// the caller asked for a template that cold-boots. The fallback reads
+	// FILESYSTEM_ONLY_CHECKPOINT so a deployment without LaunchDarkly can turn
+	// it on.
+	FilesystemOnlyCheckpointFlag = NewBoolFlag("filesystem-only-checkpoint", envBoolOr("FILESYSTEM_ONLY_CHECKPOINT", false))
 
 	// EnvdInitHeldRequestFlag makes a start whose envd is at or above
 	// utils.MinEnvdVersionForHeldInit wait on one /init for its whole envd-wait budget
