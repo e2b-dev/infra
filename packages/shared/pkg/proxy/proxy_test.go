@@ -945,18 +945,21 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 	require.NoError(t, err)
 	defer backend.Close()
 
+	var owner atomic.Pointer[pool.Owner]
 	getDestination := func(*http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
 			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
+			Owner:         owner.Load(),
 		}, nil
 	}
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
 	defer proxy.Close()
+	owner.Store(proxy.NewOwner())
 
 	// Make a request to the proxy
 	proxyURL := fmt.Sprintf("http://127.0.0.1:%d/hello", port)
@@ -970,9 +973,7 @@ func TestProxyCloseIdleConnectionsFromPool(t *testing.T) {
 	assert.Equal(t, int64(1), proxy.CurrentPoolConnections(), "proxy should have established one connection that is still alive")
 	assert.Equal(t, uint64(1), backend.RequestCount(), "backend should have been called once")
 
-	// Remove the connection from the pool
-	err = proxy.RemoveFromPool(backend.id)
-	require.NoError(t, err)
+	require.NoError(t, owner.Load().Close(t.Context()))
 
 	assert.Equal(t, uint64(1), proxy.TotalPoolConnections(), "proxy should have still one connection in the pool")
 	assert.Equal(t, int64(0), proxy.CurrentPoolConnections(), "proxy should have removed the connection from the pool that is still alive")
@@ -991,18 +992,21 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 	require.NoError(t, err)
 	defer backend.Close()
 
+	var owner atomic.Pointer[pool.Owner]
 	getDestination := func(*http.Request) (*pool.Destination, error) {
 		return &pool.Destination{
 			Url:           backend.url,
 			SandboxId:     "test-sandbox",
 			RequestLogger: logger.NewNopLogger(),
 			ConnectionKey: backend.id,
+			Owner:         owner.Load(),
 		}, nil
 	}
 
 	proxy, port, err := newTestProxy(t, getDestination)
 	require.NoError(t, err)
 	defer proxy.Close()
+	owner.Store(proxy.NewOwner())
 
 	requestEnded := make(chan struct{}, 1)
 
@@ -1025,9 +1029,7 @@ func TestProxyResetAliveConnectionsFromPool(t *testing.T) {
 	assert.Equal(t, int64(1), proxy.CurrentPoolConnections(), "proxy should have established one connection that is still alive")
 	assert.Equal(t, uint64(1), backend.RequestCount(), "backend should have been called once")
 
-	// Remove the connection from the pool
-	err = proxy.RemoveFromPool(backend.id)
-	require.NoError(t, err)
+	require.NoError(t, owner.Load().Close(t.Context()))
 
 	assert.Equal(t, uint64(1), proxy.TotalPoolConnections(), "proxy should have still one connection in the pool")
 	assert.Equal(t, int64(0), proxy.CurrentPoolConnections(), "proxy should have removed the connection from the pool that is still alive")
@@ -1676,6 +1678,110 @@ func TestSharedIngressPolicy(t *testing.T) {
 	}
 }
 
+func TestRetiredConnectStreamPreservesFrontendReuse(t *testing.T) {
+	t.Parallel()
+	backend := fullDuplexSandbox(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/next" {
+			w.WriteHeader(http.StatusNoContent)
+
+			return
+		}
+		w.Header().Set("Content-Type", "application/connect+json")
+		_, _ = w.Write(dataEnvelope(`{}`))
+		_ = http.NewResponseController(w).Flush()
+		<-r.Context().Done()
+	})
+	var owner atomic.Pointer[pool.Owner]
+	target := destinationFor(backend, "retired")
+	proxy, port, _, _ := startProxyWithIdleTimeout(t, func(r *http.Request) (*pool.Destination, error) {
+		d, err := target(r)
+		d.Owner = owner.Load()
+
+		return d, err
+	}, time.Minute)
+	owner.Store(proxy.NewOwner())
+	conn, reader := dialProxy(t, port)
+	_, err := fmt.Fprintf(conn, "GET /stream HTTP/1.1\r\nHost: example\r\n\r\n")
+	require.NoError(t, err)
+	response, err := http.ReadResponse(reader, nil)
+	require.NoError(t, err)
+	first := make([]byte, len(dataEnvelope(`{}`)))
+	_, err = io.ReadFull(response.Body, first)
+	require.NoError(t, err)
+	require.NoError(t, owner.Load().Close(t.Context()))
+	// The retired owner's successor, as a reset lifecycle gets one.
+	owner.Store(proxy.NewOwner())
+	_, err = io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.False(t, response.Close, "completed Connect response should retain frontend keepalive")
+	// Past the retired write deadline: the server clears it after each
+	// response, so the kept frontend serves the next request.
+	time.Sleep(2 * retiredWriteTimeout)
+	_, err = fmt.Fprintf(conn, "GET /next HTTP/1.1\r\nHost: example\r\nConnection: close\r\n\r\n")
+	require.NoError(t, err)
+	next, err := http.ReadResponse(reader, nil)
+	require.NoError(t, err)
+	defer next.Body.Close()
+	require.Equal(t, http.StatusNoContent, next.StatusCode)
+}
+
+func TestRetiredOwnerSettlesStalledUpload(t *testing.T) {
+	t.Parallel()
+	for _, framing := range []struct {
+		name    string
+		request string
+	}{
+		{"content length", "Content-Length: 1000\r\n\r\npartial-body"},
+		{"chunked", "Transfer-Encoding: chunked\r\n\r\nc\r\npartial-body\r\n"},
+	} {
+		t.Run(framing.name, func(t *testing.T) {
+			t.Parallel()
+			arrived := make(chan struct{})
+			closed := make(chan error, 1)
+			backend := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				_, err := io.ReadFull(r.Body, make([]byte, 4))
+				assert.NoError(t, err)
+				close(arrived)
+				_, err = io.Copy(io.Discard, r.Body)
+				closed <- err
+			}))
+			defer backend.Close()
+			target, err := url.Parse(backend.URL)
+			require.NoError(t, err)
+			var owner *pool.Owner
+			proxy, port, _, _ := startProxyWithIdleTimeout(t, func(*http.Request) (*pool.Destination, error) {
+				return &pool.Destination{Url: target, SandboxId: "upload", RequestLogger: logger.NewNopLogger(), ConnectionKey: "upload", Owner: owner}, nil
+			}, time.Minute)
+			owner = proxy.NewOwner()
+			conn, reader := dialProxy(t, port)
+			defer conn.Close()
+			_, err = fmt.Fprintf(conn, "POST / HTTP/1.1\r\nHost: example\r\n%s", framing.request)
+			require.NoError(t, err)
+			select {
+			case <-arrived:
+			case <-time.After(5 * time.Second):
+				t.Fatal("backend did not receive upload")
+			}
+			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			defer cancel()
+			require.NoError(t, owner.Close(ctx))
+			select {
+			case err := <-closed:
+				require.Error(t, err, "retirement must interrupt the backend upload")
+			case <-ctx.Done():
+				t.Fatal("backend socket remained open")
+			}
+			response, err := http.ReadResponse(reader, nil)
+			require.NoError(t, err)
+			defer response.Body.Close()
+			require.True(t, response.Close, "interrupted uploads cannot reuse their frontend connection")
+			_, err = io.ReadAll(response.Body)
+			require.NoError(t, err)
+		})
+	}
+}
+
 func TestIngressSchemeForPort(t *testing.T) {
 	t.Parallel()
 	envdPort := uint64(consts.DefaultEnvdServerPort)
@@ -1702,4 +1808,127 @@ func TestIngressSchemeForPort(t *testing.T) {
 			assert.Equal(t, tt.want, d.Url.Scheme)
 		})
 	}
+}
+
+// A stalled upload refused at admission must not be drained by the server
+// before its refusal, nor leave its body on a kept frontend.
+func TestRefusedUploadClosesFrontend(t *testing.T) {
+	t.Parallel()
+	backend := fullDuplexSandbox(t, func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })
+	var owner atomic.Pointer[pool.Owner]
+	target := destinationFor(backend, "refused")
+	proxy, port, _, _ := startProxyWithIdleTimeout(t, func(r *http.Request) (*pool.Destination, error) {
+		d, err := target(r)
+		d.Owner = owner.Load()
+
+		return d, err
+	}, time.Minute)
+	owner.Store(proxy.NewOwner())
+	require.NoError(t, owner.Load().Close(t.Context()))
+	conn, reader := dialProxy(t, port)
+	defer conn.Close()
+	_, err := fmt.Fprintf(conn, "POST /upload HTTP/1.1\r\nHost: example\r\nContent-Length: 1000\r\n\r\npartial")
+	require.NoError(t, err)
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+	response, err := http.ReadResponse(reader, nil)
+	require.NoError(t, err, "the refusal must not wait for the rest of the upload")
+	defer response.Body.Close()
+	assert.Equal(t, http.StatusBadGateway, response.StatusCode)
+	assert.True(t, response.Close, "a frontend with an unread body cannot be kept")
+	_, err = io.ReadAll(response.Body)
+	require.NoError(t, err)
+	_, err = reader.ReadByte()
+	require.ErrorIs(t, err, io.EOF, "the server must close the frontend after the refusal")
+}
+
+// A retired stream whose request body the server had already taken, every
+// Connect RPC's shape, must not poison the kept frontend: the read deadline
+// that cuts a transport read reaches the server's background read and cancels
+// the connection's context, so the frontend is closed instead of reused.
+func TestRetiredRequestWithTakenBodyDoesNotPoisonFrontend(t *testing.T) {
+	t.Parallel()
+	backend := fullDuplexSandbox(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/next" {
+			w.WriteHeader(http.StatusNoContent)
+
+			return
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		w.Header().Set("Content-Type", "application/connect+json")
+		_, _ = w.Write(dataEnvelope(`{}`))
+		_ = http.NewResponseController(w).Flush()
+		<-r.Context().Done()
+	})
+	var owner atomic.Pointer[pool.Owner]
+	target := destinationFor(backend, "taken")
+	proxy, port, _, _ := startProxyWithIdleTimeout(t, func(r *http.Request) (*pool.Destination, error) {
+		d, err := target(r)
+		d.Owner = owner.Load()
+
+		return d, err
+	}, time.Minute)
+	owner.Store(proxy.NewOwner())
+	conn, reader := dialProxy(t, port)
+	defer conn.Close()
+	_, err := fmt.Fprintf(conn, "POST /stream HTTP/1.1\r\nHost: example\r\nContent-Length: 2\r\n\r\n{}")
+	require.NoError(t, err)
+	response, err := http.ReadResponse(reader, nil)
+	require.NoError(t, err)
+	_, err = io.ReadFull(response.Body, make([]byte, len(dataEnvelope(`{}`))))
+	require.NoError(t, err)
+	require.NoError(t, owner.Load().Close(t.Context()))
+	owner.Store(proxy.NewOwner())
+	_, err = io.ReadAll(response.Body)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.NoError(t, conn.SetReadDeadline(time.Now().Add(5*time.Second)))
+	_, err = fmt.Fprintf(conn, "GET /next HTTP/1.1\r\nHost: example\r\n\r\n")
+	require.NoError(t, err)
+	next, err := http.ReadResponse(reader, nil)
+	if err != nil {
+		require.True(t, errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF), "a closed frontend is fine; a poisoned one is not: %v", err)
+
+		return
+	}
+	defer next.Body.Close()
+	require.Equal(t, http.StatusNoContent, next.StatusCode, "the next request on the kept frontend must be served, not refused")
+}
+
+// A client that stops reading a download holds the handler in its frontend
+// write; retirement must still settle, on the write deadline, well inside a
+// release budget.
+func TestRetiredOwnerSettlesStalledDownload(t *testing.T) {
+	t.Parallel()
+	backend := fullDuplexSandbox(t, func(w http.ResponseWriter, _ *http.Request) {
+		buf := make([]byte, 64<<10)
+		for {
+			if _, err := w.Write(buf); err != nil {
+				return
+			}
+		}
+	})
+	var owner atomic.Pointer[pool.Owner]
+	target := destinationFor(backend, "download")
+	proxy, port, _, _ := startProxyWithIdleTimeout(t, func(r *http.Request) (*pool.Destination, error) {
+		d, err := target(r)
+		d.Owner = owner.Load()
+
+		return d, err
+	}, time.Minute)
+	owner.Store(proxy.NewOwner())
+	conn, reader := dialProxy(t, port)
+	defer conn.Close()
+	_, err := fmt.Fprintf(conn, "GET /big HTTP/1.1\r\nHost: example\r\n\r\n")
+	require.NoError(t, err)
+	response, err := http.ReadResponse(reader, nil)
+	require.NoError(t, err)
+	defer response.Body.Close()
+	// Read nothing more: the windows fill and the handler blocks writing.
+	require.Eventually(t, func() bool { return proxy.CurrentPoolConnections() == 1 }, 5*time.Second, 10*time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	started := time.Now()
+	require.NoError(t, owner.Load().Close(ctx))
+	require.Less(t, time.Since(started), 3*retiredWriteTimeout, "a stalled reader must be cut at the write deadline, not waited for")
 }

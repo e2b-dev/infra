@@ -734,7 +734,6 @@ func TestHandlerEnablesFullDuplex(t *testing.T) {
 	require.NoError(t, err)
 
 	p := pool.New(maxClientConns, 1, time.Second, false)
-	t.Cleanup(func() { _ = p.Close("full-duplex-pin") })
 
 	recorder := &fullDuplexRecorder{ResponseRecorder: httptest.NewRecorder()}
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "http://49983-sbx-1-00000000.localhost/", nil)

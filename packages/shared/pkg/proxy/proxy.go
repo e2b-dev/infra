@@ -98,8 +98,8 @@ func (p *Proxy) CurrentPoolConnections() int64 {
 	return p.pool.CurrentConnections()
 }
 
-func (p *Proxy) RemoveFromPool(connectionKey string) error {
-	return p.pool.Close(connectionKey)
+func (p *Proxy) NewOwner() *pool.Owner {
+	return p.pool.NewOwner()
 }
 
 func (p *Proxy) ListenAndServe(ctx context.Context) error {

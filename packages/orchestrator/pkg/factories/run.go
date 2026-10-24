@@ -1034,7 +1034,6 @@ func run(config cfg.Config, opts Options) (success bool) {
 		DevicePool:       devicePool,
 		TemplateCache:    templateCache,
 		Info:             serviceInfo,
-		Proxy:            sandboxProxy,
 		Persistence:      persistence,
 		TemplateStorage:  templateSpec,
 		FeatureFlags:     featureFlags,

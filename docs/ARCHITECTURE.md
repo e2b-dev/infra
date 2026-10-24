@@ -369,6 +369,11 @@ Key mechanisms (all under `pkg/sandbox/`):
   traffic access tokens through the shared ingress policy. HTTPS backends may use self-signed certificates.
   It refuses a full-router sandbox with 503 `sandbox_feature_unsupported` before dialing the
   slot.
+  Each admitted lifecycle owns its proxy handlers and backend sockets, including pending dials
+  and upgrades. Stopping seals admission and interrupts connections; network release waits for
+  that work to finish. Restarting envd resets the owner while allowing the live lifecycle to
+  admit a replacement. Retired streams have one second to write their terminal response before
+  a stalled frontend is interrupted.
   Shared proxy shutdown waits for H2C and upgraded connections to close and includes them in
   forced connection cleanup. Failed H2C handshakes release their hijacked connections when the
   handshake handler returns.

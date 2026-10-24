@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/e2b-dev/infra/packages/shared/pkg/connlimit"
+	"github.com/e2b-dev/infra/packages/shared/pkg/proxy/pool"
 )
 
 // Minimal RFC 6455 framing, enough to drive a WebSocket through the proxy
@@ -366,4 +368,48 @@ func TestProxyRelaysBidirectionalHTTP1Stream(t *testing.T) {
 	require.ErrorIs(t, err, io.EOF, "the connection should close as announced")
 
 	p.released(t, "after the stream")
+}
+
+func TestOwnerRetirementIsolatesUpgradesAndSuccessors(t *testing.T) {
+	t.Parallel()
+	backend := wsEchoSandbox(t)
+	var destination atomic.Pointer[pool.Destination]
+	proxy, port, _, limiter := startProxyWithIdleTimeout(t, func(*http.Request) (*pool.Destination, error) { return destination.Load(), nil }, time.Minute)
+	admit := func(key string) *pool.Owner {
+		d, err := destinationFor(backend, key)(nil)
+		require.NoError(t, err)
+		d.Owner = proxy.NewOwner()
+		destination.Store(d)
+
+		return d.Owner
+	}
+	old := admit("old")
+	first, firstReader := wsDialProxy(t, port)
+	defer first.Close()
+	unrelated := admit("unrelated")
+	second, secondReader := wsDialProxy(t, port)
+	defer second.Close()
+	require.NoError(t, old.Close(t.Context()))
+	require.NoError(t, first.SetReadDeadline(time.Now().Add(5*time.Second)))
+	_, _, err := wsReadFrame(firstReader)
+	require.Error(t, err)
+	assert.Zero(t, limiter.Count("old"))
+	successor := admit("old")
+	third, thirdReader := wsDialProxy(t, port)
+	defer third.Close()
+	require.NoError(t, old.Close(t.Context()))
+	for i, connection := range []net.Conn{second, third} {
+		reader := []*bufio.Reader{secondReader, thirdReader}[i]
+		require.NoError(t, connection.SetDeadline(time.Now().Add(5*time.Second)))
+		require.NoError(t, wsWriteFrame(connection, wsOpText, []byte("still live"), true))
+		op, payload, err := wsReadFrame(reader)
+		require.NoError(t, err)
+		assert.Equal(t, wsOpText, op)
+		assert.Equal(t, "still live", string(payload))
+	}
+	require.NoError(t, unrelated.Close(t.Context()))
+	require.NoError(t, successor.Close(t.Context()))
+	assert.Zero(t, proxy.CurrentPoolConnections())
+	assert.Zero(t, limiter.Count("old"))
+	assert.Zero(t, limiter.Count("unrelated"))
 }

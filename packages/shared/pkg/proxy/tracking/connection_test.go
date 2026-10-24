@@ -3,11 +3,15 @@ package tracking
 import (
 	"io"
 	"net"
+	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/e2b-dev/infra/packages/shared/pkg/smap"
 )
 
 type halfCloser interface {
@@ -68,4 +72,43 @@ func TestPoolConnectionDoesNotHalfClose(t *testing.T) {
 
 	_, ok := any(conn).(halfCloser)
 	assert.False(t, ok)
+}
+
+// A wrapper may report an error after closing its socket. Racing transport
+// close and retirement must still release accounting exactly once.
+type closeErrorConn struct {
+	net.Conn
+
+	calls atomic.Int32
+}
+
+func (c *closeErrorConn) Close() error {
+	c.calls.Add(1)
+	_ = c.Conn.Close()
+
+	return io.ErrUnexpectedEOF
+}
+
+func TestConcurrentResetAndFailedCloseReleaseAccounting(t *testing.T) {
+	t.Parallel()
+	listener, client := tcpPair(t)
+	peer, err := listener.Accept()
+	require.NoError(t, err)
+	defer peer.Close()
+	wrapped := &closeErrorConn{Conn: client}
+	var count atomic.Int64
+	connections := smap.New[*Connection]()
+	conn := NewConnection(wrapped, &count, connections)
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() { assert.ErrorIs(t, conn.Close(), io.ErrUnexpectedEOF) })
+		wg.Go(func() { assert.ErrorIs(t, conn.Reset(), io.ErrUnexpectedEOF) })
+	}
+	wg.Wait()
+	require.NoError(t, peer.SetReadDeadline(time.Now().Add(5*time.Second)))
+	_, err = peer.Read(make([]byte, 1))
+	require.ErrorIs(t, err, io.EOF)
+	assert.EqualValues(t, 1, wrapped.calls.Load())
+	assert.Zero(t, count.Load())
+	assert.Zero(t, connections.Count())
 }

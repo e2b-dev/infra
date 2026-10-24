@@ -178,9 +178,8 @@ func (bb *BaseBuilder) provisionSandbox(
 	defer sbx.Close(ctx)
 
 	defer func() {
-		closeErr := bb.proxy.RemoveFromPool(sbx.LifecycleID)
+		closeErr := bb.proxy.RemoveFromPool(ctx, sbx.LifecycleID)
 		if closeErr != nil {
-			// Errors here will be from forcefully closing the connections, so we can ignore them—they will at worst timeout on their own.
 			bb.logger.Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
 		} else {
 			bb.logger.Debug(

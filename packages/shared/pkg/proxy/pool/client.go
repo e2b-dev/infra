@@ -28,12 +28,15 @@ const tlsHandshakeTimeout = 10 * time.Second
 type ProxyClient struct {
 	httputil.ReverseProxy
 
+	owner *Owner
+
 	transport *http.Transport
 
 	activeConnections *smap.Map[*tracking.Connection]
 }
 
 func newProxyClient(
+	owner *Owner,
 	maxIdleConns,
 	maxHostIdleConns int,
 	maxConnectionAttempts int,
@@ -58,6 +61,12 @@ func newProxyClient(
 		ForceAttemptHTTP2:     false,
 		// TCP configuration
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			ctx, release, acquireErr := owner.acquire(ctx)
+			if acquireErr != nil {
+				return nil, acquireErr
+			}
+			defer release()
+
 			var conn net.Conn
 			var err error
 
@@ -72,9 +81,15 @@ func newProxyClient(
 				}).DialContext(ctx, network, addr)
 
 				if err == nil {
+					tracked := tracking.NewConnection(conn, currentConnsCounter, activeConnections)
+					if owner.refused() {
+						_ = tracked.Close()
+
+						return nil, errOwnerClosed
+					}
 					totalConnsCounter.Add(1)
 
-					return tracking.NewConnection(conn, currentConnsCounter, activeConnections), nil
+					return tracked, nil
 				}
 
 				if ctx.Err() != nil {
@@ -103,6 +118,7 @@ func newProxyClient(
 	}
 
 	pc := &ProxyClient{
+		owner:             owner,
 		transport:         transport,
 		activeConnections: activeConnections,
 	}

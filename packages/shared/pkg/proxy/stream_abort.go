@@ -128,12 +128,18 @@ func (w *streamWriter) settleBody() {
 	}
 
 	if !w.body.finished() {
-		// Fails the read in flight and the close's own drain at once.
-		_ = http.NewResponseController(w.ResponseWriter).SetReadDeadline(time.Unix(1, 0))
-		// The documented way to tell the server to stop reading this request and close after the response.
-		_, _ = http.MaxBytesReader(w.ResponseWriter, io.NopCloser(strings.NewReader("+")), 0).Read(make([]byte, 1))
+		closeUnreadBody(w.ResponseWriter)
 	}
 	_ = w.body.Close()
+}
+
+// closeUnreadBody keeps an unread HTTP/1 request body from holding the
+// server: it fails the read in flight and the close's own drain at once, and
+// has the server close the frontend after the response, the documented way,
+// since the body left on it would desync the next request.
+func closeUnreadBody(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetReadDeadline(time.Unix(1, 0))
+	_, _ = http.MaxBytesReader(w, io.NopCloser(strings.NewReader("+")), 0).Read(make([]byte, 1))
 }
 
 // requestBody tracks how much of the request body the transport has taken.

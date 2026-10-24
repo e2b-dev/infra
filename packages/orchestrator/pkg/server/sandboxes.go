@@ -2463,14 +2463,11 @@ func (s *Server) setupSandboxLifecycle(ctx context.Context, sbx *sandbox.Sandbox
 		// Every ending — kill, pause, checkpoint hand-off, crash — passes here.
 		s.recordExecutionDuration(ctx, sbx)
 
+		// The proxy's connections end with the lifecycle: reset when it stopped,
+		// joined when its network slot is released.
 		cleanupErr := sbx.Close(ctx)
 		if cleanupErr != nil {
 			sbxlogger.I(sbx).Error(ctx, "failed to cleanup sandbox, will remove from cache", zap.Error(cleanupErr))
-		}
-
-		closeErr := s.proxy.RemoveFromPool(sbx.LifecycleID)
-		if closeErr != nil {
-			sbxlogger.I(sbx).Warn(ctx, "errors when manually closing connections to sandbox", zap.Error(closeErr))
 		}
 
 		sbxlogger.E(sbx).Info(ctx, "Sandbox stopped")

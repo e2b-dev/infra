@@ -27,7 +27,10 @@ type Destination struct {
 	// MaskRequestHost is used to mask the request host.
 	MaskRequestHost *string
 	// InsecureSkipTLSVerify is read once, when the pool builds the client for
-	// ConnectionKey; later destinations sharing that key inherit the first
+	// ConnectionKey or Owner; later destinations sharing it inherit the first
 	// one's value. Keep it constant per ConnectionKey.
 	InsecureSkipTLSVerify bool
+	// Owner, when set, holds the upstream connections instead of the pool's
+	// ConnectionKey entry. Closing it ends them.
+	Owner *Owner
 }

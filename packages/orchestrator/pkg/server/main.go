@@ -16,7 +16,6 @@ import (
 
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/cfg"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/events"
-	"github.com/e2b-dev/infra/packages/orchestrator/pkg/proxy"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/nbd"
 	"github.com/e2b-dev/infra/packages/orchestrator/pkg/sandbox/network"
@@ -69,7 +68,6 @@ type Server struct {
 	config            cfg.Config
 	sandboxFactory    *sandbox.Factory
 	info              *service.ServiceInfo
-	proxy             *proxy.SandboxProxy
 	networkPool       network.PoolInterface
 	templateCache     *template.Cache
 	devicePool        *nbd.DevicePool
@@ -127,7 +125,6 @@ type ServiceConfig struct {
 	DevicePool       *nbd.DevicePool
 	TemplateCache    *template.Cache
 	Info             *service.ServiceInfo
-	Proxy            *proxy.SandboxProxy
 	SandboxFactory   *sandbox.Factory
 	Persistence      storage.StorageProvider
 	FeatureFlags     *featureflags.Client
@@ -155,7 +152,6 @@ func New(ctx context.Context, cfg ServiceConfig) (*Server, error) {
 		config:            cfg.Config,
 		sandboxFactory:    cfg.SandboxFactory,
 		info:              cfg.Info,
-		proxy:             cfg.Proxy,
 		networkPool:       cfg.NetworkPool,
 		templateCache:     cfg.TemplateCache,
 		devicePool:        cfg.DevicePool,

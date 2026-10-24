@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -18,6 +19,10 @@ import (
 // resumeRetryAfter is sent with every answer a resumed sandbox can turn into a
 // success on retry, so SDKs and browsers wait before asking again.
 const resumeRetryAfter = "2"
+
+// Allow a terminal stream error to reach a reading client, but do not let a
+// stalled frontend hold sandbox network release indefinitely.
+const retiredWriteTimeout = time.Second
 
 // setRetryAfter sends the retry delay and lists it for cross-origin
 // callers: a browser lets a page read only the headers the response
@@ -257,6 +262,52 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			d = &destination
 		}
 
+		// An HTTP/1 request with a body is drained by the server before a
+		// refusal is written, and its transport read is what retirement must
+		// interrupt. The read deadline that does so reaches the server's
+		// background read of a body it has already taken, which cancels the
+		// connection's context, inherited by every later request on that
+		// frontend; so a frontend whose read was cut is closed after the
+		// response, never kept.
+		uploading := r.ProtoMajor == 1 && r.ContentLength != 0
+		proxy := p.Get(ctx, d)
+		ctx, release, err := proxy.Acquire(ctx)
+		if err != nil {
+			if cors.HandlePreflight(w, r) {
+				return
+			}
+			if uploading {
+				closeUnreadBody(w)
+			}
+			cors.Error(w, "Failed to route request to sandbox", http.StatusBadGateway)
+
+			return
+		}
+		defer release()
+		// A canceled backend alone cannot unblock a slow frontend write.
+		// Join this callback before releasing ownership or reusing the frontend.
+		interrupted := make(chan struct{})
+		//nolint:contextcheck // Retirement is independent of frontend request cancellation.
+		stop := context.AfterFunc(proxy.Context(), func() {
+			controller := http.NewResponseController(w)
+			if uploading {
+				_ = controller.SetReadDeadline(time.Now())
+			}
+			_ = controller.SetWriteDeadline(time.Now().Add(retiredWriteTimeout))
+			close(interrupted)
+		})
+		defer func() {
+			if !stop() {
+				<-interrupted
+				if uploading {
+					// Before the headers went out the server announces the
+					// close itself; after, HTTP/1 has no way to, and a client
+					// that reuses the frontend meanwhile sees EOF and retries.
+					closeUnreadBody(w)
+				}
+			}
+		}()
+
 		// Connection limiting
 		if connLimitConfig != nil {
 			maxLimit := connLimitConfig.GetMaxLimit(ctx)
@@ -313,7 +364,6 @@ func handler(p *pool.ProxyPool, getDestination func(r *http.Request) (*pool.Dest
 			l.Warn(ctx, "failed to enable full duplex", zap.Error(err), logger.WithSandboxID(d.SandboxId))
 		}
 
-		proxy := p.Get(ctx, d)
 		serveStream(w, r, proxy, fmt.Sprintf("the connection to sandbox %s ended before the stream completed", d.SandboxId))
 	}
 }
