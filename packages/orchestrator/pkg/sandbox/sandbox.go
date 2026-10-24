@@ -1151,7 +1151,7 @@ func (f *Factory) CreateSandbox(
 	if err != nil {
 		return nil, err
 	}
-	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
+	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID, runtime.TeamID)
 	cgroupRemovalRegistered := false
 	defer cleanupIfNotRegistered(ctx, &e, &cgroupRemovalRegistered, cgroupHandle.Remove)
 
@@ -1581,7 +1581,7 @@ func (f *Factory) ResumeSandbox(
 	if cgroupErr != nil {
 		return nil, cgroupErr
 	}
-	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID)
+	defer releaseCgroupFD(ctx, cgroupHandle, runtime.SandboxID, runtime.TeamID)
 	cgroupRemovalRegistered := false
 	defer cleanupIfNotRegistered(ctx, &e, &cgroupRemovalRegistered, cgroupHandle.Remove)
 
@@ -4509,7 +4509,7 @@ func (f *Factory) getNetworkSlot(
 	runtime sandboxtypes.RuntimeMetadata,
 	lifecycleID string,
 ) *utils.Promise[*network.Slot] {
-	return getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkRelease(runtime.SandboxID, lifecycleID), runtime.SandboxType.EgressClass(), runtime.SandboxID)
+	return getNetworkSlot(ctx, f.networkPool, cleanup, config.Network, f.Sandboxes.NetworkRelease(runtime.SandboxID, lifecycleID), runtime.SandboxType.EgressClass(), runtime.SandboxID, runtime.TeamID)
 }
 
 func getNetworkSlot(
@@ -4520,6 +4520,7 @@ func getNetworkSlot(
 	networkReleased network.ReleaseNotify,
 	egressClass sandboxtypes.EgressClass,
 	sandboxID string,
+	teamID string,
 ) *utils.Promise[*network.Slot] {
 	return utils.NewPromise(func() (*network.Slot, error) {
 		ctx, span := tracer.Start(ctx, "get network-slot")
@@ -4529,7 +4530,7 @@ func getNetworkSlot(
 		if err != nil {
 			return nil, fmt.Errorf("failed to get network slot: %w", err)
 		}
-		slot.AssignSandbox(sandboxID)
+		slot.AssignSandbox(sandboxID, teamID)
 
 		cleanup.Add(ctx, func(ctx context.Context) error {
 			// Async so sandbox cleanup doesn't block on the return delay or
@@ -4704,10 +4705,11 @@ func (s *Sandbox) envdInitLoop() envdInitLoop {
 	return envdInitLoopLegacy
 }
 
-func releaseCgroupFD(ctx context.Context, cgroupHandle *cgroup.CgroupHandle, sandboxID string) {
+func releaseCgroupFD(ctx context.Context, cgroupHandle *cgroup.CgroupHandle, sandboxID, teamID string) {
 	if releaseErr := cgroupHandle.ReleaseCgroupFD(); releaseErr != nil {
 		logger.L().Warn(ctx, "failed to release cgroup directory FD",
 			logger.WithSandboxID(sandboxID),
+			logger.WithTeamID(teamID),
 			zap.Error(releaseErr))
 	}
 }
